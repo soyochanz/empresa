@@ -22,7 +22,8 @@ import {
   Key,
   Archive,
   Trash2,
-  Upload
+  Upload,
+  Edit
 } from 'lucide-react';
 
 interface CrmScreenProps {
@@ -73,7 +74,8 @@ export default function CrmScreen({
     }
   };
 
-  // Form states
+  // Form states and editing tracker
+  const [editingContact, setEditingContact] = useState<ClientContact | null>(null);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newCompany, setNewCompany] = useState('');
@@ -88,6 +90,23 @@ export default function CrmScreen({
   const [newAvatarUrl, setNewAvatarUrl] = useState('');
   const [newAssignedUserEmail, setNewAssignedUserEmail] = useState('');
 
+  const resetFormFields = () => {
+    setNewName('');
+    setNewEmail('');
+    setNewCompany('');
+    setNewStatus('Lead');
+    setNewRole('');
+    setNewLocation('San Francisco, CA');
+    setNewWebsite('');
+    setNewGithubRepo('');
+    setNewHostingCredentials('');
+    setNewPhone('');
+    setNewLinkedin('');
+    setNewAvatarUrl('');
+    setNewAssignedUserEmail('');
+    setEditingContact(null);
+  };
+
   // Eye toggle visibility matching target contact ID
   const [showCredsId, setShowCredsId] = useState<string | null>(null);
 
@@ -99,10 +118,11 @@ export default function CrmScreen({
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim() || !newEmail.trim()) return;
+    if (!newName.trim()) return;
 
     const initials = newName
       .split(' ')
+      .filter(Boolean)
       .map(n => n[0])
       .join('')
       .toUpperCase()
@@ -110,47 +130,64 @@ export default function CrmScreen({
 
     const matchedUser = usersList.find(u => u.email === newAssignedUserEmail);
 
-    const generatedContact: ClientContact = {
-      id: 'c_' + Date.now().toString().slice(-6),
-      name: newName,
-      email: newEmail,
-      company: newCompany || 'Independent',
-      status: newStatus,
-      lastContacted: 'Just now',
-      role: newRole || 'Product Manager',
-      location: newLocation,
-      addedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      website: newWebsite || (newCompany ? `${newCompany.toLowerCase().replace(/\s+/g, '')}.io` : ''),
-      githubRepo: newGithubRepo,
-      hostingCredentials: newHostingCredentials,
-      phone: newPhone || undefined,
-      linkedin: newLinkedin || undefined,
-      avatarUrl: newAvatarUrl || undefined,
-      assignedUserEmail: newAssignedUserEmail || undefined,
-      assignedUserId: matchedUser ? matchedUser.id : undefined,
-      initials: initials || 'N'
-    };
+    if (editingContact) {
+      const updatedContact: ClientContact = {
+        ...editingContact,
+        name: newName,
+        email: newEmail,
+        company: newCompany || 'Independent',
+        status: newStatus,
+        role: newRole || 'Product Manager',
+        location: newLocation,
+        website: newWebsite || (newCompany ? `${newCompany.toLowerCase().replace(/\s+/g, '')}.io` : ''),
+        githubRepo: newGithubRepo,
+        hostingCredentials: newHostingCredentials,
+        phone: newPhone || undefined,
+        linkedin: newLinkedin || undefined,
+        avatarUrl: newAvatarUrl || undefined,
+        assignedUserEmail: newAssignedUserEmail || undefined,
+        assignedUserId: matchedUser ? matchedUser.id : undefined,
+        initials: initials || 'N'
+      };
 
-    onAddContact(generatedContact);
-    setSelectedContactId(generatedContact.id);
+      if (onUpdateContact) {
+        onUpdateContact(updatedContact);
+      }
+      setSelectedContactId(updatedContact.id);
+    } else {
+      const generatedContact: ClientContact = {
+        id: 'c_' + Date.now().toString().slice(-6),
+        name: newName,
+        email: newEmail,
+        company: newCompany || 'Independent',
+        status: newStatus,
+        lastContacted: 'Just now',
+        role: newRole || 'Product Manager',
+        location: newLocation,
+        addedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        website: newWebsite || (newCompany ? `${newCompany.toLowerCase().replace(/\s+/g, '')}.io` : ''),
+        githubRepo: newGithubRepo,
+        hostingCredentials: newHostingCredentials,
+        phone: newPhone || undefined,
+        linkedin: newLinkedin || undefined,
+        avatarUrl: newAvatarUrl || undefined,
+        assignedUserEmail: newAssignedUserEmail || undefined,
+        assignedUserId: matchedUser ? matchedUser.id : undefined,
+        initials: initials || 'N'
+      };
+
+      onAddContact(generatedContact);
+      setSelectedContactId(generatedContact.id);
+    }
+
     setShowAddModal(false);
-
-    // reset forms
-    setNewName('');
-    setNewEmail('');
-    setNewCompany('');
-    setNewRole('');
-    setNewWebsite('');
-    setNewGithubRepo('');
-    setNewHostingCredentials('');
-    setNewPhone('');
-    setNewLinkedin('');
-    setNewAvatarUrl('');
-    setNewAssignedUserEmail('');
+    resetFormFields();
 
     const toast = document.getElementById('toast-msg');
     if (toast) {
-      toast.innerText = `Cliente registrado exitosamente: ${generatedContact.name}`;
+      toast.innerText = editingContact 
+        ? `Cliente actualizado exitosamente: ${newName}` 
+        : `Cliente registrado exitosamente: ${newName}`;
       toast.classList.remove('opacity-0');
       setTimeout(() => toast.classList.add('opacity-0'), 3000);
     }
@@ -351,11 +388,27 @@ export default function CrmScreen({
                 </button>
 
                 <button 
-                  onClick={() => alert(`Editando contacto: ${selectedContact.name}`)}
-                  className="p-2 bg-slate-950/60 hover:bg-slate-900 text-white rounded-xl border border-white/5 transition cursor-pointer"
-                  title="Edit Contact"
+                  onClick={() => {
+                    setEditingContact(selectedContact);
+                    setNewName(selectedContact.name || '');
+                    setNewEmail(selectedContact.email || '');
+                    setNewCompany(selectedContact.company || '');
+                    setNewStatus(selectedContact.status || 'Lead');
+                    setNewRole(selectedContact.role || '');
+                    setNewLocation(selectedContact.location || 'San Francisco, CA');
+                    setNewWebsite(selectedContact.website || '');
+                    setNewGithubRepo(selectedContact.githubRepo || '');
+                    setNewHostingCredentials(selectedContact.hostingCredentials || '');
+                    setNewPhone(selectedContact.phone || '');
+                    setNewLinkedin(selectedContact.linkedin || '');
+                    setNewAvatarUrl(selectedContact.avatarUrl || '');
+                    setNewAssignedUserEmail(selectedContact.assignedUserEmail || '');
+                    setShowAddModal(true);
+                  }}
+                  className="p-2 bg-slate-950/60 hover:bg-slate-900 border border-white/5 text-slate-300 hover:text-blue-400 rounded-xl transition cursor-pointer"
+                  title="Editar Contacto"
                 >
-                  <Plus className="w-4 h-4 text-slate-300" />
+                  <Edit className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -670,7 +723,10 @@ export default function CrmScreen({
       {/* Floating Action Button (FAB) at bottom-right */}
       <button 
         id="addContactFab"
-        onClick={() => setShowAddModal(true)}
+        onClick={() => {
+          resetFormFields();
+          setShowAddModal(true);
+        }}
         className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-blue-500 hover:bg-blue-400 active:scale-90 text-white shadow-2xl flex items-center justify-center cursor-pointer transition-all z-40 group border border-blue-400/20"
       >
         <Plus className="w-7 h-7 group-hover:rotate-90 transition-transform duration-300" />
@@ -682,15 +738,15 @@ export default function CrmScreen({
       {/* Dynamic Creation Modal for new contacts */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-[#000]/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
+          <div className="absolute inset-0 bg-[#000]/60 backdrop-blur-sm" onClick={() => { resetFormFields(); setShowAddModal(false); }} />
           <div className="relative bg-[#1e293b]/90 backdrop-blur-3xl border border-white/15 rounded-3xl p-6 shadow-2xl shadow-black/50 max-w-md w-full animate-in zoom-in-95 duration-200 text-slate-300">
             
             <div className="flex justify-between items-center mb-5 border-b border-white/5 pb-2">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-400" />
-                <span>Add New Contact</span>
+                <span>{editingContact ? `Editando contacto: ${editingContact.name}` : 'Crear Nuevo Contacto'}</span>
               </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/5">
+              <button onClick={() => { resetFormFields(); setShowAddModal(false); }} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/5">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -715,8 +771,7 @@ export default function CrmScreen({
                 <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Email Address</label>
                 <input 
                   type="email"
-                  required
-                  placeholder="l.foster@lumina.io"
+                  placeholder="l.foster@lumina.io (Opcional)"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
@@ -906,16 +961,16 @@ export default function CrmScreen({
               <div className="pt-4 flex gap-4">
                 <button 
                   type="button" 
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs font-semibold text-slate-300 transition-all"
+                  onClick={() => { resetFormFields(); setShowAddModal(false); }}
+                  className="flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs font-semibold text-slate-300 transition-all cursor-pointer"
                 >
-                  Cancel
+                  Cancelar
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-all"
+                  className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
                 >
-                  Save Contact
+                  {editingContact ? 'Guardar Cambios' : 'Guardar Contacto'}
                 </button>
               </div>
 
