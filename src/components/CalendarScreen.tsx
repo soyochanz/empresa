@@ -83,6 +83,14 @@ export default function CalendarScreen({
   const todayDate = new Date();
   const [currentYear, setCurrentYear] = useState(todayDate.getFullYear()); // Dynamically initialized to current year
   const [currentMonth, setCurrentMonth] = useState(todayDate.getMonth()); // Dynamically initialized to current month index
+  const [currentDay, setCurrentDay] = useState(todayDate.getDate());
+  const [currentView, setCurrentView] = useState<'month' | 'day'>('month');
+
+  const HOURLY_SLOTS = [
+    "08:00", "09:00", "10:00", "11:00", "12:00", 
+    "13:00", "14:00", "15:00", "16:00", "17:00", 
+    "18:00", "19:00", "20:00", "21:00", "22:00"
+  ];
 
   // Add Event Form State
   const [newTitle, setNewTitle] = useState('');
@@ -230,6 +238,23 @@ export default function CalendarScreen({
     }
   };
 
+  const selectedDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+  const rawDayEvents = events.filter(ev => {
+    const matchesDate = ev.date === selectedDayStr;
+    const isArchived = archivedEventIds.includes(ev.id);
+    if (isArchived && !showArchivedEvents) return false;
+    return matchesDate;
+  });
+
+  const getEventsForHour = (hourStr: string) => {
+    const hr = parseInt(hourStr.split(':')[0], 10);
+    return rawDayEvents.filter(ev => {
+      if (!ev.time) return false;
+      const evHr = parseInt(ev.time.split(':')[0], 10);
+      return evHr === hr;
+    });
+  };
+
   // Build dynamic monthly grid arrays
   const monthNames = [
     "January", "February", "March", "April", "May", "June", 
@@ -243,21 +268,39 @@ export default function CalendarScreen({
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const emptySlots = Array.from({ length: startDayOfWeek }, (_, i) => i);
 
-  const handlePrevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11);
-      setCurrentYear(prev => prev - 1);
+  const handlePrevCalendar = () => {
+    if (currentView === 'month') {
+      if (currentMonth === 0) {
+        setCurrentMonth(11);
+        setCurrentYear(prev => prev - 1);
+      } else {
+        setCurrentMonth(prev => prev - 1);
+      }
     } else {
-      setCurrentMonth(prev => prev - 1);
+      // Go to previous day
+      const d = new Date(currentYear, currentMonth, currentDay);
+      d.setDate(d.getDate() - 1);
+      setCurrentYear(d.getFullYear());
+      setCurrentMonth(d.getMonth());
+      setCurrentDay(d.getDate());
     }
   };
 
-  const handleNextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0);
-      setCurrentYear(prev => prev + 1);
+  const handleNextCalendar = () => {
+    if (currentView === 'month') {
+      if (currentMonth === 11) {
+        setCurrentMonth(0);
+        setCurrentYear(prev => prev + 1);
+      } else {
+        setCurrentMonth(prev => prev + 1);
+      }
     } else {
-      setCurrentMonth(prev => prev + 1);
+      // Go to next day
+      const d = new Date(currentYear, currentMonth, currentDay);
+      d.setDate(d.getDate() + 1);
+      setCurrentYear(d.getFullYear());
+      setCurrentMonth(d.getMonth());
+      setCurrentDay(d.getDate());
     }
   };
 
@@ -271,12 +314,42 @@ export default function CalendarScreen({
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-white font-sans flex items-center gap-2">
-              <span className="text-blue-400">{monthNames[currentMonth]} {currentYear}</span>
+              {currentView === 'month' ? (
+                <span className="text-blue-400">{monthNames[currentMonth]} {currentYear}</span>
+              ) : (
+                <span className="text-blue-400">Día {currentDay}: {monthNames[currentMonth].substring(0,3)}. {currentYear}</span>
+              )}
             </h2>
-            <p className="text-slate-400 text-xs mt-1">Actividades y reuniones programadas</p>
+            <p className="text-slate-400 text-xs mt-1">
+              {currentView === 'month' ? 'Actividades y reuniones programadas' : 'Agenda detallada del día organizada por horas'}
+            </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {/* View Selector Tabs */}
+            <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 shrink-0">
+              <button
+                onClick={() => setCurrentView('month')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  currentView === 'month' 
+                    ? 'bg-blue-600 text-white font-bold' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Mes
+              </button>
+              <button
+                onClick={() => setCurrentView('day')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  currentView === 'day' 
+                    ? 'bg-blue-600 text-white font-bold' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Día
+              </button>
+            </div>
+
             <button
               onClick={() => setShowArchivedEvents(!showArchivedEvents)}
               className={`px-3 py-1.5 rounded-xl border border-white/10 text-xs font-semibold cursor-pointer transition flex items-center gap-1.5 ${
@@ -287,125 +360,333 @@ export default function CalendarScreen({
               title="Mostrar u ocultar reuniones archivadas en el calendario"
             >
               <Archive className="w-3.5 h-3.5" />
-              <span>{showArchivedEvents ? 'Ocultar Archivados' : 'Mostrar Archivados'}</span>
+              <span className="hidden sm:inline">{showArchivedEvents ? 'Ocultar Archivados' : 'Mostrar Archivados'}</span>
             </button>
 
             <button 
-              onClick={handlePrevMonth}
+              onClick={handlePrevCalendar}
               className="p-1.5 hover:bg-white/5 rounded-lg border border-white/10 text-slate-400 hover:text-white transition cursor-pointer"
-              title="Mes Anterior"
+              title={currentView === 'month' ? "Mes Anterior" : "Día Anterior"}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button 
-              onClick={handleNextMonth}
+              onClick={handleNextCalendar}
               className="p-1.5 hover:bg-white/5 rounded-lg border border-white/10 text-slate-400 hover:text-white transition cursor-pointer"
-              title="Mes Siguiente"
+              title={currentView === 'month' ? "Mes Siguiente" : "Día Siguiente"}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
             
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => {
+                if (currentView === 'day') {
+                  setNewDate(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`);
+                }
+                setShowAddModal(true);
+              }}
               className="bg-blue-500 hover:bg-blue-400 text-white text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5 font-semibold shadow-lg shadow-blue-500/10 cursor-pointer active:scale-95 transition-all"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Event</span>
+              <span className="hidden sm:inline">Add Event</span>
             </button>
           </div>
         </div>
 
-        {/* Days of the Week Headings */}
-        <div className="grid grid-cols-7 border-b border-white/5 py-2 text-center text-xs font-mono font-medium uppercase tracking-wider text-slate-500">
-          <div>Sun</div>
-          <div>Mon</div>
-          <div>Tue</div>
-          <div>Wed</div>
-          <div>Thu</div>
-          <div>Fri</div>
-          <div>Sat</div>
-        </div>
+        {currentView === 'month' ? (
+          <>
+            {/* Days of the Week Headings */}
+            <div className="grid grid-cols-7 border-b border-white/5 py-2 text-center text-xs font-mono font-medium uppercase tracking-wider text-slate-500">
+              <div>Sun</div>
+              <div>Mon</div>
+              <div>Tue</div>
+              <div>Wed</div>
+              <div>Thu</div>
+              <div>Fri</div>
+              <div>Sat</div>
+            </div>
 
-        {/* Calendar Day Grid */}
-        <div className="grid grid-cols-7 flex-1 overflow-y-auto min-h-0 border-l border-t border-slate-900/40 divide-x divide-y divide-white/5">
-          
-          {/* Empty placeholders to align weekday of the 1st of monthly */}
-          {emptySlots.map((slot) => (
-            <div key={`empty-${slot}`} className="min-h-[105px] p-2 bg-slate-950/5 opacity-25 select-none" />
-          ))}
+            {/* Calendar Day Grid */}
+            <div className="grid grid-cols-7 flex-1 overflow-y-auto min-h-0 border-l border-t border-slate-900/40 divide-x divide-y divide-white/5">
+              
+              {/* Empty placeholders to align weekday of the 1st of monthly */}
+              {emptySlots.map((slot) => (
+                <div key={`empty-${slot}`} className="min-h-[105px] p-2 bg-slate-950/5 opacity-25 select-none" />
+              ))}
 
-          {daysArray.map((day) => {
-            const padM = String(currentMonth + 1).padStart(2, '0');
-            const padD = String(day).padStart(2, '0');
-            const formattedDayStr = `${currentYear}-${padM}-${padD}`;
-            const dayEvents = events.filter(ev => {
-              const matchesDate = ev.date === formattedDayStr;
-              const isArchived = archivedEventIds.includes(ev.id);
-              if (isArchived && !showArchivedEvents) return false;
-              return matchesDate;
-            });
+              {daysArray.map((day) => {
+                const padM = String(currentMonth + 1).padStart(2, '0');
+                const padD = String(day).padStart(2, '0');
+                const formattedDayStr = `${currentYear}-${padM}-${padD}`;
+                const dayEvents = events.filter(ev => {
+                  const matchesDate = ev.date === formattedDayStr;
+                  const isArchived = archivedEventIds.includes(ev.id);
+                  if (isArchived && !showArchivedEvents) return false;
+                  return matchesDate;
+                });
 
-            const todayRaw = new Date();
-            const isToday = 
-              todayRaw.getDate() === day && 
-              todayRaw.getMonth() === currentMonth && 
-              todayRaw.getFullYear() === currentYear;
+                const todayRaw = new Date();
+                const isToday = 
+                  todayRaw.getDate() === day && 
+                  todayRaw.getMonth() === currentMonth && 
+                  todayRaw.getFullYear() === currentYear;
 
-            return (
-              <div 
-                key={day}
-                onClick={() => {
-                  setSelectedEventId(dayEvents[0]?.id || '');
-                }}
-                className={`min-h-[105px] p-2 hover:bg-slate-900/30 transition-all cursor-pointer relative group ${
-                  isToday ? 'bg-blue-600/[0.04] border border-blue-500/20 shadow-inner' : 'bg-slate-950/20'
-                }`}
-              >
-                {/* Day Digit */}
-                <div className="flex justify-between items-center mb-1">
-                  <span className={`text-xs font-semibold ${
-                    isToday ? 'text-blue-400 font-bold bg-blue-500/10 rounded px-1.5 py-0.5' : 'text-slate-500 group-hover:text-slate-300'
-                  }`}>
-                    {day}
-                  </span>
-                  {isToday && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping" />}
+                return (
+                  <div 
+                    key={day}
+                    onClick={() => {
+                      setSelectedEventId(dayEvents[0]?.id || '');
+                      setCurrentDay(day);
+                    }}
+                    onDoubleClick={() => {
+                      setCurrentDay(day);
+                      setCurrentView('day');
+                    }}
+                    className={`min-h-[105px] p-2 hover:bg-slate-900/30 transition-all cursor-pointer relative group ${
+                      isToday ? 'bg-blue-600/[0.04] border border-blue-500/20 shadow-inner' : 'bg-slate-950/20'
+                    }`}
+                  >
+                    {/* Day Digit */}
+                    <div className="flex justify-between items-center mb-1">
+                      <span className={`text-xs font-semibold ${
+                        isToday ? 'text-blue-400 font-bold bg-blue-500/10 rounded px-1.5 py-0.5' : 'text-slate-500 group-hover:text-slate-300'
+                      }`}>
+                        {day}
+                      </span>
+                      {isToday && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping" />}
+                    </div>
+
+                    {/* Event Chips */}
+                    <div className="space-y-1 overflow-hidden">
+                      {dayEvents.map((ev) => {
+                        let chipColor = "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20";
+                        if (ev.status === "done") {
+                          chipColor = "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 line-through decoration-emerald-500/50";
+                        } else if (ev.status === "postponed") {
+                          chipColor = "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30";
+                        } else {
+                          if (ev.type === "Deadline") chipColor = "bg-red-500/10 text-red-400 hover:bg-red-500/20";
+                          else if (ev.type === "Review") chipColor = "bg-purple-500/10 text-purple-400 hover:bg-purple-500/20";
+                          else if (ev.type === "Kickoff") chipColor = "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20";
+                        }
+
+                        return (
+                          <div
+                            key={ev.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedEventId(ev.id);
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-medium tracking-wide truncate transition-colors ${chipColor} ${
+                              selectedEventId === ev.id ? 'ring-1 ring-blue-500/50 bg-blue-500/20' : ''
+                            }`}
+                            title={ev.title}
+                          >
+                            {ev.status === "done" ? "✓ " : ev.status === "postponed" ? "➜ " : ""}{ev.time} {ev.title}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          /* Detailed High-Fidelity Day View sorted by hours in big sizing */
+          <div className="flex-1 flex flex-col min-h-0 bg-[#020617]/40 border border-white/5 rounded-3xl p-6 overflow-hidden">
+            {/* Day Header with full Day Name info */}
+            <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-2xl flex flex-col items-center justify-center font-bold font-sans">
+                  <span className="text-[10px] uppercase text-slate-400 leading-none">DÍA</span>
+                  <span className="text-xl font-extrabold leading-none">{currentDay}</span>
                 </div>
-
-                {/* Event Chips */}
-                <div className="space-y-1 overflow-hidden">
-                  {dayEvents.map((ev) => {
-                    let chipColor = "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20";
-                    if (ev.status === "done") {
-                      chipColor = "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30 line-through decoration-emerald-500/50";
-                    } else if (ev.status === "postponed") {
-                      chipColor = "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30";
-                    } else {
-                      if (ev.type === "Deadline") chipColor = "bg-red-500/10 text-red-400 hover:bg-red-500/20";
-                      else if (ev.type === "Review") chipColor = "bg-purple-500/10 text-purple-400 hover:bg-purple-500/20";
-                      else if (ev.type === "Kickoff") chipColor = "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20";
-                    }
-
-                    return (
-                      <div
-                        key={ev.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedEventId(ev.id);
-                        }}
-                        className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-medium tracking-wide truncate transition-colors ${chipColor} ${
-                          selectedEventId === ev.id ? 'ring-1 ring-blue-500/50 bg-blue-500/20' : ''
-                        }`}
-                        title={ev.title}
-                      >
-                        {ev.status === "done" ? "✓ " : ev.status === "postponed" ? "➜ " : ""}{ev.time} {ev.title}
-                      </div>
-                    );
-                  })}
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">
+                    {(() => {
+                      const dateObj = new Date(currentYear, currentMonth, currentDay);
+                      return dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                    })()}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {rawDayEvents.length === 0 
+                      ? "Sin compromisos agendados para este día" 
+                      : `${rawDayEvents.length} ${rawDayEvents.length === 1 ? 'evento activo' : 'eventos activos'} en la agenda`}
+                  </p>
                 </div>
               </div>
-            );
-          })}
-        </div>
+              <button
+                onClick={() => {
+                  setNewDate(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`);
+                  setNewTime("10:00");
+                  setShowAddModal(true);
+                }}
+                className="bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 text-xs px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Bloquear Hora</span>
+              </button>
+            </div>
+
+            {/* Timetable timeline container wrapper */}
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4 min-h-0">
+              {HOURLY_SLOTS.map((hourStr) => {
+                const hourEvents = getEventsForHour(hourStr);
+                return (
+                  <div key={hourStr} className="group/hour flex gap-4 border-b border-white/[0.02] last:border-0 pb-4">
+                    {/* Hour Column label en grande */}
+                    <div className="w-16 flex-shrink-0 text-right pt-1.5">
+                      <span className="text-lg font-extrabold font-mono tracking-tight text-slate-300 group-hover/hour:text-blue-400 transition-colors leading-none block">
+                        {hourStr}
+                      </span>
+                      <span className="text-[9px] font-mono text-slate-500 block uppercase pt-0.5">
+                        {parseInt(hourStr.split(':')[0], 10) < 12 ? 'AM' : 'PM'}
+                      </span>
+                    </div>
+
+                    {/* Timeline Slot Column */}
+                    <div className="flex-1">
+                      {hourEvents.length > 0 ? (
+                        <div className="space-y-3">
+                          {hourEvents.map((ev) => {
+                            const isSelected = selectedEventId === ev.id;
+                            
+                            // Highly visual customized badge colors and glows based on status and types
+                            let statusBadgeColor = "text-blue-400 border-blue-500/20 bg-blue-500/5";
+                            let cardBorderColor = isSelected ? "border-blue-500/55 shadow-lg shadow-blue-500/[0.03]" : "border-white/5 hover:border-white/10";
+                            let cardBgColor = isSelected ? "bg-slate-900/90" : "bg-[#080d1e]/80 hover:bg-[#0c1328]/80";
+
+                            if (ev.status === "done") {
+                              statusBadgeColor = "text-emerald-400 border-emerald-500/30 bg-emerald-500/10 line-through";
+                              cardBorderColor = isSelected ? "border-emerald-500/50 shadow-inner" : "border-emerald-500/10 hover:border-emerald-500/20";
+                              cardBgColor = isSelected ? "bg-emerald-950/15" : "bg-[#060c15]/60 hover:bg-[#091120]/60";
+                            } else if (ev.status === "postponed") {
+                              statusBadgeColor = "text-amber-400 border-amber-500/30 bg-amber-500/10";
+                              cardBorderColor = isSelected ? "border-amber-500/50" : "border-amber-500/10 hover:border-amber-500/20";
+                              cardBgColor = isSelected ? "bg-[#181109]" : "bg-[#100b05] hover:bg-[#181008]";
+                            }
+
+                            return (
+                              <div
+                                key={ev.id}
+                                onClick={() => setSelectedEventId(ev.id)}
+                                className={`p-4 rounded-2xl border ${cardBorderColor} ${cardBgColor} transition-all duration-300 relative group/card flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer`}
+                              >
+                                <div className="space-y-2 flex-1 min-w-0">
+                                  {/* Top line metadata row */}
+                                  <div className="flex items-center gap-2 flex-wrap text-[9px] font-mono">
+                                    <span className={`px-2 py-0.5 rounded-full uppercase font-bold tracking-wider border ${statusBadgeColor}`}>
+                                      {ev.type}
+                                    </span>
+                                    <span className="text-slate-400">
+                                      {ev.time} {ev.duration ? `(${ev.duration} min)` : ''}
+                                    </span>
+                                    {ev.meetingUrl && (
+                                      <span className="text-blue-400 flex items-center gap-0.5 font-semibold bg-blue-500/5 border border-blue-500/10 px-1.5 rounded-full lowercase text-[8px]">
+                                        <Video className="w-2.5 h-2.5" /> videollamada
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Title & Description */}
+                                  <div className="space-y-1">
+                                    <h4 className="text-base font-bold text-white group-hover/card:text-blue-400 transition-colors tracking-tight truncate">
+                                      {ev.title}
+                                    </h4>
+                                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed font-light">
+                                      {ev.description || 'Sin descripción.'}
+                                    </p>
+                                  </div>
+
+                                  {/* Details footer block inside event card */}
+                                  <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-500 font-medium">
+                                    {ev.linkedContactName && (
+                                      <div className="flex items-center gap-1 bg-slate-900 border border-white/5 py-0.5 px-2 rounded-lg text-slate-400">
+                                        <User className="w-3 h-3 text-indigo-400" />
+                                        <span>Cliente: {ev.linkedContactName}</span>
+                                      </div>
+                                    )}
+
+                                    {ev.assignedUserEmail && (
+                                      <div className="flex items-center gap-1 bg-slate-900 border border-white/5 py-0.5 px-2 rounded-lg text-slate-400">
+                                        <Users className="w-3 h-3 text-emerald-400" />
+                                        <span>Asignado: {ev.assignedUserEmail.split('@')[0]}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Active Event actions menu right on card hover & click */}
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                  {ev.meetingUrl && (
+                                    <a
+                                      href={ev.meetingUrl}
+                                      target="_blank"
+                                      rel="noopener referrer"
+                                      className="p-2 bg-blue-500 hover:bg-blue-400 text-white rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-md shadow-blue-500/20 active:scale-90"
+                                      title="Unirse a la videollamada"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <Video className="w-4 h-4" />
+                                    </a>
+                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onUpdateEvent({ ...ev, status: ev.status === 'done' ? 'pending' : 'done' });
+                                    }}
+                                    className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                                      ev.status === 'done'
+                                        ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                                        : 'bg-white/5 border-white/5 hover:border-emerald-500/30 hover:text-emerald-400 hover:bg-emerald-500/10'
+                                    }`}
+                                    title="Marcar completado"
+                                  >
+                                    <span className="text-xs font-bold leading-none px-0.5">✓</span>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedEventId(ev.id);
+                                      setIsPostponing(true);
+                                    }}
+                                    className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                                      ev.status === 'postponed'
+                                        ? 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                                        : 'bg-white/5 border-white/5 hover:border-amber-500/30 hover:text-amber-400 hover:bg-amber-500/10'
+                                    }`}
+                                    title="Posponer reunión"
+                                  >
+                                    <span className="text-xs font-bold leading-none px-0.5">➜</span>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        /* Empty hour slot action placeholder */
+                        <div 
+                          onClick={() => {
+                            setNewDate(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`);
+                            setNewTime(hourStr);
+                            setShowAddModal(true);
+                          }}
+                          className="h-11 bg-transparent hover:bg-white/[0.01] border border-dashed border-white/[0.03] hover:border-white/10 hover:shadow-inner rounded-xl flex items-center justify-center text-[10px] text-slate-600 hover:text-slate-400 transition-all cursor-pointer group/btn"
+                        >
+                          <span className="opacity-0 group-hover/btn:opacity-100 transition-opacity flex items-center gap-1 font-mono font-medium">
+                            + Agendar reunión a las {hourStr}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
       </div>
 

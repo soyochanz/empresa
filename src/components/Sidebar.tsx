@@ -10,7 +10,8 @@ import {
   Bell,
   Settings,
   Briefcase,
-  Mail
+  Mail,
+  Receipt
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -144,6 +145,24 @@ export default function Sidebar({
             currentScreen === 'projects' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">Proyectos</span>
+        </button>
+
+        {/* Finanzas (Ingresos, Gastos, Gastos Recurrentes, Facturas) */}
+        <button
+          onClick={() => onNavigate('finanzas', 'none')}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-left ${
+            currentScreen === 'finanzas'
+              ? 'bg-white/10 text-white border border-white/15 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+          }`}
+        >
+          <Receipt className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
+            currentScreen === 'finanzas' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
+          }`} />
+          <span className="font-sans text-sm flex items-center justify-between w-full">
+            <span>Finanzas</span>
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded-md font-mono font-bold">Plan</span>
+          </span>
         </button>
 
       </nav>

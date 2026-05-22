@@ -262,22 +262,7 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
 
           </form>
 
-          {/* Separation divider */}
-          <div className="mt-6 border-t border-white/5 pt-5 text-center">
-            <button 
-              type="button"
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setErrorMsg(null);
-                setSuccessMsg(null);
-              }}
-              className="text-xs text-blue-400 hover:text-blue-300 font-sans tracking-wide hover:underline cursor-pointer"
-            >
-              {isSignUp 
-                ? '¿Ya tienes una cuenta? Iniciar Sesión' 
-                : '¿No tienes cuenta? Registrate en Supabase'}
-            </button>
-          </div>
+          {/* Separation divider removed to disable Sign Up */}
 
           {/* Back to landing option */}
           {onBackToLanding && (

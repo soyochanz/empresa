@@ -18,6 +18,7 @@ import CrmScreen from './components/CrmScreen';
 import NotesScreen from './components/NotesScreen';
 import ProjectsScreen from './components/ProjectsScreen';
 import ContactosScreen from './components/ContactosScreen';
+import FinanceScreen from './components/FinanceScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
@@ -186,10 +187,10 @@ export default function App() {
       const activeUid = userIdToSync || currentUser?.id;
       if (status.connected && status.tablesExist && activeUid) {
         const [fetchedContacts, fetchedEvents, fetchedNotes, fetchedActivities] = await Promise.all([
-          db.getContacts(activeUid),
-          db.getEvents(activeUid),
-          db.getNotes(activeUid),
-          db.getActivities(activeUid)
+          db.getContacts(),
+          db.getEvents(),
+          db.getNotes(),
+          db.getActivities()
         ]);
 
         // Always update state blocks to allow deletions leading to zero records to persist correctly
@@ -630,6 +631,13 @@ export default function App() {
             onNavigate={navigateTo}
           />
         );
+      case 'finanzas':
+        return (
+          <FinanceScreen 
+            contacts={contacts}
+            onNavigate={navigateTo}
+          />
+        );
       case 'contactos':
         return (
           <ContactosScreen />
@@ -711,7 +719,9 @@ export default function App() {
               ? 'PROYECTOS' 
               : currentScreen === 'contactos'
                 ? 'CONTACTOS DE LANDING'
-                : currentScreen.toUpperCase()
+                : currentScreen === 'finanzas'
+                  ? 'FINANZAS'
+                  : currentScreen.toUpperCase()
           } 
           onSearchChange={setGlobalSearch}
           currentUser={currentUser}
@@ -724,7 +734,9 @@ export default function App() {
                   ? 'Search across all notes...' 
                   : currentScreen === 'projects'
                     ? 'Search projects, tools or addons...'
-                    : 'Search commands or files...'
+                    : currentScreen === 'finanzas'
+                      ? 'Buscar facturas, transacciones o suscripciones...'
+                      : 'Search commands or files...'
           }
         />
 

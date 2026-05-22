@@ -36,48 +36,73 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   // High-fidelity real projects carried out by the digital boutique agency
-  const PROJECTS = [
-    {
-      title: "NovaSaaS - IA Generativa de Siguiente Generación",
-      category: "SaaS & Web App",
-      tag: "Live Website",
-      description: "Diseño minimalista premium para una plataforma internacional de inteligencia artificial. Rendimiento 100% en Lighthouse con micro-animaciones SVG, optimización máxima de SEO y pasarelas de pago automatizadas.",
-      image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-      url: "novasaas.agencyflow.com",
-      tech: ["React 19", "Vite", "Framer Motion", "Tailwind CSS"],
-      color: "from-blue-500/20 to-indigo-500/20"
-    },
-    {
-      title: "Luxor Estate - Buscador Inmobiliario Ultra-Lux",
-      category: "Buscador & Luxury Portal",
-      tag: "Live Project",
-      description: "E-Commerce inmobiliario de alta gama con filtros reactivos fluidos, integración de mapas Vectoriales en 3D, carga ultra veloz de galerías HD y enrutamiento dinámico de agentes locales.",
-      image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
-      url: "luxor.agencyflow.com",
-      tech: ["Next.js", "Mapbox GL API", "PostgreSQL", "Tailwind"],
-      color: "from-purple-500/20 to-pink-500/20"
-    },
-    {
-      title: "VeloCity - E-Commerce de Bicicletas Eléctricas Custom",
-      category: "Interactive E-Commerce",
-      tag: "Completed",
-      description: "Tienda online de lujo con representación interactiva del catálogo de bicicletas customizadas. Permite configurar componentes en tiempo real con recuento dinámico de precios y checkout seguro via Stripe.",
-      image: "https://images.unsplash.com/photo-1485965120184-e220f721d03e?auto=format&fit=crop&w=800&q=80",
-      url: "velocity.agencyflow.com",
-      tech: ["TailwindCSS", "Stripe API", "Three.js Engine"],
-      color: "from-emerald-500/20 to-teal-500/20"
-    },
-    {
-      title: "Aether - Visualizador Analítico de Web3",
-      category: "Fintech & Data Engine",
-      tag: "Active Portal",
-      description: "Panel de control criptográfico de alta seguridad que procesa millones de transacciones por segundo. Cuenta con gráficos interactivos construidos en D3.js y sincronización persistente vía WebSockets.",
-      image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80",
-      url: "aether.agencyflow.com",
-      tech: ["D3.js Core", "WebSockets", "Supabase DB", "Tailwind"],
-      color: "from-amber-500/20 to-orange-500/20"
+  const [displayProjects] = useState(() => {
+    const saved = localStorage.getItem('agency_projects_list');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Filter projects that are marked to show on landing page
+          const activeOnLanding = parsed.filter(p => p.showOnLanding !== false);
+          if (activeOnLanding.length > 0) {
+            return activeOnLanding.map(p => ({
+              title: p.title,
+              category: p.category,
+              tag: p.status, // e.g. 'Completed', 'Beta Active'
+              description: p.description,
+              image: p.image || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+              url: p.url,
+              tech: [...(p.tools || []), ...(p.addons || [])].slice(0, 5) // combine tools and addons as tech
+            }));
+          }
+        }
+      } catch (e) {
+        console.error("Error reading projects on landing page", e);
+      }
     }
-  ];
+    return [
+      {
+        title: "NovaSaaS - IA Generativa de Siguiente Generación",
+        category: "SaaS & Web App",
+        tag: "Live Website",
+        description: "Diseño minimalista premium para una plataforma internacional de inteligencia artificial. Rendimiento 100% en Lighthouse con micro-animaciones SVG, optimización máxima de SEO y pasarelas de pago automatizadas.",
+        image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+        url: "novasaas.agencyflow.com",
+        tech: ["React 19", "Vite", "Framer Motion", "Tailwind CSS"],
+        color: "from-blue-500/20 to-indigo-500/20"
+      },
+      {
+        title: "Luxor Estate - Buscador Inmobiliario Ultra-Lux",
+        category: "Buscador & Luxury Portal",
+        tag: "Live Project",
+        description: "E-Commerce inmobiliario de alta gama con filtros reactivos fluidos, integración de mapas Vectoriales en 3D, carga ultra veloz de galerías HD y enrutamiento dinámico de agentes locales.",
+        image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
+        url: "luxor.agencyflow.com",
+        tech: ["Next.js", "Mapbox GL API", "PostgreSQL", "Tailwind"],
+        color: "from-purple-500/20 to-pink-500/20"
+      },
+      {
+        title: "VeloCity - E-Commerce de Bicicletas Eléctricas Custom",
+        category: "Interactive E-Commerce",
+        tag: "Completed",
+        description: "Tienda online de lujo con representación interactiva del catálogo de bicicletas customizadas. Permite configurar componentes en tiempo real con recuento dinámico de precios y checkout seguro via Stripe.",
+        image: "https://images.unsplash.com/photo-1485965120184-e220f721d03e?auto=format&fit=crop&w=800&q=80",
+        url: "velocity.agencyflow.com",
+        tech: ["TailwindCSS", "Stripe API", "Three.js Engine"],
+        color: "from-emerald-500/20 to-teal-500/20"
+      },
+      {
+        title: "Aether - Visualizador Analítico de Web3",
+        category: "Fintech & Data Engine",
+        tag: "Active Portal",
+        description: "Panel de control criptográfico de alta seguridad que procesa millones de transacciones por segundo. Cuenta con gráficos interactivos construidos en D3.js y sincronización persistente vía WebSockets.",
+        image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80",
+        url: "aether.agencyflow.com",
+        tech: ["D3.js Core", "WebSockets", "Supabase DB", "Tailwind"],
+        color: "from-amber-500/20 to-orange-500/20"
+      }
+    ];
+  });
 
   const CAPABILITIES = [
     {
@@ -263,7 +288,7 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
 
           {/* Grid list of detailed elite projects with visual browser mockups */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {PROJECTS.map((proj, idx) => {
+            {displayProjects.map((proj, idx) => {
               return (
                 <div 
                   key={idx} 

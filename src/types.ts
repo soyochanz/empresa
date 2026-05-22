@@ -1,4 +1,4 @@
-export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos';
+export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas';
 
 export interface InquiryMessage {
   id: string;
@@ -71,3 +71,41 @@ export interface Activity {
   detail?: string;
   accentColor: 'primary' | 'tertiary' | 'secondary' | 'error';
 }
+
+export interface FinanceTransaction {
+  id: string;
+  type: 'income' | 'expense';
+  category: string;
+  amount: number;
+  date: string;
+  description: string;
+  isRecurring?: boolean;
+  recurrencePeriod?: 'weekly' | 'monthly' | 'yearly';
+  invoiceId?: string; // Optional reference to a generated invoice
+  status: 'paid' | 'pending';
+}
+
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface Invoice {
+  id: string;
+  clientId?: string;
+  clientName: string;
+  clientEmail: string;
+  date: string;
+  dueDate: string;
+  status: 'draft' | 'sent' | 'paid' | 'overdue';
+  items: InvoiceItem[];
+  subtotal: number;
+  taxPercentage: number;
+  taxAmount: number;
+  total: number;
+  notes?: string;
+}
+

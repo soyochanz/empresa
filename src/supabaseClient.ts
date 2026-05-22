@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage } from './types';
+import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice } from './types';
 
 // Use environment variables or fallback directly to the provided credentials
 const getSupabaseConfig = () => {
@@ -159,7 +159,55 @@ ALTER TABLE inquiries ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Read Access" ON inquiries FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON inquiries FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON inquiries FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Public Delete Access" ON inquiries FOR DELETE USING (true);`;
+CREATE POLICY "Public Delete Access" ON inquiries FOR DELETE USING (true);
+
+
+-- 7. Create finance_transactions table
+CREATE TABLE IF NOT EXISTS finance_transactions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  type TEXT NOT NULL,
+  category TEXT NOT NULL,
+  amount NUMERIC NOT NULL,
+  date TEXT NOT NULL,
+  description TEXT,
+  "isRecurring" BOOLEAN DEFAULT false,
+  "recurrencePeriod" TEXT,
+  status TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE finance_transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Read Access" ON finance_transactions FOR SELECT USING (true);
+CREATE POLICY "Public Insert Access" ON finance_transactions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Access" ON finance_transactions FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Public Delete Access" ON finance_transactions FOR DELETE USING (true);
+
+
+-- 8. Create finance_invoices table
+CREATE TABLE IF NOT EXISTS finance_invoices (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  "clientId" TEXT,
+  "clientName" TEXT,
+  "clientEmail" TEXT,
+  date TEXT NOT NULL,
+  "dueDate" TEXT NOT NULL,
+  status TEXT,
+  items JSONB,
+  subtotal NUMERIC,
+  "taxPercentage" NUMERIC,
+  "taxAmount" NUMERIC,
+  total NUMERIC,
+  notes TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE finance_invoices ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Read Access" ON finance_invoices FOR SELECT USING (true);
+CREATE POLICY "Public Insert Access" ON finance_invoices FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Access" ON finance_invoices FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true);`;
 
 export interface ConnectionStatus {
   connected: boolean;
@@ -250,9 +298,6 @@ export const db = {
   // --- CONTACTS ---
   async getContacts(userId?: string): Promise<ClientContact[]> {
     let query = supabase.from('contacts').select('*');
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     return (data || []) as ClientContact[];
@@ -272,6 +317,60 @@ export const db = {
 
   async deleteContact(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('contacts').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // --- FINANCE TRANSACTIONS ---
+  async getFinanceTransactions(userId?: string): Promise<FinanceTransaction[]> {
+    const { data, error } = await supabase.from('finance_transactions').select('*').order('date', { ascending: false });
+    if (error) {
+       console.error('finance_transactions table read error:', error);
+       throw error;
+    }
+    return (data || []) as FinanceTransaction[];
+  },
+
+  async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
+    const payload = { ...transaction, user_id: userId || null };
+    const { error } = await supabase.from('finance_transactions').insert(payload);
+    if (error) throw error;
+  },
+
+  async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
+    const payload = { ...transaction, user_id: userId || null };
+    const { error } = await supabase.from('finance_transactions').update(payload).eq('id', transaction.id);
+    if (error) throw error;
+  },
+
+  async deleteFinanceTransaction(id: string, _userId?: string): Promise<void> {
+    const { error } = await supabase.from('finance_transactions').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // --- FINANCE INVOICES ---
+  async getFinanceInvoices(userId?: string): Promise<Invoice[]> {
+    const { data, error } = await supabase.from('finance_invoices').select('*').order('date', { ascending: false });
+    if (error) {
+       console.error('finance_invoices table read error:', error);
+       throw error;
+    }
+    return (data || []) as Invoice[];
+  },
+
+  async insertFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
+    const payload = { ...invoice, user_id: userId || null };
+    const { error } = await supabase.from('finance_invoices').insert(payload);
+    if (error) throw error;
+  },
+
+  async updateFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
+    const payload = { ...invoice, user_id: userId || null };
+    const { error } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id);
+    if (error) throw error;
+  },
+
+  async deleteFinanceInvoice(id: string, _userId?: string): Promise<void> {
+    const { error } = await supabase.from('finance_invoices').delete().eq('id', id);
     if (error) throw error;
   },
 
@@ -349,9 +448,6 @@ export const db = {
   // --- EVENTS ---
   async getEvents(userId?: string): Promise<CalendarEvent[]> {
     let query = supabase.from('events').select('*');
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
     const { data, error } = await query.order('created_at', { ascending: true });
     if (error) throw error;
     const rawEvents = (data || []) as CalendarEvent[];
@@ -382,9 +478,6 @@ export const db = {
   // --- NOTES ---
   async getNotes(userId?: string): Promise<Note[]> {
     let query = supabase.from('notes').select('*');
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     
@@ -471,9 +564,6 @@ export const db = {
   // --- ACTIVITIES ---
   async getActivities(userId?: string): Promise<Activity[]> {
     let query = supabase.from('activities').select('*');
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
     const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(30);
