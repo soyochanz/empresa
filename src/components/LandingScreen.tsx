@@ -1,0 +1,481 @@
+import React, { useState } from 'react';
+import { Screen, InquiryMessage } from '../types';
+import { db } from '../supabaseClient';
+import { 
+  Terminal, 
+  ArrowRight, 
+  Cpu, 
+  Layers, 
+  Database, 
+  Users, 
+  Calendar, 
+  FileText, 
+  Sparkles, 
+  Code, 
+  ShieldCheck, 
+  Clock, 
+  TrendingUp, 
+  Laptop,
+  Globe,
+  Mail,
+  MessageSquare,
+  Send,
+  CheckCircle,
+  ExternalLink
+} from 'lucide-react';
+import { motion } from 'motion/react';
+
+interface LandingScreenProps {
+  onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
+}
+
+export default function LandingScreen({ onNavigate }: LandingScreenProps) {
+  const [inquiryName, setInquiryName] = useState('');
+  const [inquiryEmail, setInquiryEmail] = useState('');
+  const [inquiryMessage, setInquiryMessage] = useState('');
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  // High-fidelity real projects carried out by the digital boutique agency
+  const PROJECTS = [
+    {
+      title: "NovaSaaS - IA Generativa de Siguiente Generación",
+      category: "SaaS & Web App",
+      tag: "Live Website",
+      description: "Diseño minimalista premium para una plataforma internacional de inteligencia artificial. Rendimiento 100% en Lighthouse con micro-animaciones SVG, optimización máxima de SEO y pasarelas de pago automatizadas.",
+      image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+      url: "novasaas.agencyflow.com",
+      tech: ["React 19", "Vite", "Framer Motion", "Tailwind CSS"],
+      color: "from-blue-500/20 to-indigo-500/20"
+    },
+    {
+      title: "Luxor Estate - Buscador Inmobiliario Ultra-Lux",
+      category: "Buscador & Luxury Portal",
+      tag: "Live Project",
+      description: "E-Commerce inmobiliario de alta gama con filtros reactivos fluidos, integración de mapas Vectoriales en 3D, carga ultra veloz de galerías HD y enrutamiento dinámico de agentes locales.",
+      image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
+      url: "luxor.agencyflow.com",
+      tech: ["Next.js", "Mapbox GL API", "PostgreSQL", "Tailwind"],
+      color: "from-purple-500/20 to-pink-500/20"
+    },
+    {
+      title: "VeloCity - E-Commerce de Bicicletas Eléctricas Custom",
+      category: "Interactive E-Commerce",
+      tag: "Completed",
+      description: "Tienda online de lujo con representación interactiva del catálogo de bicicletas customizadas. Permite configurar componentes en tiempo real con recuento dinámico de precios y checkout seguro via Stripe.",
+      image: "https://images.unsplash.com/photo-1485965120184-e220f721d03e?auto=format&fit=crop&w=800&q=80",
+      url: "velocity.agencyflow.com",
+      tech: ["TailwindCSS", "Stripe API", "Three.js Engine"],
+      color: "from-emerald-500/20 to-teal-500/20"
+    },
+    {
+      title: "Aether - Visualizador Analítico de Web3",
+      category: "Fintech & Data Engine",
+      tag: "Active Portal",
+      description: "Panel de control criptográfico de alta seguridad que procesa millones de transacciones por segundo. Cuenta con gráficos interactivos construidos en D3.js y sincronización persistente vía WebSockets.",
+      image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80",
+      url: "aether.agencyflow.com",
+      tech: ["D3.js Core", "WebSockets", "Supabase DB", "Tailwind"],
+      color: "from-amber-500/20 to-orange-500/20"
+    }
+  ];
+
+  const CAPABILITIES = [
+    {
+      title: "Ingeniería Frontend de Precisión",
+      description: "Escribimos interfaces fluidas con React, TypeScript y Tailwind CSS enfocadas en ofrecer tiempos de carga por debajo del segundo y SEO impecable.",
+      icon: Code
+    },
+    {
+      title: "Arquitectura Cloud de Alta Disponibilidad",
+      description: "Desplegamos microservicios escalables, bases de datos PostgreSQL y control de accesos Row Level Security (RLS) que blindan tu negocio.",
+      icon: ShieldCheck
+    },
+    {
+      title: "Diseño de Interacción Excepcional",
+      description: "Establecemos jerarquías visuales refinadas, combinaciones tipográficas de impacto y micro-experiencias estéticas que enamoran a tus usuarios.",
+      icon: Sparkles
+    }
+  ];
+
+  const handleInquirySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inquiryName.trim() || !inquiryEmail.trim()) return;
+
+    const newInquiry: InquiryMessage = {
+      id: 'inq_' + Date.now().toString().slice(-7),
+      name: inquiryName.trim(),
+      email: inquiryEmail.trim(),
+      message: inquiryMessage.trim(),
+      archived: false,
+      created_at: new Date().toISOString()
+    };
+
+    try {
+      // 1. Double action: Save directly to Supabase via db helpers
+      await db.insertInquiry(newInquiry);
+    } catch (err) {
+      console.warn("Got error saving inquiry to Supabase. Gracefully falling back to local storage backup:", err);
+    } finally {
+      // 2. Always persist a backup in localStorage in case Supabase schema is not built or network is spotty
+      const localSaved = localStorage.getItem('agency_inquiries_local');
+      const list: InquiryMessage[] = localSaved ? JSON.parse(localSaved) : [];
+      list.push(newInquiry);
+      localStorage.setItem('agency_inquiries_local', JSON.stringify(list));
+
+      // Trigger standard cross-component notification
+      window.dispatchEvent(new Event('local_inquiries_updated'));
+
+      setIsSubmitted(true);
+      setTimeout(() => {
+        setInquiryName('');
+        setInquiryEmail('');
+        setInquiryMessage('');
+      }, 4000);
+    }
+  };
+
+  return (
+    <div className="relative min-h-screen w-full bg-[#030712] text-slate-100 flex flex-col overflow-hidden font-sans select-none">
+      
+      {/* Dynamic Technological Grid Background */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none opacity-[0.14]">
+        <div 
+          className="absolute inset-0" 
+          style={{
+            backgroundImage: `linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)`,
+            backgroundSize: '40px 40px'
+          }}
+        />
+      </div>
+
+      {/* Modern Mesh Glow Orbs */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[2%] left-[12%] w-[40%] h-[35%] bg-blue-600/10 rounded-full blur-[130px]" />
+        <div className="absolute bottom-[10%] right-[3%] w-[45%] h-[40%] bg-indigo-500/10 rounded-full blur-[160px]" />
+        <div className="absolute top-[45%] left-[30%] w-[30%] h-[30%] bg-purple-600/10 rounded-full blur-[130px]" />
+      </div>
+
+      {/* Dynamic Cyber Header */}
+      <header className="relative z-10 border-b border-white/5 bg-slate-950/50 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          
+          {/* Logo & Branding representing the Software/Web Development Studio */}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+              <Terminal className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-bold text-lg text-white font-sans tracking-tight">AgencyFlow <span className="text-blue-400 font-light">Studio</span></span>
+            </div>
+          </div>
+
+          {/* Action triggers - Crucial note: Only Access to inside team tools is here */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => onNavigate('acceso', 'push')}
+              className="bg-slate-900 hover:bg-slate-800 active:scale-95 text-slate-200 hover:text-white border border-white/10 text-xs font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-lg shadow-black/30"
+              title="Acceso exclusivo del personal de desarrollo para administrar clientes, calendarios y de notas"
+            >
+              <Cpu className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+              <span>Portal de Equipo (Acceso Interno)</span>
+              <ArrowRight className="w-3 h-3 text-slate-400" />
+            </button>
+          </div>
+
+        </div>
+      </header>
+
+      {/* Main content body wrap */}
+      <main className="relative z-10 flex-grow max-w-7xl mx-auto px-6 py-12 sm:py-20 flex flex-col gap-28">
+        
+        {/* HERO SECTION - Proudly representing the development agency, not a SaaS product */}
+        <section className="text-center max-w-3.5xl mx-auto flex flex-col items-center gap-6">
+          
+          {/* Accent micro badge */}
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-white/[0.03] border border-white/10 rounded-full text-[10px] font-mono text-slate-400 uppercase tracking-widest font-semibold">
+            <Cpu className="w-3.5 h-3.5 text-blue-400" />
+            <span>Código de Élite & Diseño Sofisticado</span>
+          </div>
+
+          {/* Main Title */}
+          <h1 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight leading-tight sm:leading-none">
+            Diseñamos y Programamos <br />
+            <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              Experiencias Digitales de Élite
+            </span>
+          </h1>
+
+          {/* "Que somos" - High precision agency description */}
+          <p className="text-slate-400 text-sm sm:text-base leading-relaxed max-w-2.5xl font-sans font-light">
+            Somos <span className="text-white font-semibold">AgencyFlow Studio</span>, una boutique de desarrollo tecnológico de alta costura. Nos especializamos en materializar ideas ambiciosas transformándolas en 
+            <span className="text-blue-400"> plataformas SaaS</span>, <span className="text-indigo-400">webs corporativas interactivas</span> y <span className="text-purple-400">paneles analíticos de alto rendimiento</span>. Centramos nuestros esfuerzos en construir código robusto estructurado en TypeScript, responsive en su totalidad y diseñado con un refinamiento visual impecable.
+          </p>
+
+          {/* Call to action actionables */}
+          <div className="flex flex-col sm:flex-row items-center gap-4 mt-4">
+            <a
+              href="#proyectos"
+              className="w-full sm:w-auto bg-white hover:bg-slate-200 text-slate-950 text-xs font-bold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-white/5 active:scale-95"
+            >
+              <span>Explorar Proyectos Llevados a Cabo</span>
+              <ArrowRight className="w-4 h-4 text-slate-950" />
+            </a>
+            <a
+              href="#contacto"
+              className="w-full sm:w-auto px-6 py-3 border border-white/10 hover:border-white/20 bg-white/[0.02] hover:bg-white/[0.05] rounded-xl text-slate-300 hover:text-white transition-all text-xs font-semibold text-center cursor-pointer"
+            >
+              Hablemos de tu Proyecto
+            </a>
+          </div>
+
+        </section>
+
+        {/* CORE CAPABILITIES CHECK */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {CAPABILITIES.map((cap, idx) => {
+            const IconComp = cap.icon;
+            return (
+              <div key={idx} className="bg-white/[0.02] border border-white/5 hover:border-white/10 rounded-2xl p-6 transition-all backdrop-blur-3xl flex flex-col gap-3 group">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20 group-hover:bg-blue-500/20 group-hover:text-blue-300 transition-all">
+                  <IconComp className="w-5 h-5 font-bold" />
+                </div>
+                <h3 className="text-sm font-semibold text-white tracking-tight">{cap.title}</h3>
+                <p className="text-slate-400 text-xs leading-relaxed font-light">{cap.description}</p>
+              </div>
+            );
+          })}
+        </section>
+
+        {/* PORTFOLIO / PROJECTS SECTION: "que proyectos hemos llevado a cabo" con imágenes reales */}
+        <section id="proyectos" className="space-y-12 scroll-mt-24">
+          
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/5 pb-6">
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono text-blue-400 uppercase tracking-widest font-semibold block">Nuestra Galería de Código</span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Proyectos Llevados a Cabo</h2>
+            </div>
+            <p className="text-slate-400 text-xs max-w-sm leading-relaxed font-light">
+              Desarrollamos soluciones digitales que aúnan estética ultra-moderna y flujos lógicos eficientes bajo estándares de ingeniería excepcionales.
+            </p>
+          </div>
+
+          {/* Grid list of detailed elite projects with visual browser mockups */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {PROJECTS.map((proj, idx) => {
+              return (
+                <div 
+                  key={idx} 
+                  className="group relative bg-[#060c1d] border border-white/5 hover:border-white/10 hover:shadow-2xl hover:shadow-blue-500/[0.04] p-5 sm:p-6 rounded-3xl transition-all duration-300 flex flex-col gap-5 overflow-hidden"
+                >
+                  
+                  {/* High Quality Web Browser Mockup Frame enclosing real website image */}
+                  <div className="relative w-full aspect-[16/10] bg-[#0c1328] rounded-2xl overflow-hidden border border-white/5 shadow-2xl flex flex-col">
+                    
+                    {/* Browser Header Bar */}
+                    <div className="h-8 bg-slate-950/80 border-b border-white/5 px-4 flex items-center justify-between flex-shrink-0">
+                      {/* Left: Window Dots */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] opacity-80" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] opacity-80" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#27c93f] opacity-80" />
+                      </div>
+                      
+                      {/* Center: Address Bar */}
+                      <div className="bg-slate-900 border border-white/5 text-[9px] text-slate-500 font-mono text-center rounded-lg py-0.5 px-6 truncate max-w-[190px] select-none flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                        <span>https://{proj.url}</span>
+                      </div>
+                      
+                      {/* Right Layout Item */}
+                      <div className="w-12 h-1 px-1 flex justify-end">
+                        <ExternalLink className="w-3 h-3 text-slate-600" />
+                      </div>
+                    </div>
+
+                    {/* Web Preview Screen */}
+                    <div className="relative flex-grow overflow-hidden bg-slate-950">
+                      <img 
+                        src={proj.image} 
+                        alt={proj.title}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover object-top filter contrast-[1.05] brightness-[0.9] group-hover:scale-105 transition-transform duration-500 ease-out"
+                      />
+                      {/* Visual Gradient Mesh Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none" />
+                    </div>
+
+                  </div>
+
+                  {/* Info Meta Row */}
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-[9px] font-mono text-blue-400 bg-blue-500/5 border border-blue-500/10 px-2.5 py-1 rounded-full uppercase leading-none font-semibold">
+                      {proj.category}
+                    </span>
+                    <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase leading-none font-semibold">
+                      {proj.tag}
+                    </span>
+                  </div>
+
+                  {/* Body Content */}
+                  <div className="space-y-2 flex-grow">
+                    <h3 className="text-base font-bold text-white group-hover:text-blue-400 tracking-tight transition-colors">
+                      {proj.title}
+                    </h3>
+                    <p className="text-slate-400 text-[12px] leading-relaxed font-light">
+                      {proj.description}
+                    </p>
+                  </div>
+
+                  {/* Tech stack badge alignments */}
+                  <div className="flex flex-wrap items-center gap-1.5 border-t border-white/5 pt-4">
+                    {proj.tech.map((t, tIdx) => (
+                      <span key={tIdx} className="text-[9px] font-mono text-slate-500 bg-[#0c1224] border border-white/10 px-2.5 py-1 rounded">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+
+                </div>
+              );
+            })}
+          </div>
+
+        </section>
+
+        {/* DETAILED SERVICES BLOCK */}
+        <section className="bg-slate-950/40 border border-white/5 rounded-3xl p-8 sm:p-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative overflow-hidden backdrop-blur-3xl">
+          <div className="lg:col-span-5 space-y-4">
+            <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-widest font-bold">Por qué nosotros</span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Especialistas en Código Limpio y Rendimiento</h2>
+            <p className="text-xs text-slate-400 leading-relaxed font-light">
+              No creemos en soluciones genéricas ni en plantillas prefabricadas. Analizamos en profundidad los objetivos de tu negocio para diseñar software de excelencia optimizado para dispositivos móviles y motores de búsqueda.
+            </p>
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center gap-2 text-xs text-slate-200">
+                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Desarrollo reactivo nativo con TypeScript</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-200">
+                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Políticas de protección RLS en bases de datos</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-200">
+                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>Ecosistemas Web optimizados bajo estándares Core Web Vitals</span>
+              </div>
+            </div>
+          </div>
+          <div className="lg:col-span-7 bg-slate-900/50 border border-white/5 rounded-2xl p-6 relative overflow-hidden flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <span className="text-xs font-mono text-slate-400">Stack Tecnológico Principal</span>
+              <span className="text-[9px] font-mono text-blue-400 uppercase font-bold">100% Controlado</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {['TypeScript', 'React / Next.js', 'Tailwind CSS', 'Supabase Cloud', 'PostgreSQL DB', 'D3.js & Motion', 'Node / Express', 'Stripe Payments', 'Vite Bundle Engine'].map((tech, idx) => (
+                <div key={idx} className="bg-slate-950 border border-white/5 text-[11px] font-mono text-slate-300 p-2.5 rounded-lg flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  <span>{tech}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* BOTTOM REAL INQUIRY FORM FOR CLIENTS - "Hablemos de tu Proyecto" */}
+        <section id="contacto" className="max-w-2xl mx-auto w-full bg-[#080d22] border border-white/5 rounded-3xl p-8 sm:p-10 relative overflow-hidden backdrop-blur-3xl shadow-xl">
+          <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
+          
+          <div className="text-center space-y-2 mb-8">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Hablemos de tu Proyecto</h2>
+            <p className="text-xs text-slate-400 leading-relaxed font-light">
+              Cuéntanos qué tienes en mente e impulsaremos tu presencia tecnológica con estándares sobresalientes.
+            </p>
+          </div>
+
+          {isSubmitted ? (
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-8 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-sm text-white">¡Solicitud Enviada con Éxito!</h3>
+              <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
+                Nuestro personal de ingeniería analizará los requerimientos técnicos y se pondrá en contacto contigo en las próximas 12 horas. ¡Gracias por confiar en AgencyFlow Studio!
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleInquirySubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-wider font-mono text-slate-400 font-semibold">Tu Nombre</label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="Ej. Juan Pérez"
+                    value={inquiryName}
+                    onChange={(e) => setInquiryName(e.target.value)}
+                    className="w-full bg-[#0c1225] border border-white/5 focus:border-blue-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-wider font-mono text-slate-400 font-semibold">Correo Electrónico</label>
+                  <input 
+                    type="email" 
+                    required
+                    placeholder="juan@empresa.com"
+                    value={inquiryEmail}
+                    onChange={(e) => setInquiryEmail(e.target.value)}
+                    className="w-full bg-[#0c1225] border border-white/5 focus:border-blue-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-wider font-mono text-slate-400 font-semibold">Cuéntanos sobre los requerimientos</label>
+                <textarea 
+                  rows={4}
+                  placeholder="Detalla tu idea o necesidades tecnológicas (ej. Web Corporativa, Panel de Administración, etc.)"
+                  value={inquiryMessage}
+                  onChange={(e) => setInquiryMessage(e.target.value)}
+                  className="w-full bg-[#0c1225] border border-white/5 focus:border-blue-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all resize-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-xs text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-blue-500/10 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Enviar Solicitud</span>
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          )}
+
+          {/* Explicit note clarify login access rules */}
+          <div className="mt-8 border-t border-white/5 pt-5 text-center">
+            <p className="text-[10px] text-slate-500 leading-relaxed font-light">
+              🔐 <strong className="text-slate-400 font-medium">Nota de Seguridad:</strong> El acceso a nuestro panel de organización, notas, clientes y calendarios es estrictamente privado y exclusivo para el personal interno de <span className="text-slate-300 font-semibold">AgencyFlow</span>. Utilice únicamente el botón de <strong className="text-blue-400 font-mono">Portal de Equipo</strong> ubicado en el encabezado.
+            </p>
+          </div>
+
+        </section>
+
+      </main>
+
+      {/* FOOTER */}
+      <footer className="relative z-10 border-t border-white/5 bg-slate-950/70 py-8">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Terminal className="w-4.5 h-4.5 text-blue-500" />
+            <span className="text-[11px] font-semibold text-slate-400">AgencyFlow Studio • Desarrollo Boutique</span>
+          </div>
+          <p className="text-[10px] text-slate-500 font-mono">
+            © {new Date().getFullYear()} AgencyFlow Studio. Reservados todos los derechos.
+          </p>
+        </div>
+      </footer>
+
+    </div>
+  );
+}
