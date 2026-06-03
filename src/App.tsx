@@ -19,6 +19,8 @@ import NotesScreen from './components/NotesScreen';
 import ProjectsScreen from './components/ProjectsScreen';
 import ContactosScreen from './components/ContactosScreen';
 import FinanceScreen from './components/FinanceScreen';
+import CitasScreen from './components/CitasScreen';
+import ContractsScreen from './components/ContractsScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
@@ -642,6 +644,24 @@ export default function App() {
         return (
           <ContactosScreen />
         );
+      case 'citas':
+        return (
+          <CitasScreen
+            events={events}
+            contacts={contacts}
+            onAddEvent={handleAddEvent}
+            onUpdateEvent={handleUpdateEvent}
+            onDeleteEvent={handleDeleteEvent}
+            usersList={usersList}
+          />
+        );
+      case 'contratos':
+        return (
+          <ContractsScreen
+            contacts={contacts}
+            onNavigate={navigateTo}
+          />
+        );
       default:
         return null;
     }
@@ -893,7 +913,7 @@ export default function App() {
 
               {/* Technical footnote */}
               <div className="border-t border-white/5 pt-4 text-center flex-shrink-0 mt-4">
-                <p className="text-[9px] font-mono text-slate-600">AgencyFlow v2.0 Central Notificaciones</p>
+                <p className="text-[9px] font-mono text-amber-500/65">Althera v2.0 Central Notificaciones</p>
               </div>
             </motion.div>
           </>

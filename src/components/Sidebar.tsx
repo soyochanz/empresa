@@ -36,113 +36,154 @@ export default function Sidebar({
   unreadCount
 }: SidebarProps) {
   return (
-    <aside id="sidebar" className="fixed left-0 top-0 bottom-0 flex flex-col py-6 w-[260px] bg-white/5 backdrop-blur-2xl border-r border-white/10 z-40 text-slate-200 shadow-2xl shadow-black/40">
+    <aside id="sidebar" className="fixed left-0 top-0 bottom-0 flex flex-col py-6 w-[260px] bg-[#050505] border-r border-[#D4AF37]/15 z-40 text-slate-200 shadow-2xl shadow-black">
       
       {/* Brand Header */}
       <div className="px-6 mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-400/20 flex items-center justify-center text-blue-400 shadow-lg shadow-blue-500/5">
-            <Terminal className="w-5 h-5 animate-pulse" />
+          <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl border border-[#D4AF37]/25 p-1">
+            <img 
+              src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
+              alt="Althera Logo" 
+              className="w-8 h-8 object-contain"
+              referrerPolicy="no-referrer"
+            />
           </div>
           <div>
-            <h1 className="font-semibold text-lg tracking-tight text-white font-sans">AgencyFlow</h1>
-            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">Dev Team v1.0</p>
+            <h1 className="font-semibold text-base tracking-tight text-white font-display uppercase">Althera</h1>
+            <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest leading-none mt-0.5">Admin v1.2</p>
           </div>
         </div>
       </div>
 
       {/* Main Navigation - MUST be wrapped in <nav> for xpath targeting */}
-      <nav className="flex-1 px-4 space-y-2">
+      <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto">
         
         {/* Dashboard */}
         <button
           onClick={() => onNavigate('dashboard', 'none')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-left ${
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'dashboard'
-              ? 'bg-white/10 text-white border border-white/15 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-semibold'
-              : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <LayoutDashboard className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'dashboard' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'dashboard' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">Dashboard</span>
         </button>
 
-        {/* Calendar */}
+        {/* Control de Citas (Formato Lista) */}
         <button
-          onClick={() => onNavigate('calendar', 'none')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-left ${
-            currentScreen === 'calendar'
-              ? 'bg-white/10 text-white border border-white/15 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-semibold'
-              : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+          onClick={() => onNavigate('citas', 'none')}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
+            currentScreen === 'citas'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Calendar className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'calendar' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'citas' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm">Calendar</span>
+          <span className="font-sans text-sm flex items-center justify-between w-full">
+            <span>Control de Citas</span>
+            <span className="text-[9px] bg-amber-500/10 text-[#D4AF37] px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-amber-500/20">Lista</span>
+          </span>
+        </button>
+
+        {/* Calendario Visual */}
+        <button
+          onClick={() => onNavigate('calendar', 'none')}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
+            currentScreen === 'calendar'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
+          }`}
+        >
+          <Calendar className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
+            currentScreen === 'calendar' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+          }`} />
+          <span className="font-sans text-sm">Calendario Visual</span>
         </button>
 
         {/* CRM */}
         <button
           onClick={() => onNavigate('crm', 'none')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-left ${
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'crm'
-              ? 'bg-white/10 text-white border border-white/15 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-semibold'
-              : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Users className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'crm' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'crm' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm">CRM</span>
+          <span className="font-sans text-sm">CRM Clientes</span>
+        </button>
+
+        {/* Contratos e Invoices */}
+        <button
+          onClick={() => onNavigate('contratos', 'none')}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
+            currentScreen === 'contratos'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
+          }`}
+        >
+          <FileText className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
+            currentScreen === 'contratos' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+          }`} />
+          <span className="font-sans text-sm flex items-center justify-between w-full">
+            <span>Contratos y Facturas</span>
+            <span className="text-[9px] bg-amber-500/10 text-[#D4AF37] px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-amber-500/20">PDF</span>
+          </span>
         </button>
 
         {/* Contactos de Landing */}
         <button
           onClick={() => onNavigate('contactos', 'none')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-left ${
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'contactos'
-              ? 'bg-white/10 text-white border border-white/15 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-semibold'
-              : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Mail className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'contactos' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'contactos' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm flex items-center justify-between w-full">
             <span>Contactos</span>
-            <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded-md font-mono font-bold">Landing</span>
+            <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-md font-mono font-bold leading-none">Landing</span>
           </span>
         </button>
 
         {/* Notes */}
         <button
           onClick={() => onNavigate('notes', 'none')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-left ${
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'notes'
-              ? 'bg-white/10 text-white border border-white/15 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-semibold'
-              : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <FileText className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'notes' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'notes' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm">Notes</span>
+          <span className="font-sans text-sm">Notas Internas</span>
         </button>
 
         {/* Projects */}
         <button
           onClick={() => onNavigate('projects', 'none')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-left ${
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'projects'
-              ? 'bg-white/10 text-white border border-white/15 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-semibold'
-              : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Briefcase className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'projects' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'projects' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">Proyectos</span>
         </button>
@@ -150,17 +191,17 @@ export default function Sidebar({
         {/* Finanzas (Ingresos, Gastos, Gastos Recurrentes, Facturas) */}
         <button
           onClick={() => onNavigate('finanzas', 'none')}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-left ${
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'finanzas'
-              ? 'bg-white/10 text-white border border-white/15 shadow-[0_4px_12px_rgba(0,0,0,0.15)] font-semibold'
-              : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Receipt className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'finanzas' ? 'text-blue-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'finanzas' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm flex items-center justify-between w-full">
-            <span>Finanzas</span>
+            <span>Finanzas Globales</span>
             <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded-md font-mono font-bold">Plan</span>
           </span>
         </button>
@@ -236,15 +277,15 @@ export default function Sidebar({
           )}
         </button>
 
-        <button
+         <button
           onClick={() => {
             const el = document.getElementById('toast-msg');
             if (el) {
-              el.innerText = "Portal Config - AgencyFlow v1.0 • Multi-Tenant CRM Engine Active";
+              el.innerText = "Portal Config - Althera v1.0 • Multi-Tenant CRM Engine Active";
               el.classList.remove('opacity-0');
               setTimeout(() => el.classList.add('opacity-0'), 3000);
             } else {
-              alert("Portal Config - AgencyFlow v1.0");
+              alert("Portal Config - Althera v1.0");
             }
           }}
           className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 text-left cursor-pointer"
@@ -257,11 +298,11 @@ export default function Sidebar({
           onClick={() => {
             const el = document.getElementById('toast-msg');
             if (el) {
-              el.innerText = "Support Channel: WhatsApp / mgnacho96@gmail.com";
+              el.innerText = "Support Channel: WhatsApp / admin@althera.io";
               el.classList.remove('opacity-0');
               setTimeout(() => el.classList.add('opacity-0'), 3000);
             } else {
-              alert("Soporte Técnico de AgencyFlow: mgnacho96@gmail.com");
+              alert("Soporte Técnico de Althera: admin@althera.io");
             }
           }}
           className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 text-left"

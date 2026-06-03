@@ -199,9 +199,11 @@ export default function CrmScreen({
     if (crmFilter === 'active' && isArchived) return false;
     if (crmFilter === 'archived' && !isArchived) return false;
 
-    return c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const nameMatch = c.name ? c.name.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+    const companyMatch = c.company ? c.company.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+    const emailMatch = c.email ? c.email.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+
+    return nameMatch || companyMatch || emailMatch;
   });
 
   return (
@@ -770,7 +772,7 @@ export default function CrmScreen({
               <div className="space-y-1">
                 <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Email Address</label>
                 <input 
-                  type="email"
+                  type="text"
                   placeholder="l.foster@lumina.io (Opcional)"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}

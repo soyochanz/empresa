@@ -351,10 +351,10 @@ export default function ContactosScreen() {
                   
                   {/* Action 1 */}
                   <a 
-                    href={`mailto:${selectedInquiry.email}?subject=Contacto recibido - AgencyFlow Studio&body=Hola ${selectedInquiry.name}, gracias por contactar con AgencyFlow Studio...`}
-                    className="p-3 bg-white/[0.02] border border-white/5 hover:border-blue-500/20 hover:bg-blue-500/[0.02] rounded-xl text-left transition flex items-center gap-3 group select-none cursor-pointer"
+                    href={`mailto:${selectedInquiry.email}?subject=Contacto recibido - Althera Studio&body=Hola ${selectedInquiry.name}, gracias por contactar con Althera Studio...`}
+                    className="p-3 bg-white/[0.02] border border-white/5 hover:border-amber-500/20 hover:bg-amber-500/[0.02] rounded-xl text-left transition flex items-center gap-3 group select-none cursor-pointer"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 group-hover:bg-blue-500/25 flex items-center justify-center border border-blue-500/10">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/25 flex items-center justify-center border border-amber-500/10">
                       <Mail className="w-4 h-4" />
                     </div>
                     <div>

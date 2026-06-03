@@ -1,4 +1,4 @@
-export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas';
+export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas';
 
 export interface InquiryMessage {
   id: string;
@@ -49,6 +49,8 @@ export interface CalendarEvent {
   assignedUserEmail?: string;
   status?: 'pending' | 'done' | 'postponed';
   parentEventId?: string;
+  color?: string;
+  alias?: string;
 }
 
 export interface Note {

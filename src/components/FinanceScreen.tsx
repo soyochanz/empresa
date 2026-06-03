@@ -1591,9 +1591,9 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs text-left">
                 <div className="space-y-1 bg-neutral-950/40 p-3 rounded-xl border border-neutral-850">
                   <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block font-bold">EMISOR (PROVEEDOR)</span>
-                  <h4 className="font-bold text-xs text-white">AgencyFlow Digital Studio</h4>
+                  <h4 className="font-bold text-xs text-white">Althera Solutions S.L.</h4>
                   <p className="text-slate-400 leading-normal text-[11px]">
-                    Email: admin@agencyflow.com<br />
+                    Email: admin@althera.io<br />
                     Soporte: +34 910 123 456
                   </p>
                 </div>
@@ -1664,7 +1664,7 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
               {/* Watermark of authenticity */}
               <div className="text-center pt-6 border-t border-neutral-850">
                 <p className="text-[8px] font-mono text-slate-600 uppercase tracking-widest">
-                  Facturación Electrónica Sincronizada — Prototipo AgencyFlow v2.5
+                  Facturación Electrónica Sincronizada — Prototipo Althera v2.5
                 </p>
               </div>
 

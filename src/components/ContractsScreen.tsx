@@ -1,0 +1,1000 @@
+import { useState, useRef, useEffect } from 'react';
+import { ClientContact } from '../types';
+import { 
+  FileText, 
+  Receipt, 
+  Printer, 
+  Users, 
+  User, 
+  Plus, 
+  Trash2, 
+  Check, 
+  RefreshCw, 
+  Download, 
+  Calendar, 
+  MapPin, 
+  Layers, 
+  Info,
+  DollarSign
+} from 'lucide-react';
+
+interface ContractsScreenProps {
+  contacts: ClientContact[];
+  onNavigate: (target: any, transition: any) => void;
+}
+
+// Preset Invoice sample item
+interface FacturaItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export default function ContractsScreen({ contacts, onNavigate }: ContractsScreenProps) {
+  const [activeTab, setActiveTab] = useState<'contract' | 'invoice'>('contract');
+
+  // --- CONTRACT STATE ---
+  const [selectedContactId, setSelectedContactId] = useState('');
+  
+  // Real-time editable parameters for Contract
+  const [clientName, setClientName] = useState('D./Dña. Ignacio Martin');
+  const [clientDni, setClientDni] = useState('45678912A');
+  const [clientAddress, setClientAddress] = useState('Avenida de los Rosales, Nº 45, Granada');
+  const [clientPhone, setClientPhone] = useState('+34 612 345 678');
+  const [clientEmail, setClientEmail] = useState('contacto@cliente.com');
+  
+  // Prestadores can be customized too
+  const [prestador1Name, setPrestador1Name] = useState('D. Carlos Ronco');
+  const [prestador1Dni, setPrestador1Dni] = useState('09104663K');
+  const [prestador2Name, setPrestador2Name] = useState('D. Ignacio Martin Gonzalez');
+  const [prestador2Dni, setPrestador2Dni] = useState('75931136V');
+
+  // Specific Web service terms
+  const [deliveryDays, setDeliveryDays] = useState('20');
+  const [courtCity, setCourtCity] = useState('Granada');
+  const [signingCity, setSigningCity] = useState('Granada');
+  
+  // Custom Date
+  const [signingDay, setSigningDay] = useState(new Date().getDate().toString());
+  const [signingMonth, setSigningMonth] = useState('Junio');
+  const [signingYear, setSigningYear] = useState('2026');
+
+  // Prices
+  const [priceSingle, setPriceSingle] = useState(950);
+  const [fin3Total, setFin3Total] = useState(960);
+  const [fin3Cuota, setFin3Cuota] = useState(320);
+  const [fin3Coste, setFin3Coste] = useState(10);
+
+  const [fin4Total, setFin4Total] = useState(1000);
+  const [fin4Cuota, setFin4Cuota] = useState(250);
+  const [fin4Coste, setFin4Coste] = useState(50);
+
+  const [selectedModality, setSelectedModality] = useState<'single' | 'fin3' | 'fin4'>('single');
+
+  // Auto Calculations when base price changes
+  const handleBasePriceChange = (val: number) => {
+    setPriceSingle(val);
+    setFin3Total(val + 10);
+    setFin3Cuota(Math.round((val + 10) / 3));
+    
+    setFin4Total(val + 50);
+    setFin4Cuota(Math.round((val + 50) / 4));
+  };
+
+  // Pre-fill fields from CRM selection
+  useEffect(() => {
+    if (selectedContactId) {
+      const contact = contacts.find(c => c.id === selectedContactId);
+      if (contact) {
+        setClientName(contact.name || 'D./Dña. Ignacio Martin');
+        setClientDni(contact.id || 'N/A');
+        setClientAddress(contact.location || 'Granada');
+        setClientPhone(contact.phone || '');
+        setClientEmail(contact.email || '');
+      }
+    }
+  }, [selectedContactId]);
+
+
+  // --- INVOICE STATE ---
+  const [invoiceNumber, setInvoiceNumber] = useState(`AL-${new Date().getFullYear()}-${Math.floor(Math.random() * 900) + 100}`);
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [invoiceDueDate, setInvoiceDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 15);
+    return d.toISOString().split('T')[0];
+  });
+  const [taxPercentage, setTaxPercentage] = useState(21);
+  const [paymentDetails, setPaymentDetails] = useState('ES45 2100 0456 1234 5678 9012 (CaixaBank - Althera Solutions)');
+
+  // Selected client for invoice prefill
+  const [invoiceClientId, setInvoiceClientId] = useState('');
+  const [invoiceClientName, setInvoiceClientName] = useState('Ignacio Martin Solutions');
+  const [invoiceClientDni, setInvoiceClientDni] = useState('B18765432');
+  const [invoiceClientAddress, setInvoiceClientAddress] = useState('Camino de Ronda 120, Granada');
+  const [invoiceClientEmail, setInvoiceClientEmail] = useState('facturacion@ignacio.com');
+
+  useEffect(() => {
+    if (invoiceClientId) {
+      const contact = contacts.find(c => c.id === invoiceClientId);
+      if (contact) {
+        setInvoiceClientName(contact.company !== 'Independent' ? contact.company : contact.name);
+        setInvoiceClientDni('DNI/CIF: ' + (contact.hostingCredentials?.split('\n')[0] || 'M-451290'));
+        setInvoiceClientAddress(contact.location || 'Camino de Ronda 120, Granada');
+        setInvoiceClientEmail(contact.email || '');
+      }
+    }
+  }, [invoiceClientId]);
+
+  const [invoiceItems, setInvoiceItems] = useState<FacturaItem[]>([
+    { id: '1', description: 'Diseño UX/UI de Plataforma Althera y Maquetación Web', quantity: 1, unitPrice: 450 },
+    { id: '2', description: 'Desarrollo Frontend React & Backend Módulo CRM de Reservas', quantity: 1, unitPrice: 500 }
+  ]);
+
+  const handleAddInvoiceItem = () => {
+    setInvoiceItems(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        description: 'Nuevo concepto de servicio web',
+        quantity: 1,
+        unitPrice: 150
+      }
+    ]);
+  };
+
+  const handleUpdateItem = (id: string, field: keyof FacturaItem, val: any) => {
+    setInvoiceItems(prev => prev.map(item => {
+      if (item.id === id) {
+        return {
+          ...item,
+          [field]: val
+        };
+      }
+      return item;
+    }));
+  };
+
+  const handleRemoveItem = (id: string) => {
+    if (invoiceItems.length === 1) return; // keep at least one
+    setInvoiceItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  // Calc Totals
+  const subtotal = invoiceItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+  const taxAmount = (subtotal * taxPercentage) / 100;
+  const total = subtotal + taxAmount;
+
+  // Print trigger
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      
+      {/* Intro Header Section */}
+      <div className="bg-[#050505] border border-amber-500/10 rounded-3xl p-6 relative overflow-hidden shadow-2xl">
+        <div className="absolute top-[-30%] right-[-10%] w-96 h-96 bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
+          <div>
+            <h2 className="text-2xl font-bold text-white font-sans flex items-center gap-2">
+              <span className="gold-gradient p-2 rounded-xl text-black font-semibold flex items-center justify-center">
+                <FileText className="w-5 h-5" />
+              </span>
+              <span className="gold-gradient-text font-display">Documentación Legal y Financiera</span>
+            </h2>
+            <p className="text-slate-400 text-xs font-light mt-1 max-w-2xl leading-relaxed">
+              Genera al instante contratos de prestación de servicios web y facturas para tus clientes. Modifica valores en tiempo real, vincula fichas del CRM y exporta directamente en formato impreso o guardado como PDF con el logo oficial de <span className="text-[#D4AF37] font-semibold">Althera</span>.
+            </p>
+          </div>
+          
+          {/* Tab Selector */}
+          <div className="flex bg-neutral-950 border border-neutral-850 p-1 rounded-2xl">
+            <button
+              onClick={() => setActiveTab('contract')}
+              className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition duration-200 flex items-center gap-2 cursor-pointer ${
+                activeTab === 'contract'
+                  ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/20 shadow-md shadow-amber-500/5'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Contrato Althera
+            </button>
+            <button
+              onClick={() => setActiveTab('invoice')}
+              className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-xl transition duration-200 flex items-center gap-2 cursor-pointer ${
+                activeTab === 'invoice'
+                  ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/20 shadow-md shadow-amber-500/5'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              Facturas PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+        
+        {/* LEFT COMPONENT: Interactive Customization Form Panels (5 cols) */}
+        <div className="xl:col-span-5 bg-black/60 border border-amber-500/10 p-5 rounded-3xl space-y-6 shadow-xl relative backdrop-blur-md">
+          <div className="flex items-center justify-between pb-3 border-b border-neutral-900">
+            <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-[#D4AF37] font-bold">
+              <Layers className="w-4 h-4" />
+              <span>Controles de Personalización</span>
+            </div>
+            
+            {/* Direct Print Button */}
+            <button
+              onClick={handlePrint}
+              className="px-3.5 py-1.5 bg-neutral-900 hover:bg-neutral-850 border border-amber-500/20 hover:border-amber-500/40 text-[#D4AF37] text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
+              <span>Imprimir / PDF</span>
+            </button>
+          </div>
+
+          {activeTab === 'contract' ? (
+            /* --- CONTRACT FORM --- */
+            <div className="space-y-4 font-sans text-left">
+              
+              {/* Optional CRM Link Pre-fill */}
+              <div className="bg-[#0c0c0c] border border-amber-500/10 p-3 rounded-2xl">
+                <label className="text-[10px] font-mono text-amber-500 uppercase tracking-widest font-bold flex items-center gap-1.5 mb-2">
+                  <Users className="w-3.5 h-3.5" /> Pre-llenar desde Cliente CRM
+                </label>
+                <select
+                  value={selectedContactId}
+                  onChange={(e) => setSelectedContactId(e.target.value)}
+                  className="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">- Selecciona un contacto del CRM -</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.id}>{c.name} ({c.company})</option>
+                  ))}
+                </select>
+                <p className="text-[9px] text-slate-500 font-light mt-1.5">
+                  Selecciona a cualquier cliente registrado para rellenar sus campos legales automáticamente en el borrador de abajo.
+                </p>
+              </div>
+
+              {/* Client Info Fieldset */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-200">Datos Legales del Cliente</h4>
+                
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Nombre Completo del Cliente: D./Dña.</label>
+                  <input
+                    type="text"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">DNI / CIF o Pasaporte</label>
+                    <input
+                      type="text"
+                      value={clientDni}
+                      onChange={(e) => setClientDni(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">Teléfono</label>
+                    <input
+                      type="text"
+                      value={clientPhone}
+                      onChange={(e) => setClientPhone(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Domicilio Fiscal o Residencia</label>
+                  <input
+                    type="text"
+                    value={clientAddress}
+                    onChange={(e) => setClientAddress(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Correo Electrónico</label>
+                  <input
+                    type="email"
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* Project Price Configuration */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold text-slate-200">Condiciones Económicas y Precios</h4>
+                
+                <div>
+                  <label className="text-[9px] font-mono text-[#D4AF37] block mb-1 flex justify-between">
+                    <span>Precio Base (Pago Único) €</span>
+                    <span>Genera calculos para cuotas</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={priceSingle}
+                    onChange={(e) => handleBasePriceChange(Number(e.target.value))}
+                    className="w-full bg-neutral-950 border border-[#D4AF37]/20 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="bg-neutral-950/40 p-2.5 rounded-xl border border-neutral-900 space-y-2">
+                  <span className="text-[10px] uppercase font-mono tracking-wider font-semibold block text-slate-400">Modalidad de Pago seleccionada:</span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModality('single')}
+                      className={`py-2 px-1 text-[10px] font-mono rounded-xl border text-center transition ${
+                        selectedModality === 'single' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-black border-transparent text-slate-500'
+                      }`}
+                    >
+                      Pago Único
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModality('fin3')}
+                      className={`py-2 px-1 text-[10px] font-mono rounded-xl border text-center transition ${
+                        selectedModality === 'fin3' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-black border-transparent text-slate-500'
+                      }`}
+                    >
+                      3 Meses
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModality('fin4')}
+                      className={`py-2 px-1 text-[10px] font-mono rounded-xl border text-center transition ${
+                        selectedModality === 'fin4' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-black border-transparent text-slate-500'
+                      }`}
+                    >
+                      4 Meses
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pb-2">
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">Plazo de entrega (Días hábiles)</label>
+                    <input
+                      type="text"
+                      value={deliveryDays}
+                      onChange={(e) => setDeliveryDays(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">Tribunales / Sede Judicial</label>
+                    <input
+                      type="text"
+                      value={courtCity}
+                      onChange={(e) => setCourtCity(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Date and Location block */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold text-slate-200">Lugar y Fecha de Firma</h4>
+                
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Firmado en (Ciudad)</label>
+                  <input
+                    type="text"
+                    value={signingCity}
+                    onChange={(e) => setSigningCity(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">Día</label>
+                    <input
+                      type="text"
+                      value={signingDay}
+                      onChange={(e) => setSigningDay(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">Mes</label>
+                    <input
+                      type="text"
+                      value={signingMonth}
+                      onChange={(e) => setSigningMonth(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">Año</label>
+                    <input
+                      type="text"
+                      value={signingYear}
+                      onChange={(e) => setSigningYear(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100 text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Customize Prestadores */}
+              <div className="bg-[#080808] border border-neutral-900 p-3 rounded-2xl space-y-3">
+                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block font-semibold">Prestadores Asociados (Althera)</span>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={prestador1Name}
+                      onChange={(e) => setPrestador1Name(e.target.value)}
+                      placeholder="Socio 1 Name"
+                      className="bg-black border border-neutral-900 rounded-lg p-2 text-[10px] text-slate-300 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={prestador1Dni}
+                      onChange={(e) => setPrestador1Dni(e.target.value)}
+                      placeholder="Socio 1 DNI"
+                      className="bg-black border border-neutral-900 rounded-lg p-2 text-[10px] text-slate-300 focus:outline-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={prestador2Name}
+                      onChange={(e) => setPrestador2Name(e.target.value)}
+                      placeholder="Socio 2 Name"
+                      className="bg-black border border-neutral-900 rounded-lg p-2 text-[10px] text-slate-300 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={prestador2Dni}
+                      onChange={(e) => setPrestador2Dni(e.target.value)}
+                      placeholder="Socio 2 DNI"
+                      className="bg-black border border-neutral-900 rounded-lg p-2 text-[10px] text-slate-300 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          ) : (
+            /* --- INVOICE FORM --- */
+            <div className="space-y-4 font-sans text-left">
+              
+              {/* Client Sync Option for Invoices */}
+              <div className="bg-[#0c0c0c] border border-amber-500/10 p-3 rounded-2xl">
+                <label className="text-[10px] font-mono text-amber-500 uppercase tracking-widest font-bold flex items-center gap-1.5 mb-2">
+                  <Users className="w-3.5 h-3.5" /> Vincular a CRM de Althera
+                </label>
+                <select
+                  value={invoiceClientId}
+                  onChange={(e) => setInvoiceClientId(e.target.value)}
+                  className="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">- Seleccionar Cliente CRM -</option>
+                  {contacts.map(c => (
+                    <option key={c.id} value={c.id}>{c.company !== 'Independent' ? c.company : c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Cliente Details */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-200">Detalles del Destinatario de Factura</h4>
+                
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Nombre Comercial / Cliente</label>
+                  <input
+                    type="text"
+                    value={invoiceClientName}
+                    onChange={(e) => setInvoiceClientName(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">CIF / DNI Cliente</label>
+                    <input
+                      type="text"
+                      value={invoiceClientDni}
+                      onChange={(e) => setInvoiceClientDni(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">Email Cliente</label>
+                    <input
+                      type="email"
+                      value={invoiceClientEmail}
+                      onChange={(e) => setInvoiceClientEmail(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Dirección Fiscal Cliente</label>
+                  <input
+                    type="text"
+                    value={invoiceClientAddress}
+                    onChange={(e) => setInvoiceClientAddress(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                  />
+                </div>
+              </div>
+
+              {/* Invoice Numbers & Date */}
+              <div className="grid grid-cols-2 gap-3 border-t border-neutral-900 pt-3">
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Número de Factura</label>
+                  <input
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">IVA Aplicado (%)</label>
+                  <select
+                    value={taxPercentage}
+                    onChange={(e) => setTaxPercentage(Number(e.target.value))}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                  >
+                    <option value={21}>21% IVA General</option>
+                    <option value={10}>10% IVA Reducido</option>
+                    <option value={4}>4% IVA Superreducido</option>
+                    <option value={0}>0% IVA Exento</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Fecha Emisión</label>
+                  <input
+                    type="date"
+                    value={invoiceDate}
+                    onChange={(e) => setInvoiceDate(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] font-mono text-slate-400 block mb-1">Vencimiento</label>
+                  <input
+                    type="date"
+                    value={invoiceDueDate}
+                    onChange={(e) => setInvoiceDueDate(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                  />
+                </div>
+              </div>
+
+              {/* Invoice Concept Items Line Items manager */}
+              <div className="border-t border-neutral-900 pt-3 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-200">Conceptos Facturados</span>
+                  <button
+                    type="button"
+                    onClick={handleAddInvoiceItem}
+                    className="px-2.5 py-1 text-[10px] font-mono bg-neutral-950 hover:bg-neutral-900 border border-amber-500/30 text-amber-400 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Añadir Línea
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {invoiceItems.map((item, idx) => (
+                    <div key={item.id} className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-900 space-y-2 text-left">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-mono text-amber-500/70 font-semibold uppercase">Línea de Concepto #{idx + 1}</span>
+                        {invoiceItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="text-slate-500 hover:text-red-400 transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      
+                      <input
+                        type="text"
+                        value={item.description}
+                        onChange={(e) => handleUpdateItem(item.id, 'description', e.target.value)}
+                        placeholder="Descripción"
+                        className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-xs text-slate-350"
+                      />
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500">Cantidad</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => handleUpdateItem(item.id, 'quantity', Number(e.target.value))}
+                            className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-xs text-center text-slate-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[8px] font-mono text-slate-500">Precio Unitario (€)</label>
+                          <input
+                            type="number"
+                            value={item.unitPrice}
+                            onChange={(e) => handleUpdateItem(item.id, 'unitPrice', Number(e.target.value))}
+                            className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-xs text-center text-slate-100"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Payment info notes */}
+              <div>
+                <label className="text-[8px] font-mono text-slate-500 block mb-1">Información de Pago (IBAN / Cuenta)</label>
+                <input
+                  type="text"
+                  value={paymentDetails}
+                  onChange={(e) => setPaymentDetails(e.target.value)}
+                  className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                />
+              </div>
+
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT COMPONENT: Authentic A4 Print Preview Pane with custom framing (7 cols) */}
+        <div className="xl:col-span-7 space-y-3">
+          <div className="flex items-center justify-between text-xs text-slate-400 px-2 font-mono">
+            <span className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider">
+              <Info className="w-3.5 h-3.5 text-amber-500" />
+              <span>Vista de Impresión A4 de Althera</span>
+            </span>
+            <span className="text-[10px] text-slate-500 italic">Pre visualizado a escala real</span>
+          </div>
+
+          {/* Standard A4 Paper Wrapper. It has custom printing styling with print-area selectors */}
+          <div 
+            id="print-area" 
+            className="w-full bg-white text-neutral-900 font-serif p-8 md:p-14 min-h-[1120px] rounded-3xl shadow-2xl relative border border-amber-500/10 text-left select-all"
+            style={{ fontFamily: 'Georgia, serif', lineHeight: '1.6' }}
+          >
+            {/* Header: Centered Logo representing Althera Solutions */}
+            <div className="flex flex-col items-center justify-center mb-10 border-b border-neutral-200 pb-8 text-center bg-white">
+              <img 
+                src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
+                alt="Althera Brand Header Logo" 
+                className="h-16 w-auto object-contain mb-3 bg-transparent"
+                referrerPolicy="no-referrer"
+              />
+              <span className="text-[10px] tracking-widest uppercase font-sans font-bold text-[#8a7031]">CREAMOS SOLUCIONES. IMPULSAMOS RESULTADOS.</span>
+            </div>
+
+            {activeTab === 'contract' ? (
+              /* ==================== CONTRACT HTML SHEET ==================== */
+              <div className="space-y-6 text-xs text-justify text-neutral-800 tracking-normal leading-relaxed">
+                
+                {/* Contract Title */}
+                <h3 className="text-center font-bold text-sm uppercase tracking-wide text-neutral-950 font-sans mb-6">
+                  CONTRATO DE PRESTACIÓN DE SERVICIOS DE DESARROLLO WEB
+                </h3>
+
+                {/* Reunidos Statement info */}
+                <p>
+                  <strong className="font-sans font-semibold text-neutral-950">REUNIDOS</strong> De una parte: 
+                  <strong> {prestador1Name}</strong>, con DNI nº <strong>{prestador1Dni}</strong> y 
+                  <strong> {prestador2Name}</strong>, con DNI nº <strong>{prestador2Dni}</strong>, actuando conjuntamente como prestadores de servicios, en adelante, <strong className="font-sans">“LOS PRESTADORES”</strong>.
+                </p>
+                
+                <p>
+                  Y de otra parte: 
+                  <strong> {clientName || '_______________'}</strong>, con DNI/CIF nº 
+                  <strong> {clientDni || '_______________'}</strong>, con domicilio en 
+                  <strong> {clientAddress || '_______________'}</strong>, Teléfono: 
+                  <strong> {clientPhone || '_______________'}</strong>, Correo electrónico: 
+                  <strong> {clientEmail || '_______________'}</strong>, en adelante, <strong className="font-sans">“EL CLIENTE”</strong>.
+                </p>
+
+                {/* Objeto */}
+                <div>
+                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                    1. OBJETO DEL CONTRATO
+                  </h4>
+                  <p>
+                    LOS PRESTADORES se comprometen a desarrollar para EL CLIENTE una página web profesional que incluirá las siguientes características en su entrega final:
+                  </p>
+                  <ul className="list-disc pl-5 mt-2 space-y-1">
+                    <li>Diseño y desarrollo de interfaz web a medida.</li>
+                    <li>Adaptación inteligente a todo tipo de dispositivos móviles (Responsividad).</li>
+                    <li>Sistema de reservas / citas integrado y panel autogestionable.</li>
+                    <li>Configuración de SEO básico inicial para indexado rápido.</li>
+                    <li>1 mes de soporte de posicionamiento web gratuito.</li>
+                  </ul>
+                </div>
+
+                {/* Precios */}
+                <div>
+                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                    2. PRECIO Y FORMAS DE PAGO
+                  </h4>
+                  <p>
+                    El precio del servicio de desarrollo web pactado asciende a <strong>{priceSingle} €</strong> mediante pago único. Con el fin de facilitar la financiación y el correcto acceso tecnológico de EL CLIENTE, se ofrecen opcionalmente las siguientes modalidades de abono diferido:
+                  </p>
+
+                  <div className="mt-3 pl-4 space-y-2 border-l-2 border-[#D4AF37] font-sans text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
+                        {selectedModality === 'single' ? '✓' : ''}
+                      </span>
+                      <span>
+                        <strong>OPCIÓN A – PAGO ÚNICO:</strong> Importe total de <strong>{priceSingle} €</strong> en un único abono al formalizar la firma.
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
+                        {selectedModality === 'fin3' ? '✓' : ''}
+                      </span>
+                      <span>
+                        <strong>OPCIÓN B – FINANCIACIÓN A 3 MESES:</strong> Importe total financiado de <strong>{fin3Total} €</strong> devengados en 3 cuotas mensuales de <strong>{fin3Cuota} €</strong> (Coste de financiación acumulado: {fin3Coste} €).
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
+                        {selectedModality === 'fin4' ? '✓' : ''}
+                      </span>
+                      <span>
+                        <strong>OPCIÓN C – FINANCIACIÓN A 4 MESES:</strong> Importe total financiado de <strong>{fin4Total} €</strong> devengados en 4 cuotas mensuales de <strong>{fin4Cuota} €</strong> (Coste de financiación acumulado: {fin4Coste} €).
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="mt-3">
+                    <strong className="font-sans">Modalidad formalmente elegida por EL CLIENTE: </strong> 
+                    <span className="bg-neutral-100 px-2.5 py-0.5 rounded border border-neutral-300 font-sans font-bold">
+                      {selectedModality === 'single' && 'Opción A - Pago único de ' + priceSingle + ' €'}
+                      {selectedModality === 'fin3' && 'Opción B - Financiación 3 meses de ' + fin3Total + ' €'}
+                      {selectedModality === 'fin4' && 'Opción C - Financiación 4 meses de ' + fin4Total + ' €'}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Inicio de los trabajos */}
+                <div>
+                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                    3. INICIO DE LOS TRABAJOS
+                  </h4>
+                  <p>
+                    Los trabajos técnicos requeridos no comenzarán formalmente hasta que EL CLIENTE haya abonado la primera cuota o el importe de pago único correspondiente a la modalidad de adquisición seleccionada en la cláusula segunda. El abono efectivo inicial ratifica la conformidad absoluta con los términos expuestos en este instrumento.
+                  </p>
+                </div>
+
+                {/* Clausulado extra */}
+                <div>
+                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                    4. COMPROMISO DE PAGO Y DEUDA
+                  </h4>
+                  <p>
+                    EL CLIENTE reconoce de forma líquida, exigible e incondicional adeudar el total correspondiente de las cuotas indicadas. La cancelación unilateral de los trabajos iniciados por decisión ajena a LOS PRESTADORES no extingue ni aminora la obligación contractual de pago total pendiente correspondiente.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                    5. IMPAGOS Y COBROS
+                  </h4>
+                  <p>
+                    En caso de incurrir en retraso superior a 7 días hábiles sobre los plazos pactados en cualquiera de las cuotas mensuales, LOS PRESTADORES quedan facultados de pleno derecho para suspender temporalmente el hosting, servicio técnico y trabajos concurrentes asociados hasta el abono completo del devengo.
+                  </p>
+                </div>
+
+                {/* Entrega */}
+                <div>
+                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                    6. PLAZO DE ENTREGA
+                  </h4>
+                  <p>
+                    El plazo de entrega estimado del proyecto final será de <strong>{deliveryDays} días hábiles</strong>, computables a partir del día hábil posterior a la recepción de toda la información corporativa, accesos iniciales y materiales requeridos por parte de EL CLIENTE.
+                  </p>
+                </div>
+
+                {/* Servicios adicionales */}
+                <div>
+                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                    7. SERVICIOS Y CUOTAS ADICIONALES
+                  </h4>
+                  <p>
+                    EL CLIENTE podrá encomendar trabajos opcionales y de soporte post-lanzamiento tales como posicionamiento SEO periódico, marketing en Facebook Ads, mantenimiento preventivo de código, agentes o integraciones de Inteligencia Artificial avanzadas y automatizaciones. Estos servicios dispondrán de una tarifa de abono mensual estándar de <strong>97 €/mes</strong>, salvo estipulaciones específicas suscritas por separado.
+                  </p>
+                </div>
+
+                {/* Tribunales */}
+                <div>
+                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                    8. RESOLUCIÓN DE CONFLICTOS
+                  </h4>
+                  <p>
+                    Para dirimir cualquier controversia o discrepancia derivada del cumplimiento, ejecución o interpretación de este documento, las partes contratantes se someten formalmente a la exclusiva jurisdicción de los Juzgados y Tribunales de la ciudad de <strong>{courtCity}</strong>, renunciando de común acuerdo a cualquier fuero local propio alternativo que pudiera corresponderles.
+                  </p>
+                </div>
+
+                {/* Firma date block */}
+                <p className="pt-2 text-right">
+                  En <strong>{signingCity}</strong>, a <strong>{signingDay}</strong> de <strong>{signingMonth}</strong> de <strong>{signingYear}</strong>.
+                </p>
+
+                {/* Signature Board blocks */}
+                <div className="pt-8 grid grid-cols-2 gap-12 font-sans bg-white">
+                  
+                  {/* Contractors layout */}
+                  <div className="space-y-6">
+                    <p className="font-bold border-b border-neutral-300 pb-1 text-[10px] text-neutral-500 uppercase tracking-wider block">
+                      LOS PRESTADORES (Althera)
+                    </p>
+                    <div className="space-y-4">
+                      <div>
+                        <p className="font-semibold text-neutral-900 text-xs">D. Carlos Ronco Meneses</p>
+                        <p className="text-[10px] text-neutral-500">DNI: {prestador1Dni}</p>
+                        <div className="h-10 mt-2 border-b border-dotted border-neutral-400 max-w-[170px]" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-neutral-900 text-xs mt-2">D. Ignacio Martin Gonzalez</p>
+                        <p className="text-[10px] text-neutral-500">DNI: {prestador2Dni}</p>
+                        <div className="h-10 mt-2 border-b border-dotted border-neutral-400 max-w-[170px]" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Client Layout */}
+                  <div className="space-y-6">
+                    <p className="font-bold border-b border-neutral-300 pb-1 text-[10px] text-neutral-500 uppercase tracking-wider block">
+                      EL CLIENTE
+                    </p>
+                    <div>
+                      <p className="font-semibold text-neutral-900 text-xs">{clientName || '_________________________'}</p>
+                      <p className="text-[10px] text-neutral-500">DNI/CIF: {clientDni || '_____________________'}</p>
+                      <div className="mt-8 border border-neutral-200 bg-neutral-50/50 p-6 text-center text-[10px] text-neutral-400 rounded-xl border-dashed">
+                        <span>Espacio reservado para firma manuscrita / certificado digital</span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            ) : (
+              /* ==================== INVOICE HTML SHEET ==================== */
+              <div className="space-y-6 text-xs text-neutral-800 tracking-normal leading-relaxed">
+                
+                {/* Meta data and Company Info (Top Split) */}
+                <div className="grid grid-cols-2 gap-8 font-sans border-b border-neutral-200 pb-6 bg-white">
+                  <div>
+                    <h3 className="font-sans font-bold text-sm text-[#8a7031] uppercase tracking-wider">PRESTADOR DEL SERVICIO</h3>
+                    <p className="font-bold text-slate-900 text-xs mt-1">Althera Solutions S.L.</p>
+                    <p className="text-slate-500 text-[10px] mt-1 space-y-0.5 leading-normal">
+                      <span>CIF: B-18974534</span><br />
+                      <span>Calle Gran Vía de Colón, Nº 14, 2ºB</span><br />
+                      <span>18001 - Granada, España</span><br />
+                      <span>administracion@althera.io</span>
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <h2 className="text-xl font-bold uppercase tracking-wider text-neutral-950">FACTURA</h2>
+                    <p className="text-[11px] font-mono text-amber-600 font-bold mt-1">Nº {invoiceNumber}</p>
+                    <p className="text-[10px] text-slate-500 mt-2 space-y-0.5">
+                      <span><strong>Fecha Emisión:</strong> {invoiceDate}</span><br />
+                      <span><strong>Vencimiento:</strong> {invoiceDueDate}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Client info on Invoice */}
+                <div className="bg-neutral-50 p-5 rounded-2xl border border-neutral-150 grid grid-cols-1 md:grid-cols-2 gap-4 font-sans text-neutral-850">
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 font-mono">Facturado a:</span>
+                    <h4 className="font-bold text-neutral-950 text-xs mt-1">{invoiceClientName}</h4>
+                    <span className="text-[10px] block mt-0.5 font-mono text-neutral-500">{invoiceClientDni}</span>
+                  </div>
+                  <div className="md:text-right md:pt-4 text-[10px] text-neutral-600 leading-relaxed">
+                    <span>{invoiceClientAddress}</span><br />
+                    <span className="font-mono text-neutral-500">{invoiceClientEmail}</span>
+                  </div>
+                </div>
+
+                {/* Invoice Items Table and Total */}
+                <div className="pt-2 font-sans">
+                  <table className="w-full text-left font-sans text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-neutral-300 font-bold uppercase text-[9px] text-[#8a7031] tracking-wider">
+                        <th className="py-2 px-1">Concepto / Servicio Técnico Requerido</th>
+                        <th className="py-2 px-2 text-center w-16">Cant.</th>
+                        <th className="py-2 px-3 text-right w-24">Precio</th>
+                        <th className="py-2 px-1 text-right w-24">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-200">
+                      {invoiceItems.map((item) => (
+                        <tr key={item.id} className="text-neutral-800">
+                          <td className="py-3 px-1 leading-relaxed">
+                            <span className="font-semibold text-neutral-900">{item.description}</span>
+                          </td>
+                          <td className="py-3 px-2 text-center font-mono">{item.quantity}</td>
+                          <td className="py-3 px-3 text-right font-mono">{item.unitPrice.toFixed(2)} €</td>
+                          <td className="py-3 px-1 text-right font-bold font-mono text-neutral-950">{(item.quantity * item.unitPrice).toFixed(2)} €</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Calculation breakdown */}
+                <div className="pt-4 border-t border-neutral-300 flex justify-end font-sans">
+                  <div className="w-64 space-y-1.5 text-right font-sans text-xs">
+                    <div className="flex justify-between text-slate-500">
+                      <span>Subtotal:</span>
+                      <span className="font-mono">{subtotal.toFixed(2)} €</span>
+                    </div>
+                    <div className="flex justify-between text-slate-500">
+                      <span>IVA ({taxPercentage}%):</span>
+                      <span className="font-mono">{taxAmount.toFixed(2)} €</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-neutral-950 text-sm border-t border-neutral-200 pt-2">
+                      <span>TOTAL FACTURA:</span>
+                      <span className="font-mono text-amber-700">{total.toFixed(2)} €</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Legal disclaimer & payment */}
+                <div className="bg-neutral-50 rounded-xl p-4 border border-dashed border-neutral-200 text-[10px] text-neutral-500 font-sans space-y-1 mt-6">
+                  <p className="font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1">
+                    <DollarSign className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Instrucciones de Pago e Ingreso Bancario</span>
+                  </p>
+                  <p>
+                    Rogamos efectúen la transferencia por el importe total indicado a la cuenta de CaixaBank facilitada a continuación, indicando el número de factura como concepto de referencia bancaria:
+                  </p>
+                  <p className="font-mono text-neutral-800 font-bold bg-white border border-neutral-150 p-1.5 rounded text-center select-all mt-1">
+                    IBAN: {paymentDetails}
+                  </p>
+                  <p className="pt-2 text-[9px] italic">
+                    Althera Solutions, S.L. inscrita en el Registro Mercantil de Granada, Tomo 1450, Folio 120, Hoja GR-45600. Condición de vencimiento a 15 días tras emisión del servicio.
+                  </p>
+                </div>
+
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  );
+}

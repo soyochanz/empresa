@@ -1,6 +1,66 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      (function() {
+        try {
+          var currentFetch = window.fetch;
+          
+          function tryDefine(obj, prop, descriptor) {
+            try {
+              Object.defineProperty(obj, prop, descriptor);
+              return true;
+            } catch (e) {
+              return false;
+            }
+          }
+          
+          if (!currentFetch && typeof Window !== 'undefined' && Window.prototype) {
+            var desc = Object.getOwnPropertyDescriptor(Window.prototype, 'fetch');
+            if (desc && desc.get) {
+              currentFetch = desc.get.call(window);
+            }
+          }
+          if (!currentFetch) {
+            currentFetch = window.fetch || function() { return Promise.reject("Fetch unavailable"); };
+          }
+          
+          var descriptor = {
+            get: function() { return currentFetch; },
+            set: function(val) { currentFetch = val; },
+            configurable: true,
+            enumerable: true
+          };
+
+          try {
+            delete window.fetch;
+          } catch(e) {}
+          tryDefine(window, 'fetch', descriptor);
+          
+          if (typeof Window !== 'undefined' && Window.prototype) {
+            try {
+              delete Window.prototype.fetch;
+            } catch(e) {}
+            tryDefine(Window.prototype, 'fetch', descriptor);
+          }
+          
+          if (typeof globalThis !== 'undefined') {
+            try {
+              delete globalThis.fetch;
+            } catch(e) {}
+            tryDefine(globalThis, 'fetch', descriptor);
+          }
+          if (typeof self !== 'undefined') {
+            try {
+              delete self.fetch;
+            } catch(e) {}
+            tryDefine(self, 'fetch', descriptor);
+          }
+        } catch (globalError) {
+          console.warn("Global catch in fetch patch:", globalError);
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>

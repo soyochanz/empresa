@@ -111,11 +111,16 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
         
         {/* Header Branding */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 bg-white/5 border border-white/10 flex items-center justify-center rounded-2xl mb-4 shadow-2xl shadow-blue-500/5 backdrop-blur-md">
-            <Network className="text-blue-400 w-8 h-8" strokeWidth={1.5} />
+          <div className="w-16 h-16 bg-black border border-[#D4AF37]/25 flex items-center justify-center rounded-2xl mb-4 shadow-2xl shadow-amber-500/5 p-1">
+            <img 
+              src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
+              alt="Althera Logo" 
+              className="w-12 h-12 object-contain"
+              referrerPolicy="no-referrer"
+            />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white font-sans">AgencyFlow</h1>
-          <p className="text-slate-400 text-sm mt-1 font-sans">Portal de Alta Costura v2.0</p>
+          <h1 className="text-3xl font-bold tracking-tight text-white font-sans uppercase gold-gradient-text">Althera</h1>
+          <p className="text-amber-500 text-xs mt-1 font-mono uppercase tracking-widest font-semibold">Portal de Control v2.0</p>
         </div>
 
         {/* Central Card */}

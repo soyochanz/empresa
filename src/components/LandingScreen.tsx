@@ -187,11 +187,16 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
           
           {/* Logo & Branding representing the Software/Web Development Studio */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-              <Terminal className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-black border border-[#D4AF37]/25 flex items-center justify-center p-0.5">
+              <img 
+                src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
+                alt="Althera Logo" 
+                className="w-7 h-7 object-contain"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div>
-              <span className="font-bold text-lg text-white font-sans tracking-tight">AgencyFlow <span className="text-blue-400 font-light">Studio</span></span>
+              <span className="font-bold text-lg text-white font-sans tracking-tight uppercase">Althera <span className="gold-gradient-text font-light font-sans lowercase italic">Studio</span></span>
             </div>
           </div>
 
@@ -218,23 +223,23 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
         <section className="text-center max-w-3.5xl mx-auto flex flex-col items-center gap-6">
           
           {/* Accent micro badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-white/[0.03] border border-white/10 rounded-full text-[10px] font-mono text-slate-400 uppercase tracking-widest font-semibold">
-            <Cpu className="w-3.5 h-3.5 text-blue-400" />
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-white/[0.03] border border-[#D4AF37]/20 rounded-full text-[10px] font-mono text-slate-400 uppercase tracking-widest font-semibold animate-pulse">
+            <Cpu className="w-3.5 h-3.5 text-amber-500" />
             <span>Código de Élite & Diseño Sofisticado</span>
           </div>
 
           {/* Main Title */}
           <h1 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight leading-tight sm:leading-none">
             Diseñamos y Programamos <br />
-            <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-amber-500 via-yellow-200 to-amber-600 bg-clip-text text-transparent">
               Experiencias Digitales de Élite
             </span>
           </h1>
 
           {/* "Que somos" - High precision agency description */}
           <p className="text-slate-400 text-sm sm:text-base leading-relaxed max-w-2.5xl font-sans font-light">
-            Somos <span className="text-white font-semibold">AgencyFlow Studio</span>, una boutique de desarrollo tecnológico de alta costura. Nos especializamos en materializar ideas ambiciosas transformándolas en 
-            <span className="text-blue-400"> plataformas SaaS</span>, <span className="text-indigo-400">webs corporativas interactivas</span> y <span className="text-purple-400">paneles analíticos de alto rendimiento</span>. Centramos nuestros esfuerzos en construir código robusto estructurado en TypeScript, responsive en su totalidad y diseñado con un refinamiento visual impecable.
+            Somos <span className="text-white font-semibold flex-inline items-center gap-1"><span className="text-amber-500">Althera</span> Studio</span>, una boutique de desarrollo tecnológico de alta costura. Nos especializamos en materializar ideas ambiciosas transformándolas en 
+            <span className="text-amber-400"> plataformas SaaS</span>, <span className="text-yellow-400">webs corporativas interactivas</span> y <span className="text-amber-300">paneles analíticos de alto rendimiento</span>. Centramos nuestros esfuerzos en construir código robusto estructurado en TypeScript, responsive en su totalidad y diseñado con un refinamiento visual impecable.
           </p>
 
           {/* Call to action actionables */}
@@ -426,7 +431,7 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
               </div>
               <h3 className="font-bold text-sm text-white">¡Solicitud Enviada con Éxito!</h3>
               <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
-                Nuestro personal de ingeniería analizará los requerimientos técnicos y se pondrá en contacto contigo en las próximas 12 horas. ¡Gracias por confiar en AgencyFlow Studio!
+                Nuestro personal de ingeniería analizará los requerimientos técnicos y se pondrá en contacto contigo en las próximas 12 horas. ¡Gracias por confiar en Althera Studio!
               </p>
             </div>
           ) : (
@@ -440,7 +445,7 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
                     placeholder="Ej. Juan Pérez"
                     value={inquiryName}
                     onChange={(e) => setInquiryName(e.target.value)}
-                    className="w-full bg-[#0c1225] border border-white/5 focus:border-blue-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -451,7 +456,7 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
                     placeholder="juan@empresa.com"
                     value={inquiryEmail}
                     onChange={(e) => setInquiryEmail(e.target.value)}
-                    className="w-full bg-[#0c1225] border border-white/5 focus:border-blue-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all"
+                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
                   />
                 </div>
               </div>
@@ -463,16 +468,16 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
                   placeholder="Detalla tu idea o necesidades tecnológicas (ej. Web Corporativa, Panel de Administración, etc.)"
                   value={inquiryMessage}
                   onChange={(e) => setInquiryMessage(e.target.value)}
-                  className="w-full bg-[#0c1225] border border-white/5 focus:border-blue-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/20 transition-all resize-none"
+                  className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all resize-none"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-500 active:scale-95 text-xs text-white font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-blue-500/10 cursor-pointer flex items-center justify-center gap-2"
+                className="w-full bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-xs text-black font-extrabold py-3 px-6 rounded-xl transition-all shadow-lg shadow-amber-500/10 cursor-pointer flex items-center justify-center gap-2"
               >
                 <span>Enviar Solicitud</span>
-                <Send className="w-3.5 h-3.5" />
+                <Send className="w-3.5 h-3.5 text-black" />
               </button>
             </form>
           )}
@@ -480,7 +485,7 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
           {/* Explicit note clarify login access rules */}
           <div className="mt-8 border-t border-white/5 pt-5 text-center">
             <p className="text-[10px] text-slate-500 leading-relaxed font-light">
-              🔐 <strong className="text-slate-400 font-medium">Nota de Seguridad:</strong> El acceso a nuestro panel de organización, notas, clientes y calendarios es estrictamente privado y exclusivo para el personal interno de <span className="text-slate-300 font-semibold">AgencyFlow</span>. Utilice únicamente el botón de <strong className="text-blue-400 font-mono">Portal de Equipo</strong> ubicado en el encabezado.
+              🔐 <strong className="text-slate-400 font-medium">Nota de Seguridad:</strong> El acceso a nuestro panel de organización, notas, clientes y calendarios es estrictamente privado y exclusivo para el personal de <span className="text-[#D4AF37] font-semibold">Althera</span>. Utilice únicamente el botón de <strong className="text-amber-500 font-mono">Portal de Equipo</strong> ubicado en el encabezado.
             </p>
           </div>
 
@@ -489,14 +494,16 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
       </main>
 
       {/* FOOTER */}
-      <footer className="relative z-10 border-t border-white/5 bg-slate-950/70 py-8">
+      <footer className="relative z-10 border-t border-white/5 bg-[#050505] py-8">
         <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Terminal className="w-4.5 h-4.5 text-blue-500" />
-            <span className="text-[11px] font-semibold text-slate-400">AgencyFlow Studio • Desarrollo Boutique</span>
+            <div className="w-4.5 h-4.5 flex items-center justify-center bg-black rounded p-0.5 border border-amber-500/20">
+              <img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="A" className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />
+            </div>
+            <span className="text-[11px] font-semibold text-slate-450">Althera Studio • Tecnología de Alta Costura</span>
           </div>
           <p className="text-[10px] text-slate-500 font-mono">
-            © {new Date().getFullYear()} AgencyFlow Studio. Reservados todos los derechos.
+            © {new Date().getFullYear()} Althera Studio. Reservados todos los derechos.
           </p>
         </div>
       </footer>
