@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ClientContact } from '../types';
+import { db } from '../supabaseClient';
 import { 
   FileText, 
   Receipt, 
@@ -33,6 +34,131 @@ interface FacturaItem {
 
 export default function ContractsScreen({ contacts, onNavigate }: ContractsScreenProps) {
   const [activeTab, setActiveTab] = useState<'contract' | 'invoice'>('contract');
+
+  // --- DATABASE PERSISTENCE FOR CONTRACTS ---
+  const [savedContracts, setSavedContracts] = useState<any[]>([]);
+  const [selectedContractIdInDb, setSelectedContractIdInDb] = useState('');
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadSaved() {
+      try {
+        const list = await db.getContractsAlthera();
+        if (active) {
+          setSavedContracts(list);
+        }
+      } catch (err) {
+        console.error('Error load contracts:', err);
+      }
+    }
+    loadSaved();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleLoadContract = (id: string) => {
+    setSelectedContractIdInDb(id);
+    if (!id) {
+      setSelectedContactId('');
+      return;
+    }
+    const contract = savedContracts.find(c => c.id === id);
+    if (contract) {
+      setClientName(contract.clientName || '');
+      setClientDni(contract.clientDni || '');
+      setClientAddress(contract.clientAddress || '');
+      setClientPhone(contract.clientPhone || '');
+      setClientEmail(contract.clientEmail || '');
+      setPrestador1Name(contract.prestador1Name || 'D. Carlos Ronco');
+      setPrestador1Dni(contract.prestador1Dni || '09104663K');
+      setPrestador2Name(contract.prestador2Name || 'D. Ignacio Martin Gonzalez');
+      setPrestador2Dni(contract.prestador2Dni || '75931136V');
+      setDeliveryDays(contract.deliveryDays || '20');
+      setCourtCity(contract.courtCity || 'Ibiza');
+      setSigningCity(contract.signingCity || 'Ibiza');
+      setSigningDay(contract.signingDay || '');
+      setSigningMonth(contract.signingMonth || '');
+      setSigningYear(contract.signingYear || '');
+      setPriceSingle(Number(contract.priceSingle) || 950);
+      setFin3Total(Number(contract.fin3Total) || 960);
+      setFin3Cuota(Number(contract.fin3Cuota) || 320);
+      setFin3Coste(Number(contract.fin3Coste) || 10);
+      setFin4Total(Number(contract.fin4Total) || 1000);
+      setFin4Cuota(Number(contract.fin4Cuota) || 250);
+      setFin4Coste(Number(contract.fin4Coste) || 50);
+      setSelectedModality(contract.selectedModality || 'single');
+      setSelectedContactId(contract.selectedContactId || '');
+    }
+  };
+
+  const handleSaveToDb = async () => {
+    try {
+      const contractObj = {
+        id: selectedContractIdInDb || 'cnt_' + Date.now().toString().slice(-6),
+        clientName,
+        clientDni,
+        clientAddress,
+        clientPhone,
+        clientEmail,
+        prestador1Name,
+        prestador1Dni,
+        prestador2Name,
+        prestador2Dni,
+        deliveryDays,
+        courtCity,
+        signingCity,
+        signingDay,
+        signingMonth,
+        signingYear,
+        priceSingle,
+        fin3Total,
+        fin3Cuota,
+        fin3Coste,
+        fin4Total,
+        fin4Cuota,
+        fin4Coste,
+        selectedModality,
+        selectedContactId: selectedContactId || null
+      };
+
+      if (selectedContractIdInDb) {
+        await db.updateContractAlthera(contractObj);
+        setSaveMessage('Contrato actualizado con éxito en la base de datos.');
+      } else {
+        await db.insertContractAlthera(contractObj);
+        setSaveMessage('Contrato guardado con éxito en la base de datos.');
+      }
+      
+      const updated = await db.getContractsAlthera();
+      setSavedContracts(updated);
+      setSelectedContractIdInDb(contractObj.id);
+      
+      setTimeout(() => setSaveMessage(null), 4000);
+    } catch (err) {
+      console.error('Error saving contract to DB:', err);
+      setSaveMessage('Error al guardar el contrato en base de datos.');
+      setTimeout(() => setSaveMessage(null), 4000);
+    }
+  };
+
+  const handleDeleteContract = async () => {
+    if (!selectedContractIdInDb) return;
+    try {
+      await db.deleteContractAlthera(selectedContractIdInDb);
+      const updated = await db.getContractsAlthera();
+      setSavedContracts(updated);
+      setSelectedContractIdInDb('');
+      setSelectedContactId('');
+      setSaveMessage('Contrato eliminado correctamente.');
+      setTimeout(() => setSaveMessage(null), 4000);
+    } catch (err) {
+      console.error('Error deleting contract:', err);
+      setSaveMessage('No se pudo eliminar el contrato.');
+      setTimeout(() => setSaveMessage(null), 4000);
+    }
+  };
 
   // --- CONTRACT STATE ---
   const [selectedContactId, setSelectedContactId] = useState('');
@@ -406,6 +532,81 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
           {activeTab === 'contract' ? (
             /* --- CONTRACT FORM --- */
             <div className="space-y-4 font-sans text-left">
+              
+              {/* Contratos Guardados en Base de Datos */}
+              <div className="bg-[#0c0c0c] border border-amber-500/10 p-3 rounded-2xl space-y-2.5">
+                <label className="text-[10px] font-mono text-amber-500 uppercase tracking-widest font-bold flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5" /> Contrato de Althera (BD)
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedContractIdInDb}
+                    onChange={(e) => handleLoadContract(e.target.value)}
+                    className="flex-1 bg-black border border-neutral-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">-- Crear Nuevo Contrato --</option>
+                    {savedContracts.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.clientName ? c.clientName.replace('D./Dña. ', '') : 'Sin nombre'} ({c.signingCity || 'Ibiza'} - {c.selectedModality === 'single' ? 'Pago Único' : c.selectedModality === 'fin3' ? '3 Meses' : '4 Meses'})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedContractIdInDb && (
+                    <button
+                      onClick={handleDeleteContract}
+                      title="Eliminar de la Base de Datos"
+                      type="button"
+                      className="aspect-square bg-red-950/30 border border-red-500/30 text-red-400 p-2 rounded-xl hover:bg-red-900/40 transition cursor-pointer flex items-center justify-center animate-fade-in"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveToDb}
+                    type="button"
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-neutral-950 font-bold text-[11px] py-1.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-amber-500/10"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    {selectedContractIdInDb ? 'Guardar Cambios' : 'Guardar en Base de Datos'}
+                  </button>
+                  
+                  {selectedContractIdInDb && (
+                    <button
+                      onClick={() => {
+                        setSelectedContractIdInDb('');
+                        setSelectedContactId('');
+                        setClientName('D./Dña. Ignacio Martin');
+                        setClientDni('45678912A');
+                        setClientAddress('Avenida de los Rosales, Nº 45, Ibiza');
+                        setClientPhone('+34 612 345 678');
+                        setClientEmail('contacto@cliente.com');
+                        setSigningDay(new Date().getDate().toString());
+                        setSigningMonth('Junio');
+                        setSigningYear('2026');
+                        setPriceSingle(950);
+                        setFin3Total(960);
+                        setFin3Cuota(320);
+                        setFin4Total(1000);
+                        setFin4Cuota(250);
+                        setSelectedModality('single');
+                      }}
+                      type="button"
+                      className="bg-neutral-900 border border-neutral-800 text-slate-300 text-[10px] py-1.5 px-2.5 rounded-xl hover:bg-neutral-850 hover:text-white transition cursor-pointer"
+                    >
+                      Nuevo
+                    </button>
+                  )}
+                </div>
+
+                {saveMessage && (
+                  <p className={`text-[10px] text-center font-semibold mt-1 animate-fade-in ${saveMessage.includes('con éxito') || saveMessage.includes('correctamente') ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {saveMessage}
+                  </p>
+                )}
+              </div>
               
               {/* Optional CRM Link Pre-fill */}
               <div className="bg-[#0c0c0c] border border-amber-500/10 p-3 rounded-2xl">

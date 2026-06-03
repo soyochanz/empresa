@@ -22,7 +22,8 @@ import {
   Check, 
   SlidersHorizontal,
   PlusCircle, 
-  Briefcase 
+  Briefcase,
+  Download
 } from 'lucide-react';
 
 interface FinanceScreenProps {
@@ -139,6 +140,13 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     { id: 'temp1', description: '', quantity: 1, unitPrice: 0, total: 0 }
   ]);
   const [invTaxPercentage, setInvTaxPercentage] = useState<number>(21);
+
+  // Banking defaults matching Revolut and Ibiza specs
+  const [paymentDetails, setPaymentDetails] = useState('IE84 REVO 9903 6065 8046 06');
+  const [bankBeneficiary, setBankBeneficiary] = useState('Ignacio Martin Gonzalez');
+  const [bankSwift, setBankSwift] = useState('REVOIE23');
+  const [bankNameAddress, setBankNameAddress] = useState('Revolut Bank UAB, 2 Dublin Landings, North Dock, Dublin 1, D01 V4A3, Ireland');
+  const [bankCorrespondentBic, setBankCorrespondentBic] = useState('CHASDEFX');
 
   // Calculations for transactions
   const totalIncomes = transactions
@@ -431,6 +439,443 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   // Print helper for invoice preview
   const handlePrintPreview = () => {
     window.print();
+  };
+
+  // Convert a transaction (cobro) directly into a detailed draft / paid invoice
+  const handleCreateInvoiceFromTransaction = (tx: FinanceTransaction) => {
+    setIsEditingInv(false);
+    setEditingInvId(null);
+    
+    // Find client in contacts list if possible
+    const matchedContact = contacts.find(c => 
+      tx.description.toLowerCase().includes(c.name.toLowerCase()) || 
+      tx.description.toLowerCase().includes(c.company.toLowerCase())
+    );
+    
+    if (matchedContact) {
+      setInvClientId(matchedContact.id);
+      setInvClientName(matchedContact.company !== 'Independent' ? matchedContact.company : matchedContact.name);
+      setInvClientEmail(matchedContact.email);
+    } else {
+      setInvClientId('');
+      setInvClientName(tx.description || 'Cliente de Facturación');
+      setInvClientEmail('');
+    }
+    
+    setInvDate(tx.date || new Date().toISOString().split('T')[0]);
+    // Payment term: 15 days after issue date
+    const issueDate = tx.date ? new Date(tx.date) : new Date();
+    issueDate.setDate(issueDate.getDate() + 15);
+    setInvDueDate(issueDate.toISOString().split('T')[0]);
+    
+    // Default to paid/sent depending on transaction status
+    setInvStatus(tx.status === 'paid' ? 'paid' : 'draft');
+    setInvNotes(`Factura correspondiente al cobro registrado el ${tx.date}.\nForma de pago: Transferencia Bancaria.`);
+    setInvTaxPercentage(21);
+    
+    // Calculate values (assuming amount includes 21% VAT)
+    const basePrice = parseFloat((tx.amount / 1.21).toFixed(2));
+    
+    setInvItems([
+      { 
+        id: 'item_auto_' + Date.now(), 
+        description: tx.description || 'Servicios profesionales prestados', 
+        quantity: 1, 
+        unitPrice: basePrice, 
+        total: basePrice 
+      }
+    ]);
+    
+    // Force direct navigation / tab switch to 'invoices' to avoid confusion and let them edit it!
+    setActiveTab('invoices');
+    setIsInvModalOpen(true);
+    
+    // Toast notification
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      const label = toast.querySelector('span');
+      if (label) {
+        label.textContent = `Prefactura completada para: ${tx.description}. ¡Revisa y edita los detalles!`;
+      } else {
+        toast.innerText = `Prefactura completada para: ${tx.description}. ¡Revisa y edita los detalles!`;
+      }
+      toast.classList.remove('opacity-0');
+      setTimeout(() => toast.classList.add('opacity-0'), 4500);
+    }
+  };
+
+  // Compile and trigger a local file download of the Invoice represented in clean self-contained HTML
+  const handleDownloadInvoiceHtml = (inv: Invoice) => {
+    const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.html`;
+    
+    const htmlContent = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Factura ${inv.id} - ${inv.clientName}</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #334155;
+      margin: 0;
+      padding: 40px;
+      line-height: 1.6;
+      background-color: #f8fafc;
+    }
+    .invoice-card {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 50px;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.02);
+    }
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 40px;
+    }
+    .company-title {
+      font-size: 24px;
+      font-weight: 850;
+      color: #0f172a;
+      letter-spacing: -0.025em;
+      margin: 0;
+    }
+    .company-sub {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 5px;
+      line-height: 1.5;
+    }
+    .invoice-title-block {
+      text-align: right;
+    }
+    .invoice-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #3b82f6;
+    }
+    .invoice-number {
+      font-size: 20px;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 2px 0;
+    }
+    .invoice-dates {
+      font-size: 11px;
+      color: #64748b;
+      font-family: monospace;
+    }
+    .stakeholders {
+      display: table;
+      width: 100%;
+      margin-bottom: 40px;
+    }
+    .stakeholder-column {
+      display: table-cell;
+      width: 50%;
+      vertical-align: top;
+    }
+    .stakeholder-box {
+      margin-right: 15px;
+      padding: 20px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+    }
+    .stakeholder-box.recipient {
+      margin-right: 0;
+      margin-left: 15px;
+    }
+    .box-title {
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #64748b;
+      margin: 0 0 6px 0;
+      font-weight: bold;
+    }
+    .box-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 4px 0;
+    }
+    .box-detail {
+      font-size: 11px;
+      color: #475569;
+      margin: 0;
+      line-height: 1.5;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 30px;
+    }
+    .items-table th {
+      background: #f1f5f9;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #475569;
+      padding: 12px;
+      text-align: left;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .items-table td {
+      padding: 14px 12px;
+      font-size: 12px;
+      color: #334155;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .items-table td.qty {
+      text-align: center;
+    }
+    .items-table td.price, .items-table td.total {
+      text-align: right;
+      font-family: monospace;
+    }
+    .totals-block {
+      float: right;
+      width: 300px;
+      margin-bottom: 40px;
+    }
+    .totals-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .totals-table td {
+      padding: 6px 0;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .totals-table td.value {
+      text-align: right;
+      font-family: monospace;
+    }
+    .totals-table tr.grand-total td {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0f172a;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .totals-table tr.grand-total td.value {
+      color: #0f172a;
+    }
+    .clear {
+      clear: both;
+    }
+    .bank-box {
+      background: #fffbeb;
+      border: 1px dashed #f59e0b;
+      border-radius: 12px;
+      padding: 20px;
+      font-size: 11px;
+      color: #5c3e03;
+      margin-bottom: 30px;
+    }
+    .bank-title {
+      font-weight: 700;
+      font-size: 12px;
+      margin: 0 0 12px 0;
+      color: #b45309;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .bank-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 20px;
+    }
+    .bank-item-title {
+      color: #92400e;
+      font-weight: 600;
+    }
+    .bank-item-val {
+      font-weight: bold;
+      color: #1e1b4b;
+      font-family: monospace;
+    }
+    .notes-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 11px;
+      color: #475569;
+      margin-bottom: 40px;
+    }
+    .notes-title {
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+      color: #1e293b;
+    }
+    .footer {
+      text-align: center;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 20px;
+      font-size: 9px;
+      color: #94a3b8;
+      font-family: monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice-card">
+    <table class="header-table">
+      <tr>
+        <td style="vertical-align: top;">
+          <h1 class="company-title">ALTHERA SOLUTIONS S.L.</h1>
+          <div class="company-sub">
+            CIF: B-18974534<br>
+            Avenida de España, Nº 10, 1ºA<br>
+            07800 - Ibiza, España<br>
+            Inscrita en el Registro Mercantil de Ibiza (Tomo 1450, Folio 120, Hoja IB-45600)
+          </div>
+        </td>
+        <td class="invoice-title-block" style="vertical-align: top;">
+          <span class="invoice-label">Factura Simplificada</span>
+          <div class="invoice-number">${inv.id}</div>
+          <div class="invoice-dates">
+            Fecha de Emisión: ${inv.date}<br>
+            Fecha de Vence: ${inv.dueDate}
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="stakeholders">
+      <div class="stakeholder-column">
+        <div class="stakeholder-box">
+          <div class="box-title">Emisor (Proveedor)</div>
+          <div class="box-name">Althera Solutions S.L.</div>
+          <div class="box-detail">
+            Email: administracion@althera.io<br>
+            Soporte: info@althera.io
+          </div>
+        </div>
+      </div>
+      <div class="stakeholder-column">
+        <div class="stakeholder-box recipient">
+          <div class="box-title">Cliente (Receptor)</div>
+          <div class="box-name">${inv.clientName}</div>
+          <div class="box-detail">
+            Email: ${inv.clientEmail}<br>
+            ID Cliente CRM: ${inv.clientId || 'Inscripción Directa'}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Descripción del Servicio</th>
+          <th style="text-align: center; width: 60px;">Cant.</th>
+          <th style="text-align: right; width: 120px;">Precio Unit.</th>
+          <th style="text-align: right; width: 120px;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${inv.items.map(it => `
+          <tr>
+            <td><strong>${it.description}</strong></td>
+            <td class="qty">${it.quantity}</td>
+            <td class="price">${it.unitPrice.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+            <td class="total">${it.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="totals-block">
+      <table class="totals-table">
+        <tr>
+          <td>Subtotal Neto</td>
+          <td class="value">${inv.subtotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        </tr>
+        <tr>
+          <td>IVA (${inv.taxPercentage}%)</td>
+          <td class="value">${inv.taxAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        </tr>
+        <tr class="grand-total">
+          <td>TOTAL FACTURA</td>
+          <td class="value">${inv.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+        </tr>
+      </table>
+    </div>
+    <div class="clear"></div>
+
+    <div class="bank-box">
+      <div class="bank-title">Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)</div>
+      <div class="bank-grid">
+        <div>
+          <span class="bank-item-title">Beneficiario:</span><br>
+          <span class="bank-item-val">${bankBeneficiary}</span>
+        </div>
+        <div>
+          <span class="bank-item-title">IBAN Euro:</span><br>
+          <span class="bank-item-val">${paymentDetails}</span>
+        </div>
+        <div>
+          <span class="bank-item-title">Código BIC/SWIFT:</span><br>
+          <span class="bank-item-val">${bankSwift}</span>
+        </div>
+        <div>
+          <span class="bank-item-title">BIC Corresponsal:</span><br>
+          <span class="bank-item-val">${bankCorrespondentBic}</span>
+        </div>
+        <div style="grid-column: span 2;">
+          <span class="bank-item-title">Nombre y Dirección del Banco:</span><br>
+          <span class="bank-item-val" style="font-family: inherit;">${bankNameAddress}</span>
+        </div>
+      </div>
+    </div>
+
+    ${inv.notes ? `
+      <div class="notes-box">
+        <div class="notes-title">Notas de Facturación</div>
+        <p style="margin: 0; white-space: pre-wrap;">${inv.notes}</p>
+      </div>
+    ` : ''}
+
+    <div class="footer">
+      Althera Solutions, S.L. — Avenida de España, Nº 10, 1ºA, 07800 - Ibiza, España. Condición de vencimiento a 15 días tras emisión. ¡Gracias por confiar en Althera!
+    </div>
+  </div>
+</body>
+</html>`;
+
+    // Dynamic clean download anchor trigger
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    // Show toast message
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      const label = toast.querySelector('span');
+      if (label) label.textContent = `Descargada factura ${inv.id} correctamente.`;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => toast.classList.add('opacity-0'), 3500);
+    }
   };
 
   // Transaction selection and calculations
@@ -878,6 +1323,15 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              {t.type === 'income' && (
+                                <button
+                                  onClick={() => handleCreateInvoiceFromTransaction(t)}
+                                  className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors cursor-pointer"
+                                  title="Facturar este cobro (Generar y editar factura)"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleEditTx(t)}
                                 className="p-1.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition transition-colors duration-250"
@@ -1495,6 +1949,63 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 </div>
               </div>
 
+              {/* Editable Bank Details Section */}
+              <div className="bg-slate-900/40 p-4 rounded-2xl border border-white/5 space-y-3.5 text-left bg-white/[0.01]">
+                <span className="text-[10px] font-mono text-amber-400 uppercase tracking-wider font-semibold block">Datos Bancarios para Transferencia (Revolut)</span>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1 text-left">
+                    <label className="text-[9px] font-mono text-slate-400 block font-semibold uppercase">Beneficiario</label>
+                    <input
+                      type="text"
+                      value={bankBeneficiary}
+                      onChange={(e) => setBankBeneficiary(e.target.value)}
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                    />
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <label className="text-[9px] font-mono text-slate-400 block font-semibold uppercase">IBAN Euro</label>
+                    <input
+                      type="text"
+                      value={paymentDetails}
+                      onChange={(e) => setPaymentDetails(e.target.value)}
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                    />
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <label className="text-[9px] font-mono text-slate-400 block font-semibold uppercase">Código BIC/SWIFT</label>
+                    <input
+                      type="text"
+                      value={bankSwift}
+                      onChange={(e) => setBankSwift(e.target.value)}
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                    />
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <label className="text-[9px] font-mono text-slate-400 block font-semibold uppercase">BIC Banco Corresponsal</label>
+                    <input
+                      type="text"
+                      value={bankCorrespondentBic}
+                      onChange={(e) => setBankCorrespondentBic(e.target.value)}
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 space-y-1 text-left">
+                    <label className="text-[9px] font-mono text-slate-400 block font-semibold uppercase">Nombre y Dirección del Banco emisor</label>
+                    <input
+                      type="text"
+                      value={bankNameAddress}
+                      onChange={(e) => setBankNameAddress(e.target.value)}
+                      className="w-full bg-slate-950 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-amber-500/30"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Notes block */}
               <div className="space-y-1">
                 <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Notas de Factura / Condiciones Pago</label>
@@ -1544,6 +2055,14 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => handleDownloadInvoiceHtml(previewInvoice)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                  title="Descargar Factura local (.html)"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Descargar Factura (HTML)</span>
+                </button>
+                <button
                   onClick={handlePrintPreview}
                   className="bg-white/5 hover:bg-white/10 text-white font-bold text-xs px-3.5 py-2 rounded-xl border border-white/10 transition flex items-center gap-1.5 cursor-pointer"
                 >
@@ -1567,13 +2086,14 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 <div className="text-left">
                   <div className="flex items-center gap-2">
                     <span className="h-5.5 w-5.5 rounded bg-blue-600 flex items-center justify-center text-slate-950 uppercase font-bold text-[10px]">
-                      D
+                      A
                     </span>
-                    <span className="text-sm font-black text-white tracking-widest font-mono uppercase">AGENCYFLOW</span>
+                    <span className="text-sm font-black text-white tracking-widest font-mono uppercase">ALTHERA SOLUTIONS</span>
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1 leading-normal font-mono font-medium block">
-                    Calle de la Innovación 23, Mod 4B<br />
-                    Boutique Digital SL — CIF ESB87123456
+                    Avenida de España, Nº 10, 1ºA<br />
+                    Althera Solutions S.L. — CIF B-18974534<br />
+                    07800 - Ibiza, España
                   </p>
                 </div>
 
@@ -1649,6 +2169,35 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                   <div className="flex justify-between text-base font-black text-white pt-1.5 border-t border-neutral-850 font-serif">
                     <span>TOTAL FACTURA</span>
                     <span>{previewInvoice.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructions regarding payment / banking (Revolut) */}
+              <div className="bg-neutral-950/50 border border-amber-500/15 rounded-xl p-4 text-[10px] text-left space-y-2 text-slate-300">
+                <span className="font-bold text-amber-400 uppercase tracking-wider block border-b border-neutral-850 pb-1 select-none font-mono">
+                  Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 font-mono">
+                  <div>
+                    <span className="text-slate-500">Beneficiario:</span><br />
+                    <strong className="text-white select-all">{bankBeneficiary}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">IBAN Euro:</span><br />
+                    <strong className="text-white select-all">{paymentDetails}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Código BIC/SWIFT:</span><br />
+                    <strong className="text-white select-all">{bankSwift}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">BIC Corresponsal:</span><br />
+                    <strong className="text-white select-all">{bankCorrespondentBic}</strong>
+                  </div>
+                  <div className="sm:col-span-2 pt-1 border-t border-neutral-850">
+                    <span className="text-slate-500">Nombre y Dirección del Banco:</span><br />
+                    <span className="text-slate-400">{bankNameAddress}</span>
                   </div>
                 </div>
               </div>

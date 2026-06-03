@@ -207,7 +207,45 @@ ALTER TABLE finance_invoices ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Read Access" ON finance_invoices FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON finance_invoices FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON finance_invoices FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true);`;
+CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true);
+
+
+-- 9. Create contracts_althera table
+CREATE TABLE IF NOT EXISTS contracts_althera (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  "clientName" TEXT,
+  "clientDni" TEXT,
+  "clientAddress" TEXT,
+  "clientPhone" TEXT,
+  "clientEmail" TEXT,
+  "prestador1Name" TEXT,
+  "prestador1Dni" TEXT,
+  "prestador2Name" TEXT,
+  "prestador2Dni" TEXT,
+  "deliveryDays" TEXT,
+  "courtCity" TEXT,
+  "signingCity" TEXT,
+  "signingDay" TEXT,
+  "signingMonth" TEXT,
+  "signingYear" TEXT,
+  "priceSingle" NUMERIC,
+  "fin3Total" NUMERIC,
+  "fin3Cuota" NUMERIC,
+  "fin3Coste" NUMERIC,
+  "fin4Total" NUMERIC,
+  "fin4Cuota" NUMERIC,
+  "fin4Coste" NUMERIC,
+  "selectedModality" TEXT,
+  "selectedContactId" TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE contracts_althera ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Read Access" ON contracts_althera FOR SELECT USING (true);
+CREATE POLICY "Public Insert Access" ON contracts_althera FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Access" ON contracts_althera FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Public Delete Access" ON contracts_althera FOR DELETE USING (true);`;
 
 export interface ConnectionStatus {
   connected: boolean;
@@ -296,21 +334,85 @@ export async function seedSupabaseDatabase(
 
 export const db = {
   // --- CONTACTS ---
+  parseContactMetadata(contact: any): ClientContact {
+    if (!contact) return contact;
+    const creds = contact.hostingCredentials || '';
+    const parts = creds.split('\n\n---METADATA---');
+    const cleanCredentials = parts[0];
+    
+    let color: string | undefined = undefined;
+    let assignedUserId: string | undefined = undefined;
+    let assignedUserEmail: string | undefined = undefined;
+    let phone: string | undefined = undefined;
+    let linkedin: string | undefined = undefined;
+    
+    if (parts.length > 1) {
+      const metadataLines = parts[1].split('\n');
+      metadataLines.forEach(line => {
+        const colonIndex = line.indexOf(':');
+        if (colonIndex > -1) {
+          const key = line.substring(0, colonIndex).trim();
+          const val = line.substring(colonIndex + 1).trim();
+          if (key === 'color') color = val || undefined;
+          if (key === 'assignedUserId') assignedUserId = val || undefined;
+          if (key === 'assignedUserEmail') assignedUserEmail = val || undefined;
+          if (key === 'phone') phone = val || undefined;
+          if (key === 'linkedin') linkedin = val || undefined;
+        }
+      });
+    }
+    
+    return {
+      ...contact,
+      color,
+      assignedUserId,
+      assignedUserEmail,
+      phone,
+      linkedin,
+      hostingCredentials: cleanCredentials
+    };
+  },
+
+  serializeContactMetadata(contact: ClientContact): any {
+    if (!contact) return contact;
+    let metadataStr = '';
+    if (contact.color || contact.assignedUserId || contact.assignedUserEmail || contact.phone || contact.linkedin) {
+      metadataStr = '\n\n---METADATA---';
+      if (contact.color) metadataStr += `\ncolor: ${contact.color}`;
+      if (contact.assignedUserId) metadataStr += `\nassignedUserId: ${contact.assignedUserId}`;
+      if (contact.assignedUserEmail) metadataStr += `\nassignedUserEmail: ${contact.assignedUserEmail}`;
+      if (contact.phone) metadataStr += `\nphone: ${contact.phone}`;
+      if (contact.linkedin) metadataStr += `\nlinkedin: ${contact.linkedin}`;
+    }
+    const cleanCredentials = (contact.hostingCredentials || '').split('\n\n---METADATA---')[0];
+    
+    // Create a database-safe copy without custom props that are not database columns
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { color, assignedUserId, assignedUserEmail, phone, linkedin, ...dbSafeContact } = contact;
+    return {
+      ...dbSafeContact,
+      hostingCredentials: cleanCredentials + metadataStr
+    };
+  },
+
   async getContacts(userId?: string): Promise<ClientContact[]> {
     let query = supabase.from('contacts').select('*');
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []) as ClientContact[];
+    const raw = data || [];
+    return raw.map((c: any) => this.parseContactMetadata(c));
   },
 
   async insertContact(contact: ClientContact, userId?: string): Promise<void> {
-    const payload = { ...contact, user_id: userId || null };
+    const serialized = this.serializeContactMetadata(contact);
+    const payload = { ...serialized, user_id: userId || null };
     const { error } = await supabase.from('contacts').insert(payload);
     if (error) throw error;
   },
 
   async updateContact(contact: ClientContact, userId?: string): Promise<void> {
-    const payload = { ...contact, user_id: userId || null };
+    const serialized = this.serializeContactMetadata(contact);
+    const payload = { ...serialized, user_id: userId || null };
     const { error } = await supabase.from('contacts').update(payload).eq('id', contact.id);
     if (error) throw error;
   },
@@ -374,26 +476,75 @@ export const db = {
     if (error) throw error;
   },
 
+  // --- ALTHERA CONTRACTS ---
+  async getContractsAlthera(userId?: string): Promise<any[]> {
+    const { data, error } = await supabase.from('contracts_althera').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('contracts_althera table read error:', error.message);
+      return [];
+    }
+    return data || [];
+  },
+
+  async insertContractAlthera(contract: any, userId?: string): Promise<void> {
+    const payload = { ...contract, user_id: userId || null };
+    const { error } = await supabase.from('contracts_althera').insert(payload);
+    if (error) throw error;
+  },
+
+  async updateContractAlthera(contract: any, userId?: string): Promise<void> {
+    const payload = { ...contract, user_id: userId || null };
+    const { error } = await supabase.from('contracts_althera').update(payload).eq('id', contract.id);
+    if (error) throw error;
+  },
+
+  async deleteContractAlthera(id: string, _userId?: string): Promise<void> {
+    const { error } = await supabase.from('contracts_althera').delete().eq('id', id);
+    if (error) throw error;
+  },
+
   // --- METADATA HELPERS FOR BACKWARD COMPATIBILITY ---
   parseEventMetadata(event: any): CalendarEvent {
     if (!event) return event;
     const description = event.description || '';
-    const match = description.match(/---METADATA---\nstatus: (done|postponed|pending)(?:\nparentEventId: ([^\n]+))?/);
+    const parts = description.split('\n\n---METADATA---');
+    const cleanDescription = parts[0];
     
     let status: 'pending' | 'done' | 'postponed' = 'pending';
     let parentEventId: string | undefined = undefined;
-    let cleanDescription = description;
+    let alias: string | undefined = undefined;
+    let color: string | undefined = undefined;
+    let assignedUserId: string | undefined = undefined;
+    let assignedUserEmail: string | undefined = undefined;
+    let meetingUrl: string | undefined = undefined;
     
-    if (match) {
-      status = match[1] as any;
-      parentEventId = match[2] || undefined;
-      cleanDescription = description.split('\n\n---METADATA---')[0];
+    if (parts.length > 1) {
+      const metadataLines = parts[1].split('\n');
+      metadataLines.forEach(line => {
+        const colonIndex = line.indexOf(':');
+        if (colonIndex > -1) {
+          const key = line.substring(0, colonIndex).trim();
+          const val = line.substring(colonIndex + 1).trim();
+          if (key === 'status') status = val as any;
+          if (key === 'parentEventId') parentEventId = val || undefined;
+          if (key === 'alias') alias = val || undefined;
+          if (key === 'color') color = val || undefined;
+          if (key === 'assignedUserId') assignedUserId = val || undefined;
+          if (key === 'assignedUserEmail') assignedUserEmail = val || undefined;
+          if (key === 'meetingUrl') meetingUrl = val || undefined;
+        }
+      });
     }
     
     return {
       ...event,
       status,
       parentEventId,
+      alias,
+      color,
+      assignedUserId,
+      assignedUserEmail,
+      meetingUrl,
       description: cleanDescription
     };
   },
@@ -405,10 +556,19 @@ export const db = {
     if (event.parentEventId) {
       metadataStr += `\nparentEventId: ${event.parentEventId}`;
     }
+    if (event.alias) metadataStr += `\nalias: ${event.alias}`;
+    if (event.color) metadataStr += `\ncolor: ${event.color}`;
+    if (event.assignedUserId) metadataStr += `\nassignedUserId: ${event.assignedUserId}`;
+    if (event.assignedUserEmail) metadataStr += `\nassignedUserEmail: ${event.assignedUserEmail}`;
+    if (event.meetingUrl) metadataStr += `\nmeetingUrl: ${event.meetingUrl}`;
+    
     const cleanDescription = (event.description || '').split('\n\n---METADATA---')[0];
     
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { status: _status, parentEventId: _parent, alias: _alias, color: _color, assignedUserId: _assignedUserId, assignedUserEmail: _assignedUserEmail, meetingUrl: _meetingUrl, ...dbSafeEvent } = event;
+    
     return {
-      ...event,
+      ...dbSafeEvent,
       description: cleanDescription + metadataStr
     };
   },
