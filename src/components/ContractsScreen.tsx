@@ -40,7 +40,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   // Real-time editable parameters for Contract
   const [clientName, setClientName] = useState('D./Dña. Ignacio Martin');
   const [clientDni, setClientDni] = useState('45678912A');
-  const [clientAddress, setClientAddress] = useState('Avenida de los Rosales, Nº 45, Granada');
+  const [clientAddress, setClientAddress] = useState('Avenida de los Rosales, Nº 45, Ibiza');
   const [clientPhone, setClientPhone] = useState('+34 612 345 678');
   const [clientEmail, setClientEmail] = useState('contacto@cliente.com');
   
@@ -52,8 +52,8 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
   // Specific Web service terms
   const [deliveryDays, setDeliveryDays] = useState('20');
-  const [courtCity, setCourtCity] = useState('Granada');
-  const [signingCity, setSigningCity] = useState('Granada');
+  const [courtCity, setCourtCity] = useState('Ibiza');
+  const [signingCity, setSigningCity] = useState('Ibiza');
   
   // Custom Date
   const [signingDay, setSigningDay] = useState(new Date().getDate().toString());
@@ -89,7 +89,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       if (contact) {
         setClientName(contact.name || 'D./Dña. Ignacio Martin');
         setClientDni(contact.id || 'N/A');
-        setClientAddress(contact.location || 'Granada');
+        setClientAddress(contact.location || 'Ibiza');
         setClientPhone(contact.phone || '');
         setClientEmail(contact.email || '');
       }
@@ -106,13 +106,17 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
     return d.toISOString().split('T')[0];
   });
   const [taxPercentage, setTaxPercentage] = useState(21);
-  const [paymentDetails, setPaymentDetails] = useState('ES45 2100 0456 1234 5678 9012 (CaixaBank - Althera Solutions)');
+  const [paymentDetails, setPaymentDetails] = useState('IE84 REVO 9903 6065 8046 06');
+  const [bankBeneficiary, setBankBeneficiary] = useState('Ignacio Martin Gonzalez');
+  const [bankSwift, setBankSwift] = useState('REVOIE23');
+  const [bankNameAddress, setBankNameAddress] = useState('Revolut Bank UAB, 2 Dublin Landings, North Dock, Dublin 1, D01 V4A3, Ireland');
+  const [bankCorrespondentBic, setBankCorrespondentBic] = useState('CHASDEFX');
 
   // Selected client for invoice prefill
   const [invoiceClientId, setInvoiceClientId] = useState('');
   const [invoiceClientName, setInvoiceClientName] = useState('Ignacio Martin Solutions');
   const [invoiceClientDni, setInvoiceClientDni] = useState('B18765432');
-  const [invoiceClientAddress, setInvoiceClientAddress] = useState('Camino de Ronda 120, Granada');
+  const [invoiceClientAddress, setInvoiceClientAddress] = useState('Camino de Ronda 120, Ibiza');
   const [invoiceClientEmail, setInvoiceClientEmail] = useState('facturacion@ignacio.com');
 
   useEffect(() => {
@@ -121,7 +125,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       if (contact) {
         setInvoiceClientName(contact.company !== 'Independent' ? contact.company : contact.name);
         setInvoiceClientDni('DNI/CIF: ' + (contact.hostingCredentials?.split('\n')[0] || 'M-451290'));
-        setInvoiceClientAddress(contact.location || 'Camino de Ronda 120, Granada');
+        setInvoiceClientAddress(contact.location || 'Camino de Ronda 120, Ibiza');
         setInvoiceClientEmail(contact.email || '');
       }
     }
@@ -815,14 +819,55 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
               </div>
 
               {/* Payment info notes */}
-              <div>
-                <label className="text-[8px] font-mono text-slate-500 block mb-1">Información de Pago (IBAN / Cuenta)</label>
-                <input
-                  type="text"
-                  value={paymentDetails}
-                  onChange={(e) => setPaymentDetails(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
-                />
+              <div className="space-y-3.5 border-t border-white/5 pt-3.5 mt-2">
+                <span className="text-[10px] font-mono text-amber-500/85 uppercase tracking-wider font-semibold">Datos Bancarios de Transferencia</span>
+                <div>
+                  <label className="text-[8px] font-mono text-slate-500 block mb-1">Beneficiario</label>
+                  <input
+                    type="text"
+                    value={bankBeneficiary}
+                    onChange={(e) => setBankBeneficiary(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] font-mono text-slate-500 block mb-1">IBAN de Ingreso</label>
+                  <input
+                    type="text"
+                    value={paymentDetails}
+                    onChange={(e) => setPaymentDetails(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-105 select-all font-mono"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[8px] font-mono text-slate-500 block mb-1">BIC / SWIFT</label>
+                    <input
+                      type="text"
+                      value={bankSwift}
+                      onChange={(e) => setBankSwift(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono text-center"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[8px] font-mono text-slate-500 block mb-1">BIC Banco Corresponsal</label>
+                    <input
+                      type="text"
+                      value={bankCorrespondentBic}
+                      onChange={(e) => setBankCorrespondentBic(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-mono text-center"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[8px] font-mono text-slate-500 block mb-1">Nombre y Dirección del Banco</label>
+                  <textarea
+                    rows={2}
+                    value={bankNameAddress}
+                    onChange={(e) => setBankNameAddress(e.target.value)}
+                    className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100 resize-none"
+                  />
+                </div>
               </div>
 
             </div>
@@ -1060,8 +1105,8 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                     <p className="font-bold text-slate-900 text-xs mt-1">Althera Solutions S.L.</p>
                     <p className="text-slate-500 text-[10px] mt-1 space-y-0.5 leading-normal">
                       <span>CIF: B-18974534</span><br />
-                      <span>Calle Gran Vía de Colón, Nº 14, 2ºB</span><br />
-                      <span>18001 - Granada, España</span><br />
+                      <span>Avenida de España, Nº 10, 1ºA</span><br />
+                      <span>07800 - Ibiza, España</span><br />
                       <span>administracion@althera.io</span>
                     </p>
                   </div>
@@ -1133,19 +1178,40 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 </div>
 
                 {/* Bottom Legal disclaimer & payment */}
-                <div className="bg-neutral-50 rounded-xl p-4 border border-dashed border-neutral-200 text-[10px] text-neutral-500 font-sans space-y-1 mt-6">
-                  <p className="font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1">
+                <div className="bg-neutral-50 rounded-xl p-4 border border-dashed border-neutral-200 text-[10px] text-neutral-500 font-sans space-y-2 mt-6">
+                  <p className="font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1 border-b border-neutral-200 pb-1">
                     <DollarSign className="w-3.5 h-3.5 text-amber-700" />
-                    <span>Instrucciones de Pago e Ingreso Bancario</span>
+                    <span>Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)</span>
                   </p>
-                  <p>
-                    Rogamos efectúen la transferencia por el importe total indicado a la cuenta de CaixaBank facilitada a continuación, indicando el número de factura como concepto de referencia bancaria:
+                  <p className="text-[9px] leading-snug">
+                    Rogamos efectúen el ingreso por transferencia por el importe total indicado a la cuenta de Revolut facilitada a continuación, indicando el número de factura <strong>{invoiceNumber}</strong> como referencia:
                   </p>
-                  <p className="font-mono text-neutral-800 font-bold bg-white border border-neutral-150 p-1.5 rounded text-center select-all mt-1">
-                    IBAN: {paymentDetails}
-                  </p>
-                  <p className="pt-2 text-[9px] italic">
-                    Althera Solutions, S.L. inscrita en el Registro Mercantil de Granada, Tomo 1450, Folio 120, Hoja GR-45600. Condición de vencimiento a 15 días tras emisión del servicio.
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 bg-white border border-neutral-150 rounded-xl p-3 text-[9.5px]">
+                    <div>
+                      <span className="text-neutral-400">Beneficiario:</span><br />
+                      <strong className="text-neutral-800 font-semibold">{bankBeneficiary}</strong>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400">IBAN Euro:</span><br />
+                      <strong className="text-neutral-800 font-mono select-all font-semibold">{paymentDetails}</strong>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400">Código BIC/SWIFT:</span><br />
+                      <strong className="text-neutral-800 font-mono font-semibold">{bankSwift}</strong>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400">BIC del Banco Corresponsal:</span><br />
+                      <strong className="text-neutral-800 font-mono font-semibold">{bankCorrespondentBic}</strong>
+                    </div>
+                    <div className="md:col-span-2 border-t border-neutral-100 pt-1.5 mt-1">
+                      <span className="text-neutral-400">Nombre y Dirección del Banco:</span><br />
+                      <span className="text-neutral-700">{bankNameAddress}</span>
+                    </div>
+                  </div>
+
+                  <p className="pt-1.5 text-[9px] italic border-t border-neutral-200 mt-2">
+                    Althera Solutions, S.L. inscrita en el Registro Mercantil de Ibiza, Tomo 1450, Folio 120, Hoja IB-45600. Condición de vencimiento a 15 días tras emisión del servicio.
                   </p>
                 </div>
 
