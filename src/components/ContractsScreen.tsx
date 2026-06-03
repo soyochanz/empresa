@@ -16,7 +16,8 @@ import {
   MapPin, 
   Layers, 
   Info,
-  DollarSign
+  DollarSign,
+  Search
 } from 'lucide-react';
 
 interface ContractsScreenProps {
@@ -39,6 +40,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const [savedContracts, setSavedContracts] = useState<any[]>([]);
   const [selectedContractIdInDb, setSelectedContractIdInDb] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [contractSearchText, setContractSearchText] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -538,16 +540,49 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 <label className="text-[10px] font-mono text-amber-500 uppercase tracking-widest font-bold flex items-center gap-1.5">
                   <FileText className="w-3.5 h-3.5" /> Contrato de Althera (BD)
                 </label>
+                
+                {/* Search Bar for Contract ID / Client Name */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 w-3.5 h-3.5 font-bold" />
+                  <input
+                    type="text"
+                    value={contractSearchText}
+                    onChange={(e) => setContractSearchText(e.target.value)}
+                    placeholder="Buscar contrato por ID o cliente..."
+                    className="w-full bg-black border border-neutral-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500 placeholder:text-neutral-500"
+                  />
+                  {contractSearchText && (
+                    <button 
+                      type="button"
+                      onClick={() => setContractSearchText('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex gap-2">
                   <select
                     value={selectedContractIdInDb}
                     onChange={(e) => handleLoadContract(e.target.value)}
                     className="flex-1 bg-black border border-neutral-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="">-- Crear Nuevo Contrato --</option>
-                    {savedContracts.map(c => (
+                    <option value="">-- {contractSearchText ? `Resultados (${savedContracts.filter(c => {
+                      const term = contractSearchText.trim().toLowerCase();
+                      const matchId = (c.id || '').toLowerCase().includes(term);
+                      const matchName = (c.clientName || '').toLowerCase().includes(term);
+                      return matchId || matchName;
+                    }).length})` : 'Crear Nuevo Contrato'} --</option>
+                    {savedContracts.filter(c => {
+                      const term = contractSearchText.trim().toLowerCase();
+                      if (!term) return true;
+                      const matchId = (c.id || '').toLowerCase().includes(term);
+                      const matchName = (c.clientName || '').toLowerCase().includes(term);
+                      return matchId || matchName;
+                    }).map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.clientName ? c.clientName.replace('D./Dña. ', '') : 'Sin nombre'} ({c.signingCity || 'Ibiza'} - {c.selectedModality === 'single' ? 'Pago Único' : c.selectedModality === 'fin3' ? '3 Meses' : '4 Meses'})
+                        [{c.id}] {c.clientName ? c.clientName.replace('D./Dña. ', '') : 'Sin nombre'} ({c.selectedModality === 'single' ? 'Único' : c.selectedModality === 'fin3' ? '3 pl.' : '4 pl.'})
                       </option>
                     ))}
                   </select>
@@ -1107,9 +1142,12 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
               <div className="space-y-6 text-xs text-justify text-neutral-800 tracking-normal leading-relaxed">
                 
                 {/* Contract Title */}
-                <h3 className="text-center font-bold text-sm uppercase tracking-wide text-neutral-950 font-sans mb-6">
+                <h3 className="text-center font-bold text-sm uppercase tracking-wide text-neutral-950 font-sans mb-2">
                   CONTRATO DE PRESTACIÓN DE SERVICIOS DE DESARROLLO WEB
                 </h3>
+                <div className="text-center text-[10px] font-mono text-neutral-550 mb-6 uppercase tracking-wider">
+                  CÓDIGO DE REGISTRO: <span className="font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">{selectedContractIdInDb || 'BORRADOR_PENDIENTE'}</span>
+                </div>
 
                 {/* Reunidos Statement info */}
                 <p>

@@ -159,6 +159,31 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
 
   const netProfit = totalIncomes - totalExpenses;
 
+  // Cálculo de Saldos Consolidado y Pendiente según requerimiento
+  const consolidatedIncomes = transactions
+    .filter(t => t.type === 'income' && t.status === 'paid')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const consolidatedExpenses = transactions
+    .filter(t => t.type === 'expense' && t.status === 'paid')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const consolidatedBalance = consolidatedIncomes - consolidatedExpenses;
+
+  const pendingIncomes = transactions
+    .filter(t => t.type === 'income' && t.status === 'pending')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const pendingExpenses = transactions
+    .filter(t => t.type === 'expense' && t.status === 'pending')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const unpaidInvoicesTotal = invoices
+    .filter(inv => inv.status === 'sent' || inv.status === 'overdue')
+    .reduce((sum, inv) => sum + inv.total, 0);
+
+  const pendingBalance = pendingIncomes + unpaidInvoicesTotal - pendingExpenses;
+
   // Filter transaction categories
   const categories = ['All', ...Array.from(new Set(transactions.map(t => t.category)))];
 
@@ -881,7 +906,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   // Transaction selection and calculations
   const filteredTxs = transactions.filter(t => {
     const matchesSearch = t.description.toLowerCase().includes(txSearch.toLowerCase()) || 
-                          t.category.toLowerCase().includes(txSearch.toLowerCase());
+                          t.category.toLowerCase().includes(txSearch.toLowerCase()) ||
+                          t.id.toLowerCase().includes(txSearch.toLowerCase());
     const matchesType = txTypeFilter === 'all' || t.type === txTypeFilter;
     const matchesCategory = txCategoryFilter === 'All' || t.category === txCategoryFilter;
     return matchesSearch && matchesType && matchesCategory;
@@ -1063,67 +1089,67 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
       {/* Financial Bento Scoreboard Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         
-        {/* Metric 1: Incomes */}
+        {/* Metric 1: Saldo Consolidado */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-emerald-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-emerald-500/[0.02]">
           <div className="absolute top-5 right-5 bg-emerald-500/10 rounded-2xl p-3 border border-emerald-500/10 group-hover:scale-105 transition-transform duration-300">
-            <ArrowUpRight className="w-5 h-5 text-emerald-400" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
           </div>
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-all duration-500" />
-          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Ingresos Totales</span>
-          <h3 className="text-3xl font-black text-white mt-2 tracking-tight font-serif select-all">
-            {totalIncomes.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-emerald-400 text-lg ml-1 font-sans">€</span>
+          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Saldo Consolidado</span>
+          <h3 className="text-3px font-black text-white mt-2 tracking-tight font-serif select-all text-3xl">
+            {consolidatedBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-emerald-400 text-lg ml-1 font-sans">€</span>
           </h3>
           <p className="text-[10px] text-emerald-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>Fondo bruto consolidado</span>
+            <span>Fondos liquidados</span>
           </p>
         </div>
 
-        {/* Metric 2: Expenses */}
+        {/* Metric 2: Saldo Pendiente */}
+        <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-amber-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-amber-500/[0.02]">
+          <div className="absolute top-5 right-5 bg-amber-500/10 rounded-2xl p-3 border border-amber-500/10 group-hover:scale-105 transition-transform duration-300">
+            <Clock className="w-5 h-5 text-amber-400" />
+          </div>
+          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl group-hover:bg-amber-500/10 transition-all duration-500" />
+          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Saldo Pendiente</span>
+          <h3 className="text-3px font-black text-white mt-2 tracking-tight font-serif select-all text-3xl">
+            {pendingBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-amber-400 text-lg ml-1 font-sans">€</span>
+          </h3>
+          <p className="text-[10px] text-amber-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
+            <Repeat className="w-3.5 h-3.5 animate-pulse" />
+            <span>Por cobrar o procesar</span>
+          </p>
+        </div>
+
+        {/* Metric 3: Ingresos Totales */}
+        <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-blue-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-blue-500/[0.02]">
+          <div className="absolute top-5 right-5 bg-blue-500/10 rounded-2xl p-3 border border-blue-500/10 group-hover:scale-105 transition-transform duration-300">
+            <ArrowUpRight className="w-5 h-5 text-blue-400" />
+          </div>
+          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-all duration-500" />
+          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Ingresos Totales</span>
+          <h3 className="text-3px font-black text-white mt-2 tracking-tight font-serif select-all text-3xl">
+            {totalIncomes.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-blue-450 text-lg ml-1 font-sans">€</span>
+          </h3>
+          <p className="text-[10px] text-blue-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Volumen total facturado</span>
+          </p>
+        </div>
+
+        {/* Metric 4: Gastos Totales */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-rose-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-rose-500/[0.02]">
           <div className="absolute top-5 right-5 bg-rose-500/10 rounded-2xl p-3 border border-rose-500/10 group-hover:scale-105 transition-transform duration-300">
             <ArrowDownLeft className="w-5 h-5 text-rose-400" />
           </div>
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl group-hover:bg-rose-500/10 transition-all duration-500" />
           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Gastos Totales</span>
-          <h3 className="text-3xl font-black text-white mt-2 tracking-tight font-serif select-all">
-            {totalExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-rose-450 text-lg ml-1 font-sans">€</span>
+          <h3 className="text-3px font-black text-white mt-2 tracking-tight font-serif select-all text-3xl">
+            {totalExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-rose-400 text-lg ml-1 font-sans">€</span>
           </h3>
           <p className="text-[10px] text-rose-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
             <TrendingDown className="w-3.5 h-3.5" />
-            <span>Incluyendo fijos y variables</span>
-          </p>
-        </div>
-
-        {/* Metric 3: Net Profit */}
-        <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-blue-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-blue-500/[0.02]">
-          <div className={`absolute top-5 right-5 rounded-2xl p-3 border group-hover:scale-105 transition-transform duration-300 ${netProfit >= 0 ? 'bg-emerald-500/10 border-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 border-rose-500/10 text-rose-400'}`}>
-            <DollarSign className="w-5 h-5" />
-          </div>
-          <div className={`absolute -right-6 -bottom-6 w-24 h-24 rounded-full blur-2xl transition-all duration-500 ${netProfit >= 0 ? 'bg-emerald-500/5 group-hover:bg-emerald-500/10' : 'bg-rose-500/5 group-hover:bg-rose-500/10'}`} />
-          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Beneficio Neto</span>
-          <h3 className={`text-3xl font-black mt-2 tracking-tight font-serif select-all ${netProfit >= 0 ? 'text-white' : 'text-rose-400'}`}>
-            {netProfit.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className={`text-lg ml-1 font-sans ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-450'}`}>€</span>
-          </h3>
-          <p className="text-[10px] text-blue-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Margen de operación real</span>
-          </p>
-        </div>
-
-        {/* Metric 4: Recurring Tracker */}
-        <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-purple-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-purple-500/[0.02]">
-          <div className="absolute top-5 right-5 bg-purple-500/10 rounded-2xl p-3 border border-purple-500/10 group-hover:scale-105 transition-transform duration-300">
-            <Repeat className="w-5 h-5 text-purple-400" />
-          </div>
-          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl group-hover:bg-purple-500/10 transition-all duration-500" />
-          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Gastos Recurrentes</span>
-          <h3 className="text-3xl font-black text-white mt-2 tracking-tight font-serif select-all">
-            {recurringExpenses.reduce((sum, e) => sum + e.amount, 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-purple-400 text-lg ml-1 font-sans">€</span>
-          </h3>
-          <p className="text-[10px] text-purple-300/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
-            <Clock className="w-3.5 h-3.5" />
-            <span>{recurringExpenses.length} Suscripciones activas</span>
+            <span>Fijos y variables registrados</span>
           </p>
         </div>
 
@@ -1284,6 +1310,9 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                         <tr key={t.id} className="hover:bg-white/[0.01] text-xs transition-colors group">
                           <td className="p-4 text-left">
                             <div className="max-w-xs sm:max-w-md text-left">
+                              <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block leading-none mb-1 select-all">
+                                {t.id}
+                              </span>
                               <span className="font-bold text-white text-xs block leading-snug group-hover:text-emerald-400 transition-colors">
                                 {t.description}
                               </span>
