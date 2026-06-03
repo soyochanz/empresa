@@ -34,6 +34,7 @@ interface CrmScreenProps {
   onDeleteContact?: (id: string) => void;
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
   usersList?: PanelUser[];
+  onAddProfile?: (profile: { name: string; email: string }) => void;
 }
 
 export default function CrmScreen({ 
@@ -43,11 +44,17 @@ export default function CrmScreen({
   onUpdateContact, 
   onDeleteContact,
   onNavigate,
-  usersList = REGISTERED_USERS
+  usersList = REGISTERED_USERS,
+  onAddProfile
 }: CrmScreenProps) {
   const [selectedContactId, setSelectedContactId] = useState<string>('c2'); // default to Marcus Chen
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Quick collaborator states
+  const [showQuickAddCollab, setShowQuickAddCollab] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickEmail, setQuickEmail] = useState('');
   
   // Tab/filter for Active vs Archived contacts
   const [crmFilter, setCrmFilter] = useState<'active' | 'archived'>('active');
@@ -550,32 +557,83 @@ export default function CrmScreen({
                   </div>
                   
                   {/* Select allocation dropdown */}
-                  <select
-                    value={selectedContact.assignedUserEmail || ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const matched = usersList.find(u => u.email === val);
-                      if (onUpdateContact) {
-                        onUpdateContact({
-                          ...selectedContact,
-                          assignedUserEmail: val || undefined,
-                          assignedUserId: matched ? matched.id : undefined
-                        });
-                        const toast = document.getElementById('toast-msg');
-                        if (toast) {
-                          toast.innerText = `Asignación guardada: ${matched ? matched.name : 'Sin asignar'}`;
-                          toast.classList.remove('opacity-0');
-                          setTimeout(() => toast.classList.add('opacity-0'), 2500);
-                        }
-                      }
-                    }}
-                    className="bg-slate-900 border border-white/10 text-[10px] rounded-lg py-1 px-2 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                  >
-                    <option value="">-- Unassigned --</option>
-                    {usersList.map(u => (
-                      <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
-                    ))}
-                  </select>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button 
+                      type="button" 
+                      onClick={() => setShowQuickAddCollab(!showQuickAddCollab)}
+                      className="text-[9px] text-[#D4AF37] hover:underline self-end"
+                    >
+                      {showQuickAddCollab ? 'Cancel' : '+ Create User'}
+                    </button>
+                    {showQuickAddCollab ? (
+                      <div className="bg-slate-900 border border-amber-500/10 p-2 rounded-lg space-y-1 text-left w-48">
+                        <input 
+                          type="text"
+                          placeholder="Name"
+                          value={quickName}
+                          onChange={(e) => setQuickName(e.target.value)}
+                          className="w-full bg-slate-950 border border-white/5 rounded px-2 py-1 text-[10px] text-white focus:outline-none"
+                        />
+                        <div className="flex gap-1">
+                          <input 
+                            type="email"
+                            placeholder="Email"
+                            value={quickEmail}
+                            onChange={(e) => setQuickEmail(e.target.value)}
+                            className="flex-1 bg-slate-950 border border-white/5 rounded px-2 py-1 text-[10px] text-white focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!quickName.trim() || !quickEmail.trim()) return;
+                              if (onAddProfile) {
+                                onAddProfile({ name: quickName.trim(), email: quickEmail.trim() });
+                                if (onUpdateContact) {
+                                  onUpdateContact({
+                                    ...selectedContact,
+                                    assignedUserEmail: quickEmail.trim(),
+                                  });
+                                }
+                                setQuickName('');
+                                setQuickEmail('');
+                                setShowQuickAddCollab(false);
+                              }
+                            }}
+                            className="px-1.5 bg-[#D4AF37] text-black text-[10px] font-bold rounded"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedContact.assignedUserEmail || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const matched = usersList.find(u => u.email === val);
+                          if (onUpdateContact) {
+                            onUpdateContact({
+                              ...selectedContact,
+                              assignedUserEmail: val || undefined,
+                              assignedUserId: matched ? matched.id : undefined
+                            });
+                            const toast = document.getElementById('toast-msg');
+                            if (toast) {
+                              toast.innerText = `Asignación guardada: ${matched ? matched.name : 'Sin asignar'}`;
+                              toast.classList.remove('opacity-0');
+                              setTimeout(() => toast.classList.add('opacity-0'), 2500);
+                            }
+                          }
+                        }}
+                        className="bg-slate-900 border border-white/10 text-[10px] rounded-lg py-1 px-2 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[140px]"
+                      >
+                        <option value="">-- Unassigned --</option>
+                        {usersList.map(u => (
+                          <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -947,17 +1005,64 @@ export default function CrmScreen({
 
               {/* Select assigned user */}
               <div className="space-y-1 animate-fade-in">
-                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Assign Panel User</label>
-                <select 
-                  value={newAssignedUserEmail}
-                  onChange={(e) => setNewAssignedUserEmail(e.target.value)}
-                  className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="">-- No Assignment --</option>
-                  {usersList.map(u => (
-                    <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
-                  ))}
-                </select>
+                <div className="flex justify-between items-center mb-0.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Assign Panel User</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowQuickAddCollab(!showQuickAddCollab)}
+                    className="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5"
+                  >
+                    {showQuickAddCollab ? 'Cancel' : '+ Create User'}
+                  </button>
+                </div>
+                
+                {showQuickAddCollab ? (
+                  <div className="bg-[#050b18] border border-blue-500/20 p-3 rounded-xl space-y-2 mt-1">
+                    <input 
+                      type="text"
+                      placeholder="Collaborator full name"
+                      value={quickName}
+                      onChange={(e) => setQuickName(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-650 focus:outline-none focus:border-blue-500"
+                    />
+                    <div className="flex gap-2">
+                      <input 
+                        type="email"
+                        placeholder="Email (e.g. mgnacho96@gmail.com)"
+                        value={quickEmail}
+                        onChange={(e) => setQuickEmail(e.target.value)}
+                        className="flex-1 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-650 focus:outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!quickName.trim() || !quickEmail.trim()) return;
+                          if (onAddProfile) {
+                            onAddProfile({ name: quickName.trim(), email: quickEmail.trim() });
+                            setNewAssignedUserEmail(quickEmail.trim());
+                            setQuickName('');
+                            setQuickEmail('');
+                            setShowQuickAddCollab(false);
+                          }
+                        }}
+                        className="px-3 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-500 transition cursor-pointer"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <select 
+                    value={newAssignedUserEmail}
+                    onChange={(e) => setNewAssignedUserEmail(e.target.value)}
+                    className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">-- No Assignment --</option>
+                    {usersList.map(u => (
+                      <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="pt-4 flex gap-4">

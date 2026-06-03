@@ -26,6 +26,7 @@ interface CitasScreenProps {
   onUpdateEvent: (event: CalendarEvent) => void;
   onDeleteEvent: (id: string) => void;
   usersList?: any[];
+  onAddProfile?: (profile: { name: string; email: string }) => void;
 }
 
 const PRESET_COLORS = [
@@ -43,7 +44,8 @@ export default function CitasScreen({
   onAddEvent, 
   onUpdateEvent, 
   onDeleteEvent,
-  usersList = []
+  usersList = [],
+  onAddProfile
 }: CitasScreenProps) {
   // Filters & State
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,12 +62,19 @@ export default function CitasScreen({
   const [linkedContactId, setLinkedContactId] = useState('');
   const [newAlias, setNewAlias] = useState('');
   const [newColor, setNewColor] = useState('#D4AF37');
+  const [newAssignedUserEmail, setNewAssignedUserEmail] = useState('');
+
+  // Quick collaborator states
+  const [showQuickAddCollab, setShowQuickAddCollab] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickEmail, setQuickEmail] = useState('');
 
   // Individual Appointment Editing state
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editAlias, setEditAlias] = useState('');
   const [editColor, setEditColor] = useState('');
   const [editStatus, setEditStatus] = useState<'pending' | 'done' | 'postponed'>('pending');
+  const [editAssignedUserEmail, setEditAssignedUserEmail] = useState('');
 
   // Submit new appointment
   const handleCreateAppointment = (e: React.FormEvent) => {
@@ -73,6 +82,7 @@ export default function CitasScreen({
     if (!newTitle.trim()) return;
 
     const matchedContact = contacts.find(c => c.id === linkedContactId);
+    const matchedUser = usersList.find(u => u.email === newAssignedUserEmail);
 
     const generatedEvent: CalendarEvent = {
       id: 'ev_' + Date.now().toString().slice(-6),
@@ -85,7 +95,9 @@ export default function CitasScreen({
       linkedContactName: matchedContact ? matchedContact.name : undefined,
       status: 'pending',
       color: newColor,
-      alias: newAlias.trim() || undefined
+      alias: newAlias.trim() || undefined,
+      assignedUserEmail: newAssignedUserEmail || undefined,
+      assignedUserId: matchedUser ? matchedUser.id : undefined
     };
 
     onAddEvent(generatedEvent);
@@ -97,6 +109,7 @@ export default function CitasScreen({
     setNewAlias('');
     setLinkedContactId('');
     setNewColor('#D4AF37');
+    setNewAssignedUserEmail('');
   };
 
   // Quick edit status or color directly
@@ -127,14 +140,18 @@ export default function CitasScreen({
     setEditAlias(event.alias || '');
     setEditColor(event.color || '#D4AF37');
     setEditStatus(event.status || 'pending');
+    setEditAssignedUserEmail(event.assignedUserEmail || '');
   };
 
   const saveRowEdit = (event: CalendarEvent) => {
+    const matchedUser = usersList.find(u => u.email === editAssignedUserEmail);
     onUpdateEvent({
       ...event,
       alias: editAlias.trim() || undefined,
       color: editColor,
-      status: editStatus
+      status: editStatus,
+      assignedUserEmail: editAssignedUserEmail || undefined,
+      assignedUserId: matchedUser ? matchedUser.id : undefined
     });
     setEditingEventId(null);
   };
@@ -272,6 +289,7 @@ export default function CitasScreen({
                 <th className="py-4.5 px-3">Cliente Asignado</th>
                 <th className="py-4.5 px-3">Alias / Notas</th>
                 <th className="py-4.5 px-3">Color de Control</th>
+                <th className="py-4.5 px-3">Asignado a</th>
                 <th className="py-4.5 px-3">Estado</th>
                 <th className="py-4.5 px-6 text-right">Acciones</th>
               </tr>
@@ -400,6 +418,33 @@ export default function CitasScreen({
                                 />
                               ))}
                             </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Assigned User */}
+                      <td className="py-4 px-3 text-left">
+                        {isEditing ? (
+                          <select
+                            value={editAssignedUserEmail}
+                            onChange={(e) => setEditAssignedUserEmail(e.target.value)}
+                            className="bg-neutral-950 border border-neutral-800 text-xs text-slate-350 rounded-xl px-1.5 py-1 focus:outline-none focus:border-amber-500 max-w-[130px] cursor-pointer"
+                          >
+                            <option value="">- Sin asignar -</option>
+                            {usersList.map(u => (
+                              <option key={u.id} value={u.email}>{u.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div>
+                            {item.assignedUserEmail ? (
+                              <div className="inline-flex items-center gap-1.5 bg-blue-950/40 border border-blue-500/20 px-2.5 py-1 rounded-full text-xs text-slate-200">
+                                <User className="w-3 h-3 text-blue-400" />
+                                <span className="truncate max-w-[85px]">{usersList.find(u => u.email === item.assignedUserEmail)?.name || item.assignedUserEmail}</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-600 text-[11px] italic font-light">- Sin asignar -</span>
+                            )}
                           </div>
                         )}
                       </td>
@@ -556,6 +601,67 @@ export default function CitasScreen({
                     <option key={c.id} value={c.id}>{c.name} ({c.company})</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Asignar a Miembro del Equipo</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowQuickAddCollab(!showQuickAddCollab)}
+                    className="text-[10px] text-amber-400 hover:underline flex items-center gap-0.5"
+                  >
+                    {showQuickAddCollab ? 'Cancelar' : '+ Crear Miembro'}
+                  </button>
+                </div>
+                
+                {showQuickAddCollab ? (
+                  <div className="bg-neutral-900 border border-amber-500/20 p-3 rounded-xl space-y-2 mt-1">
+                    <input 
+                      type="text"
+                      placeholder="Nombre del colaborador"
+                      value={quickName}
+                      onChange={(e) => setQuickName(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                    />
+                    <div className="flex gap-2">
+                      <input 
+                        type="email"
+                        placeholder="Email (ej. nacho@gmail.com)"
+                        value={quickEmail}
+                        onChange={(e) => setQuickEmail(e.target.value)}
+                        className="flex-1 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!quickName.trim() || !quickEmail.trim()) return;
+                          if (onAddProfile) {
+                            onAddProfile({ name: quickName.trim(), email: quickEmail.trim() });
+                            setNewAssignedUserEmail(quickEmail.trim());
+                            setQuickName('');
+                            setQuickEmail('');
+                            setShowQuickAddCollab(false);
+                          }
+                        }}
+                        className="px-3 bg-amber-500 text-black text-xs font-bold rounded-lg hover:bg-amber-400"
+                      >
+                        Crear
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    value={newAssignedUserEmail}
+                    onChange={(e) => setNewAssignedUserEmail(e.target.value)}
+                    className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  >
+                    <option value="">- Sin asignar -</option>
+                    {usersList.map(u => (
+                      <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

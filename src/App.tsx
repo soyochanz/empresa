@@ -139,15 +139,48 @@ export default function App() {
   };
 
   const fetchAndSetProfiles = async (activeUser?: any) => {
+    let localProfiles: any[] = [];
+    const saved = localStorage.getItem('agency_profiles');
+    if (saved) {
+      try { localProfiles = JSON.parse(saved); } catch (err) {}
+    }
+
     try {
       const dbProfiles = await db.getProfiles();
-      const merged = mergeUsers(dbProfiles, activeUser || currentUser);
+      const combined = [...dbProfiles];
+      localProfiles.forEach(lp => {
+        if (!combined.some(u => u.email.toLowerCase() === lp.email.toLowerCase())) {
+          combined.push(lp);
+        }
+      });
+      const merged = mergeUsers(combined, activeUser || currentUser);
       setUsersList(merged);
     } catch (e) {
-      console.warn('Could not fetch profiles from Supabase, using static fallback:', e);
-      const merged = mergeUsers([], activeUser || currentUser);
+      console.warn('Could not fetch profiles from Supabase, using local fallback:', e);
+      const merged = mergeUsers(localProfiles, activeUser || currentUser);
       setUsersList(merged);
     }
+  };
+
+  const handleUpsertProfile = async (profileData: { name: string; email: string }) => {
+    const id = 'usr_' + Date.now().toString();
+    try {
+      await db.upsertProfile({ id, name: profileData.name, email: profileData.email });
+    } catch (e) {
+      console.warn('Could not upsert profile to Supabase, saving locally:', e);
+    }
+
+    let localProfiles: any[] = [];
+    const saved = localStorage.getItem('agency_profiles');
+    if (saved) {
+      try { localProfiles = JSON.parse(saved); } catch (err) {}
+    }
+    if (!localProfiles.some(u => u.email.toLowerCase() === profileData.email.toLowerCase())) {
+      localProfiles.push({ id, name: profileData.name, email: profileData.email });
+      localStorage.setItem('agency_profiles', JSON.stringify(localProfiles));
+    }
+    
+    await fetchAndSetProfiles();
   };
 
   // Sync users list based on session state changes and register current profile
@@ -602,6 +635,7 @@ export default function App() {
             onUpdateEvent={handleUpdateEvent}
             onNavigate={navigateTo}
             usersList={usersList}
+            onAddProfile={handleUpsertProfile}
           />
         );
       case 'crm':
@@ -614,6 +648,7 @@ export default function App() {
             onDeleteContact={handleDeleteContact}
             onNavigate={navigateTo}
             usersList={usersList}
+            onAddProfile={handleUpsertProfile}
           />
         );
       case 'notes':
@@ -653,6 +688,7 @@ export default function App() {
             onUpdateEvent={handleUpdateEvent}
             onDeleteEvent={handleDeleteEvent}
             usersList={usersList}
+            onAddProfile={handleUpsertProfile}
           />
         );
       case 'contratos':

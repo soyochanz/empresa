@@ -171,6 +171,155 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
     window.print();
   };
 
+  // Standalone HTML Download Trigger
+  const handleDownloadHTML = () => {
+    const printArea = document.getElementById('print-area');
+    if (!printArea) return;
+    
+    // Exact mapping of styles for stand-alone fidelity and perfect print formatting
+    const rawHTML = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>\${activeTab === 'contract' ? 'Contrato_Althera' : 'Factura_Althera_' + invoiceNumber}</title>
+  <style>
+    /* Reset margins and establish font family */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f3f4f6;
+      font-family: Georgia, serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    
+    /* Perfect A4 styling dimensions for viewing & printing */
+    .a4-container {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 2.5cm 1.5cm;
+      margin: 20px auto;
+      background-color: white;
+      box-sizing: border-box;
+      position: relative;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      border-radius: 8px;
+    }
+
+    /* Standard Utility styling rules used inside the contract/invoice element */
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .justify-between { justify-content: space-between; }
+    .justify-center { justify-content: center; }
+    .items-center { align-items: center; }
+    .items-start { align-items: flex-start; }
+    .border-b { border-bottom: 2px solid #f3f3f3; }
+    .border-b-2 { border-bottom: 2px solid #cdcdcd; }
+    .border-t { border-top: 2px solid #f3f3f3; }
+    .border-t-2 { border-top: 2px solid #cdcdcd; }
+    .mb-1 { margin-bottom: 0.25rem; }
+    .mb-2 { margin-bottom: 0.5rem; }
+    .mb-4 { margin-bottom: 1rem; }
+    .mb-6 { margin-bottom: 1.5rem; }
+    .mb-8 { margin-bottom: 2rem; }
+    .mb-10 { margin-bottom: 2.5rem; }
+    .mr-2 { margin-right: 0.5rem; }
+    .mr-8 { margin-right: 2rem; }
+    .mt-4 { margin-top: 1rem; }
+    .mt-6 { margin-top: 1.5rem; }
+    .mt-8 { margin-top: 2rem; }
+    .pb-2 { padding-bottom: 0.5rem; }
+    .pb-4 { padding-bottom: 1rem; }
+    .pb-8 { padding-bottom: 2rem; }
+    .pt-4 { padding-top: 1rem; }
+    .pl-4 { padding-left: 1rem; }
+    .gap-1 { gap: 0.25rem; }
+    .gap-2 { gap: 0.5rem; }
+    .gap-4 { gap: 1rem; }
+    .gap-8 { gap: 2rem; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .text-left { text-align: left; }
+    .text-xs { font-size: 0.75rem; }
+    .text-sm { font-size: 0.875rem; }
+    .text-base { font-size: 1rem; }
+    .text-lg { font-size: 1.125rem; }
+    .text-xl { font-size: 1.25rem; }
+    .text-2xl { font-size: 1.5rem; }
+    .text-3xl { font-size: 1.875rem; }
+    .font-sans { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    .font-serif { font-family: Georgia, Cambria, "Times New Roman", Times, serif; }
+    .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .font-bold { font-weight: 700; }
+    .font-semibold { font-weight: 600; }
+    .font-light { font-weight: 300; }
+    .leading-relaxed { line-height: 1.7; }
+    .leading-loose { line-height: 2; }
+    .text-neutral-500 { color: #737373; }
+    .text-neutral-700 { color: #404040; }
+    .text-neutral-900 { color: #171717; }
+    .text-amber-600 { color: #d97706; }
+    .bg-neutral-50 { background-color: #fafafa; }
+    .bg-neutral-100 { background-color: #f5f5f5; }
+    .w-full { width: 100%; }
+    .h-2 { height: 0.5rem; }
+    .rounded-full { border-radius: 9999px; }
+    .bg-amber-500 { background-color: #f59e0b; }
+    .bg-amber-600 { background-color: #d97706; }
+    .align-top { vertical-align: top; }
+    .p-2 { padding: 0.5rem; }
+    .p-3 { padding: 0.75rem; }
+    .p-4 { padding: 1rem; }
+    .px-4 { padding-left: 1rem; padding-right: 1rem; }
+    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+    .border-collapse { border-collapse: collapse; }
+    .border { border: 1px solid #e5e7eb; }
+    .border-neutral-200 { border-color: #e5e7eb; }
+
+    /* Custom print configurations so right-click -> print matches perfectly */
+    @media print {
+      body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: #ffffff !important;
+      }
+      .a4-container {
+        width: 210mm !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        border-radius: 0 !important;
+        page-break-inside: avoid;
+      }
+      @page {
+        size: A4;
+        margin: 1.8cm 1.5cm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="a4-container">
+    \${printArea.innerHTML}
+  </div>
+</body>
+</html>`;
+
+    // Package down as client-side download link
+    const blob = new Blob([rawHTML], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = activeTab === 'contract' ? 'Contrato_Althera.html' : 'Factura_Althera_' + invoiceNumber + '.html';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="p-6 space-y-6">
       
@@ -228,14 +377,26 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
               <span>Controles de Personalización</span>
             </div>
             
-            {/* Direct Print Button */}
-            <button
-              onClick={handlePrint}
-              className="px-3.5 py-1.5 bg-neutral-900 hover:bg-neutral-850 border border-amber-500/20 hover:border-amber-500/40 text-[#D4AF37] text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
-              <span>Imprimir / PDF</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              {/* Standalone HTML Download Button */}
+              <button
+                onClick={handleDownloadHTML}
+                className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-850 border border-amber-500/10 hover:border-amber-500/30 text-slate-300 text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
+                title="Descargar código HTML responsivo optimizado para impresión"
+              >
+                <Download className="w-3.5 h-3.5 text-amber-500" />
+                <span>Descargar HTML</span>
+              </button>
+
+              {/* Direct Print Button */}
+              <button
+                onClick={handlePrint}
+                className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-850 border border-amber-500/20 hover:border-amber-500/40 text-[#D4AF37] text-xs font-bold rounded-xl transition flex items-center gap-1 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <span>Imprimir / PDF</span>
+              </button>
+            </div>
           </div>
 
           {activeTab === 'contract' ? (

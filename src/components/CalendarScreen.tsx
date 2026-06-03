@@ -28,6 +28,7 @@ interface CalendarScreenProps {
   onUpdateEvent: (event: CalendarEvent) => void;
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
   usersList?: PanelUser[];
+  onAddProfile?: (profile: { name: string; email: string }) => void;
 }
 
 export default function CalendarScreen({ 
@@ -38,7 +39,8 @@ export default function CalendarScreen({
   onDeleteEvent,
   onUpdateEvent,
   onNavigate,
-  usersList = REGISTERED_USERS
+  usersList = REGISTERED_USERS,
+  onAddProfile
 }: CalendarScreenProps) {
   
   // High-fidelity pre-selected event (Product Sync)
@@ -53,6 +55,11 @@ export default function CalendarScreen({
   });
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Quick collaborator states
+  const [showQuickAddCollab, setShowQuickAddCollab] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickEmail, setQuickEmail] = useState('');
 
   // Global toggle to view/hide archived events on the calendar grid
   const [showArchivedEvents, setShowArchivedEvents] = useState<boolean>(false);
@@ -1154,17 +1161,64 @@ export default function CalendarScreen({
 
               {/* Assign Panel User dropdown */}
               <div className="space-y-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Assign Panel User</label>
-                <select 
-                  value={newAssignedUserEmail}
-                  onChange={(e) => setNewAssignedUserEmail(e.target.value)}
-                  className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="">-- No Assignee --</option>
-                  {usersList.map(u => (
-                    <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
-                  ))}
-                </select>
+                <div className="flex justify-between items-center mb-0.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Assign Panel User</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowQuickAddCollab(!showQuickAddCollab)}
+                    className="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5"
+                  >
+                    {showQuickAddCollab ? 'Cancel' : '+ Create User'}
+                  </button>
+                </div>
+                
+                {showQuickAddCollab ? (
+                  <div className="bg-[#050b18] border border-blue-500/20 p-3 rounded-xl space-y-2 mt-1">
+                    <input 
+                      type="text"
+                      placeholder="Collaborator full name"
+                      value={quickName}
+                      onChange={(e) => setQuickName(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-650 focus:outline-none focus:border-blue-500"
+                    />
+                    <div className="flex gap-2">
+                      <input 
+                        type="email"
+                        placeholder="Email (e.g. mgnacho96@gmail.com)"
+                        value={quickEmail}
+                        onChange={(e) => setQuickEmail(e.target.value)}
+                        className="flex-1 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-650 focus:outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!quickName.trim() || !quickEmail.trim()) return;
+                          if (onAddProfile) {
+                            onAddProfile({ name: quickName.trim(), email: quickEmail.trim() });
+                            setNewAssignedUserEmail(quickEmail.trim());
+                            setQuickName('');
+                            setQuickEmail('');
+                            setShowQuickAddCollab(false);
+                          }
+                        }}
+                        className="px-3 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-500 transition cursor-pointer"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <select 
+                    value={newAssignedUserEmail}
+                    onChange={(e) => setNewAssignedUserEmail(e.target.value)}
+                    className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">-- No Assignee --</option>
+                    {usersList.map(u => (
+                      <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Link CRM Contacts Multi-Checklist - SEARCH ONLY */}
@@ -1448,17 +1502,64 @@ export default function CalendarScreen({
 
               {/* Assign Panel User dropdown */}
               <div className="space-y-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Assign Panel User</label>
-                <select 
-                  value={editAssignedUserEmail}
-                  onChange={(e) => setEditAssignedUserEmail(e.target.value)}
-                  className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="">-- No Assignee --</option>
-                  {usersList.map(u => (
-                    <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
-                  ))}
-                </select>
+                <div className="flex justify-between items-center mb-0.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Assign Panel User</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowQuickAddCollab(!showQuickAddCollab)}
+                    className="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5"
+                  >
+                    {showQuickAddCollab ? 'Cancel' : '+ Create User'}
+                  </button>
+                </div>
+                
+                {showQuickAddCollab ? (
+                  <div className="bg-[#050b18] border border-blue-500/20 p-3 rounded-xl space-y-2 mt-1">
+                    <input 
+                      type="text"
+                      placeholder="Collaborator full name"
+                      value={quickName}
+                      onChange={(e) => setQuickName(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-650 focus:outline-none focus:border-blue-500"
+                    />
+                    <div className="flex gap-2">
+                      <input 
+                        type="email"
+                        placeholder="Email (e.g. mgnacho96@gmail.com)"
+                        value={quickEmail}
+                        onChange={(e) => setQuickEmail(e.target.value)}
+                        className="flex-1 bg-black border border-neutral-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-650 focus:outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!quickName.trim() || !quickEmail.trim()) return;
+                          if (onAddProfile) {
+                            onAddProfile({ name: quickName.trim(), email: quickEmail.trim() });
+                            setEditAssignedUserEmail(quickEmail.trim());
+                            setQuickName('');
+                            setQuickEmail('');
+                            setShowQuickAddCollab(false);
+                          }
+                        }}
+                        className="px-3 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-500 transition cursor-pointer"
+                      >
+                        Create
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <select 
+                    value={editAssignedUserEmail}
+                    onChange={(e) => setEditAssignedUserEmail(e.target.value)}
+                    className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
+                  >
+                    <option value="">-- No Assignee --</option>
+                    {usersList.map(u => (
+                      <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Associated Clients */}
