@@ -29,6 +29,7 @@ export interface ClientContact {
   assignedUserId?: string;
   assignedUserEmail?: string;
   initials: string;
+  color?: string;
 }
 
 export interface CalendarEvent {

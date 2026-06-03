@@ -311,7 +311,11 @@ export default function CitasScreen({
                   return (
                     <tr 
                       key={item.id} 
-                      className="group/row bg-black/20 hover:bg-amber-500/[0.015] transition-all duration-150 border-b border-neutral-900/40"
+                      className="group/row transition-all duration-150 border-b border-neutral-950/60 hover:brightness-110"
+                      style={{ 
+                        backgroundColor: currentColor ? `${currentColor}25` : 'rgba(0,0,0,0.25)',
+                        borderLeft: `4px solid ${currentColor || '#D4AF37'}`
+                      }}
                     >
                       {/* Title & Info */}
                       <td className="py-4 px-6 text-left max-w-xs">

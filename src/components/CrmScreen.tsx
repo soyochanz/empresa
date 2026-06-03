@@ -96,6 +96,7 @@ export default function CrmScreen({
   const [newLinkedin, setNewLinkedin] = useState('');
   const [newAvatarUrl, setNewAvatarUrl] = useState('');
   const [newAssignedUserEmail, setNewAssignedUserEmail] = useState('');
+  const [newColor, setNewColor] = useState('');
 
   const resetFormFields = () => {
     setNewName('');
@@ -111,6 +112,7 @@ export default function CrmScreen({
     setNewLinkedin('');
     setNewAvatarUrl('');
     setNewAssignedUserEmail('');
+    setNewColor('');
     setEditingContact(null);
   };
 
@@ -154,7 +156,8 @@ export default function CrmScreen({
         avatarUrl: newAvatarUrl || undefined,
         assignedUserEmail: newAssignedUserEmail || undefined,
         assignedUserId: matchedUser ? matchedUser.id : undefined,
-        initials: initials || 'N'
+        initials: initials || 'N',
+        color: newColor || undefined
       };
 
       if (onUpdateContact) {
@@ -180,7 +183,8 @@ export default function CrmScreen({
         avatarUrl: newAvatarUrl || undefined,
         assignedUserEmail: newAssignedUserEmail || undefined,
         assignedUserId: matchedUser ? matchedUser.id : undefined,
-        initials: initials || 'N'
+        initials: initials || 'N',
+        color: newColor || undefined
       };
 
       onAddContact(generatedContact);
@@ -296,13 +300,41 @@ export default function CrmScreen({
                 {filteredContacts.map((contact) => {
                   const isSelected = contact.id === selectedContactId;
 
+                  let bgBgClass = '';
+                  let borderColClass = 'border-l-4 border-transparent';
+
+                  if (contact.color === 'red') {
+                    bgBgClass = isSelected 
+                      ? 'bg-red-900/50 text-white shadow-inner' 
+                      : 'bg-red-950/40 text-red-100 hover:bg-red-950/60';
+                    borderColClass = 'border-l-4 border-red-500';
+                  } else if (contact.color === 'green') {
+                    bgBgClass = isSelected 
+                      ? 'bg-emerald-900/50 text-white shadow-inner' 
+                      : 'bg-emerald-950/40 text-emerald-100 hover:bg-emerald-950/60';
+                    borderColClass = 'border-l-4 border-emerald-500';
+                  } else if (contact.color === 'yellow') {
+                    bgBgClass = isSelected 
+                      ? 'bg-amber-900/40 text-white shadow-inner' 
+                      : 'bg-amber-950/30 text-amber-100 hover:bg-amber-950/50';
+                    borderColClass = 'border-l-4 border-amber-400';
+                  } else if (contact.color === 'blue') {
+                    bgBgClass = isSelected 
+                      ? 'bg-blue-900/50 text-white shadow-inner' 
+                      : 'bg-blue-950/40 text-blue-100 hover:bg-blue-950/60';
+                    borderColClass = 'border-l-4 border-blue-500';
+                  } else {
+                    bgBgClass = isSelected 
+                      ? 'bg-blue-600/10 text-white' 
+                      : 'hover:bg-white/5';
+                    borderColClass = isSelected ? 'border-l-4 border-blue-500' : 'border-l-4 border-transparent';
+                  }
+
                   return (
                     <tr 
                       key={contact.id}
                       onClick={() => setSelectedContactId(contact.id)}
-                      className={`hover:bg-white/5 cursor-pointer transition-all duration-150 group ${
-                        isSelected ? 'border-l-4 border-blue-500 bg-blue-600/5' : 'border-l-4 border-transparent'
-                      }`}
+                      className={`cursor-pointer transition-all duration-150 group ${bgBgClass} ${borderColClass}`}
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -368,7 +400,13 @@ export default function CrmScreen({
           <div className="bg-white/5 backdrop-blur-xl rounded-3xl overflow-hidden flex flex-col h-full border border-white/10 shadow-2xl shadow-black/20">
             
             {/* Detail Banner cover */}
-            <div className="relative h-32 bg-gradient-to-tr from-blue-500/20 to-purple-500/10 border-b border-white/5">
+            <div className={`relative h-32 border-b border-white/5 transition-all duration-300 ${
+              selectedContact.color === 'red' ? 'bg-gradient-to-tr from-red-600/30 via-red-950/20 to-slate-950/20' :
+              selectedContact.color === 'green' ? 'bg-gradient-to-tr from-emerald-600/30 via-emerald-950/20 to-slate-950/20' :
+              selectedContact.color === 'yellow' ? 'bg-gradient-to-tr from-amber-500/30 via-amber-950/20 to-slate-950/20' :
+              selectedContact.color === 'blue' ? 'bg-gradient-to-tr from-blue-600/30 via-blue-950/20 to-slate-950/20' :
+              'bg-gradient-to-tr from-blue-500/20 to-purple-500/10'
+            }`}>
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent" />
               <div className="absolute top-4 right-4 flex items-center gap-2">
                 {/* Archive Button */}
@@ -412,6 +450,7 @@ export default function CrmScreen({
                     setNewLinkedin(selectedContact.linkedin || '');
                     setNewAvatarUrl(selectedContact.avatarUrl || '');
                     setNewAssignedUserEmail(selectedContact.assignedUserEmail || '');
+                    setNewColor(selectedContact.color || '');
                     setShowAddModal(true);
                   }}
                   className="p-2 bg-slate-950/60 hover:bg-slate-900 border border-white/5 text-slate-300 hover:text-blue-400 rounded-xl transition cursor-pointer"
@@ -469,6 +508,54 @@ export default function CrmScreen({
                       <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
                         High Priority
                       </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-4 bg-slate-950/40 px-3.5 py-1.5 rounded-2xl border border-white/5">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Temperatura:</span>
+                    <div className="flex gap-2">
+                      {['blue', 'green', 'yellow', 'red'].map(col => {
+                        const colColors: Record<string, string> = {
+                          blue: 'bg-blue-500 hover:scale-110 shadow-blue-500/20',
+                          green: 'bg-emerald-500 hover:scale-110 shadow-emerald-500/20',
+                          yellow: 'bg-amber-400 hover:scale-110 shadow-amber-400/20',
+                          red: 'bg-red-500 hover:scale-110 shadow-red-500/20'
+                        };
+                        const isColSelected = selectedContact.color === col;
+                        return (
+                          <button
+                            key={col}
+                            onClick={() => {
+                              if (onUpdateContact) {
+                                onUpdateContact({
+                                  ...selectedContact,
+                                  color: col
+                                });
+                              }
+                            }}
+                            className={`w-3.5 h-3.5 rounded-full transition-all cursor-pointer ${colColors[col]} ${
+                              isColSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-950 scale-125' : 'opacity-60 hover:opacity-100'
+                            }`}
+                            title={`Marcar en color ${col}`}
+                          />
+                        );
+                      })}
+                    </div>
+                    {selectedContact.color && (
+                      <button
+                        onClick={() => {
+                          if (onUpdateContact) {
+                            onUpdateContact({
+                              ...selectedContact,
+                              color: undefined
+                            });
+                          }
+                        }}
+                        className="text-[9px] text-slate-500 hover:text-slate-300 ml-1 hover:underline cursor-pointer"
+                        title="Limpiar temperatura"
+                      >
+                        Limpiar
+                      </button>
                     )}
                   </div>
                 </div>
@@ -884,6 +971,45 @@ export default function CrmScreen({
                     onChange={(e) => setNewLocation(e.target.value)}
                     className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
                   />
+                </div>
+              </div>
+
+              {/* Temperature / Color selection */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold text-amber-500">Temperatura de Cliente (Color)</label>
+                <div className="flex gap-4 items-center bg-[#060e20] border border-white/10 rounded-xl px-4 py-2">
+                  <span className="text-xs text-slate-400">Seleccionar:</span>
+                  <div className="flex gap-3">
+                    {['', 'blue', 'green', 'yellow', 'red'].map(col => {
+                      const colColors: Record<string, string> = {
+                        '': 'bg-slate-700 hover:scale-115 text-[8px] font-bold text-slate-300 flex items-center justify-center',
+                        blue: 'bg-blue-500 hover:scale-115 shadow-blue-500/20',
+                        green: 'bg-emerald-500 hover:scale-115 shadow-emerald-500/20',
+                        yellow: 'bg-amber-400 hover:scale-115 shadow-amber-400/20',
+                        red: 'bg-red-500 hover:scale-115 shadow-red-500/20'
+                      };
+                      const isColSelected = newColor === col;
+                      return (
+                        <button
+                          key={col}
+                          type="button"
+                          onClick={() => setNewColor(col)}
+                          className={`w-5 h-5 rounded-full transition-all cursor-pointer ${colColors[col || '']} ${
+                            isColSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900 scale-125' : 'opacity-65 hover:opacity-100'
+                          }`}
+                          title={col ? `Marcar como ${col}` : 'Sin color / neutro'}
+                        >
+                          {!col && '✖'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="text-[10px] text-slate-500 italic max-w-[150px] leading-tight">
+                    {newColor === 'red' ? 'Muy Caliente / Cierre inmediato' :
+                     newColor === 'yellow' ? 'Caliente / Seguimiento activo' :
+                     newColor === 'green' ? 'Tibio / En contacto' :
+                     newColor === 'blue' ? 'Frío / Capturo inicial' : 'Sin asignación térmica'}
+                  </span>
                 </div>
               </div>
 
