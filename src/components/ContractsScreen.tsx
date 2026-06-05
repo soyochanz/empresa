@@ -2008,36 +2008,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                   </div>
                 </div>
 
-                {/* Associated transactions list */}
-                {linkedTxIds.length > 0 && (
-                  <div className="mt-4 bg-sky-50/70 border border-sky-100 rounded-xl p-3.5 text-[10px] space-y-1.5 font-sans">
-                    <p className="font-bold text-sky-800 uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-sky-150">
-                      <Link className="w-3.5 h-3.5 text-sky-600" />
-                      <span>Transacciones de Finanzas Vinculadas a esta Factura</span>
-                    </p>
-                    <div className="space-y-1">
-                      {linkedTxIds.map((id) => {
-                        const tx = allTransactions.find((t) => t.id === id) || {
-                          description: `Transacción manual #${id}`,
-                          amount: 0,
-                          date: '',
-                          type: 'income',
-                          status: 'pending'
-                        };
-                        return (
-                          <div key={id} className="flex justify-between items-center text-[9.5px] font-mono text-neutral-600">
-                            <span className="font-semibold text-neutral-800 truncate flex-1 max-w-[320px] text-left">
-                              • {tx.description} <span className="text-[8px] text-neutral-400">({id})</span>
-                            </span>
-                            <span className={tx.type === 'income' ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'}>
-                              {tx.type === 'income' ? 'Cobro: +' : 'Gasto: -'}{tx.amount} €
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+
 
                 {/* Bottom Legal disclaimer & payment */}
                 {showPaymentInfo && (

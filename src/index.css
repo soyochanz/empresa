@@ -36,6 +36,15 @@
 
 /* Print CSS variables for Contracts and Invoices PDF rendering */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm 15mm !important;
+  }
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background-color: #ffffff !important;
+  }
   body * {
     visibility: hidden;
   }
@@ -46,9 +55,52 @@
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
+    width: 100% !important;
+    height: auto !important;
     background: white !important;
     color: black !important;
+    padding: 0px !important;
+    margin: 0px !important;
+    box-shadow: none !important;
+    border: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  /* Compress printing elements spacing to remain comfortably on single page */
+  #print-area .mb-10 {
+    margin-bottom: 12px !important;
+  }
+  #print-area .pb-8 {
+    padding-bottom: 8px !important;
+  }
+  #print-area .mb-6 {
+    margin-bottom: 8px !important;
+  }
+  #print-area .p-5 {
+    padding: 10px 14px !important;
+  }
+  #print-area .space-y-6 > * + * {
+    margin-top: 8px !important;
+  }
+  #print-area .py-3 {
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+  }
+  #print-area .pt-4 {
+    padding-top: 6px !important;
+  }
+  #print-area .pt-8 {
+    padding-top: 10px !important;
+  }
+  #print-area .mt-6 {
+    margin-top: 10px !important;
+  }
+  #print-area .p-4 {
+    padding: 10px !important;
+  }
+  #print-area tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }
 
