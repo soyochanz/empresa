@@ -174,20 +174,18 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
     
     try {
       const validItems = invoiceItems.filter(item => item.description.trim() !== '');
-      if (validItems.length === 0) {
-        setSaveMessage('Error: La factura debe tener al menos un concepto.');
-        setTimeout(() => setSaveMessage(null), 4000);
-        return;
-      }
 
       const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
-      const linkedTxsMapped = linkedTransactions.map(tx => ({
-        id: tx.id,
-        description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
-        quantity: 1,
-        unitPrice: tx.amount,
-        total: tx.amount
-      }));
+      const linkedTxsMapped = linkedTransactions.map(tx => {
+        const netPrice = tx.amount / (1 + taxPercentage / 100);
+        return {
+          id: tx.id,
+          description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
+          quantity: 1,
+          unitPrice: netPrice,
+          total: netPrice
+        };
+      });
 
       const finalItems = [
         ...validItems.map(item => ({
@@ -274,13 +272,16 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       // Local-only save fallback
       const validItems = invoiceItems.filter(item => item.description.trim() !== '');
       const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
-      const linkedTxsMapped = linkedTransactions.map(tx => ({
-        id: tx.id,
-        description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
-        quantity: 1,
-        unitPrice: tx.amount,
-        total: tx.amount
-      }));
+      const linkedTxsMapped = linkedTransactions.map(tx => {
+        const netPrice = tx.amount / (1 + taxPercentage / 100);
+        return {
+          id: tx.id,
+          description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
+          quantity: 1,
+          unitPrice: netPrice,
+          total: netPrice
+        };
+      });
 
       const finalItems = [
         ...validItems.map(item => ({
@@ -563,15 +564,18 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   };
 
   const handleRemoveItem = (id: string) => {
-    if (invoiceItems.length === 1) return; // keep at least one
     setInvoiceItems(prev => prev.filter(item => item.id !== id));
   };
 
   // Calc Totals
   const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
-  const linkedTotal = linkedTransactions.reduce((acc, t) => acc + t.amount, 0);
+  const linkedSubtotalContribution = linkedTransactions.reduce((acc, t) => {
+    // Backcalculate net price before tax as transaction amount is VAT-inclusive
+    const netAmount = t.amount / (1 + taxPercentage / 100);
+    return acc + netAmount;
+  }, 0);
 
-  const subtotal = invoiceItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0) + linkedTotal;
+  const subtotal = invoiceItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0) + linkedSubtotalContribution;
   const taxAmount = (subtotal * taxPercentage) / 100;
   const total = subtotal + taxAmount;
 
@@ -1290,30 +1294,46 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
               <div className="border-t border-neutral-900 pt-3 space-y-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-200">Conceptos Facturados</span>
-                  <button
-                    type="button"
-                    onClick={handleAddInvoiceItem}
-                    className="px-2.5 py-1 text-[10px] font-mono bg-neutral-950 hover:bg-neutral-900 border border-amber-500/30 text-amber-400 rounded-lg flex items-center gap-1 transition cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Añadir Línea
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {invoiceItems.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceItems([])}
+                        className="px-2 py-1 text-[10px] font-mono bg-red-950/20 hover:bg-red-950/45 border border-red-500/20 text-red-400 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                        title="Eliminar todos los conceptos de la lista"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Vaciar
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleAddInvoiceItem}
+                      className="px-2.5 py-1 text-[10px] font-mono bg-neutral-950 hover:bg-neutral-900 border border-amber-500/30 text-amber-400 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Añadir Línea
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
+                  {invoiceItems.length === 0 && (
+                    <div className="text-center py-5 px-3 bg-neutral-950 border border-dashed border-neutral-850 rounded-xl">
+                      <p className="text-[10px] text-slate-500 font-mono italic">No hay conceptos de factura cargados manualmente.</p>
+                    </div>
+                  )}
                   {invoiceItems.map((item, idx) => (
                     <div key={item.id} className="bg-neutral-950 p-2.5 rounded-xl border border-neutral-900 space-y-2 text-left">
                       <div className="flex justify-between items-center">
                         <span className="text-[9px] font-mono text-amber-500/70 font-semibold uppercase">Línea de Concepto #{idx + 1}</span>
-                        {invoiceItems.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="text-slate-500 hover:text-red-400 transition"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-slate-500 hover:text-red-400 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                       
                       <input
@@ -1557,7 +1577,19 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
                   {/* Display Currently Linked Transactions */}
                   <div className="pt-2 border-t border-neutral-850/60">
-                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block mb-1.5 font-bold">Transacciones Vinculadas ({linkedTxIds.length})</span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest font-bold">Transacciones Vinculadas ({linkedTxIds.length})</span>
+                      {linkedTxIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setLinkedTxIds([])}
+                          className="px-1.5 py-0.5 text-[8px] font-mono bg-red-950/20 hover:bg-red-950/45 border border-red-500/20 text-red-400 rounded transition cursor-pointer font-bold uppercase"
+                          title="Desvincular todas las transacciones vinculadas"
+                        >
+                          Desvincular Todas
+                        </button>
+                      )}
+                    </div>
                     {linkedTxIds.length === 0 ? (
                       <p className="text-[10px] text-slate-600 font-mono italic">Ninguna transacción vinculada aún.</p>
                     ) : (
@@ -1923,28 +1955,31 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                           <td className="py-3 px-1 text-right font-bold font-mono text-neutral-950">{(item.quantity * item.unitPrice).toFixed(2)} €</td>
                         </tr>
                       ))}
-                      {linkedTransactions.map((tx) => (
-                        <tr key={tx.id} className="text-neutral-805 bg-amber-500/5 font-sans">
-                          <td className="py-3 px-1 leading-relaxed">
-                            <div className="flex flex-col text-left">
-                              <span className="font-semibold text-neutral-900 flex items-center gap-1.5 flex-wrap">
-                                <span>{tx.description}</span>
-                                <span className={`text-[8px] px-1 py-0.5 rounded uppercase font-extrabold tracking-wider ${
-                                  tx.status === 'pending' || tx.status === 'draft'
-                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                }`}>
-                                  {tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'}
+                      {linkedTransactions.map((tx) => {
+                        const netPrice = tx.amount / (1 + taxPercentage / 100);
+                        return (
+                          <tr key={tx.id} className="text-neutral-805 bg-amber-500/5 font-sans">
+                            <td className="py-3 px-1 leading-relaxed">
+                              <div className="flex flex-col text-left">
+                                <span className="font-semibold text-neutral-900 flex items-center gap-1.5 flex-wrap">
+                                  <span>{tx.description}</span>
+                                  <span className={`text-[8px] px-1 py-0.5 rounded uppercase font-extrabold tracking-wider ${
+                                    tx.status === 'pending' || tx.status === 'draft'
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  }`}>
+                                    {tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'}
+                                  </span>
                                 </span>
-                              </span>
-                              <span className="text-[9px] text-neutral-400 font-mono">Transacción Vinculada - ID: {tx.id}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-2 text-center font-mono">1</td>
-                          <td className="py-3 px-3 text-right font-mono">{tx.amount.toFixed(2)} €</td>
-                          <td className="py-3 px-1 text-right font-bold font-mono text-neutral-950">{tx.amount.toFixed(2)} €</td>
-                        </tr>
-                      ))}
+                                <span className="text-[9px] text-neutral-400 font-mono">Transacción Vinculada - ID: {tx.id}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2 text-center font-mono">1</td>
+                            <td className="py-3 px-3 text-right font-mono">{netPrice.toFixed(2)} €</td>
+                            <td className="py-3 px-1 text-right font-bold font-mono text-neutral-950">{netPrice.toFixed(2)} €</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
