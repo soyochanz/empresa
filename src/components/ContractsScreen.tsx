@@ -254,6 +254,9 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   // --- SHOW DUE DATE STATE ---
   const [showDueDate, setShowDueDate] = useState(true);
 
+  // --- PAYMENT METHOD STATE ---
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bizum' | 'ingreso_bancario' | 'transferencia'>('transferencia');
+
   // Selected client for invoice prefill
   const [invoiceClientId, setInvoiceClientId] = useState('');
   const [invoiceClientName, setInvoiceClientName] = useState('Ignacio Martin Solutions');
@@ -1004,6 +1007,20 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 </div>
               </div>
 
+              <div>
+                <label className="text-[9px] font-mono text-slate-400 block mb-1">Método de Pago</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as any)}
+                  className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-2 text-xs text-slate-100"
+                >
+                  <option value="transferencia">Transferencia Bancaria</option>
+                  <option value="bizum">Bizum</option>
+                  <option value="cash">Efectivo (Cash)</option>
+                  <option value="ingreso_bancario">Ingreso Bancario</option>
+                </select>
+              </div>
+
               {/* Invoice Concept Items Line Items manager */}
               <div className="border-t border-neutral-900 pt-3 space-y-3.5">
                 <div className="flex items-center justify-between">
@@ -1475,6 +1492,13 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                           <span><strong>Vencimiento:</strong> {invoiceDueDate}</span>
                         </>
                       )}
+                      <br />
+                      <span><strong>Método de Pago:</strong> {
+                        paymentMethod === 'transferencia' ? 'Transferencia Bancaria' :
+                        paymentMethod === 'bizum' ? 'Bizum' :
+                        paymentMethod === 'cash' ? 'Efectivo (Cash)' :
+                        'Ingreso Bancario'
+                      }</span>
                     </p>
                   </div>
                 </div>
