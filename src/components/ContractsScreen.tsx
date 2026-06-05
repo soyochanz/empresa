@@ -421,11 +421,29 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
   // --- SERVICE PROVIDER (EMISOR) STATE ---
   const [showProviderInfo, setShowProviderInfo] = useState(true);
-  const [providerName, setProviderName] = useState('Althera Solutions S.L.');
-  const [providerCif, setProviderCif] = useState('B-18974534');
-  const [providerAddress, setProviderAddress] = useState('Avenida de España, Nº 10, 1ºA');
-  const [providerPostalCodeCity, setProviderPostalCodeCity] = useState('07800 - Ibiza, España');
-  const [providerEmail, setProviderEmail] = useState('administracion@althera.io');
+  const [providers, setProviders] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('agency_invoice_providers');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error loading providers:', e);
+    }
+    return [
+      {
+        id: '1',
+        name: 'Althera Solutions S.L.',
+        cif: 'B-18974534',
+        address: 'Avenida de España, Nº 10, 1ºA',
+        postalCodeCity: '07800 - Ibiza, España',
+        email: 'administracion@althera.io',
+        isActive: true,
+      }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('agency_invoice_providers', JSON.stringify(providers));
+  }, [providers]);
 
   // --- SHOW PAYMENT INFO STATE ---
   const [showPaymentInfo, setShowPaymentInfo] = useState(true);
@@ -1461,59 +1479,135 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
               {/* Información del Prestador de Servicio */}
               {showProviderInfo && (
-                <div className="space-y-3.5 border-t border-white/5 pt-3.5 mt-2 transition-all">
-                  <span className="text-[10px] font-mono text-amber-500/85 uppercase tracking-wider font-semibold">Editar Prestador del Servicio</span>
+                <div className="space-y-4 border-t border-white/5 pt-3.5 mt-2 transition-all">
+                  <div className="flex justify-between items-center text-left">
+                    <span className="text-[10px] font-mono text-amber-500/85 uppercase tracking-wider font-semibold">Editar Prestadores del Servicio ({providers.length})</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newProvider = {
+                          id: Math.random().toString(36).substring(2, 9),
+                          name: 'Nuevo Prestador / Socio',
+                          cif: 'DNI o CIF',
+                          address: 'Dirección Fiscal',
+                          postalCodeCity: 'CP - Ciudad, País',
+                          email: 'email@althera.io',
+                          isActive: true
+                        };
+                        setProviders(prev => [...prev, newProvider]);
+                      }}
+                      className="px-2.5 py-1 text-[9px] font-mono bg-neutral-950 hover:bg-neutral-900 border border-amber-500/30 text-amber-400 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Añadir Prestador
+                    </button>
+                  </div>
                   
-                  <div>
-                    <label className="text-[8px] font-mono text-slate-500 block mb-1">Nombre / Razón Social Prestador</label>
-                    <input
-                      type="text"
-                      value={providerName}
-                      onChange={(e) => setProviderName(e.target.value)}
-                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[8px] font-mono text-slate-500 block mb-1">CIF / NIF Prestador</label>
-                      <input
-                        type="text"
-                        value={providerCif}
-                        onChange={(e) => setProviderCif(e.target.value)}
-                        className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-105"
-                      />
+                  {providers.length === 0 ? (
+                    <div className="text-center py-4 bg-neutral-950 border border-dashed border-neutral-850 rounded-xl">
+                      <p className="text-[10px] text-slate-500 font-mono italic">No hay ningún prestador configurado. Añade al menos uno.</p>
                     </div>
-                    <div>
-                      <label className="text-[8px] font-mono text-slate-500 block mb-1">Email Administración</label>
-                      <input
-                        type="email"
-                        value={providerEmail}
-                        onChange={(e) => setProviderEmail(e.target.value)}
-                        className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-101"
-                      />
+                  ) : (
+                    <div className="max-h-[320px] overflow-y-auto space-y-3.5 pr-1">
+                      {providers.map((p) => (
+                        <div key={p.id} className="p-3 bg-[#0c0c0c] border border-neutral-900 rounded-xl space-y-2.5 relative text-left">
+                          <div className="flex justify-between items-center border-b border-white/5 pb-1.5">
+                            <label className="flex items-center gap-1.5 text-[10px] font-medium text-slate-200 cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={p.isActive} 
+                                onChange={(e) => {
+                                  const val = e.target.checked;
+                                  setProviders(prev => prev.map(item => item.id === p.id ? { ...item, isActive: val } : item));
+                                }}
+                                className="rounded border-neutral-800 bg-neutral-950 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 cursor-pointer"
+                              />
+                              <span className="font-bold">Socio Activo en Factura</span>
+                            </label>
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProviders(prev => prev.filter(item => item.id !== p.id));
+                              }}
+                              className="text-slate-500 hover:text-red-400 transition cursor-pointer border-none p-1"
+                              title="Eliminar Prestador"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div>
+                              <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Nombre / Razón Social Prestador</label>
+                              <input
+                                type="text"
+                                value={p.name}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setProviders(prev => prev.map(item => item.id === p.id ? { ...item, name: val } : item));
+                                }}
+                                className="w-full bg-neutral-950 border border-neutral-850 rounded-lg px-2.5 py-1 text-xs text-slate-100"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[8px] font-mono text-slate-500 block mb-0.5">CIF / NIF / DNI</label>
+                                <input
+                                  type="text"
+                                  value={p.cif}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setProviders(prev => prev.map(item => item.id === p.id ? { ...item, cif: val } : item));
+                                  }}
+                                  className="w-full bg-neutral-950 border border-neutral-850 rounded-lg px-2.5 py-1 text-xs text-[#b8b8b8]"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Email Administración</label>
+                                <input
+                                  type="email"
+                                  value={p.email}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setProviders(prev => prev.map(item => item.id === p.id ? { ...item, email: val } : item));
+                                  }}
+                                  className="w-full bg-neutral-950 border border-neutral-850 rounded-lg px-2.5 py-1 text-xs text-[#c1c1c1]"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Dirección Fiscal</label>
+                              <input
+                                type="text"
+                                value={p.address}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setProviders(prev => prev.map(item => item.id === p.id ? { ...item, address: val } : item));
+                                }}
+                                className="w-full bg-neutral-950 border border-neutral-850 rounded-lg px-2.5 py-1 text-xs text-slate-100"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Código Postal y Ciudad</label>
+                              <input
+                                type="text"
+                                value={p.postalCodeCity}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setProviders(prev => prev.map(item => item.id === p.id ? { ...item, postalCodeCity: val } : item));
+                                }}
+                                className="w-full bg-neutral-950 border border-neutral-850 rounded-lg px-2.5 py-1 text-xs text-slate-100"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[8px] font-mono text-slate-500 block mb-1">Dirección Fiscal Prestador</label>
-                    <input
-                      type="text"
-                      value={providerAddress}
-                      onChange={(e) => setProviderAddress(e.target.value)}
-                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-[8px] font-mono text-slate-500 block mb-1">Código Postal y Ciudad Prestador</label>
-                    <input
-                      type="text"
-                      value={providerPostalCodeCity}
-                      onChange={(e) => setProviderPostalCodeCity(e.target.value)}
-                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100"
-                    />
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -1885,16 +1979,25 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 <div className="grid grid-cols-2 gap-8 font-sans border-b border-neutral-200 pb-6 bg-white">
                   <div>
                     {showProviderInfo ? (
-                      <>
-                        <h3 className="font-sans font-bold text-sm text-[#8a7031] uppercase tracking-wider">PRESTADOR DEL SERVICIO</h3>
-                        <p className="font-bold text-slate-900 text-xs mt-1">{providerName}</p>
-                        <p className="text-slate-500 text-[10px] mt-1 space-y-0.5 leading-normal">
-                          <span>CIF: {providerCif}</span><br />
-                          <span>{providerAddress}</span><br />
-                          <span>{providerPostalCodeCity}</span><br />
-                          <span>{providerEmail}</span>
-                        </p>
-                      </>
+                      <div className="space-y-4">
+                        <h3 className="font-sans font-bold text-xs text-[#8a7031] uppercase tracking-wider">PRESTADOR(ES) DEL SERVICIO</h3>
+                        <div className="grid grid-cols-1 gap-3.5">
+                          {providers.filter(p => p.isActive).map((p) => (
+                            <div key={p.id} className="text-left border-l-2 border-[#D4AF37]/50 pl-2">
+                              <p className="font-bold text-slate-900 text-[11px]">{p.name}</p>
+                              <p className="text-slate-500 text-[10px] mt-0.5 leading-normal">
+                                <span>CIF/NIF/DNI: {p.cif}</span><br />
+                                <span>{p.address}</span><br />
+                                <span>{p.postalCodeCity}</span><br />
+                                <span>{p.email}</span>
+                              </p>
+                            </div>
+                          ))}
+                          {providers.filter(p => p.isActive).length === 0 && (
+                            <p className="text-[10px] text-slate-400 italic font-mono">No hay prestadores activos seleccionados.</p>
+                          )}
+                        </div>
+                      </div>
                     ) : (
                       <div className="min-h-[80px]"></div>
                     )}
