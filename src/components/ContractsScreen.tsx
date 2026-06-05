@@ -240,6 +240,20 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const [bankNameAddress, setBankNameAddress] = useState('Revolut Bank UAB, 2 Dublin Landings, North Dock, Dublin 1, D01 V4A3, Ireland');
   const [bankCorrespondentBic, setBankCorrespondentBic] = useState('CHASDEFX');
 
+  // --- SERVICE PROVIDER (EMISOR) STATE ---
+  const [showProviderInfo, setShowProviderInfo] = useState(true);
+  const [providerName, setProviderName] = useState('Althera Solutions S.L.');
+  const [providerCif, setProviderCif] = useState('B-18974534');
+  const [providerAddress, setProviderAddress] = useState('Avenida de España, Nº 10, 1ºA');
+  const [providerPostalCodeCity, setProviderPostalCodeCity] = useState('07800 - Ibiza, España');
+  const [providerEmail, setProviderEmail] = useState('administracion@althera.io');
+
+  // --- SHOW PAYMENT INFO STATE ---
+  const [showPaymentInfo, setShowPaymentInfo] = useState(true);
+
+  // --- SHOW DUE DATE STATE ---
+  const [showDueDate, setShowDueDate] = useState(true);
+
   // Selected client for invoice prefill
   const [invoiceClientId, setInvoiceClientId] = useState('');
   const [invoiceClientName, setInvoiceClientName] = useState('Ignacio Martin Solutions');
@@ -453,7 +467,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 h-full overflow-y-auto scrollbar-thin">
       
       {/* Intro Header Section */}
       <div className="bg-[#050505] border border-amber-500/10 rounded-3xl p-6 relative overflow-hidden shadow-2xl">
@@ -1106,6 +1120,101 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 </div>
               </div>
 
+              {/* Ajustes de Visibilidad de Factura */}
+              <div className="space-y-3.5 border-t border-white/5 pt-3.5 mt-2">
+                <span className="text-[10px] font-mono text-amber-500/85 uppercase tracking-wider font-semibold">Visibilidad de Secciones</span>
+                
+                <div className="flex flex-col gap-2 bg-[#0c0c0c] border border-neutral-900 rounded-xl p-3">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-200 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={showProviderInfo} 
+                      onChange={(e) => setShowProviderInfo(e.target.checked)}
+                      className="rounded border-neutral-800 bg-neutral-950 text-amber-500 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    />
+                    <span>Mostrar Prestador del Servicio</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-200 cursor-pointer mt-1">
+                    <input 
+                      type="checkbox" 
+                      checked={showPaymentInfo} 
+                      onChange={(e) => setShowPaymentInfo(e.target.checked)}
+                      className="rounded border-neutral-800 bg-neutral-950 text-amber-500 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    />
+                    <span>Mostrar Información de Pago</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-200 cursor-pointer mt-1">
+                    <input 
+                      type="checkbox" 
+                      checked={showDueDate} 
+                      onChange={(e) => setShowDueDate(e.target.checked)}
+                      className="rounded border-neutral-800 bg-neutral-950 text-amber-500 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    />
+                    <span>Mostrar Fecha de Vencimiento</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Información del Prestador de Servicio */}
+              {showProviderInfo && (
+                <div className="space-y-3.5 border-t border-white/5 pt-3.5 mt-2 transition-all">
+                  <span className="text-[10px] font-mono text-amber-500/85 uppercase tracking-wider font-semibold">Editar Prestador del Servicio</span>
+                  
+                  <div>
+                    <label className="text-[8px] font-mono text-slate-500 block mb-1">Nombre / Razón Social Prestador</label>
+                    <input
+                      type="text"
+                      value={providerName}
+                      onChange={(e) => setProviderName(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[8px] font-mono text-slate-500 block mb-1">CIF / NIF Prestador</label>
+                      <input
+                        type="text"
+                        value={providerCif}
+                        onChange={(e) => setProviderCif(e.target.value)}
+                        className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-105"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[8px] font-mono text-slate-500 block mb-1">Email Administración</label>
+                      <input
+                        type="email"
+                        value={providerEmail}
+                        onChange={(e) => setProviderEmail(e.target.value)}
+                        className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-101"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[8px] font-mono text-slate-500 block mb-1">Dirección Fiscal Prestador</label>
+                    <input
+                      type="text"
+                      value={providerAddress}
+                      onChange={(e) => setProviderAddress(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[8px] font-mono text-slate-500 block mb-1">Código Postal y Ciudad Prestador</label>
+                    <input
+                      type="text"
+                      value={providerPostalCodeCity}
+                      onChange={(e) => setProviderPostalCodeCity(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100"
+                    />
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
         </div>
@@ -1340,21 +1449,32 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 {/* Meta data and Company Info (Top Split) */}
                 <div className="grid grid-cols-2 gap-8 font-sans border-b border-neutral-200 pb-6 bg-white">
                   <div>
-                    <h3 className="font-sans font-bold text-sm text-[#8a7031] uppercase tracking-wider">PRESTADOR DEL SERVICIO</h3>
-                    <p className="font-bold text-slate-900 text-xs mt-1">Althera Solutions S.L.</p>
-                    <p className="text-slate-500 text-[10px] mt-1 space-y-0.5 leading-normal">
-                      <span>CIF: B-18974534</span><br />
-                      <span>Avenida de España, Nº 10, 1ºA</span><br />
-                      <span>07800 - Ibiza, España</span><br />
-                      <span>administracion@althera.io</span>
-                    </p>
+                    {showProviderInfo ? (
+                      <>
+                        <h3 className="font-sans font-bold text-sm text-[#8a7031] uppercase tracking-wider">PRESTADOR DEL SERVICIO</h3>
+                        <p className="font-bold text-slate-900 text-xs mt-1">{providerName}</p>
+                        <p className="text-slate-500 text-[10px] mt-1 space-y-0.5 leading-normal">
+                          <span>CIF: {providerCif}</span><br />
+                          <span>{providerAddress}</span><br />
+                          <span>{providerPostalCodeCity}</span><br />
+                          <span>{providerEmail}</span>
+                        </p>
+                      </>
+                    ) : (
+                      <div className="min-h-[80px]"></div>
+                    )}
                   </div>
                   <div className="text-right">
                     <h2 className="text-xl font-bold uppercase tracking-wider text-neutral-950">FACTURA</h2>
                     <p className="text-[11px] font-mono text-amber-600 font-bold mt-1">Nº {invoiceNumber}</p>
                     <p className="text-[10px] text-slate-500 mt-2 space-y-0.5">
-                      <span><strong>Fecha Emisión:</strong> {invoiceDate}</span><br />
-                      <span><strong>Vencimiento:</strong> {invoiceDueDate}</span>
+                      <span><strong>Fecha Emisión:</strong> {invoiceDate}</span>
+                      {showDueDate && (
+                        <>
+                          <br />
+                          <span><strong>Vencimiento:</strong> {invoiceDueDate}</span>
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1362,7 +1482,6 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 {/* Client info on Invoice */}
                 <div className="bg-neutral-50 p-5 rounded-2xl border border-neutral-150 grid grid-cols-1 md:grid-cols-2 gap-4 font-sans text-neutral-850">
                   <div>
-                    <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 font-mono">Facturado a:</span>
                     <h4 className="font-bold text-neutral-950 text-xs mt-1">{invoiceClientName}</h4>
                     <span className="text-[10px] block mt-0.5 font-mono text-neutral-500">{invoiceClientDni}</span>
                   </div>
@@ -1417,42 +1536,44 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 </div>
 
                 {/* Bottom Legal disclaimer & payment */}
-                <div className="bg-neutral-50 rounded-xl p-4 border border-dashed border-neutral-200 text-[10px] text-neutral-500 font-sans space-y-2 mt-6">
-                  <p className="font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1 border-b border-neutral-200 pb-1">
-                    <DollarSign className="w-3.5 h-3.5 text-amber-700" />
-                    <span>Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)</span>
-                  </p>
-                  <p className="text-[9px] leading-snug">
-                    Rogamos efectúen el ingreso por transferencia por el importe total indicado a la cuenta de Revolut facilitada a continuación, indicando el número de factura <strong>{invoiceNumber}</strong> como referencia:
-                  </p>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 bg-white border border-neutral-150 rounded-xl p-3 text-[9.5px]">
-                    <div>
-                      <span className="text-neutral-400">Beneficiario:</span><br />
-                      <strong className="text-neutral-800 font-semibold">{bankBeneficiary}</strong>
+                {showPaymentInfo && (
+                  <div className="bg-neutral-50 rounded-xl p-4 border border-dashed border-neutral-200 text-[10px] text-neutral-500 font-sans space-y-2 mt-6">
+                    <p className="font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-1 border-b border-neutral-200 pb-1">
+                      <DollarSign className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)</span>
+                    </p>
+                    <p className="text-[9px] leading-snug">
+                      Rogamos efectúen el ingreso por transferencia por el importe total indicado a la cuenta de Revolut facilitada a continuación, indicando el número de factura <strong>{invoiceNumber}</strong> como referencia:
+                    </p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5 bg-white border border-neutral-150 rounded-xl p-3 text-[9.5px]">
+                      <div>
+                        <span className="text-neutral-400">Beneficiario:</span><br />
+                        <strong className="text-neutral-800 font-semibold">{bankBeneficiary}</strong>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">IBAN Euro:</span><br />
+                        <strong className="text-neutral-800 font-mono select-all font-semibold">{paymentDetails}</strong>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">Código BIC/SWIFT:</span><br />
+                        <strong className="text-neutral-800 font-mono font-semibold">{bankSwift}</strong>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400">BIC del Banco Corresponsal:</span><br />
+                        <strong className="text-neutral-800 font-mono font-semibold">{bankCorrespondentBic}</strong>
+                      </div>
+                      <div className="md:col-span-2 border-t border-neutral-100 pt-1.5 mt-1">
+                        <span className="text-neutral-400">Nombre y Dirección del Banco:</span><br />
+                        <span className="text-neutral-700">{bankNameAddress}</span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-neutral-400">IBAN Euro:</span><br />
-                      <strong className="text-neutral-800 font-mono select-all font-semibold">{paymentDetails}</strong>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400">Código BIC/SWIFT:</span><br />
-                      <strong className="text-neutral-800 font-mono font-semibold">{bankSwift}</strong>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400">BIC del Banco Corresponsal:</span><br />
-                      <strong className="text-neutral-800 font-mono font-semibold">{bankCorrespondentBic}</strong>
-                    </div>
-                    <div className="md:col-span-2 border-t border-neutral-100 pt-1.5 mt-1">
-                      <span className="text-neutral-400">Nombre y Dirección del Banco:</span><br />
-                      <span className="text-neutral-700">{bankNameAddress}</span>
-                    </div>
-                  </div>
 
-                  <p className="pt-1.5 text-[9px] italic border-t border-neutral-200 mt-2">
-                    Althera Solutions, S.L. inscrita en el Registro Mercantil de Ibiza, Tomo 1450, Folio 120, Hoja IB-45600. Condición de vencimiento a 15 días tras emisión del servicio.
-                  </p>
-                </div>
+                    <p className="pt-1.5 text-[9px] italic border-t border-neutral-200 mt-2">
+                      Althera Solutions, S.L. inscrita en el Registro Mercantil de Ibiza, Tomo 1450, Folio 120, Hoja IB-45600. Condición de vencimiento a 15 días tras emisión del servicio.
+                    </p>
+                  </div>
+                )}
 
               </div>
             )}
