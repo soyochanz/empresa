@@ -180,6 +180,26 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         return;
       }
 
+      const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
+      const linkedTxsMapped = linkedTransactions.map(tx => ({
+        id: tx.id,
+        description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
+        quantity: 1,
+        unitPrice: tx.amount,
+        total: tx.amount
+      }));
+
+      const finalItems = [
+        ...validItems.map(item => ({
+          id: item.id,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.quantity * item.unitPrice
+        })),
+        ...linkedTxsMapped
+      ];
+
       const invoicePayload: any = {
         id: invoiceNumber,
         clientId: invoiceClientId || undefined,
@@ -188,13 +208,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         date: invoiceDate,
         dueDate: showDueDate ? invoiceDueDate : invoiceDate,
         status: 'draft',
-        items: validItems.map(item => ({
-          id: item.id,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice
-        })),
+        items: finalItems,
         subtotal: subtotal,
         taxPercentage: taxPercentage,
         taxAmount: taxAmount,
@@ -259,6 +273,26 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       console.error('Error saving invoice to DB:', err);
       // Local-only save fallback
       const validItems = invoiceItems.filter(item => item.description.trim() !== '');
+      const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
+      const linkedTxsMapped = linkedTransactions.map(tx => ({
+        id: tx.id,
+        description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
+        quantity: 1,
+        unitPrice: tx.amount,
+        total: tx.amount
+      }));
+
+      const finalItems = [
+        ...validItems.map(item => ({
+          id: item.id,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.quantity * item.unitPrice
+        })),
+        ...linkedTxsMapped
+      ];
+
       const invoicePayload: any = {
         id: invoiceNumber,
         clientId: invoiceClientId || undefined,
@@ -267,13 +301,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         date: invoiceDate,
         dueDate: showDueDate ? invoiceDueDate : invoiceDate,
         status: 'draft',
-        items: validItems.map(item => ({
-          id: item.id,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice
-        })),
+        items: finalItems,
         subtotal: subtotal,
         taxPercentage: taxPercentage,
         taxAmount: taxAmount,
@@ -540,9 +568,17 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   };
 
   // Calc Totals
-  const subtotal = invoiceItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+  const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
+  const linkedTotal = linkedTransactions.reduce((acc, t) => acc + t.amount, 0);
+
+  const subtotal = invoiceItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0) + linkedTotal;
   const taxAmount = (subtotal * taxPercentage) / 100;
   const total = subtotal + taxAmount;
+
+  // Calculate pending transactions
+  const totalPendingTransactionsAmount = linkedTransactions
+    .filter(t => t.status === 'pending' || t.status === 'draft')
+    .reduce((acc, t) => acc + t.amount, 0);
 
   // Print trigger
   const handlePrint = () => {
@@ -1887,6 +1923,28 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                           <td className="py-3 px-1 text-right font-bold font-mono text-neutral-950">{(item.quantity * item.unitPrice).toFixed(2)} €</td>
                         </tr>
                       ))}
+                      {linkedTransactions.map((tx) => (
+                        <tr key={tx.id} className="text-neutral-805 bg-amber-500/5 font-sans">
+                          <td className="py-3 px-1 leading-relaxed">
+                            <div className="flex flex-col text-left">
+                              <span className="font-semibold text-neutral-900 flex items-center gap-1.5 flex-wrap">
+                                <span>{tx.description}</span>
+                                <span className={`text-[8px] px-1 py-0.5 rounded uppercase font-extrabold tracking-wider ${
+                                  tx.status === 'pending' || tx.status === 'draft'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}>
+                                  {tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'}
+                                </span>
+                              </span>
+                              <span className="text-[9px] text-neutral-400 font-mono">Transacción Vinculada - ID: {tx.id}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-2 text-center font-mono">1</td>
+                          <td className="py-3 px-3 text-right font-mono">{tx.amount.toFixed(2)} €</td>
+                          <td className="py-3 px-1 text-right font-bold font-mono text-neutral-950">{tx.amount.toFixed(2)} €</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1903,9 +1961,15 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                       <span className="font-mono">{taxAmount.toFixed(2)} €</span>
                     </div>
                     <div className="flex justify-between font-bold text-neutral-950 text-sm border-t border-neutral-200 pt-2">
-                      <span>TOTAL FACTURA:</span>
+                      <span>TOTAL FACTURADO:</span>
                       <span className="font-mono text-amber-700">{total.toFixed(2)} €</span>
                     </div>
+                    {totalPendingTransactionsAmount > 0 && (
+                      <div className="flex justify-between font-extrabold text-amber-800 text-sm">
+                        <span>POR PAGAR (Pendiente):</span>
+                        <span className="font-mono text-amber-700">{totalPendingTransactionsAmount.toFixed(2)} €</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
