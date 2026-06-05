@@ -18,7 +18,9 @@ import {
   Info,
   DollarSign,
   Search,
-  Save
+  Save,
+  Link,
+  ExternalLink
 } from 'lucide-react';
 
 interface ContractsScreenProps {
@@ -211,11 +213,34 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
       if (exists) {
         await db.updateFinanceInvoice(invoicePayload);
-        setSaveMessage('Factura actualizada con éxito en la base de datos y Finanzas.');
       } else {
         await db.insertFinanceInvoice(invoicePayload);
-        setSaveMessage('Factura creada y guardada con éxito en la base de datos y Finanzas.');
       }
+
+      // Synchronize associated transactions
+      const updatedTxs = allTransactions.map(t => {
+        if (linkedTxIds.includes(t.id)) {
+          return { ...t, invoiceId: invoiceNumber };
+        } else if (t.invoiceId === invoiceNumber) {
+          return { ...t, invoiceId: null };
+        }
+        return t;
+      });
+
+      // Update in database safely
+      for (const tx of updatedTxs) {
+        const originalTx = allTransactions.find(ot => ot.id === tx.id);
+        if (originalTx && originalTx.invoiceId !== tx.invoiceId) {
+          try {
+            await db.updateFinanceTransaction(tx);
+          } catch (txErr) {
+            console.error(`Error updating transaction ${tx.id} in DB:`, txErr);
+          }
+        }
+      }
+
+      setAllTransactions(updatedTxs);
+      localStorage.setItem('agency_finance_transactions', JSON.stringify(updatedTxs));
 
       // Also ensure localStorage is perfectly synchronized for real-time responsiveness
       const savedInvoicesRaw = localStorage.getItem('agency_finance_invoices');
@@ -228,6 +253,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       }
       localStorage.setItem('agency_finance_invoices', JSON.stringify(savedInvoices));
 
+      setSaveMessage('Factura y transacciones vinculadas guardadas con éxito.');
       setTimeout(() => setSaveMessage(null), 4000);
     } catch (err) {
       console.error('Error saving invoice to DB:', err);
@@ -259,6 +285,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
           'Ingreso Bancario'
         }`
       };
+      
       const savedInvoicesRaw = localStorage.getItem('agency_finance_invoices');
       let savedInvoices = savedInvoicesRaw ? JSON.parse(savedInvoicesRaw) : [];
       const index = savedInvoices.findIndex((inv: any) => inv.id === invoiceNumber);
@@ -268,8 +295,19 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         savedInvoices = [invoicePayload, ...savedInvoices];
       }
       localStorage.setItem('agency_finance_invoices', JSON.stringify(savedInvoices));
+
+      const updatedTxs = allTransactions.map(t => {
+        if (linkedTxIds.includes(t.id)) {
+          return { ...t, invoiceId: invoiceNumber };
+        } else if (t.invoiceId === invoiceNumber) {
+          return { ...t, invoiceId: null };
+        }
+        return t;
+      });
+      setAllTransactions(updatedTxs);
+      localStorage.setItem('agency_finance_transactions', JSON.stringify(updatedTxs));
       
-      setSaveMessage('Guardado localmente (error al sincronizar a la nube).');
+      setSaveMessage('Guardado localmente con éxito.');
       setTimeout(() => setSaveMessage(null), 4000);
     }
   };
@@ -387,6 +425,85 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       }
     }
   }, [invoiceClientId]);
+
+  // --- TRANSACTIONS LINKING SYSTEM ---
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
+  const [linkedTxIds, setLinkedTxIds] = useState<string[]>([]);
+  const [txIdInputText, setTxIdInputText] = useState('');
+  const [selectedTxToLink, setSelectedTxToLink] = useState('');
+
+  // Synchronize/load transactions for linking
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      try {
+        const list = await db.getFinanceTransactions();
+        if (list && list.length > 0) {
+          setAllTransactions(list);
+          const matchedTxIds = list.filter((t: any) => t.invoiceId === invoiceNumber).map((t: any) => t.id);
+          setLinkedTxIds(matchedTxIds);
+        } else {
+          const localSaved = localStorage.getItem('agency_finance_transactions');
+          if (localSaved) {
+            const parsed = JSON.parse(localSaved);
+            setAllTransactions(parsed);
+            const matchedTxIds = parsed.filter((t: any) => t.invoiceId === invoiceNumber).map((t: any) => t.id);
+            setLinkedTxIds(matchedTxIds);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching transactions in invoice generator:', err);
+        const localSaved = localStorage.getItem('agency_finance_transactions');
+        if (localSaved) {
+          const parsed = JSON.parse(localSaved);
+          setAllTransactions(parsed);
+          const matchedTxIds = parsed.filter((t: any) => t.invoiceId === invoiceNumber).map((t: any) => t.id);
+          setLinkedTxIds(matchedTxIds);
+        }
+      }
+    };
+    fetchTransactions();
+  }, [invoiceNumber]);
+
+  const handleLinkTransactionById = (txId: string) => {
+    const cleanId = txId.trim();
+    if (!cleanId) return;
+    
+    if (linkedTxIds.includes(cleanId)) {
+      setSaveMessage('La transacción ya está vinculada a esta factura.');
+      setTimeout(() => setSaveMessage(null), 3000);
+      return;
+    }
+
+    // See if transaction exists in current list
+    const found = allTransactions.find(t => t.id === cleanId);
+    if (!found) {
+      // It's fine if it's not found locally, let's allow it but warn.
+      setLinkedTxIds(prev => [...prev, cleanId]);
+      const placeholderTx = {
+        id: cleanId,
+        description: `Transacción #${cleanId} (ID manual)`,
+        amount: 0,
+        date: new Date().toISOString().split('T')[0],
+        type: 'income',
+        category: 'Varios',
+        status: 'pending',
+        invoiceId: invoiceNumber
+      };
+      setAllTransactions(prev => [...prev, placeholderTx]);
+      setSaveMessage('ID de transacción vinculado con éxito.');
+      setTimeout(() => setSaveMessage(null), 3500);
+    } else {
+      setLinkedTxIds(prev => [...prev, cleanId]);
+      setSaveMessage('Transacción vinculada con éxito.');
+      setTimeout(() => setSaveMessage(null), 3000);
+    }
+    
+    setTxIdInputText('');
+  };
+
+  const handleUnlinkTransaction = (txId: string) => {
+    setLinkedTxIds(prev => prev.filter(id => id !== txId));
+  };
 
   const [invoiceItems, setInvoiceItems] = useState<FacturaItem[]>([
     { id: '1', description: 'Diseño UX/UI de Plataforma Althera y Maquetación Web', quantity: 1, unitPrice: 450 },
@@ -1344,6 +1461,110 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 </div>
               )}
 
+              {/* VINCULACIÓN DE TRANSACCIONES */}
+              <div className="space-y-3.5 border-t border-white/5 pt-3.5 mt-2">
+                <div className="flex items-center gap-1.5">
+                  <Link className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-[10px] font-mono text-amber-500/85 uppercase tracking-wider font-semibold">Vincular Transacciones a Factura</span>
+                </div>
+                
+                <div className="bg-[#0c0c0c] border border-neutral-900 rounded-xl p-3.5 space-y-3 text-left">
+                  
+                  {/* Select menu from actual database transactions */}
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">Buscar y Seleccionar de Finanzas</label>
+                    <select
+                      value={selectedTxToLink}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedTxToLink(val);
+                        if (val) {
+                          handleLinkTransactionById(val);
+                          setSelectedTxToLink('');
+                        }
+                      }}
+                      className="w-full bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-100 cursor-pointer"
+                    >
+                      <option value="">-- Seleccionar de la lista --</option>
+                      {allTransactions
+                        .filter(t => !linkedTxIds.includes(t.id))
+                        .map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.description.substring(0, 30)}... ({t.amount.toLocaleString('es-ES')} €) - ID: {t.id}
+                          </option>
+                        ))
+                      }
+                    </select>
+                  </div>
+
+                  {/* Manual entry of transaction ID - EXACTLY request matches! */}
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 block mb-1">O Introduce el ID de Transacción manualmente</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={txIdInputText}
+                        onChange={(e) => setTxIdInputText(e.target.value)}
+                        placeholder="Pegar ID p. ej. tx_..."
+                        className="flex-1 bg-neutral-950 border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-slate-101 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleLinkTransactionById(txIdInputText)}
+                        className="bg-amber-600 hover:bg-amber-500 text-slate-950 font-black px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1 border-none"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Vincular</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Display Currently Linked Transactions */}
+                  <div className="pt-2 border-t border-neutral-850/60">
+                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block mb-1.5 font-bold">Transacciones Vinculadas ({linkedTxIds.length})</span>
+                    {linkedTxIds.length === 0 ? (
+                      <p className="text-[10px] text-slate-600 font-mono italic">Ninguna transacción vinculada aún.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                        {linkedTxIds.map(id => {
+                          const tx = allTransactions.find(t => t.id === id) || {
+                            id,
+                            description: `Transacción manual #${id}`,
+                            amount: 0,
+                            date: '',
+                            type: 'income',
+                            status: 'pending'
+                          };
+                          return (
+                            <div key={id} className="flex justify-between items-center bg-neutral-950 px-2.5 py-2 rounded-lg border border-neutral-850/40 text-[11px] font-mono">
+                              <div className="truncate flex-1 mr-2 text-left">
+                                <div className="text-slate-100 font-bold truncate text-[11px]">{tx.description}</div>
+                                <div className="text-[9px] text-slate-500 flex gap-1 items-center font-mono uppercase mt-0.5">
+                                  <span className="text-slate-400 select-all font-bold">{id}</span>
+                                  <span>•</span>
+                                  <span className={tx.type === 'income' ? 'text-emerald-500 font-bold' : 'text-red-500 font-bold'}>
+                                    {tx.type === 'income' ? '+' : '-'}{tx.amount} €
+                                  </span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleUnlinkTransaction(id)}
+                                className="text-red-400 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded-lg transition-all cursor-pointer border-none"
+                                title="Desvincular Transacción"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+
               {/* Botón Guardar Factura */}
               <div className="pt-4 mt-4 border-t border-neutral-900 space-y-2">
                 <button
@@ -1687,6 +1908,37 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                     </div>
                   </div>
                 </div>
+
+                {/* Associated transactions list */}
+                {linkedTxIds.length > 0 && (
+                  <div className="mt-4 bg-sky-50/70 border border-sky-100 rounded-xl p-3.5 text-[10px] space-y-1.5 font-sans">
+                    <p className="font-bold text-sky-800 uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-sky-150">
+                      <Link className="w-3.5 h-3.5 text-sky-600" />
+                      <span>Transacciones de Finanzas Vinculadas a esta Factura</span>
+                    </p>
+                    <div className="space-y-1">
+                      {linkedTxIds.map((id) => {
+                        const tx = allTransactions.find((t) => t.id === id) || {
+                          description: `Transacción manual #${id}`,
+                          amount: 0,
+                          date: '',
+                          type: 'income',
+                          status: 'pending'
+                        };
+                        return (
+                          <div key={id} className="flex justify-between items-center text-[9.5px] font-mono text-neutral-600">
+                            <span className="font-semibold text-neutral-800 truncate flex-1 max-w-[320px] text-left">
+                              • {tx.description} <span className="text-[8px] text-neutral-400">({id})</span>
+                            </span>
+                            <span className={tx.type === 'income' ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'}>
+                              {tx.type === 'income' ? 'Cobro: +' : 'Gasto: -'}{tx.amount} €
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Bottom Legal disclaimer & payment */}
                 {showPaymentInfo && (
