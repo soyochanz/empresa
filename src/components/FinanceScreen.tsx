@@ -115,6 +115,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [txIsRecurring, setTxIsRecurring] = useState(false);
   const [txPeriod, setTxPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [txStatus, setTxStatus] = useState<'paid' | 'pending'>('paid');
+  const [txInvoiceId, setTxInvoiceId] = useState<string>('');
 
   // INVOICE MODAL controls
   const [isInvModalOpen, setIsInvModalOpen] = useState(false);
@@ -204,7 +205,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
       description: txDescription.trim() || `${txType === 'income' ? 'Ingreso' : 'Gasto'} registrado`,
       isRecurring: txIsRecurring,
       recurrencePeriod: txIsRecurring ? txPeriod : undefined,
-      status: txStatus
+      status: txStatus,
+      invoiceId: txInvoiceId || undefined
     };
 
     if (isEditingTx && editingTxId) {
@@ -230,6 +232,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setTxIsRecurring(!!tx.isRecurring);
     setTxPeriod(tx.recurrencePeriod || 'monthly');
     setTxStatus(tx.status);
+    setTxInvoiceId(tx.invoiceId || '');
     setIsTxModalOpen(true);
   };
 
@@ -251,6 +254,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setTxIsRecurring(false);
     setTxPeriod('monthly');
     setTxStatus('paid');
+    setTxInvoiceId('');
   };
 
   // Handler: Invoice items manipulation
@@ -1731,6 +1735,23 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 </select>
               </div>
 
+              {/* Vincular a Factura */}
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Vincular a Factura (Opcional)</label>
+                <select
+                  value={txInvoiceId}
+                  onChange={(e) => setTxInvoiceId(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-slate-100 focus:outline-none cursor-pointer"
+                >
+                  <option value="">-- Sin Vincular / General --</option>
+                  {invoices.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.id} - {inv.clientName} ({inv.total.toLocaleString('es-ES')} €)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Recurrence Switcher */}
               <div className="bg-white/[0.01] border border-white/5 p-3 rounded-2xl space-y-2 mt-2">
                 <div className="flex items-center justify-between">
@@ -2238,6 +2259,68 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                   <p className="text-[10px] text-slate-400 leading-relaxed font-light">{previewInvoice.notes}</p>
                 </div>
               )}
+
+              {/* OPERACIONES DE FINANZAS VINCULADAS */}
+              <div className="bg-neutral-950/50 border border-blue-500/15 rounded-xl p-4 text-left space-y-3">
+                <div className="flex justify-between items-center border-b border-neutral-850 pb-2">
+                  <span className="font-bold text-blue-400 uppercase tracking-wider text-[10px] select-none font-mono">
+                    Operaciones de Finanzas Vinculadas (Pagos y Cobros)
+                  </span>
+                  <button
+                    onClick={() => {
+                      resetTxForm();
+                      setTxInvoiceId(previewInvoice.id);
+                      setTxType('income');
+                      setTxCategory('Facturado');
+                      setTxDescription(`Pago Factura ${previewInvoice.id}`);
+                      setTxAmount(previewInvoice.total.toString());
+                      setIsTxModalOpen(true);
+                    }}
+                    className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white font-mono text-[9px] px-2 py-1 rounded transition flex items-center gap-1.5 cursor-pointer font-bold border-none"
+                  >
+                    <Plus className="w-2.5 h-2.5" />
+                    <span>Registrar Pago / Cobro</span>
+                  </button>
+                </div>
+
+                {/* Filter list of transactions that have matching invoiceId */}
+                {(() => {
+                  const linkedTxs = transactions.filter(t => t.invoiceId === previewInvoice.id);
+                  if (linkedTxs.length === 0) {
+                    return (
+                      <p className="text-[10px] text-slate-500 font-mono italic">
+                        No hay pagos ni cobros asociados a esta factura todavía. Haz clic en "Registrar Pago / Cobro" para asociar transacciones.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-1.5 divide-y divide-neutral-850/50 max-h-48 overflow-y-auto pr-1">
+                      {linkedTxs.map((tx, idx) => (
+                        <div key={tx.id} className={`flex justify-between items-center pt-1.5 ${idx === 0 ? '' : 'border-t border-neutral-850/40'}`}>
+                          <div className="text-[10px] font-mono">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`w-1.5 h-1.5 rounded-full ${tx.type === 'income' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                              <span className="text-slate-300 font-bold">{tx.description}</span>
+                              <span className={`text-[8px] uppercase px-1 rounded font-bold ${tx.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                                {tx.status === 'paid' ? 'Realizado' : 'Pendiente'}
+                              </span>
+                            </div>
+                            <div className="text-[9px] text-slate-500 flex gap-2">
+                              <span>Fecha: {tx.date}</span>
+                              <span>•</span>
+                              <span>Categoría: {tx.category}</span>
+                            </div>
+                          </div>
+                          <span className={`text-xs font-mono font-bold ${tx.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {tx.type === 'income' ? '+' : '-'}{tx.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
 
               {/* Watermark of authenticity */}
               <div className="text-center pt-6 border-t border-neutral-850">

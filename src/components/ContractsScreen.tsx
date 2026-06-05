@@ -17,7 +17,8 @@ import {
   Layers, 
   Info,
   DollarSign,
-  Search
+  Search,
+  Save
 } from 'lucide-react';
 
 interface ContractsScreenProps {
@@ -158,6 +159,117 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
     } catch (err) {
       console.error('Error deleting contract:', err);
       setSaveMessage('No se pudo eliminar el contrato.');
+      setTimeout(() => setSaveMessage(null), 4000);
+    }
+  };
+
+  const handleSaveInvoiceToDb = async () => {
+    if (!invoiceClientName.trim()) {
+      setSaveMessage('Error: Por favor especifica el nombre del cliente.');
+      setTimeout(() => setSaveMessage(null), 4000);
+      return;
+    }
+    
+    try {
+      const validItems = invoiceItems.filter(item => item.description.trim() !== '');
+      if (validItems.length === 0) {
+        setSaveMessage('Error: La factura debe tener al menos un concepto.');
+        setTimeout(() => setSaveMessage(null), 4000);
+        return;
+      }
+
+      const invoicePayload: any = {
+        id: invoiceNumber,
+        clientId: invoiceClientId || undefined,
+        clientName: invoiceClientName,
+        clientEmail: invoiceClientEmail,
+        date: invoiceDate,
+        dueDate: showDueDate ? invoiceDueDate : invoiceDate,
+        status: 'draft',
+        items: validItems.map(item => ({
+          id: item.id,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.quantity * item.unitPrice
+        })),
+        subtotal: subtotal,
+        taxPercentage: taxPercentage,
+        taxAmount: taxAmount,
+        total: total,
+        notes: `Creado desde el Generador de Contratos de Althera. Método de pago: ${
+          paymentMethod === 'transferencia' ? 'Transferencia Bancaria' :
+          paymentMethod === 'bizum' ? 'Bizum' :
+          paymentMethod === 'cash' ? 'Efectivo (Cash)' :
+          'Ingreso Bancario'
+        }`
+      };
+
+      // Try inserting into Supabase
+      const existingInvoices = await db.getFinanceInvoices();
+      const exists = existingInvoices.some((inv: any) => inv.id === invoiceNumber);
+
+      if (exists) {
+        await db.updateFinanceInvoice(invoicePayload);
+        setSaveMessage('Factura actualizada con éxito en la base de datos y Finanzas.');
+      } else {
+        await db.insertFinanceInvoice(invoicePayload);
+        setSaveMessage('Factura creada y guardada con éxito en la base de datos y Finanzas.');
+      }
+
+      // Also ensure localStorage is perfectly synchronized for real-time responsiveness
+      const savedInvoicesRaw = localStorage.getItem('agency_finance_invoices');
+      let savedInvoices = savedInvoicesRaw ? JSON.parse(savedInvoicesRaw) : [];
+      const index = savedInvoices.findIndex((inv: any) => inv.id === invoiceNumber);
+      if (index >= 0) {
+        savedInvoices[index] = invoicePayload;
+      } else {
+        savedInvoices = [invoicePayload, ...savedInvoices];
+      }
+      localStorage.setItem('agency_finance_invoices', JSON.stringify(savedInvoices));
+
+      setTimeout(() => setSaveMessage(null), 4000);
+    } catch (err) {
+      console.error('Error saving invoice to DB:', err);
+      // Local-only save fallback
+      const validItems = invoiceItems.filter(item => item.description.trim() !== '');
+      const invoicePayload: any = {
+        id: invoiceNumber,
+        clientId: invoiceClientId || undefined,
+        clientName: invoiceClientName,
+        clientEmail: invoiceClientEmail,
+        date: invoiceDate,
+        dueDate: showDueDate ? invoiceDueDate : invoiceDate,
+        status: 'draft',
+        items: validItems.map(item => ({
+          id: item.id,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.quantity * item.unitPrice
+        })),
+        subtotal: subtotal,
+        taxPercentage: taxPercentage,
+        taxAmount: taxAmount,
+        total: total,
+        notes: `Creado desde el Generador de Contratos de Althera. Método de pago: ${
+          paymentMethod === 'transferencia' ? 'Transferencia Bancaria' :
+          paymentMethod === 'bizum' ? 'Bizum' :
+          paymentMethod === 'cash' ? 'Efectivo (Cash)' :
+          'Ingreso Bancario'
+        }`
+      };
+      const savedInvoicesRaw = localStorage.getItem('agency_finance_invoices');
+      let savedInvoices = savedInvoicesRaw ? JSON.parse(savedInvoicesRaw) : [];
+      const index = savedInvoices.findIndex((inv: any) => inv.id === invoiceNumber);
+      if (index >= 0) {
+        savedInvoices[index] = invoicePayload;
+      } else {
+        savedInvoices = [invoicePayload, ...savedInvoices];
+      }
+      localStorage.setItem('agency_finance_invoices', JSON.stringify(savedInvoices));
+      
+      setSaveMessage('Guardado localmente (error al sincronizar a la nube).');
       setTimeout(() => setSaveMessage(null), 4000);
     }
   };
@@ -1231,6 +1343,23 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                   </div>
                 </div>
               )}
+
+              {/* Botón Guardar Factura */}
+              <div className="pt-4 mt-4 border-t border-neutral-900 space-y-2">
+                <button
+                  type="button"
+                  onClick={handleSaveInvoiceToDb}
+                  className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-500 text-slate-950 py-2.5 px-5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 hover:shadow-amber-500/20 active:scale-95 border-none"
+                >
+                  <Save className="w-4 h-4 text-slate-950 stroke-[2.5]" />
+                  <span>Guardar Factura</span>
+                </button>
+                {saveMessage && (
+                  <p className={`text-[10px] text-center font-semibold mt-1.5 animate-fade-in ${saveMessage.includes('con éxito') || saveMessage.includes('correctamente') ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {saveMessage}
+                  </p>
+                )}
+              </div>
 
             </div>
           )}
