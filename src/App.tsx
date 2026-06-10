@@ -32,6 +32,13 @@ import { Bell, X, Calendar as CalendarAtom, Check } from 'lucide-react';
 export default function App() {
   // Screens state
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
+    // Session state identifier to distinguish a fresh tab load from a page refresh
+    const isSessionActive = sessionStorage.getItem('agency_session_active');
+    if (!isSessionActive) {
+      sessionStorage.setItem('agency_session_active', 'true');
+      localStorage.setItem('agency_current_screen', 'landing');
+      return 'landing';
+    }
     const saved = localStorage.getItem('agency_current_screen');
     return (saved as Screen) || 'landing';
   });
@@ -852,13 +859,13 @@ export default function App() {
   }
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-slate-100 flex font-sans overflow-hidden">
+    <div className="relative min-h-screen bg-[#020205] text-slate-100 flex font-sans overflow-hidden">
       
-      {/* Animated Mesh Gradient Background (Frosted Glass Theme) */}
+      {/* Animated Mesh Gradient Background (Cosmic Glow Theme matching the image) */}
       <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-600/20 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-purple-600/15 blur-[150px]" />
-        <div className="absolute top-[20%] right-[15%] w-[30%] h-[30%] rounded-full bg-indigo-500/15 blur-[100px]" />
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/10 blur-[130px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-rose-600/8 blur-[160px]" />
+        <div className="absolute top-[20%] right-[15%] w-[30%] h-[30%] rounded-full bg-fuchsia-500/8 blur-[110px]" />
       </div>
 
       {/* Sidebar Navigation */}
