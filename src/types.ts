@@ -1,4 +1,4 @@
-export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin';
+export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling';
 
 export interface InquiryMessage {
   id: string;
@@ -136,4 +136,32 @@ export interface ComercialLead {
   createdAt: string;
   temperature?: 'Frío' | 'Templado' | 'Caliente';
 }
+
+export interface ColdCallingLead {
+  id: string;
+  businessName: string;            // NOMBRE DE NEGOCIO
+  contactPerson: string;           // NOMBRE CON QUIEN HABLÉ / DUEÑO
+  phone: string;                   // TELEFONO
+  callDate: string;                // FECHA DE LLAMADA (e.g., YYYY-MM-DD or readable)
+  
+  // Formulario fields
+  contacted: 'Sí' | 'No';          // CONTACTADO (si/no)
+  isOwner: 'Sí' | 'No';            // ¿ERA EL DUEÑO? (SI/NO)
+  answered: 'Sí' | 'No';          // RESPONDE (SI/NO)
+  temperature: 'Frío' | 'Templado' | 'Caliente'; // TEMPERATURA (FRIO/TEMPLADO/CALIENTE)
+  callbackScheduled: 'Sí' | 'No' | 'Llamar más tarde'; // AGENDADA (SI/NO/LLAMAR MAS TARDE)
+  
+  // Llamar más tarde fields
+  callbackDate?: string;           // FECHA (CALENDARIO) YYYY-MM-DD
+  callbackTime?: string;           // HORA (HORA) e.g. "14:30"
+  
+  notes: string;                   // NOTAS
+  
+  // Control fields
+  assignedToEmail: string;         // Assigned comercial's email, or 'unassigned'
+  assignedToName?: string;         // Assigned comercial's name
+  archived?: boolean;              // archived flag
+  createdAt: string;
+}
+
 

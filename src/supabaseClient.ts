@@ -646,7 +646,7 @@ export const db = {
       title: row.title,
       content: row.content,
       category: row.category,
-      updatedAt: row.updatedAt || row.updated_at || 'Just now',
+      updatedAt: row.updatedAt || row.updated_at || new Date().toISOString(),
       authorName: row.authorName || row.author_name || 'Alex Rivera',
       authorAvatar: row.authorAvatar || row.author_avatar || ''
     })) as Note[];

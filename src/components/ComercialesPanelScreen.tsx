@@ -17,9 +17,11 @@ import {
   Briefcase,
   TrendingDown,
   CheckCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Phone
 } from 'lucide-react';
-import { ComercialAccount, ComercialLead } from '../types';
+import { ComercialAccount, ComercialLead, ColdCallingLead } from '../types';
+import ColdCallingScreen from './ColdCallingScreen';
 
 interface ComercialesPanelScreenProps {
   comercial: ComercialAccount;
@@ -28,6 +30,13 @@ interface ComercialesPanelScreenProps {
   onUpdateLead: (lead: ComercialLead) => void;
   onDeleteLead: (id: string) => void;
   onLogout: () => void;
+  
+  // Cold Calling integrations
+  coldLeads: ColdCallingLead[];
+  comercialesList: ComercialAccount[];
+  onAddColdLead: (lead: ColdCallingLead) => void;
+  onUpdateColdLead: (lead: ColdCallingLead) => void;
+  onDeleteColdLead: (id: string) => void;
 }
 
 export default function ComercialesPanelScreen({
@@ -36,9 +45,17 @@ export default function ComercialesPanelScreen({
   onAddLead,
   onUpdateLead,
   onDeleteLead,
-  onLogout
+  onLogout,
+  
+  // Cold Calling integrations
+  coldLeads,
+  comercialesList,
+  onAddColdLead,
+  onUpdateColdLead,
+  onDeleteColdLead
 }: ComercialesPanelScreenProps) {
   // Local state
+  const [activeView, setActiveView] = useState<'pipeline' | 'cold_calling'>('pipeline');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -192,17 +209,64 @@ export default function ComercialesPanelScreen({
             <p className="text-xs text-slate-400 mt-1">Este es tu panel centralizado de carteras de clientes rápidos. Sigue tus objetivos de conversión.</p>
           </div>
           
+          {activeView === 'pipeline' && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 px-4.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold transition duration-200 text-xs shadow-lg shadow-amber-500/5 cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4 text-slate-950" />
+              <span>Registrar Lead</span>
+            </button>
+          )}
+        </div>
+
+        {/* VIEW MODE TABS FOR COMERCIAL (CRM vs COLD CALLING) */}
+        <div className="flex gap-1.5 p-1 bg-[#050510]/80 backdrop-blur-md rounded-2xl border border-white/5 max-w-sm">
           <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold transition duration-200 text-xs shadow-lg shadow-amber-500/5 cursor-pointer"
+            onClick={() => setActiveView('pipeline')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeView === 'pipeline'
+                ? 'bg-violet-650/20 text-violet-400 border border-violet-500/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
           >
-            <PlusCircle className="w-4 h-4 text-slate-950" />
-            <span>Registrar Lead</span>
+            <Layers className="w-3.5 h-3.5" />
+            <span>Pipeline CRM</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveView('cold_calling')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer relative ${
+              activeView === 'cold_calling'
+                ? 'bg-violet-650/20 text-violet-400 border border-violet-500/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Phone className="w-3.5 h-3.5" />
+            <span>Cold Calling</span>
+            {coldLeads.filter(l => !l.archived && l.assignedToEmail.toLowerCase() === comercial.email.toLowerCase() && l.callbackScheduled === 'Llamar más tarde' && l.callbackDate === new Date().toISOString().split('T')[0]).length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-[9px] text-white font-extrabold flex items-center justify-center rounded-full animate-bounce">
+                {coldLeads.filter(l => !l.archived && l.assignedToEmail.toLowerCase() === comercial.email.toLowerCase() && l.callbackScheduled === 'Llamar más tarde' && l.callbackDate === new Date().toISOString().split('T')[0]).length}
+              </span>
+            )}
           </button>
         </div>
 
-        {/* METRICS ROW */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {activeView === 'cold_calling' ? (
+          <div className="bg-[#020205]/40 rounded-3xl border border-white/5 overflow-hidden">
+            <ColdCallingScreen
+              coldLeads={coldLeads}
+              comercialesList={comercialesList}
+              onAddColdLead={onAddColdLead}
+              onUpdateColdLead={onUpdateColdLead}
+              onDeleteColdLead={onDeleteColdLead}
+              currentComercial={comercial}
+            />
+          </div>
+        ) : (
+          <>
+            {/* METRICS ROW */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           
           {/* Total Leads */}
           <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-violet-500/20 transition duration-200">
@@ -494,6 +558,9 @@ export default function ComercialesPanelScreen({
           )}
 
         </div>
+
+          </>
+        )}
 
       </main>
 

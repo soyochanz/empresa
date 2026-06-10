@@ -11,7 +11,8 @@ import {
   Settings,
   Briefcase,
   Mail,
-  Receipt
+  Receipt,
+  Phone
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -221,6 +222,24 @@ export default function Sidebar({
           <span className="font-sans text-sm flex items-center justify-between w-full">
             <span>Gestión Comerciales</span>
             <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold border border-violet-500/25">Equipo</span>
+          </span>
+        </button>
+
+        {/* Cold Calling y Métricas */}
+        <button
+          onClick={() => onNavigate('cold_calling', 'none')}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
+            currentScreen === 'cold_calling'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
+          }`}
+        >
+          <Phone className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
+            currentScreen === 'cold_calling' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
+          }`} />
+          <span className="font-sans text-sm flex items-center justify-between w-full">
+            <span>Futuros Clientes (Cold)</span>
+            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold border border-violet-500/25">Llamadas</span>
           </span>
         </button>
 

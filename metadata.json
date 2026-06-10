@@ -1,6 +1,6 @@
 {
   "name": "Althera",
-  "description": "Un portal interno para agencias que integra un Dashboard Principal, Calendario de Reuniones, CRM de Clientes y Notas Internas con navegación fluida y diseño moderno y profesional.",
+  "description": "Portal corporativo de agencia con CRM de clientes, calendario de citas, bloc de notas, y seguimiento de métricas y tareas diarias de Cold Calling bajo diseño morado de lujo.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
