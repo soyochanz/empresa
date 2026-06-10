@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { 
   Users, 
   Phone, 
@@ -23,7 +23,9 @@ import {
   UserPlus,
   RefreshCw,
   FolderMinus,
-  Briefcase
+  Briefcase,
+  List,
+  Grid
 } from 'lucide-react';
 import { ColdCallingLead, ComercialAccount } from '../types';
 
@@ -55,6 +57,7 @@ export default function ColdCallingScreen({
 
   // Active view tab inside Cold Calling Screen
   const [activeTab, setActiveTab] = useState<'leads' | 'tasks' | 'metrics'>('leads');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [tempFilter, setTempFilter] = useState<'Todos' | 'Frío' | 'Templado' | 'Caliente'>('Todos');
   const [assignedFilter, setAssignedFilter] = useState<string>('todos');
@@ -79,6 +82,7 @@ export default function ColdCallingScreen({
 
   // Call Logging form state (For Comerciales working the lead)
   const [callContacted, setCallContacted] = useState<'Sí' | 'No'>('Sí');
+  const [callContactPerson, setCallContactPerson] = useState('');
   const [callIsOwner, setCallIsOwner] = useState<'Sí' | 'No'>('Sí');
   const [callAnswered, setCallAnswered] = useState<'Sí' | 'No'>('Sí');
   const [callTemperature, setCallTemperature] = useState<'Frío' | 'Templado' | 'Caliente'>('Frío');
@@ -181,6 +185,7 @@ export default function ColdCallingScreen({
   const handleOpenCallLog = (lead: ColdCallingLead) => {
     setSelectedLeadForCall(lead);
     setCallContacted(lead.contacted);
+    setCallContactPerson(lead.contactPerson || '');
     setCallIsOwner(lead.isOwner);
     setCallAnswered(lead.answered);
     setCallTemperature(lead.temperature);
@@ -203,6 +208,7 @@ export default function ColdCallingScreen({
     const updatedLead: ColdCallingLead = {
       ...selectedLeadForCall,
       contacted: callContacted,
+      contactPerson: callContactPerson.trim() || selectedLeadForCall.contactPerson,
       isOwner: callIsOwner,
       answered: callAnswered,
       temperature: callTemperature,
@@ -362,6 +368,34 @@ export default function ColdCallingScreen({
             {/* Quick Filter Pill Buttons */}
             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
               
+              {/* View Mode Toggle (List vs Grid) */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-white/5">
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    viewMode === 'list'
+                      ? 'bg-violet-650/30 text-violet-400 border border-violet-500/30 shadow-[0_0_8px_rgba(139,92,246,0.15)]'
+                      : 'text-slate-400 hover:text-white hover:bg-white/[0.01] border border-transparent'
+                  }`}
+                  title="Vista de Lista"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="text-[10px] uppercase font-mono px-0.5">Lista</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    viewMode === 'grid'
+                      ? 'bg-violet-650/30 text-violet-400 border border-violet-500/30 shadow-[0_0_8px_rgba(139,92,246,0.15)]'
+                      : 'text-slate-400 hover:text-white hover:bg-white/[0.01] border border-transparent'
+                  }`}
+                  title="Vista de Cuadrícula"
+                >
+                  <Grid className="w-3.5 h-3.5" />
+                  <span className="text-[10px] uppercase font-mono px-0.5">Mosaico</span>
+                </button>
+              </div>
+              
               {/* Temperature Selector badges */}
               <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-white/5">
                 {(['Todos', 'Frío', 'Templado', 'Caliente'] as const).map(opt => {
@@ -428,42 +462,219 @@ export default function ColdCallingScreen({
                 Prueba ajustando los filtros de búsqueda o temperatura, o crea un nuevo prospecto de llamada desde la cabecera.
               </p>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          ) : viewMode === 'list' ? (
+            /* LIST VIEW (DEFAULT) */
+            <div className="bg-[#030306]/60 border border-white/5 rounded-2.5xl overflow-hidden divide-y divide-white/5">
+              
+              {/* TABLE HEADER (hidden on mobile) */}
+              <div className="hidden lg:grid lg:grid-cols-12 gap-4 px-6 py-3.5 bg-slate-950/80 text-[10px] font-mono text-slate-400 uppercase tracking-widest font-extrabold items-center">
+                <div className="col-span-3">Negocio / Cliente</div>
+                <div className="col-span-2">Contacto Principal</div>
+                <div className="col-span-2">Teléfono de Contacto</div>
+                <div className="col-span-1 text-center">Temp</div>
+                <div className="col-span-2 text-center">Asignado a</div>
+                <div className="col-span-2 text-right">Acciones</div>
+              </div>
+
+              {/* LIST ROWS */}
               {visibleLeads.map(lead => {
                 
                 // Styling corresponding to visual temperature
                 let tempBadge = '';
-                let cardGlow = '';
+                let bgStyle = '';
+                if (lead.temperature === 'Caliente') {
+                  tempBadge = 'bg-rose-500/10 text-rose-455 border border-rose-550/25';
+                  bgStyle = 'bg-gradient-to-r from-rose-950/15 via-[#030306]/40 to-transparent hover:from-rose-950/25 border-l-2 border-l-rose-500';
+                } else if (lead.temperature === 'Templado') {
+                  tempBadge = 'bg-amber-500/10 text-amber-455 border border-amber-550/25';
+                  bgStyle = 'bg-gradient-to-r from-amber-950/15 via-[#030306]/40 to-transparent hover:from-amber-950/25 border-l-2 border-l-amber-500';
+                } else {
+                  tempBadge = 'bg-sky-500/10 text-sky-455 border border-sky-550/25';
+                  bgStyle = 'bg-gradient-to-r from-sky-950/15 via-[#030306]/40 to-transparent hover:from-sky-950/25 border-l-2 border-l-sky-550';
+                }
+
+                return (
+                  <div 
+                    key={lead.id}
+                    className={`grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 px-5 py-4 sm:px-6 items-center text-left transition duration-200 ${bgStyle} ${lead.archived ? 'opacity-65 border-dashed border-red-500/10' : ''}`}
+                  >
+                    {/* Business Column */}
+                    <div className="col-span-3 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-xs sm:text-sm text-white">{lead.businessName}</h4>
+                        {lead.archived && (
+                          <span className="text-[8px] bg-amber-500/10 text-amber-450 border border-amber-500/20 font-bold px-1.5 py-0.5 rounded uppercase">Archivado</span>
+                        )}
+                        {lead.callbackScheduled === 'Llamar más tarde' && lead.callbackDate && (
+                          <span className="text-[8px] bg-rose-500/15 text-rose-400 border border-rose-550/20 font-bold px-1.5 py-0.5 rounded uppercase flex items-center gap-1">
+                            📅 {lead.callbackDate}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
+                        <span>ID Pág: {lead.id}</span>
+                        {lead.callDate && <span>• Última: {lead.callDate}</span>}
+                      </div>
+                    </div>
+
+                    {/* Contact Person Column */}
+                    <div className="col-span-2">
+                      <div className="text-slate-300 text-xs flex items-center gap-1.5 font-sans">
+                        <span className="text-slate-500 size-4 flex items-center justify-center bg-slate-950 rounded-md text-[10px]">👩‍💼</span>
+                        <span className="font-semibold text-slate-200 leading-snug">{lead.contactPerson || 'Sin registrar'}</span>
+                      </div>
+                    </div>
+
+                    {/* Phone Link Column */}
+                    <div className="col-span-2">
+                      <a 
+                        href={`tel:${lead.phone}`}
+                        className="inline-flex items-center gap-2 bg-[#05050c] border border-white/5 py-1.5 px-3 rounded-xl text-xs text-violet-400 font-mono font-bold hover:text-white hover:border-violet-500/30 hover:bg-violet-950/20 transition shadow-sm"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>{lead.phone}</span>
+                      </a>
+                    </div>
+
+                    {/* Temp Column */}
+                    <div className="col-span-1 lg:text-center">
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${tempBadge}`}>
+                        {lead.temperature === 'Caliente' ? '🔥' : lead.temperature === 'Templado' ? '⚡' : '❄️'}
+                        <span>{lead.temperature}</span>
+                      </span>
+                    </div>
+
+                    {/* Assignee Column (Clickable dropdown for admin) */}
+                    <div className="col-span-2 lg:text-center flex items-center gap-2 lg:justify-center">
+                      <span className="lg:hidden text-[10px] font-mono text-slate-500 uppercase">Responsable:</span>
+                      {isAdmin ? (
+                        <select
+                          value={lead.assignedToEmail || 'unassigned'}
+                          onChange={(e) => {
+                            const email = e.target.value;
+                            const matched = comercialesList.find(c => c.email === email);
+                            onUpdateColdLead({
+                              ...lead,
+                              assignedToEmail: email,
+                              assignedToName: matched ? matched.name : 'Sin asignar'
+                            });
+                          }}
+                          className="text-[10px] bg-[#020205] border border-violet-500/25 text-violet-300 px-2.5 py-1.5 rounded-xl font-mono cursor-pointer focus:outline-none hover:border-violet-400 focus:border-violet-500 transition font-sans"
+                        >
+                          <option value="unassigned">👤 Sin asignar</option>
+                          {comercialesList.map(com => (
+                            <option key={com.id} value={com.email}>👤 {com.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-[11px] bg-slate-900 border border-white/5 text-slate-300 px-2.5 py-1 rounded-lg font-sans max-w-[130px] truncate" title={lead.assignedToEmail}>
+                          👤 {lead.assignedToName || 'Sin asignar'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Action Column */}
+                    <div className="col-span-2 text-right flex items-center lg:justify-end justify-between gap-1.5 mt-2 lg:mt-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-white/5">
+                      <button
+                        onClick={() => handleOpenCallLog(lead)}
+                        className="py-1.5 px-3 bg-violet-600/10 hover:bg-violet-600/30 border border-violet-500/20 text-violet-305 font-bold text-xs rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        title="Registrar llamada / Formulario"
+                      >
+                        <ClipboardList className="w-3.5 h-3.5 text-violet-400" />
+                        <span>Resolver</span>
+                      </button>
+
+                      {isAdmin && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleToggleArchive(lead)}
+                            className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                              lead.archived 
+                                ? 'bg-amber-500/10 border-amber-500/25 text-amber-400 hover:bg-slate-900' 
+                                : 'bg-slate-900/60 border-white/5 text-slate-450 hover:text-white hover:border-slate-500/30'
+                            }`}
+                            title={lead.archived ? 'Desarchivar' : 'Archivar'}
+                          >
+                            <Archive className="w-3.5 h-3.5" />
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              if (confirm('¿Seguro que deseas eliminar definitivamente este lead de cold calling?')) {
+                                onDeleteColdLead(lead.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 hover:text-white hover:bg-rose-550 transition-colors cursor-pointer"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* GRID VIEW (MOSAICO) */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {visibleLeads.map(lead => {
+                
+                // Styling corresponding to visual temperature (Aesthetic colors)
+                let tempBadge = '';
+                let bgStyle = '';
                 if (lead.temperature === 'Caliente') {
                   tempBadge = 'bg-rose-500/10 text-rose-400 border border-rose-550/25 shadow-[0_0_12px_rgba(244,63,94,0.15)]';
-                  cardGlow = 'hover:border-rose-500/20';
+                  bgStyle = 'bg-gradient-to-br from-[#1c0c16]/75 via-[#030306]/95 to-[#0c0409]/95 border-rose-500/25 hover:border-rose-500/45 shadow-lg shadow-rose-950/10';
                 } else if (lead.temperature === 'Templado') {
                   tempBadge = 'bg-amber-500/10 text-amber-400 border border-amber-550/25 shadow-[0_0_12px_rgba(245,158,11,0.15)]';
-                  cardGlow = 'hover:border-amber-500/20';
+                  bgStyle = 'bg-gradient-to-br from-[#1c140c]/75 via-[#030306]/95 to-[#0c0804]/95 border-amber-500/20 hover:border-amber-500/40 shadow-lg shadow-amber-950/10';
                 } else {
-                  tempBadge = 'bg-sky-500/10 text-sky-400 border border-sky-550/25 shadow-[0_0_12px_rgba(14,165,233,0.15)]';
-                  cardGlow = 'hover:border-sky-500/20';
+                  tempBadge = 'bg-sky-500/10 text-sky-455 border border-sky-550/25 shadow-[0_0_12px_rgba(14,165,233,0.15)]';
+                  bgStyle = 'bg-gradient-to-br from-[#0c141c]/75 via-[#030306]/95 to-[#04080c]/95 border-sky-500/15 hover:border-sky-500/35 shadow-lg shadow-sky-950/10';
                 }
 
                 return (
                   <div 
                     key={lead.id} 
-                    className={`bg-white/[0.01] border ${lead.archived ? 'border-dashed border-red-500/20' : 'border-white/5'} ${cardGlow} p-5 rounded-2.5xl transition-all duration-200 flex flex-col justify-between text-left`}
+                    className={`border ${lead.archived ? 'border-dashed border-red-500/20' : 'border-white/5'} ${bgStyle} p-5 rounded-2.5xl transition-all duration-200 flex flex-col justify-between text-left`}
                   >
                     <div>
                       {/* Badge Temperature & Assignee */}
                       <div className="flex justify-between items-start gap-2 mb-3">
                         <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${tempBadge} flex items-center gap-1`}>
-                          {lead.temperature === 'Caliente' ? <Flame className="w-3 h-3 text-rose-400 fill-rose-400 animate-pulse" /> : 
+                          {lead.temperature === 'Caliente' ? <Flame className="w-3 h-3 text-rose-455 fill-rose-500 animate-pulse" /> : 
                            lead.temperature === 'Templado' ? <Zap className="w-3 h-3 text-amber-400" /> : 
-                           <Snowflake className="w-3 h-3 text-sky-400" />}
+                           <Snowflake className="w-3 h-3 text-sky-450" />}
                           {lead.temperature === 'Caliente' ? '🔥 Caliente' : lead.temperature === 'Templado' ? '⚡ Templado' : '❄️ Frío'}
                         </span>
 
-                        <span className="text-[9px] bg-slate-900 border border-white/5 text-slate-400 px-2 py-0.5 rounded-md font-mono max-w-[120px] truncate" title={lead.assignedToEmail}>
-                          👤 {lead.assignedToName || 'Sin asignar'}
-                        </span>
+                        {isAdmin ? (
+                          <select
+                            value={lead.assignedToEmail || 'unassigned'}
+                            onChange={(e) => {
+                              const email = e.target.value;
+                              const matched = comercialesList.find(c => c.email === email);
+                              onUpdateColdLead({
+                                ...lead,
+                                assignedToEmail: email,
+                                assignedToName: matched ? matched.name : 'Sin asignar'
+                              });
+                            }}
+                            className="text-[9px] bg-[#020205] border border-violet-500/30 text-violet-300 px-2 py-0.5 rounded-md font-mono max-w-[130px] cursor-pointer focus:outline-none hover:border-violet-400 transition"
+                          >
+                            <option value="unassigned">👤 Sin asignar</option>
+                            {comercialesList.map(com => (
+                              <option key={com.id} value={com.email}>👤 {com.name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-[9px] bg-slate-900 border border-white/5 text-slate-400 px-2 py-0.5 rounded-md font-mono max-w-[120px] truncate" title={lead.assignedToEmail}>
+                            👤 {lead.assignedToName || 'Sin asignar'}
+                          </span>
+                        )}
                       </div>
 
                       {/* Business & Contact Name */}
@@ -542,7 +753,7 @@ export default function ColdCallingScreen({
                             className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
                               lead.archived 
                                 ? 'bg-amber-500/10 border-amber-500/25 text-amber-400 hover:bg-slate-900' 
-                                : 'bg-slate-900/60 border-white/5 text-slate-400 hover:text-white hover:border-slate-500/30'
+                                : 'bg-slate-900/60 border-white/5 text-slate-450 hover:text-white hover:border-slate-500/30'
                             }`}
                             title={lead.archived ? 'Desarchivar' : 'Archivar prospecto'}
                           >
@@ -1173,6 +1384,21 @@ export default function ColdCallingScreen({
                   </div>
                 </div>
               )}
+
+              {/* PERSONA CONTACTADA (FREE TEXT INPUT WRITER) */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-violet-600/5 border border-violet-500/10 text-left col-span-2">
+                <label className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-bold flex items-center gap-1.5">
+                  <span>👨‍💼 PERSONA CON QUIEN HABLÉ / DUEÑO O CONTACTO</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. Francisco Sanz (Gerente/Dueño) o María (Secretaria)"
+                  value={callContactPerson}
+                  onChange={e => setCallContactPerson(e.target.value)}
+                  className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-violet-500 placeholder:text-slate-600 transition-all font-sans"
+                />
+                <p className="text-[9px] text-slate-500">Puedes escribir el nombre exacto de la persona con la que has hablado para modificarlo de forma muy visual en el listado.</p>
+              </div>
 
               {/* NOTES */}
               <div className="space-y-1.5">
