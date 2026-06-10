@@ -157,7 +157,8 @@ export default function CrmScreen({
         assignedUserEmail: newAssignedUserEmail || undefined,
         assignedUserId: matchedUser ? matchedUser.id : undefined,
         initials: initials || 'N',
-        color: newColor || undefined
+        color: newColor || undefined,
+        temperature: newColor === 'red' ? 'Caliente' : newColor === 'yellow' ? 'Templado' : 'Frío'
       };
 
       if (onUpdateContact) {
@@ -184,7 +185,8 @@ export default function CrmScreen({
         assignedUserEmail: newAssignedUserEmail || undefined,
         assignedUserId: matchedUser ? matchedUser.id : undefined,
         initials: initials || 'N',
-        color: newColor || undefined
+        color: newColor || undefined,
+        temperature: newColor === 'red' ? 'Caliente' : newColor === 'yellow' ? 'Templado' : 'Frío'
       };
 
       onAddContact(generatedContact);
@@ -303,31 +305,26 @@ export default function CrmScreen({
                   let bgBgClass = '';
                   let borderColClass = 'border-l-4 border-transparent';
 
-                  if (contact.color === 'red') {
+                  const temp = contact.temperature || (
+                    contact.color === 'red' ? 'Caliente' :
+                    (contact.color === 'yellow' || contact.color === 'green') ? 'Templado' : 'Frío'
+                  );
+
+                  if (temp === 'Caliente') {
                     bgBgClass = isSelected 
-                      ? 'bg-red-900/50 text-white shadow-inner' 
-                      : 'bg-red-950/40 text-red-100 hover:bg-red-950/60';
-                    borderColClass = 'border-l-4 border-red-500';
-                  } else if (contact.color === 'green') {
+                      ? 'bg-rose-950/70 text-white shadow-inner shadow-rose-900/15' 
+                      : 'bg-rose-950/20 text-rose-100 hover:bg-rose-950/35';
+                    borderColClass = 'border-l-4 border-rose-500';
+                  } else if (temp === 'Templado') {
                     bgBgClass = isSelected 
-                      ? 'bg-emerald-900/50 text-white shadow-inner' 
-                      : 'bg-emerald-950/40 text-emerald-100 hover:bg-emerald-950/60';
-                    borderColClass = 'border-l-4 border-emerald-500';
-                  } else if (contact.color === 'yellow') {
-                    bgBgClass = isSelected 
-                      ? 'bg-amber-900/40 text-white shadow-inner' 
-                      : 'bg-amber-950/30 text-amber-100 hover:bg-amber-950/50';
-                    borderColClass = 'border-l-4 border-amber-400';
-                  } else if (contact.color === 'blue') {
-                    bgBgClass = isSelected 
-                      ? 'bg-blue-900/50 text-white shadow-inner' 
-                      : 'bg-blue-950/40 text-blue-100 hover:bg-blue-950/60';
-                    borderColClass = 'border-l-4 border-blue-500';
+                      ? 'bg-amber-955/65 text-white shadow-inner shadow-amber-900/15' 
+                      : 'bg-amber-950/15 text-amber-100 hover:bg-amber-950/25';
+                    borderColClass = 'border-l-4 border-amber-500';
                   } else {
                     bgBgClass = isSelected 
-                      ? 'bg-blue-600/10 text-white' 
-                      : 'hover:bg-white/5';
-                    borderColClass = isSelected ? 'border-l-4 border-blue-500' : 'border-l-4 border-transparent';
+                      ? 'bg-sky-950/50 text-white shadow-inner shadow-sky-900/15' 
+                      : 'bg-transparent text-slate-350 hover:bg-white/5';
+                    borderColClass = 'border-l-4 border-sky-500';
                   }
 
                   return (
@@ -339,7 +336,7 @@ export default function CrmScreen({
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                            isSelected ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-800 text-slate-450'
+                            isSelected ? 'bg-indigo-500/20 text-indigo-400' : 'bg-slate-800 text-slate-450'
                           } overflow-hidden`}>
                             {contact.avatarUrl ? (
                               <img 
@@ -353,7 +350,16 @@ export default function CrmScreen({
                             )}
                           </div>
                           <div>
-                            <p className="font-semibold text-xs text-white">{contact.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-xs text-white">{contact.name}</p>
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                temp === 'Caliente' ? 'bg-rose-500/15 text-rose-455 border border-rose-600/20' :
+                                temp === 'Templado' ? 'bg-amber-500/15 text-amber-455 border border-amber-600/20' :
+                                'bg-sky-500/15 text-sky-455 border border-sky-600/20'
+                              }`}>
+                                {temp === 'Caliente' ? 'Caliente 🔥' : temp === 'Templado' ? 'Templado ⚡' : 'Frío ❄️'}
+                              </span>
+                            </div>
                             <p className="text-[10px] text-slate-500">{contact.email}</p>
                           </div>
                         </div>
@@ -511,53 +517,58 @@ export default function CrmScreen({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 mt-4 bg-slate-950/40 px-3.5 py-1.5 rounded-2xl border border-white/5">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Temperatura:</span>
-                    <div className="flex gap-2">
-                      {['blue', 'green', 'yellow', 'red'].map(col => {
-                        const colColors: Record<string, string> = {
-                          blue: 'bg-blue-500 hover:scale-110 shadow-blue-500/20',
-                          green: 'bg-emerald-500 hover:scale-110 shadow-emerald-500/20',
-                          yellow: 'bg-amber-400 hover:scale-110 shadow-amber-400/20',
-                          red: 'bg-red-500 hover:scale-110 shadow-red-500/20'
-                        };
-                        const isColSelected = selectedContact.color === col;
-                        return (
-                          <button
-                            key={col}
-                            onClick={() => {
-                              if (onUpdateContact) {
-                                onUpdateContact({
-                                  ...selectedContact,
-                                  color: col
-                                });
-                              }
-                            }}
-                            className={`w-3.5 h-3.5 rounded-full transition-all cursor-pointer ${colColors[col]} ${
-                              isColSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-950 scale-125' : 'opacity-60 hover:opacity-100'
-                            }`}
-                            title={`Marcar en color ${col}`}
-                          />
-                        );
-                      })}
-                    </div>
-                    {selectedContact.color && (
-                      <button
-                        onClick={() => {
-                          if (onUpdateContact) {
-                            onUpdateContact({
-                              ...selectedContact,
-                              color: undefined
-                            });
-                          }
-                        }}
-                        className="text-[9px] text-slate-500 hover:text-slate-300 ml-1 hover:underline cursor-pointer"
-                        title="Limpiar temperatura"
-                      >
-                        Limpiar
-                      </button>
-                    )}
-                  </div>
+                  {/* Temperature Selector Widget */}
+                  {(() => {
+                    const temp = selectedContact.temperature || (
+                      selectedContact.color === 'red' ? 'Caliente' :
+                      (selectedContact.color === 'yellow' || selectedContact.color === 'green') ? 'Templado' : 'Frío'
+                    );
+                    return (
+                      <div className="mt-4 bg-[#030305] p-3 rounded-2xl border border-white/5 space-y-2 text-left">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-bold">Temperatura de Venta:</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                            temp === 'Caliente' ? 'bg-rose-500/10 text-rose-400 border border-rose-550/20 shadow-[0_0_8px_rgba(244,63,94,0.1)]' :
+                            temp === 'Templado' ? 'bg-amber-500/10 text-amber-400 border border-amber-550/20 shadow-[0_0_8px_rgba(245,158,11,0.1)]' :
+                            'bg-sky-500/10 text-sky-400 border border-sky-550/20 shadow-[0_0_8px_rgba(14,165,233,0.1)]'
+                          }`}>
+                            {temp === 'Caliente' ? '🔥 Caliente' :
+                             temp === 'Templado' ? '⚡ Templado' :
+                             '❄️ Frío'}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { tempVal: 'Frío', label: '❄️ Frío', color: 'blue', activeClass: 'bg-sky-500/20 border-sky-500 text-sky-300 shadow-[0_0_12px_rgba(14,165,233,0.15)]', inactiveClass: 'bg-slate-900/40 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-slate-900/65' },
+                            { tempVal: 'Templado', label: '⚡ Templado', color: 'yellow', activeClass: 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]', inactiveClass: 'bg-slate-900/40 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-slate-900/65' },
+                            { tempVal: 'Caliente', label: '🔥 Caliente', color: 'red', activeClass: 'bg-rose-500/20 border-rose-500 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.15)]', inactiveClass: 'bg-slate-900/40 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-slate-900/65' }
+                          ].map(({ tempVal, label, color, activeClass, inactiveClass }) => {
+                            const isCurrent = temp === tempVal;
+                            return (
+                              <button
+                                key={tempVal}
+                                onClick={() => {
+                                  if (onUpdateContact) {
+                                    onUpdateContact({
+                                      ...selectedContact,
+                                      temperature: tempVal as 'Frío' | 'Templado' | 'Caliente',
+                                      color: color
+                                    });
+                                  }
+                                }}
+                                className={`py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
+                                  isCurrent ? activeClass : inactiveClass
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -975,41 +986,34 @@ export default function CrmScreen({
               </div>
 
               {/* Temperature / Color selection */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-semibold text-amber-500">Temperatura de Cliente (Color)</label>
-                <div className="flex gap-4 items-center bg-[#060e20] border border-white/10 rounded-xl px-4 py-2">
-                  <span className="text-xs text-slate-400">Seleccionar:</span>
-                  <div className="flex gap-3">
-                    {['', 'blue', 'green', 'yellow', 'red'].map(col => {
-                      const colColors: Record<string, string> = {
-                        '': 'bg-slate-700 hover:scale-115 text-[8px] font-bold text-slate-300 flex items-center justify-center',
-                        blue: 'bg-blue-500 hover:scale-115 shadow-blue-500/20',
-                        green: 'bg-emerald-500 hover:scale-115 shadow-emerald-500/20',
-                        yellow: 'bg-amber-400 hover:scale-115 shadow-amber-400/20',
-                        red: 'bg-red-500 hover:scale-115 shadow-red-500/20'
-                      };
-                      const isColSelected = newColor === col;
-                      return (
-                        <button
-                          key={col}
-                          type="button"
-                          onClick={() => setNewColor(col)}
-                          className={`w-5 h-5 rounded-full transition-all cursor-pointer ${colColors[col || '']} ${
-                            isColSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900 scale-125' : 'opacity-65 hover:opacity-100'
-                          }`}
-                          title={col ? `Marcar como ${col}` : 'Sin color / neutro'}
-                        >
-                          {!col && '✖'}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <span className="text-[10px] text-slate-500 italic max-w-[150px] leading-tight">
-                    {newColor === 'red' ? 'Muy Caliente / Cierre inmediato' :
-                     newColor === 'yellow' ? 'Caliente / Seguimiento activo' :
-                     newColor === 'green' ? 'Tibio / En contacto' :
-                     newColor === 'blue' ? 'Frío / Capturo inicial' : 'Sin asignación térmica'}
-                  </span>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-405 uppercase tracking-wider font-extrabold text-violet-400">Temperatura de Venta (Cliente)</label>
+                <div className="grid grid-cols-3 gap-2 bg-[#060e20] border border-white/10 p-2 rounded-xl">
+                  {[
+                    { val: 'blue', label: '❄️ Frío', desc: 'Frío / Captura inicial', activeStyle: 'bg-sky-500/20 border-sky-500 text-sky-400 shadow-[0_0_12px_rgba(14,165,233,0.15)]' },
+                    { val: 'yellow', label: '⚡ Templado', desc: 'Templado / Interés medio', activeStyle: 'bg-amber-500/20 border-amber-500 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.15)]' },
+                    { val: 'red', label: '🔥 Caliente', desc: 'Caliente / Compra inminente', activeStyle: 'bg-rose-500/20 border-rose-500 text-rose-450 shadow-[0_0_12px_rgba(244,63,94,0.15)]' }
+                  ].map(item => {
+                    const isSelected = newColor === item.val || (!newColor && item.val === 'blue');
+                    return (
+                      <button
+                        key={item.val}
+                        type="button"
+                        onClick={() => setNewColor(item.val)}
+                        className={`py-2 px-1.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${
+                          isSelected 
+                            ? item.activeStyle
+                            : 'bg-slate-950/40 border-white/5 text-slate-400 hover:text-slate-300'
+                        }`}
+                        title={item.desc}
+                      >
+                        <span>{item.label}</span>
+                        <span className="text-[7.5px] text-slate-500 uppercase font-normal font-mono">
+                          {item.val === 'blue' ? 'Frío' : item.val === 'yellow' ? 'Templado' : 'Caliente'}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

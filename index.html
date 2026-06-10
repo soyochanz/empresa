@@ -56,6 +56,72 @@
             } catch(e) {}
             tryDefine(self, 'fetch', descriptor);
           }
+
+          // Pre-emptive localStorage and sessionStorage safety check & polyfill
+          var storageTestOk = false;
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem('__aistudio_test_ls_key__', '1');
+              window.localStorage.removeItem('__aistudio_test_ls_key__');
+              storageTestOk = true;
+            }
+          } catch (storageError) {
+            console.warn("Storage access denied. Implementing in-memory fallback:", storageError);
+          }
+
+          if (!storageTestOk) {
+            function createMemStorage() {
+              var store = {};
+              return {
+                getItem: function(key) {
+                  return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
+                },
+                setItem: function(key, val) {
+                  store[key] = String(val);
+                },
+                removeItem: function(key) {
+                  delete store[key];
+                },
+                clear: function() {
+                  store = {};
+                },
+                key: function(idx) {
+                  var keys = Object.keys(store);
+                  return keys[idx] || null;
+                },
+                get length() {
+                  return Object.keys(store).length;
+                }
+              };
+            }
+
+            var memLocalStorage = createMemStorage();
+            var memSessionStorage = createMemStorage();
+
+            tryDefine(window, 'localStorage', {
+              get: function() { return memLocalStorage; },
+              configurable: true,
+              enumerable: true
+            });
+            tryDefine(window, 'sessionStorage', {
+              get: function() { return memSessionStorage; },
+              configurable: true,
+              enumerable: true
+            });
+
+            if (typeof Window !== 'undefined' && Window.prototype) {
+              tryDefine(Window.prototype, 'localStorage', {
+                get: function() { return memLocalStorage; },
+                configurable: true,
+                enumerable: true
+              });
+              tryDefine(Window.prototype, 'sessionStorage', {
+                get: function() { return memSessionStorage; },
+                configurable: true,
+                enumerable: true
+              });
+            }
+          }
         } catch (globalError) {
           console.warn("Global catch in fetch patch:", globalError);
         }

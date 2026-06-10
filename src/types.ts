@@ -30,6 +30,7 @@ export interface ClientContact {
   assignedUserEmail?: string;
   initials: string;
   color?: string;
+  temperature?: 'Frío' | 'Templado' | 'Caliente';
 }
 
 export interface CalendarEvent {
@@ -133,5 +134,6 @@ export interface ComercialLead {
   value: number;
   notes: string;
   createdAt: string;
+  temperature?: 'Frío' | 'Templado' | 'Caliente';
 }
 

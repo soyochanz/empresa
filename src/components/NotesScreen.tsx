@@ -33,6 +33,34 @@ interface NotesScreenProps {
   currentUser?: { id: string | null; email: string; name: string } | null;
 }
 
+function renderNoteDate(updatedAt: string) {
+  if (!updatedAt) return '';
+  const parsed = Date.parse(updatedAt);
+  if (isNaN(parsed)) {
+    return updatedAt; // already-formatted string e.g., 'Oct 12, 2023' or 'Yesterday'
+  }
+  const date = new Date(parsed);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) {
+    return 'Hace un momento';
+  } else if (diffMins < 60) {
+    return `Hace ${diffMins} min`;
+  } else if (diffHours < 24) {
+    return `Hace ${diffHours} h`;
+  } else if (diffDays === 1) {
+    return 'Ayer';
+  } else if (diffDays < 7) {
+    return `Hace ${diffDays} días`;
+  } else {
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+}
+
 export default function NotesScreen({ notes, onAddNote, onUpdateNote, onDeleteNote, currentUser }: NotesScreenProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('All Notes');
   const [searchQuery, setSearchQuery] = useState('');
@@ -116,7 +144,7 @@ export default function NotesScreen({ notes, onAddNote, onUpdateNote, onDeleteNo
         content: editorContent || 'Contenido vacío.',
         category: editorCategory,
         status: editorStatus,
-        updatedAt: 'Just now',
+        updatedAt: new Date().toISOString(),
         authorName: currentUser?.name || 'Alex Rivera',
         authorAvatar: currentUser?.email 
           ? `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=3b82f6&color=fff`
@@ -137,7 +165,7 @@ export default function NotesScreen({ notes, onAddNote, onUpdateNote, onDeleteNo
         content: editorContent,
         category: editorCategory,
         status: editorStatus,
-        updatedAt: 'Updated just now'
+        updatedAt: new Date().toISOString()
       };
       onUpdateNote(updated);
 
@@ -590,7 +618,7 @@ export default function NotesScreen({ notes, onAddNote, onUpdateNote, onDeleteNo
                         )}
                         <span className="text-[10px] text-slate-500 font-sans">{note.authorName || 'Alex'}</span>
                       </div>
-                      <span className="text-[10px] text-slate-600 font-mono tracking-tight">{note.updatedAt}</span>
+                      <span className="text-[10px] text-slate-600 font-mono tracking-tight">{renderNoteDate(note.updatedAt)}</span>
                     </div>
 
                   </div>

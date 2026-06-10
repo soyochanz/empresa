@@ -36,12 +36,12 @@ export default function Sidebar({
   unreadCount
 }: SidebarProps) {
   return (
-    <aside id="sidebar" className="fixed left-0 top-0 bottom-0 flex flex-col py-6 w-[260px] bg-[#050505] border-r border-[#D4AF37]/15 z-40 text-slate-200 shadow-2xl shadow-black">
+    <aside id="sidebar" className="fixed left-0 top-0 bottom-0 flex flex-col py-6 w-[260px] bg-[#020204] border-r border-violet-500/15 z-40 text-slate-200 shadow-2xl shadow-black">
       
       {/* Brand Header */}
       <div className="px-6 mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl border border-[#D4AF37]/25 p-1">
+          <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl border border-violet-500/25 p-1 shadow-[0_0_15px_rgba(139,92,246,0.15)]">
             <img 
               src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
               alt="Althera Logo" 
@@ -51,7 +51,7 @@ export default function Sidebar({
           </div>
           <div>
             <h1 className="font-semibold text-base tracking-tight text-white font-display uppercase">Althera</h1>
-            <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest leading-none mt-0.5">Admin v1.2</p>
+            <p className="text-[10px] text-violet-400 font-bold uppercase tracking-widest leading-none mt-0.5">Admin v1.2</p>
           </div>
         </div>
       </div>
@@ -64,12 +64,12 @@ export default function Sidebar({
           onClick={() => onNavigate('dashboard', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'dashboard'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <LayoutDashboard className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'dashboard' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'dashboard' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">Dashboard</span>
         </button>
@@ -79,16 +79,16 @@ export default function Sidebar({
           onClick={() => onNavigate('citas', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'citas'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Calendar className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'citas' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'citas' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm flex items-center justify-between w-full">
             <span>Control de Citas</span>
-            <span className="text-[9px] bg-amber-500/10 text-[#D4AF37] px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-amber-500/20">Lista</span>
+            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-violet-500/20">Lista</span>
           </span>
         </button>
 
@@ -97,12 +97,12 @@ export default function Sidebar({
           onClick={() => onNavigate('calendar', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'calendar'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Calendar className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'calendar' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'calendar' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">Calendario Visual</span>
         </button>
@@ -112,12 +112,12 @@ export default function Sidebar({
           onClick={() => onNavigate('crm', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'crm'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Users className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'crm' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'crm' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">CRM Clientes</span>
         </button>
@@ -127,16 +127,16 @@ export default function Sidebar({
           onClick={() => onNavigate('contratos', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'contratos'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <FileText className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'contratos' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'contratos' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm flex items-center justify-between w-full">
             <span>Contratos y Facturas</span>
-            <span className="text-[9px] bg-amber-500/10 text-[#D4AF37] px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-amber-500/20">PDF</span>
+            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-violet-500/20">PDF</span>
           </span>
         </button>
 
@@ -145,16 +145,16 @@ export default function Sidebar({
           onClick={() => onNavigate('contactos', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'contactos'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Mail className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'contactos' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'contactos' ? 'text-violet-450' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm flex items-center justify-between w-full">
             <span>Contactos</span>
-            <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-md font-mono font-bold leading-none">Landing</span>
+            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-violet-500/20">Landing</span>
           </span>
         </button>
 
@@ -163,12 +163,12 @@ export default function Sidebar({
           onClick={() => onNavigate('notes', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'notes'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <FileText className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'notes' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'notes' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">Notas Internas</span>
         </button>
@@ -178,12 +178,12 @@ export default function Sidebar({
           onClick={() => onNavigate('projects', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'projects'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Briefcase className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'projects' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'projects' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">Proyectos</span>
         </button>
@@ -193,16 +193,16 @@ export default function Sidebar({
           onClick={() => onNavigate('finanzas', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'finanzas'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Receipt className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'finanzas' ? 'text-amber-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'finanzas' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm flex items-center justify-between w-full">
             <span>Finanzas Globales</span>
-            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded-md font-mono font-bold">Plan</span>
+            <span className="text-[10px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold border border-violet-500/25">Plan</span>
           </span>
         </button>
 
@@ -211,16 +211,16 @@ export default function Sidebar({
           onClick={() => onNavigate('comerciales_admin', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'comerciales_admin'
-              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Users className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'comerciales_admin' ? 'text-amber-450' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'comerciales_admin' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm flex items-center justify-between w-full">
             <span>Gestión Comerciales</span>
-            <span className="text-[9px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded-md font-mono font-bold">Equipo</span>
+            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold border border-violet-500/25">Equipo</span>
           </span>
         </button>
 

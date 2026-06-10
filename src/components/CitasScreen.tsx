@@ -51,6 +51,7 @@ export default function CitasScreen({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'done' | 'postponed'>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [timeFilter, setTimeFilter] = useState<'current_future' | 'past'>('current_future');
   
   // Modal state for quickly scheduling an appointment
   const [showAddModal, setShowAddModal] = useState(false);
@@ -61,7 +62,7 @@ export default function CitasScreen({
   const [newType, setNewType] = useState<CalendarEvent['type']>('Meeting');
   const [linkedContactId, setLinkedContactId] = useState('');
   const [newAlias, setNewAlias] = useState('');
-  const [newColor, setNewColor] = useState('#D4AF37');
+  const [newColor, setNewColor] = useState('#8B5CF6');
   const [newAssignedUserEmail, setNewAssignedUserEmail] = useState('');
 
   // Quick collaborator states
@@ -108,7 +109,7 @@ export default function CitasScreen({
     setNewDescription('');
     setNewAlias('');
     setLinkedContactId('');
-    setNewColor('#D4AF37');
+    setNewColor('#8B5CF6');
     setNewAssignedUserEmail('');
   };
 
@@ -138,7 +139,7 @@ export default function CitasScreen({
   const startEditing = (event: CalendarEvent) => {
     setEditingEventId(event.id);
     setEditAlias(event.alias || '');
-    setEditColor(event.color || '#D4AF37');
+    setEditColor(event.color || '#8B5CF6');
     setEditStatus(event.status || 'pending');
     setEditAssignedUserEmail(event.assignedUserEmail || '');
   };
@@ -166,39 +167,66 @@ export default function CitasScreen({
     const matchesStatus = statusFilter === 'all' || ev.status === statusFilter;
     const matchesType = typeFilter === 'all' || ev.type === typeFilter;
 
-    return matchesSearch && matchesStatus && matchesType;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const matchesTime = timeFilter === 'current_future' ? ev.date >= todayStr : ev.date < todayStr;
+
+    return matchesSearch && matchesStatus && matchesType && matchesTime;
   });
 
   return (
     <div className="space-y-6 p-6">
       
       {/* Intro Header Section */}
-      <div className="bg-[#080808] border border-amber-500/10 rounded-3xl p-6 relative overflow-hidden group shadow-2xl">
-        <div className="absolute top-[-20%] right-[-10%] w-72 h-72 bg-amber-500/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-amber-500/10 transition-all duration-700" />
+      <div className="bg-[#030303] border border-violet-500/10 rounded-3xl p-6 relative overflow-hidden group shadow-2xl">
+        <div className="absolute top-[-20%] right-[-10%] w-72 h-72 bg-violet-600/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-violet-600/10 transition-all duration-700" />
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-white font-sans flex items-center gap-3">
-              <span className="gold-gradient p-2 rounded-xl text-black font-semibold flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-black" />
+              <span className="bg-violet-600 p-2 rounded-xl text-white font-semibold flex items-center justify-center shadow-[0_0_15px_rgba(139,92,246,0.3)]">
+                <Calendar className="w-5 h-5 text-white" />
               </span>
-              <span className="gold-gradient-text font-display">Gestión de Citas Althera</span>
+              <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-rose-400 bg-clip-text text-transparent font-extrabold font-display">Gestión de Citas Althera</span>
             </h2>
             <p className="text-slate-400 text-xs font-light mt-1 max-w-2xl leading-relaxed">
-              Administra todas las reservas y reuniones en formato lista. Cambia colores para categorizar visualmente, asigna estados o añade alias personalizados en tiempo real.
+              Administra todas las reservas y reuniones en formato lista. Filtra por próximas o pasadas, categoriza visualmente con colores y asigna estados en tiempo real.
             </p>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-5 py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black font-extrabold text-xs tracking-wider uppercase rounded-xl transition duration-300 flex items-center gap-2 active:scale-95 shadow-[0_4px_15px_rgba(212,175,55,0.2)] mt-2 md:mt-0 cursor-pointer"
+            className="px-5 py-2.5 bg-gradient-to-r from-violet-650 via-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-extrabold text-xs tracking-wider uppercase rounded-xl transition duration-300 flex items-center gap-2 active:scale-95 shadow-[0_4px_15px_rgba(139,92,246,0.25)] mt-2 md:mt-0 cursor-pointer"
           >
-            <Plus className="w-4 h-4 text-black stroke-[3px]" />
+            <Plus className="w-4 h-4 text-white stroke-[3px]" />
             <span>Nueva Cita</span>
           </button>
         </div>
       </div>
 
       {/* Control Filters Toolbar */}
-      <div className="bg-black/60 backdrop-blur-md border border-amber-500/10 p-4 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center gap-4 justify-between shadow-lg">
+      <div className="bg-black/60 backdrop-blur-md border border-violet-500/10 p-4 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center gap-4 justify-between shadow-lg">
+        {/* Time Selector Toggle: Próximas vs Pasadas */}
+        <div className="flex bg-neutral-900/90 p-1 rounded-xl border border-white/5 shrink-0 select-none">
+          <button
+            onClick={() => setTimeFilter('current_future')}
+            className={`text-[11px] uppercase tracking-wider font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
+              timeFilter === 'current_future'
+                ? 'bg-violet-600 text-white shadow-md shadow-violet-500/15'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+            }`}
+          >
+            Hoy en adelante
+          </button>
+          <button
+            onClick={() => setTimeFilter('past')}
+            className={`text-[11px] uppercase tracking-wider font-bold px-4 py-2 rounded-lg transition-all cursor-pointer ${
+              timeFilter === 'past'
+                ? 'bg-violet-600 text-white shadow-md shadow-violet-500/15'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+            }`}
+          >
+            Pasadas
+          </button>
+        </div>
+
         {/* Search */}
         <div className="relative flex-1">
           <input
@@ -206,7 +234,7 @@ export default function CitasScreen({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Buscar por título, contacto, descripción o alias..."
-            className="w-full bg-neutral-950 border border-neutral-850/60 focus:border-amber-500/45 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-all font-light"
+            className="w-full bg-neutral-950 border border-neutral-850/60 focus:border-violet-500/45 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition-all font-light"
           />
           <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-[11px]">
             <Search className="w-4 h-4 text-slate-500" />
@@ -219,7 +247,7 @@ export default function CitasScreen({
             onClick={() => setStatusFilter('all')}
             className={`text-[10px] uppercase font-semibold tracking-wider px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
               statusFilter === 'all'
-                ? 'bg-amber-500/10 border-amber-500/40 text-[#D4AF37] shadow-md shadow-amber-500/5'
+                ? 'bg-violet-500/10 border-violet-500/40 text-violet-400 shadow-md shadow-violet-500/5'
                 : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
             }`}
           >
@@ -230,7 +258,7 @@ export default function CitasScreen({
             onClick={() => setStatusFilter('pending')}
             className={`text-[10px] uppercase font-semibold tracking-wider px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
               statusFilter === 'pending'
-                ? 'bg-amber-500/10 border-amber-500/40 text-[#D4AF37] shadow-md shadow-amber-500/5'
+                ? 'bg-violet-500/10 border-violet-500/40 text-violet-450 shadow-md shadow-violet-500/5'
                 : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
             }`}
           >
@@ -252,7 +280,7 @@ export default function CitasScreen({
             onClick={() => setStatusFilter('postponed')}
             className={`text-[10px] uppercase font-semibold tracking-wider px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
               statusFilter === 'postponed'
-                ? 'bg-[#cd7f32]/10 border-[#cd7f32]/30 text-[#cd7f32] shadow-md shadow-amber-900/5'
+                ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-md'
                 : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
             }`}
           >
@@ -261,12 +289,12 @@ export default function CitasScreen({
         </div>
 
         {/* Type selector */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold font-mono">Tipo:</span>
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="bg-neutral-950 border border-neutral-800 text-xs text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-amber-500/50"
+            className="bg-neutral-950 border border-neutral-800 text-xs text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-violet-500/50"
           >
             <option value="all">Cualquiera</option>
             <option value="Meeting">Reuniones</option>
@@ -278,12 +306,12 @@ export default function CitasScreen({
         </div>
       </div>
 
-      {/* Main List Table View styled extremely sleek & gold-black luxury */}
-      <div className="bg-[#050505] border border-amber-500/10 rounded-3xl overflow-hidden shadow-2xl">
+      {/* Main List Table View styled extremely sleek & violet-black luxury */}
+      <div className="bg-[#020204] border border-violet-500/10 rounded-3xl overflow-hidden shadow-2xl">
         <div className="overflow-x-auto font-sans">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-black text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-amber-500/10">
+              <tr className="bg-black text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-violet-500/10">
                 <th className="py-4.5 px-6">Identificador / Título</th>
                 <th className="py-4.5 px-3">Fecha y Hora</th>
                 <th className="py-4.5 px-3">Cliente Asignado</th>

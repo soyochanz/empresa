@@ -42,6 +42,7 @@ export default function ComercialesPanelScreen({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [leadTemperature, setLeadTemperature] = useState<'Frío' | 'Templado' | 'Caliente'>('Frío');
 
   // Form state
   const [leadName, setLeadName] = useState('');
@@ -101,6 +102,7 @@ export default function ComercialesPanelScreen({
       status: leadStatus,
       value: valNum,
       notes: leadNotes.trim(),
+      temperature: leadTemperature,
       createdAt: new Date().toISOString()
     };
 
@@ -114,6 +116,7 @@ export default function ComercialesPanelScreen({
     setLeadStatus('Pendiente');
     setLeadValue('');
     setLeadNotes('');
+    setLeadTemperature('Frío');
     setShowAddModal(false);
   };
 
@@ -142,13 +145,13 @@ export default function ComercialesPanelScreen({
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative overflow-x-hidden">
       
       {/* Decorative localized glows */}
-      <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-blue-600/10 blur-[130px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-amber-600/5 blur-[130px] pointer-events-none" />
+      <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/10 blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/5 blur-[130px] pointer-events-none" />
 
       {/* HEADER BAR */}
       <header className="relative z-10 border-b border-white/5 bg-[#050505]/80 backdrop-blur-md px-8 py-5 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl border border-amber-500/25 p-1">
+          <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl border border-violet-500/25 p-1">
             <img 
               src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
               alt="Althera Logo" 
@@ -158,7 +161,7 @@ export default function ComercialesPanelScreen({
           </div>
           <div>
             <h1 className="text-lg font-bold text-white tracking-tight leading-tight uppercase font-display">Althera Sales</h1>
-            <p className="text-[10px] text-amber-500 font-mono font-bold uppercase tracking-widest leading-none mt-1">
+            <p className="text-[10px] text-violet-400 font-mono font-bold uppercase tracking-widest leading-none mt-1">
               Comercial: {comercial.name}
             </p>
           </div>
@@ -202,13 +205,13 @@ export default function ComercialesPanelScreen({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           
           {/* Total Leads */}
-          <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-amber-500/20 transition duration-200">
+          <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-violet-500/20 transition duration-200">
             <div>
               <p className="text-slate-500 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Leads en Gestión</p>
               <h3 className="text-2xl font-bold text-white font-mono">{totalLeads}</h3>
               <p className="text-[10px] text-slate-400 mt-1">Prospectos asignados</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+            <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
               <Users className="w-5 h-5" />
             </div>
           </div>
@@ -229,21 +232,21 @@ export default function ComercialesPanelScreen({
           </div>
 
           {/* Won Volume */}
-          <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-emerald-500/20 transition duration-200">
+          <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-violet-500/20 transition duration-200">
             <div>
               <p className="text-slate-500 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Facturado Cerrado</p>
-              <h3 className="text-2xl font-bold text-amber-500 font-mono">
+              <h3 className="text-2xl font-bold text-violet-400 font-mono">
                 {wonRevenue.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
               </h3>
               <p className="text-[10px] text-slate-450 mt-1">Facturado real en firme</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+            <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
               <DollarSign className="w-5 h-5" />
             </div>
           </div>
 
           {/* Active Pipeline */}
-          <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-purple-500/20 transition duration-200">
+          <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-violet-500/20 transition duration-200">
             <div>
               <p className="text-slate-500 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Pipeline Activo</p>
               <h3 className="text-2xl font-bold text-blue-400 font-mono">
@@ -358,7 +361,7 @@ export default function ComercialesPanelScreen({
                   placeholder="Filtro rápido..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="bg-[#050505] text-xs text-white pl-9 pr-4 py-2 rounded-xl border border-white/5 focus:border-amber-500 focus:outline-none transition-all w-44"
+                  className="bg-[#050505] text-xs text-white pl-9 pr-4 py-2 rounded-xl border border-white/5 focus:border-violet-500 focus:outline-none transition-all w-44"
                 />
               </div>
 
@@ -370,7 +373,7 @@ export default function ComercialesPanelScreen({
                     onClick={() => setStatusFilter(opt)}
                     className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
                       statusFilter === opt
-                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        ? 'bg-violet-600 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]'
                         : 'text-slate-400 hover:text-white hover:bg-neutral-900'
                     }`}
                   >
@@ -406,7 +409,16 @@ export default function ComercialesPanelScreen({
                   {filteredLeads.map((lead) => (
                     <tr key={lead.id} className="hover:bg-white/[0.02] transition-colors group">
                       <td className="py-4 pl-2">
-                        <p className="font-bold text-white text-xs">{lead.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-white text-xs">{lead.name}</p>
+                          <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                            lead.temperature === 'Caliente' ? 'bg-rose-500/15 text-rose-400 border border-rose-550/20' :
+                            lead.temperature === 'Templado' ? 'bg-amber-500/15 text-amber-400 border border-amber-550/20' :
+                            'bg-sky-500/15 text-sky-400 border border-sky-550/20'
+                          }`}>
+                            {lead.temperature === 'Caliente' ? 'Caliente 🔥' : lead.temperature === 'Templado' ? 'Templado ⚡' : 'Frío ❄️'}
+                          </span>
+                        </div>
                         <p className="text-[10px] text-slate-500 mt-0.5 max-w-[200px] truncate" title={lead.notes}>
                           {lead.notes || 'Sin anotaciones de seguimiento.'}
                         </p>
@@ -418,23 +430,44 @@ export default function ComercialesPanelScreen({
                         {(lead.value || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
                       </td>
                       <td className="py-4">
-                        <select
-                          value={lead.status}
-                          onChange={(e) => handleUpdateStatus(lead.id, e.target.value as ComercialLead['status'])}
-                          className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg border focus:outline-none cursor-pointer ${
-                            lead.status === 'Pendiente' ? 'bg-slate-500/10 text-slate-300 border-slate-500/25' :
-                            lead.status === 'Contactado' ? 'bg-blue-500/10 text-blue-300 border-blue-500/25' :
-                            lead.status === 'Negociación' ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' :
-                            lead.status === 'Ganado' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25' :
-                            'bg-rose-500/10 text-rose-300 border-rose-500/25'
-                          }`}
-                        >
-                          <option value="Pendiente" className="bg-slate-900 text-slate-300">Pendiente</option>
-                          <option value="Contactado" className="bg-slate-900 text-blue-300">Contactado</option>
-                          <option value="Negociación" className="bg-slate-900 text-amber-300">Negociación</option>
-                          <option value="Ganado" className="bg-slate-900 text-emerald-300">Ganado</option>
-                          <option value="Perdido" className="bg-slate-900 text-rose-300">Perdido</option>
-                        </select>
+                        <div className="flex flex-col gap-1.5">
+                          <select
+                            value={lead.status}
+                            onChange={(e) => handleUpdateStatus(lead.id, e.target.value as ComercialLead['status'])}
+                            className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg border focus:outline-none cursor-pointer ${
+                              lead.status === 'Pendiente' ? 'bg-slate-500/10 text-slate-300 border-slate-500/25' :
+                              lead.status === 'Contactado' ? 'bg-blue-500/10 text-blue-300 border-blue-500/25' :
+                              lead.status === 'Negociación' ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' :
+                              lead.status === 'Ganado' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25' :
+                              'bg-rose-500/10 text-rose-300 border-rose-500/25'
+                            }`}
+                          >
+                            <option value="Pendiente" className="bg-slate-900 text-slate-300">Pendiente</option>
+                            <option value="Contactado" className="bg-slate-900 text-blue-300">Contactado</option>
+                            <option value="Negociación" className="bg-slate-900 text-amber-300">Negociación</option>
+                            <option value="Ganado" className="bg-slate-900 text-emerald-300">Ganado</option>
+                            <option value="Perdido" className="bg-slate-900 text-rose-300">Perdido</option>
+                          </select>
+
+                          <select
+                            value={lead.temperature || 'Frío'}
+                            onChange={(e) => {
+                              onUpdateLead({
+                                ...lead,
+                                temperature: e.target.value as 'Frío' | 'Templado' | 'Caliente'
+                              });
+                            }}
+                            className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg border focus:outline-none cursor-pointer ${
+                              (lead.temperature || 'Frío') === 'Caliente' ? 'bg-rose-500/10 text-rose-455 border-rose-500/25' :
+                              (lead.temperature || 'Frío') === 'Templado' ? 'bg-amber-500/10 text-amber-455 border-amber-500/25' :
+                              'bg-sky-500/10 text-sky-455 border-sky-500/25'
+                            }`}
+                          >
+                            <option value="Frío" className="bg-slate-900 text-sky-300">❄️ Frío</option>
+                            <option value="Templado" className="bg-slate-900 text-amber-300">⚡ Templado</option>
+                            <option value="Caliente" className="bg-slate-900 text-rose-300">🔥 Caliente</option>
+                          </select>
+                        </div>
                       </td>
                       <td className="py-4">
                         <p className="font-semibold text-slate-300">{lead.email}</p>
@@ -490,7 +523,7 @@ export default function ComercialesPanelScreen({
                     placeholder="Ej. Laura Gómez"
                     value={leadName}
                     onChange={(e) => setLeadName(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
+                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -501,7 +534,7 @@ export default function ComercialesPanelScreen({
                     placeholder="Ej. Nova Soluciones"
                     value={leadCompany}
                     onChange={(e) => setLeadCompany(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
+                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
                   />
                 </div>
               </div>
@@ -514,7 +547,7 @@ export default function ComercialesPanelScreen({
                     placeholder="laura@nova.com"
                     value={leadEmail}
                     onChange={(e) => setLeadEmail(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
+                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -524,7 +557,7 @@ export default function ComercialesPanelScreen({
                     placeholder="+34 600 000 000"
                     value={leadPhone}
                     onChange={(e) => setLeadPhone(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
+                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
                   />
                 </div>
               </div>
@@ -537,7 +570,7 @@ export default function ComercialesPanelScreen({
                     placeholder="Ej. 1200"
                     value={leadValue}
                     onChange={(e) => setLeadValue(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
+                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -545,7 +578,7 @@ export default function ComercialesPanelScreen({
                   <select
                     value={leadStatus}
                     onChange={(e) => setLeadStatus(e.target.value as any)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition-all cursor-pointer"
+                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition-all cursor-pointer"
                   >
                     <option value="Pendiente">Pendiente</option>
                     <option value="Contactado">Contactado</option>
@@ -557,13 +590,40 @@ export default function ComercialesPanelScreen({
               </div>
 
               <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-mono text-slate-405 font-extrabold text-violet-400">Temperatura del Prospecto</label>
+                <div className="grid grid-cols-3 gap-2 bg-[#050505] p-2 border border-white/10 rounded-xl">
+                  {[
+                    { val: 'Frío', label: '❄️ Frío', activeStyle: 'bg-sky-500/20 border-sky-550 text-sky-400 shadow-[0_0_10px_rgba(14,165,233,0.15)]' },
+                    { val: 'Templado', label: '⚡ Templado', activeStyle: 'bg-amber-500/20 border-amber-550 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.15)]' },
+                    { val: 'Caliente', label: '🔥 Caliente', activeStyle: 'bg-rose-500/20 border-rose-550 text-rose-450 shadow-[0_0_10px_rgba(244,63,94,0.15)]' }
+                  ].map(item => {
+                    const isSelected = leadTemperature === item.val;
+                    return (
+                      <button
+                        key={item.val}
+                        type="button"
+                        onClick={() => setLeadTemperature(item.val as any)}
+                        className={`py-2 px-1.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 ${
+                          isSelected 
+                            ? item.activeStyle
+                            : 'bg-transparent border-transparent text-slate-400 hover:text-slate-300'
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
                 <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Notas o Comentarios</label>
                 <textarea
                   rows={3}
                   placeholder="Detalles sobre las necesidades del cliente..."
                   value={leadNotes}
                   onChange={(e) => setLeadNotes(e.target.value)}
-                  className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none"
+                  className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none"
                 />
               </div>
 
@@ -577,7 +637,7 @@ export default function ComercialesPanelScreen({
                 </button>
                 <button
                   type="submit"
-                  className="px-4.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  className="px-4.5 py-2 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.35)] font-sans border border-violet-500/20"
                 >
                   Confirmar Registro
                 </button>
