@@ -52,7 +52,6 @@ export default function Sidebar({
           </div>
           <div>
             <h1 className="font-semibold text-base tracking-tight text-white font-display uppercase">Althera</h1>
-            <p className="text-[10px] text-violet-400 font-bold uppercase tracking-widest leading-none mt-0.5">Admin v1.2</p>
           </div>
         </div>
       </div>
@@ -87,10 +86,7 @@ export default function Sidebar({
           <Calendar className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
             currentScreen === 'citas' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm flex items-center justify-between w-full">
-            <span>Control de Citas</span>
-            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-violet-500/20">Lista</span>
-          </span>
+          <span className="font-sans text-sm">Control de Citas</span>
         </button>
 
         {/* Calendario Visual */}
@@ -113,14 +109,14 @@ export default function Sidebar({
           onClick={() => onNavigate('crm', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'crm'
-              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-450 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Users className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
             currentScreen === 'crm' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm">CRM Clientes</span>
+          <span className="font-sans text-sm">Clientes</span>
         </button>
 
         {/* Contratos e Invoices */}
@@ -128,17 +124,14 @@ export default function Sidebar({
           onClick={() => onNavigate('contratos', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'contratos'
-              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-410 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <FileText className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
             currentScreen === 'contratos' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm flex items-center justify-between w-full">
-            <span>Contratos y Facturas</span>
-            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-violet-500/20">PDF</span>
-          </span>
+          <span className="font-sans text-sm">Contratos y Facturas</span>
         </button>
 
         {/* Contactos de Landing */}
@@ -153,10 +146,7 @@ export default function Sidebar({
           <Mail className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
             currentScreen === 'contactos' ? 'text-violet-450' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm flex items-center justify-between w-full">
-            <span>Contactos</span>
-            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold leading-none border border-violet-500/20">Landing</span>
-          </span>
+          <span className="font-sans text-sm">Contactos</span>
         </button>
 
         {/* Notes */}
@@ -179,7 +169,7 @@ export default function Sidebar({
           onClick={() => onNavigate('projects', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'projects'
-              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-405 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
@@ -201,10 +191,7 @@ export default function Sidebar({
           <Receipt className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
             currentScreen === 'finanzas' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm flex items-center justify-between w-full">
-            <span>Finanzas Globales</span>
-            <span className="text-[10px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold border border-violet-500/25">Plan</span>
-          </span>
+          <span className="font-sans text-sm">Finanzas Globales</span>
         </button>
 
         {/* Gestión de Comerciales */}
@@ -212,17 +199,14 @@ export default function Sidebar({
           onClick={() => onNavigate('comerciales_admin', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'comerciales_admin'
-              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-410 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Users className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
             currentScreen === 'comerciales_admin' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm flex items-center justify-between w-full">
-            <span>Gestión Comerciales</span>
-            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold border border-violet-500/25">Equipo</span>
-          </span>
+          <span className="font-sans text-sm">Gestión Comerciales</span>
         </button>
 
         {/* Cold Calling y Métricas */}
@@ -230,17 +214,14 @@ export default function Sidebar({
           onClick={() => onNavigate('cold_calling', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'cold_calling'
-              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
+              ? 'bg-violet-500/10 text-violet-415 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
               : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Phone className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
             currentScreen === 'cold_calling' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
-          <span className="font-sans text-sm flex items-center justify-between w-full">
-            <span>Futuros Clientes (Cold)</span>
-            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded-md font-mono font-bold border border-violet-500/25">Llamadas</span>
-          </span>
+          <span className="font-sans text-sm">Futuros Clientes (Cold)</span>
         </button>
 
       </nav>

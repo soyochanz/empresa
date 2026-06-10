@@ -25,32 +25,45 @@ import {
   FolderMinus,
   Briefcase,
   List,
-  Grid
+  Grid,
+  X
 } from 'lucide-react';
-import { ColdCallingLead, ComercialAccount } from '../types';
+import { ColdCallingLead, ComercialAccount, ClientContact, CalendarEvent } from '../types';
 
 interface ColdCallingScreenProps {
   coldLeads: ColdCallingLead[];
   comercialesList: ComercialAccount[];
+  usersList?: { id: string; name: string; email: string }[];
   onAddColdLead: (lead: ColdCallingLead) => void;
   onUpdateColdLead: (lead: ColdCallingLead) => void;
   onDeleteColdLead: (id: string) => void;
   currentUser?: { name: string; email: string; id: string | null } | null; // present if Admin
   currentComercial?: ComercialAccount | null; // present if Comercial
   onNavigate?: (target: any, transition: any) => void;
+  onAddContact?: (contact: ClientContact) => void;
+  onAddEvent?: (event: CalendarEvent) => void;
 }
 
 export default function ColdCallingScreen({
   coldLeads,
   comercialesList,
+  usersList,
   onAddColdLead,
   onUpdateColdLead,
   onDeleteColdLead,
   currentUser,
   currentComercial,
-  onNavigate
+  onNavigate,
+  onAddContact,
+  onAddEvent
 }: ColdCallingScreenProps) {
   
+  // Combine comerciales and admins (usersList) for assignment
+  const allAssignees = [
+    ...comercialesList.map(c => ({ id: c.id, name: c.name, email: c.email, role: 'Comercial' })),
+    ...(usersList || []).map(u => ({ id: u.id, name: u.name, email: u.email, role: 'Admin' }))
+  ];
+
   // Determine role
   const isAdmin = !!currentUser;
   const comercialEmail = currentComercial?.email || '';
@@ -71,6 +84,91 @@ export default function ColdCallingScreen({
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedLeadForCall, setSelectedLeadForCall] = useState<ColdCallingLead | null>(null);
+
+  // Dedicated modal state for scheduling in-person meetings (Cita Presencial)
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [schedulingLead, setSchedulingLead] = useState<ColdCallingLead | null>(null);
+  const [scheduleDate, setScheduleDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [scheduleTime, setScheduleTime] = useState('11:00');
+  const [scheduleTitle, setScheduleTitle] = useState('');
+  const [scheduleDesc, setScheduleDesc] = useState('');
+  const [scheduleAssignee, setScheduleAssignee] = useState('unassigned');
+
+  // Handle converting a cold lead to a CRM Client
+  const handleConvertToClient = (lead: ColdCallingLead) => {
+    if (!onAddContact) return;
+
+    const subtleColor = lead.temperature === 'Caliente' ? 'rose' : lead.temperature === 'Templado' ? 'amber' : 'indigo';
+
+    const cleanName = lead.contactPerson && lead.contactPerson !== 'Sin especificar' ? lead.contactPerson : lead.businessName;
+
+    const newContact: ClientContact = {
+      id: 'c_' + Date.now(),
+      name: cleanName,
+      company: lead.businessName,
+      status: 'Client',
+      lastContacted: 'Justo ahora (Convertido de prospecto)',
+      email: lead.contactPerson && lead.contactPerson !== 'Sin especificar' 
+        ? `${lead.contactPerson.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`
+        : `info@${lead.businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
+      phone: lead.phone,
+      addedDate: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }),
+      initials: (lead.contactPerson && lead.contactPerson !== 'Sin especificar' ? lead.contactPerson : lead.businessName)
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() || 'CLI',
+      color: subtleColor,
+      assignedUserEmail: lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : undefined
+    };
+
+    onAddContact(newContact);
+
+    onUpdateColdLead({
+      ...lead,
+      archived: true
+    });
+
+    alert(`¡Felicidades! Se ha convertido el prospecto "${lead.businessName}" en Cliente y se ha añadido exitosamente en Clientes.`);
+    
+    if (onNavigate) {
+      onNavigate('crm', 'push');
+    }
+  };
+
+  const handleOpenScheduleMeeting = (lead: ColdCallingLead) => {
+    setSchedulingLead(lead);
+    setScheduleDate(new Date().toISOString().split('T')[0]);
+    setScheduleTime('11:00');
+    setScheduleTitle(`Cita Presencial: ${lead.businessName}`);
+    setScheduleDesc(`Reunión presencial de prospección comercial con el dueño o encargado del negocio.`);
+    setScheduleAssignee(lead.assignedToEmail || 'unassigned');
+    setShowScheduleModal(true);
+  };
+
+  const handleConfirmScheduleMeeting = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddEvent || !schedulingLead) return;
+
+    const newEvent: CalendarEvent = {
+      id: 'evt_' + Math.random().toString(36).substring(2, 9),
+      title: scheduleTitle.trim() || `Cita Presencial: ${schedulingLead.businessName}`,
+      date: scheduleDate,
+      time: scheduleTime,
+      type: 'Meeting',
+      description: scheduleDesc.trim(),
+      linkedContactName: schedulingLead.businessName,
+      assignedUserEmail: scheduleAssignee !== 'unassigned' ? scheduleAssignee : undefined,
+      color: 'violet',
+      status: 'pending'
+    };
+
+    onAddEvent(newEvent);
+    setShowScheduleModal(false);
+    setSchedulingLead(null);
+    alert(`¡Éxito! Se ha agendado una Cita Presencial para el día ${scheduleDate} a las ${scheduleTime} h.`);
+  };
 
   // New Lead form state (Admin exclusive)
   const [newBusinessName, setNewBusinessName] = useState('');
@@ -149,7 +247,7 @@ export default function ColdCallingScreen({
       return;
     }
 
-    const matchedComercial = comercialesList.find(c => c.email === newAssignedEmail);
+    const matchedComercial = allAssignees.find(c => c.email === newAssignedEmail);
 
     const newLead: ColdCallingLead = {
       id: 'cold_' + Math.random().toString(36).substring(2, 9),
@@ -426,8 +524,8 @@ export default function ColdCallingScreen({
                   >
                     <option value="todos">Todos</option>
                     <option value="unassigned">Sin asignar</option>
-                    {comercialesList.map(com => (
-                      <option key={com.id} value={com.email}>{com.name}</option>
+                    {allAssignees.map(com => (
+                      <option key={com.id} value={com.email}>{com.name} ({com.role})</option>
                     ))}
                   </select>
                 </div>
@@ -552,7 +650,7 @@ export default function ColdCallingScreen({
                           value={lead.assignedToEmail || 'unassigned'}
                           onChange={(e) => {
                             const email = e.target.value;
-                            const matched = comercialesList.find(c => c.email === email);
+                            const matched = allAssignees.find(c => c.email === email);
                             onUpdateColdLead({
                               ...lead,
                               assignedToEmail: email,
@@ -562,8 +660,8 @@ export default function ColdCallingScreen({
                           className="text-[10px] bg-[#020205] border border-violet-500/25 text-violet-300 px-2.5 py-1.5 rounded-xl font-mono cursor-pointer focus:outline-none hover:border-violet-400 focus:border-violet-500 transition font-sans"
                         >
                           <option value="unassigned">👤 Sin asignar</option>
-                          {comercialesList.map(com => (
-                            <option key={com.id} value={com.email}>👤 {com.name}</option>
+                          {allAssignees.map(com => (
+                            <option key={com.id} value={com.email}>👤 {com.name} ({com.role})</option>
                           ))}
                         </select>
                       ) : (
@@ -586,6 +684,22 @@ export default function ColdCallingScreen({
 
                       {isAdmin && (
                         <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleConvertToClient(lead)}
+                            className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 hover:text-white transition-all cursor-pointer"
+                            title="Convertir en Cliente (Pasar a CRM)"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleOpenScheduleMeeting(lead)}
+                            className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-400 hover:bg-blue-500/20 hover:text-white transition-all cursor-pointer"
+                            title="Agendar Cita Presencial en Calendario"
+                          >
+                            <Calendar className="w-3.5 h-3.5" />
+                          </button>
+
                           <button
                             onClick={() => handleToggleArchive(lead)}
                             className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
@@ -656,7 +770,7 @@ export default function ColdCallingScreen({
                             value={lead.assignedToEmail || 'unassigned'}
                             onChange={(e) => {
                               const email = e.target.value;
-                              const matched = comercialesList.find(c => c.email === email);
+                              const matched = allAssignees.find(c => c.email === email);
                               onUpdateColdLead({
                                 ...lead,
                                 assignedToEmail: email,
@@ -666,8 +780,8 @@ export default function ColdCallingScreen({
                             className="text-[9px] bg-[#020205] border border-violet-500/30 text-violet-300 px-2 py-0.5 rounded-md font-mono max-w-[130px] cursor-pointer focus:outline-none hover:border-violet-400 transition"
                           >
                             <option value="unassigned">👤 Sin asignar</option>
-                            {comercialesList.map(com => (
-                              <option key={com.id} value={com.email}>👤 {com.name}</option>
+                            {allAssignees.map(com => (
+                              <option key={com.id} value={com.email}>👤 {com.name} ({com.role})</option>
                             ))}
                           </select>
                         ) : (
@@ -748,6 +862,22 @@ export default function ColdCallingScreen({
                       {/* Admin Controls */}
                       {isAdmin && (
                         <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleConvertToClient(lead)}
+                            className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 hover:text-white transition-all cursor-pointer"
+                            title="Convertir en Cliente (Pasar a CRM)"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleOpenScheduleMeeting(lead)}
+                            className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/25 text-blue-400 hover:bg-blue-500/20 hover:text-white transition-all cursor-pointer"
+                            title="Agendar Cita Presencial en Calendario"
+                          >
+                            <Calendar className="w-3.5 h-3.5" />
+                          </button>
+
                           <button
                             onClick={() => handleToggleArchive(lead)}
                             className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
@@ -1146,8 +1276,8 @@ export default function ColdCallingScreen({
                     className="w-full bg-[#050508] border border-white/10 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition-all cursor-pointer font-sans"
                   >
                     <option value="unassigned">Dejar sin asignar (Guardar en cola)</option>
-                    {comercialesList.map(com => (
-                      <option key={com.id} value={com.email}>{com.name} ({com.email})</option>
+                    {allAssignees.map(com => (
+                      <option key={com.id} value={com.email}>{com.name} ({com.role} - {com.email})</option>
                     ))}
                   </select>
                 </div>
@@ -1434,6 +1564,128 @@ export default function ColdCallingScreen({
 
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* SCHEDULE MEETING MODAL - ADMIN EXCLUSIVE */}
+      {showScheduleModal && schedulingLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-[#0a0a14] border border-violet-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-violet-950/20 max-h-[90vh] flex flex-col">
+            {/* Header banner cover */}
+            <div className="bg-gradient-to-tr from-violet-600/20 via-violet-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-violet-400" />
+                <span>Agendar Cita Presencial</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1 font-sans">
+                Crea una cita presencial que se sincronizará automáticamente con el Calendario de la empresa.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowScheduleModal(false);
+                  setSchedulingLead(null);
+                }}
+                className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg bg-slate-950/60 border border-white/5 cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body / Form */}
+            <form onSubmit={handleConfirmScheduleMeeting} className="p-6 overflow-y-auto space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                  Asunto / Título de la Cita
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={scheduleTitle}
+                  onChange={e => setScheduleTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all placeholder:text-slate-600"
+                  placeholder="Ej. Visita Inicial y Presentación de Portafolio"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                    Fecha de la reunión
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={scheduleDate}
+                    onChange={e => setScheduleDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all cursor-pointer"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                    Hora
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={scheduleTime}
+                    onChange={e => setScheduleTime(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                  Responsable Asignado
+                </label>
+                <select
+                  value={scheduleAssignee}
+                  onChange={e => setScheduleAssignee(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition-all cursor-pointer font-sans"
+                >
+                  <option value="unassigned">👥 Sin asignar / General</option>
+                  {allAssignees.map(com => (
+                    <option key={com.id} value={com.email}>{com.name} ({com.role})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                  Notas / Dirección o Indicaciones
+                </label>
+                <textarea
+                  rows={3}
+                  value={scheduleDesc}
+                  onChange={e => setScheduleDesc(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none placeholder:text-slate-600"
+                  placeholder="Instrucciones sobre la visita, dirección del local, temas a tratar..."
+                  required
+                />
+              </div>
+
+              {/* Action commands footer */}
+              <div className="flex gap-3 justify-end pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowScheduleModal(false);
+                    setSchedulingLead(null);
+                  }}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5.5 py-2 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                >
+                  Agendar Cita Presencial
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

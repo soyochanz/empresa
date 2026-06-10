@@ -802,6 +802,7 @@ export default function App() {
             onNavigate={navigateTo}
             usersList={usersList}
             onAddProfile={handleUpsertProfile}
+            onAddEvent={handleAddEvent}
           />
         );
       case 'notes':
@@ -868,12 +869,15 @@ export default function App() {
           <ColdCallingScreen
             coldLeads={coldLeads}
             comercialesList={comercialesList}
+            usersList={usersList}
             onAddColdLead={(newLead) => setColdLeads(prev => [newLead, ...prev])}
             onUpdateColdLead={(updated) => setColdLeads(prev => prev.map(l => l.id === updated.id ? updated : l))}
             onDeleteColdLead={(id) => setColdLeads(prev => prev.filter(l => l.id !== id))}
             currentUser={currentUser}
             currentComercial={null}
             onNavigate={navigateTo}
+            onAddEvent={handleAddEvent}
+            onAddContact={handleAddContact}
           />
         );
       default:
@@ -1005,34 +1009,6 @@ export default function App() {
 
       {/* Main Content Pane wrapper */}
       <div className="flex-1 ml-[260px] flex flex-col h-screen overflow-hidden">
-        
-        {/* Sync Global top header bar info searching placeholder */}
-        <Header 
-          title={
-            currentScreen === 'projects' 
-              ? 'PROYECTOS' 
-              : currentScreen === 'contactos'
-                ? 'CONTACTOS DE LANDING'
-                : currentScreen === 'finanzas'
-                  ? 'FINANZAS'
-                  : currentScreen.toUpperCase()
-          } 
-          onSearchChange={setGlobalSearch}
-          currentUser={currentUser}
-          searchPlaceholder={
-            currentScreen === 'calendar' 
-              ? 'Search events, contacts, tasks...' 
-              : currentScreen === 'crm' 
-                ? 'Search contacts, deals, or activities...' 
-                : currentScreen === 'notes' 
-                  ? 'Search across all notes...' 
-                  : currentScreen === 'projects'
-                    ? 'Search projects, tools or addons...'
-                    : currentScreen === 'finanzas'
-                      ? 'Buscar facturas, transacciones o suscripciones...'
-                      : 'Search commands or files...'
-          }
-        />
 
         {/* Dynamic Screen viewport frames with slide/none transitions */}
         <div className="flex-1 relative overflow-hidden font-sans">

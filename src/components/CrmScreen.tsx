@@ -26,6 +26,25 @@ import {
   Edit
 } from 'lucide-react';
 
+export const AESTHETIC_COLORS = [
+  { val: 'indigo', label: 'Indigo', hex: '#6366f1', activeStyle: 'bg-indigo-500/25 border-indigo-500 text-indigo-300 shadow-[0_0_12px_rgba(99,102,241,0.15)]', badgeStyle: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
+  { val: 'emerald', label: 'Esmeralda Sutil', hex: '#10b981', activeStyle: 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]', badgeStyle: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+  { val: 'amber', label: 'Ámbar Cálido', hex: '#f59e0b', activeStyle: 'bg-amber-500/25 border-amber-500 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]', badgeStyle: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+  { val: 'rose', label: 'Rosa Cenizo', hex: '#f43f5e', activeStyle: 'bg-rose-500/25 border-rose-500 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.15)]', badgeStyle: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
+  { val: 'violet', label: 'Lavanda Violeta', hex: '#8b5cf6', activeStyle: 'bg-violet-500/25 border-violet-500 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.15)]', badgeStyle: 'bg-violet-500/10 text-violet-400 border-violet-500/20' }
+];
+
+export const getContactColor = (color: string | undefined): 'indigo' | 'emerald' | 'amber' | 'rose' | 'violet' => {
+  if (!color) return 'indigo';
+  const c = color.toLowerCase();
+  if (c === 'red' || c === 'rose') return 'rose';
+  if (c === 'yellow' || c === 'amber') return 'amber';
+  if (c === 'green' || c === 'emerald') return 'emerald';
+  if (c === 'blue' || c === 'indigo') return 'indigo';
+  if (c === 'violet' || c === 'purple') return 'violet';
+  return 'indigo';
+};
+
 interface CrmScreenProps {
   contacts: ClientContact[];
   events?: CalendarEvent[];
@@ -35,6 +54,7 @@ interface CrmScreenProps {
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
   usersList?: PanelUser[];
   onAddProfile?: (profile: { name: string; email: string }) => void;
+  onAddEvent?: (event: CalendarEvent) => void;
 }
 
 export default function CrmScreen({ 
@@ -45,11 +65,20 @@ export default function CrmScreen({
   onDeleteContact,
   onNavigate,
   usersList = REGISTERED_USERS,
-  onAddProfile
+  onAddProfile,
+  onAddEvent
 }: CrmScreenProps) {
   const [selectedContactId, setSelectedContactId] = useState<string>('c2'); // default to Marcus Chen
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Dedicated modal state for scheduling in-person meetings (Cita Presencial)
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [scheduleTime, setScheduleTime] = useState('11:05'); // slight difference
+  const [scheduleTitle, setScheduleTitle] = useState('');
+  const [scheduleDesc, setScheduleDesc] = useState('');
+  const [scheduleAssignee, setScheduleAssignee] = useState('unassigned');
 
   // Quick collaborator states
   const [showQuickAddCollab, setShowQuickAddCollab] = useState(false);
@@ -124,6 +153,39 @@ export default function CrmScreen({
   };
 
   const selectedContact = contacts.find(c => c.id === selectedContactId) || contacts[0];
+
+  const handleOpenScheduleMeeting = (contact: ClientContact) => {
+    setScheduleDate(new Date().toISOString().split('T')[0]);
+    setScheduleTime('11:00');
+    setScheduleTitle(`Cita Presencial con ${contact.name}`);
+    setScheduleDesc(`Reunión presencial con el cliente en sus oficinas para dar seguimiento al proyecto.`);
+    setScheduleAssignee(contact.assignedUserEmail || 'unassigned');
+    setShowScheduleModal(true);
+  };
+
+  const handleConfirmScheduleMeeting = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddEvent || !selectedContact) return;
+
+    const newEvent: CalendarEvent = {
+      id: 'evt_' + Math.random().toString(36).substring(2, 9),
+      title: scheduleTitle.trim() || `Cita Presencial con ${selectedContact.name}`,
+      date: scheduleDate,
+      time: scheduleTime,
+      type: 'Meeting',
+      description: scheduleDesc.trim(),
+      linkedContactId: selectedContact.id,
+      linkedContactName: selectedContact.name,
+      linkedContactIds: [selectedContact.id],
+      assignedUserEmail: scheduleAssignee !== 'unassigned' ? scheduleAssignee : undefined,
+      color: 'violet',
+      status: 'pending'
+    };
+
+    onAddEvent(newEvent);
+    setShowScheduleModal(false);
+    alert(`¡Éxito! Se ha agendado una Cita Presencial para el día ${scheduleDate} a las ${scheduleTime} h.`);
+  };
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -305,26 +367,33 @@ export default function CrmScreen({
                   let bgBgClass = '';
                   let borderColClass = 'border-l-4 border-transparent';
 
-                  const temp = contact.temperature || (
-                    contact.color === 'red' ? 'Caliente' :
-                    (contact.color === 'yellow' || contact.color === 'green') ? 'Templado' : 'Frío'
-                  );
+                  const contactColor = getContactColor(contact.color);
 
-                  if (temp === 'Caliente') {
+                  if (contactColor === 'indigo') {
                     bgBgClass = isSelected 
-                      ? 'bg-rose-950/70 text-white shadow-inner shadow-rose-900/15' 
-                      : 'bg-rose-950/20 text-rose-100 hover:bg-rose-950/35';
-                    borderColClass = 'border-l-4 border-rose-500';
-                  } else if (temp === 'Templado') {
+                      ? 'bg-indigo-500/10 text-white shadow-inner shadow-indigo-900/15' 
+                      : 'bg-transparent text-slate-300 hover:bg-indigo-500/5';
+                    borderColClass = 'border-l-4 border-indigo-500/80';
+                  } else if (contactColor === 'emerald') {
                     bgBgClass = isSelected 
-                      ? 'bg-amber-955/65 text-white shadow-inner shadow-amber-900/15' 
-                      : 'bg-amber-950/15 text-amber-100 hover:bg-amber-950/25';
-                    borderColClass = 'border-l-4 border-amber-500';
-                  } else {
+                      ? 'bg-emerald-500/10 text-white shadow-inner shadow-emerald-900/15' 
+                      : 'bg-transparent text-slate-300 hover:bg-emerald-500/5';
+                    borderColClass = 'border-l-4 border-emerald-500/80';
+                  } else if (contactColor === 'amber') {
                     bgBgClass = isSelected 
-                      ? 'bg-sky-950/50 text-white shadow-inner shadow-sky-900/15' 
-                      : 'bg-transparent text-slate-350 hover:bg-white/5';
-                    borderColClass = 'border-l-4 border-sky-500';
+                      ? 'bg-amber-500/10 text-white shadow-inner shadow-amber-900/15' 
+                      : 'bg-transparent text-slate-300 hover:bg-amber-500/5';
+                    borderColClass = 'border-l-4 border-amber-500/80';
+                  } else if (contactColor === 'rose') {
+                    bgBgClass = isSelected 
+                      ? 'bg-rose-500/10 text-white shadow-inner shadow-rose-900/15' 
+                      : 'bg-transparent text-slate-300 hover:bg-rose-500/5';
+                    borderColClass = 'border-l-4 border-rose-500/80';
+                  } else if (contactColor === 'violet') {
+                    bgBgClass = isSelected 
+                      ? 'bg-violet-500/10 text-white shadow-inner shadow-violet-900/15' 
+                      : 'bg-transparent text-slate-300 hover:bg-violet-500/5';
+                    borderColClass = 'border-l-4 border-violet-500/80';
                   }
 
                   return (
@@ -350,17 +419,10 @@ export default function CrmScreen({
                             )}
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-xs text-white">{contact.name}</p>
-                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                                temp === 'Caliente' ? 'bg-rose-500/15 text-rose-455 border border-rose-600/20' :
-                                temp === 'Templado' ? 'bg-amber-500/15 text-amber-455 border border-amber-600/20' :
-                                'bg-sky-500/15 text-sky-455 border border-sky-600/20'
-                              }`}>
-                                {temp === 'Caliente' ? 'Caliente 🔥' : temp === 'Templado' ? 'Templado ⚡' : 'Frío ❄️'}
-                              </span>
+                            <div>
+                              <p className="font-semibold text-xs text-white pb-0.5">{contact.name}</p>
                             </div>
-                            <p className="text-[10px] text-slate-500">{contact.email}</p>
+                            <p className="text-[10px] text-slate-505">{contact.email}</p>
                           </div>
                         </div>
                       </td>
@@ -517,54 +579,62 @@ export default function CrmScreen({
                     )}
                   </div>
 
-                  {/* Temperature Selector Widget */}
+                  {/* Subtle, Aesthetic Client Color Selector */}
                   {(() => {
-                    const temp = selectedContact.temperature || (
-                      selectedContact.color === 'red' ? 'Caliente' :
-                      (selectedContact.color === 'yellow' || selectedContact.color === 'green') ? 'Templado' : 'Frío'
-                    );
+                    const currentColor = getContactColor(selectedContact.color);
                     return (
-                      <div className="mt-4 bg-[#030305] p-3 rounded-2xl border border-white/5 space-y-2 text-left">
+                      <div className="mt-4 bg-[#030305] p-3 rounded-2xl border border-white/5 space-y-2.5 text-left w-full">
                         <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider font-bold">Temperatura de Venta:</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                            temp === 'Caliente' ? 'bg-rose-500/10 text-rose-400 border border-rose-550/20 shadow-[0_0_8px_rgba(244,63,94,0.1)]' :
-                            temp === 'Templado' ? 'bg-amber-500/10 text-amber-400 border border-amber-550/20 shadow-[0_0_8px_rgba(245,158,11,0.1)]' :
-                            'bg-sky-500/10 text-sky-400 border border-sky-550/20 shadow-[0_0_8px_rgba(14,165,233,0.1)]'
+                          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-extrabold text-[#7e7e8e]">Color / Etiqueta:</span>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase ${
+                            currentColor === 'indigo' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' :
+                            currentColor === 'emerald' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                            currentColor === 'amber' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                            currentColor === 'rose' ? 'bg-rose-500/10 text-rose-455 border-rose-500/20' :
+                            'bg-violet-500/10 text-violet-400 border-violet-500/20'
                           }`}>
-                            {temp === 'Caliente' ? '🔥 Caliente' :
-                             temp === 'Templado' ? '⚡ Templado' :
-                             '❄️ Frío'}
+                            {currentColor}
                           </span>
                         </div>
                         
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {[
-                            { tempVal: 'Frío', label: '❄️ Frío', color: 'blue', activeClass: 'bg-sky-500/20 border-sky-500 text-sky-300 shadow-[0_0_12px_rgba(14,165,233,0.15)]', inactiveClass: 'bg-slate-900/40 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-slate-900/65' },
-                            { tempVal: 'Templado', label: '⚡ Templado', color: 'yellow', activeClass: 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]', inactiveClass: 'bg-slate-900/40 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-slate-900/65' },
-                            { tempVal: 'Caliente', label: '🔥 Caliente', color: 'red', activeClass: 'bg-rose-500/20 border-rose-500 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.15)]', inactiveClass: 'bg-slate-900/40 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-slate-900/65' }
-                          ].map(({ tempVal, label, color, activeClass, inactiveClass }) => {
-                            const isCurrent = temp === tempVal;
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {AESTHETIC_COLORS.map(({ val, label, activeStyle }) => {
+                            const isCurrent = currentColor === val;
                             return (
                               <button
-                                key={tempVal}
+                                key={val}
+                                type="button"
                                 onClick={() => {
                                   if (onUpdateContact) {
                                     onUpdateContact({
                                       ...selectedContact,
-                                      temperature: tempVal as 'Frío' | 'Templado' | 'Caliente',
-                                      color: color
+                                      color: val
                                     });
                                   }
                                 }}
-                                className={`py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
-                                  isCurrent ? activeClass : inactiveClass
+                                className={`py-1.5 px-0.5 rounded-xl border text-[10px] font-bold transition-all flex items-center justify-center cursor-pointer active:scale-95 ${
+                                  isCurrent 
+                                    ? activeStyle 
+                                    : 'bg-slate-900/40 border-white/5 text-slate-450 hover:text-slate-200'
                                 }`}
+                                title={label}
                               >
-                                {label}
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: val === 'indigo' ? '#6366f1' : val === 'emerald' ? '#10b981' : val === 'amber' ? '#f59e0b' : val === 'rose' ? '#f43f5e' : '#8b5cf6' }} />
                               </button>
                             );
                           })}
+                        </div>
+
+                        {/* Agendar Cita Presencial Action Button */}
+                        <div className="pt-2 border-t border-white/5 flex flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenScheduleMeeting(selectedContact)}
+                            className="w-full py-2 px-3.5 bg-violet-600/10 hover:bg-violet-600/20 border border-violet-500/30 text-violet-350 hover:text-white font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-[0_0_10px_rgba(139,92,246,0.05)]"
+                          >
+                            <Calendar className="w-3.5 h-3.5 text-violet-400" />
+                            <span>Agendar Cita Presencial</span>
+                          </button>
                         </div>
                       </div>
                     );
@@ -1211,6 +1281,126 @@ export default function CrmScreen({
                 </button>
               </div>
 
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SCHEDULE MEETING MODAL - ADMIN EXCLUSIVE */}
+      {showScheduleModal && selectedContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-[#0a0a14] border border-violet-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-violet-950/20 max-h-[90vh] flex flex-col">
+            {/* Header banner cover */}
+            <div className="bg-gradient-to-tr from-violet-600/20 via-violet-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-violet-400" />
+                <span>Agendar Cita Presencial</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1 font-sans">
+                Crea una cita presencial que se sincronizará automáticamente con el Calendario de la empresa.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowScheduleModal(false);
+                }}
+                className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg bg-slate-955/60 border border-white/5 cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body / Form */}
+            <form onSubmit={handleConfirmScheduleMeeting} className="p-6 overflow-y-auto space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                  Asunto / Título de la Cita
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={scheduleTitle}
+                  onChange={e => setScheduleTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all placeholder:text-slate-600"
+                  placeholder="Ej. Reunión Semanal de Consultoría"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                    Fecha de la reunión
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={scheduleDate}
+                    onChange={e => setScheduleDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all cursor-pointer"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                    Hora
+                  </label>
+                  <input
+                    type="time"
+                    required
+                    value={scheduleTime}
+                    onChange={e => setScheduleTime(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                  Responsable Asignado
+                </label>
+                <select
+                  value={scheduleAssignee}
+                  onChange={e => setScheduleAssignee(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition-all cursor-pointer font-sans"
+                >
+                  <option value="unassigned">👥 Sin asignar / General</option>
+                  {usersList.map(com => (
+                    <option key={com.id} value={com.email}>{com.name} ({com.email})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                  Notas / Dirección o Indicaciones
+                </label>
+                <textarea
+                  rows={3}
+                  value={scheduleDesc}
+                  onChange={e => setScheduleDesc(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none placeholder:text-slate-600"
+                  placeholder="Instrucciones sobre la visita, dirección del local, temas a tratar..."
+                  required
+                />
+              </div>
+
+              {/* Action commands footer */}
+              <div className="flex gap-3 justify-end pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowScheduleModal(false);
+                  }}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5.5 py-2 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                >
+                  Agendar Cita Presencial
+                </button>
+              </div>
             </form>
           </div>
         </div>
