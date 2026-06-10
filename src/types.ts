@@ -1,4 +1,4 @@
-export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas';
+export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin';
 
 export interface InquiryMessage {
   id: string;
@@ -110,5 +110,28 @@ export interface Invoice {
   taxAmount: number;
   total: number;
   notes?: string;
+}
+
+export interface ComercialAccount {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  createdAt: string;
+  phone?: string;
+}
+
+export interface ComercialLead {
+  id: string;
+  comercialId: string;
+  comercialName: string;
+  name: string;
+  company: string;
+  email: string;
+  phone: string;
+  status: 'Pendiente' | 'Contactado' | 'Negociación' | 'Ganado' | 'Perdido';
+  value: number;
+  notes: string;
+  createdAt: string;
 }
 

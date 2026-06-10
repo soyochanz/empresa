@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Screen, ClientContact, CalendarEvent, Note, Activity } from './types';
+import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead } from './types';
 import { 
   initialContacts, 
   initialEvents, 
@@ -21,6 +21,9 @@ import ContactosScreen from './components/ContactosScreen';
 import FinanceScreen from './components/FinanceScreen';
 import CitasScreen from './components/CitasScreen';
 import ContractsScreen from './components/ContractsScreen';
+import ComercialesAccesoScreen from './components/ComercialesAccesoScreen';
+import ComercialesPanelScreen from './components/ComercialesPanelScreen';
+import ComercialesAdminScreen from './components/ComercialesAdminScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
@@ -93,6 +96,46 @@ export default function App() {
 
   // Dynamic users state
   const [usersList, setUsersList] = useState<PanelUser[]>(REGISTERED_USERS);
+
+  // Comerciales accounts and logged-in state
+  const [comercialesList, setComercialesList] = useState<ComercialAccount[]>(() => {
+    const saved = localStorage.getItem('agency_comerciales_accounts');
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: 'com_demo', name: 'Alfonso Sales', email: 'vendedor@agency.com', password: 'password123', createdAt: new Date().toISOString(), phone: '+34 622 111 000' }
+    ];
+  });
+
+  const [leadsList, setLeadsList] = useState<ComercialLead[]>(() => {
+    const saved = localStorage.getItem('agency_comerciales_leads');
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: 'l1', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Beatriz Soler', company: 'Soler Soluciones SL', email: 'beatriz@solersol.es', phone: '611222333', status: 'Negociación', value: 8500, notes: 'Interesada en el desarrollo de la web corporativa a medida con Next.js y panel headless CRM.', createdAt: new Date().toISOString() },
+      { id: 'l2', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Javier Castillo', company: 'Castillo Logistics', email: 'castillo@logistics.com', phone: '655000444', status: 'Ganado', value: 12400, notes: 'Proyecto cerrado para el sistema ERP de tracking vehicular en tiempo real.', createdAt: new Date().toISOString() },
+      { id: 'l3', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Marta Rivas', company: 'AeroGroup Inc', email: 'marta@aerogroup.org', phone: '677999888', status: 'Pendiente', value: 3500, notes: 'Solicitó presupuesto para auditoría técnica de seguridad en sus servicios AWS.', createdAt: new Date().toISOString() }
+    ];
+  });
+
+  const [currentComercial, setCurrentComercial] = useState<ComercialAccount | null>(() => {
+    const saved = localStorage.getItem('agency_current_comercial');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('agency_comerciales_accounts', JSON.stringify(comercialesList));
+  }, [comercialesList]);
+
+  useEffect(() => {
+    localStorage.setItem('agency_comerciales_leads', JSON.stringify(leadsList));
+  }, [leadsList]);
+
+  useEffect(() => {
+    if (currentComercial) {
+      localStorage.setItem('agency_current_comercial', JSON.stringify(currentComercial));
+    } else {
+      localStorage.removeItem('agency_current_comercial');
+    }
+  }, [currentComercial]);
 
   // Notifications states
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
@@ -698,6 +741,18 @@ export default function App() {
             onNavigate={navigateTo}
           />
         );
+      case 'comerciales_admin':
+        return (
+          <ComercialesAdminScreen
+            comercialesList={comercialesList}
+            leadsList={leadsList}
+            onAddComercial={(newC) => setComercialesList(prev => [...prev, newC])}
+            onDeleteComercial={(id) => {
+              setComercialesList(prev => prev.filter(c => c.id !== id));
+              setLeadsList(prev => prev.filter(l => l.comercialId !== id));
+            }}
+          />
+        );
       default:
         return null;
     }
@@ -737,6 +792,59 @@ export default function App() {
           <LoginScreen 
             onSignIn={handleSignInAndNavigate} 
             onBackToLanding={() => navigateTo('landing', 'push_back')}
+          />
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  if (currentScreen === 'comerciales_acceso') {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="comerciales-login-view"
+          custom={transitionType}
+          variants={screenVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          className="w-full h-full min-h-screen animate-fade-in"
+        >
+          <ComercialesAccesoScreen
+            comercialesList={comercialesList}
+            onSignInComercial={(com) => {
+              setCurrentComercial(com);
+              navigateTo('comerciales_panel', 'push');
+            }}
+            onBackToLanding={() => navigateTo('landing', 'push_back')}
+          />
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  if (currentScreen === 'comerciales_panel') {
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="comerciales-panel-view"
+          custom={transitionType}
+          variants={screenVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          className="w-full h-full min-h-screen"
+        >
+          <ComercialesPanelScreen
+            comercial={currentComercial || comercialesList[0] || { id: 'com_demo', name: 'Alfonso Sales', email: 'vendedor@agency.com', createdAt: '' }}
+            leadsList={leadsList}
+            onAddLead={(newLead) => setLeadsList(prev => [newLead, ...prev])}
+            onUpdateLead={(updated) => setLeadsList(prev => prev.map(l => l.id === updated.id ? updated : l))}
+            onDeleteLead={(id) => setLeadsList(prev => prev.filter(l => l.id !== id))}
+            onLogout={() => {
+              setCurrentComercial(null);
+              navigateTo('landing', 'push_back');
+            }}
           />
         </motion.div>
       </AnimatePresence>

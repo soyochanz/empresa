@@ -206,6 +206,24 @@ export default function Sidebar({
           </span>
         </button>
 
+        {/* Gestión de Comerciales */}
+        <button
+          onClick={() => onNavigate('comerciales_admin', 'none')}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
+            currentScreen === 'comerciales_admin'
+              ? 'bg-amber-500/10 text-[#D4AF37] border border-amber-500/25 shadow-[0_4px_12px_rgba(212,175,55,0.06)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
+          }`}
+        >
+          <Users className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
+            currentScreen === 'comerciales_admin' ? 'text-amber-450' : 'text-slate-400 group-hover:text-slate-200'
+          }`} />
+          <span className="font-sans text-sm flex items-center justify-between w-full">
+            <span>Gestión Comerciales</span>
+            <span className="text-[9px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded-md font-mono font-bold">Equipo</span>
+          </span>
+        </button>
+
       </nav>
 
       {/* Support & Logout Section */}

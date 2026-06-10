@@ -174,19 +174,63 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
         />
       </div>
 
-      {/* Modern Mesh Glow Orbs */}
+      {/* Modern Mesh Glow Orbs - Animate their floating/breathing behavior */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[2%] left-[12%] w-[40%] h-[35%] bg-blue-600/10 rounded-full blur-[130px]" />
-        <div className="absolute bottom-[10%] right-[3%] w-[45%] h-[40%] bg-indigo-500/10 rounded-full blur-[160px]" />
-        <div className="absolute top-[45%] left-[30%] w-[30%] h-[30%] bg-purple-600/10 rounded-full blur-[130px]" />
+        <motion.div 
+          animate={{
+            x: [0, 20, -10, 0],
+            y: [0, -30, 15, 0],
+            scale: [1, 1.1, 0.95, 1],
+          }}
+          transition={{
+            duration: 15,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="absolute top-[2%] left-[12%] w-[45%] h-[35%] bg-blue-600/15 rounded-full blur-[130px]" 
+        />
+        <motion.div 
+          animate={{
+            x: [0, -30, 20, 0],
+            y: [0, 40, -20, 0],
+            scale: [1, 1.05, 0.9, 1],
+          }}
+          transition={{
+            duration: 18,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="absolute bottom-[10%] right-[3%] w-[50%] h-[40%] bg-indigo-500/10 rounded-full blur-[160px]" 
+        />
+        <motion.div 
+          animate={{
+            x: [0, 15, -15, 0],
+            y: [0, 20, -30, 0],
+            scale: [1, 0.9, 1.1, 1],
+          }}
+          transition={{
+            duration: 22,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="absolute top-[45%] left-[30%] w-[35%] h-[30%] bg-purple-600/10 rounded-full blur-[130px]" 
+        />
       </div>
 
-      {/* Dynamic Cyber Header */}
-      <header className="relative z-10 border-b border-white/5 bg-slate-950/50 backdrop-blur-md">
+      {/* Dynamic Cyber Header - Animated Entrance */}
+      <motion.header 
+        initial={{ y: -50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        className="relative z-10 border-b border-white/5 bg-slate-950/50 backdrop-blur-md"
+      >
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           
           {/* Logo & Branding representing the Software/Web Development Studio */}
-          <div className="flex items-center gap-3">
+          <motion.div 
+            whileHover={{ scale: 1.02 }}
+            className="flex items-center gap-3 cursor-pointer"
+          >
             <div className="w-9 h-9 rounded-xl bg-black border border-[#D4AF37]/25 flex items-center justify-center p-0.5">
               <img 
                 src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
@@ -198,81 +242,131 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
             <div>
               <span className="font-bold text-lg text-white font-sans tracking-tight uppercase">Althera <span className="gold-gradient-text font-light font-sans lowercase italic">Studio</span></span>
             </div>
-          </div>
+          </motion.div>
 
           {/* Action triggers - Crucial note: Only Access to inside team tools is here */}
           <div className="flex items-center gap-4">
-            <button
+            <motion.button
+              whileHover={{ scale: 1.03, borderColor: "rgba(212, 175, 55, 0.3)" }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => onNavigate('acceso', 'push')}
-              className="bg-slate-900 hover:bg-slate-800 active:scale-95 text-slate-200 hover:text-white border border-white/10 text-xs font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-lg shadow-black/30"
+              className="bg-slate-900 text-slate-200 hover:text-white border border-white/10 text-xs font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-lg shadow-black/30"
               title="Acceso exclusivo del personal de desarrollo para administrar clientes, calendarios y de notas"
             >
               <Cpu className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
               <span>Portal de Equipo (Acceso Interno)</span>
               <ArrowRight className="w-3 h-3 text-slate-400" />
-            </button>
+            </motion.button>
           </div>
 
         </div>
-      </header>
+      </motion.header>
 
       {/* Main content body wrap */}
       <main className="relative z-10 flex-grow max-w-7xl mx-auto px-6 py-12 sm:py-20 flex flex-col gap-28">
         
         {/* HERO SECTION - Proudly representing the development agency, not a SaaS product */}
-        <section className="text-center max-w-3.5xl mx-auto flex flex-col items-center gap-6">
+        <motion.section 
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: {
+              transition: {
+                staggerChildren: 0.15
+              }
+            }
+          }}
+          className="text-center max-w-3.5xl mx-auto flex flex-col items-center gap-6"
+        >
           
           {/* Accent micro badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-white/[0.03] border border-[#D4AF37]/20 rounded-full text-[10px] font-mono text-slate-400 uppercase tracking-widest font-semibold animate-pulse">
+          <motion.div 
+            variants={{
+              hidden: { scale: 0.8, opacity: 0 },
+              visible: { scale: 1, opacity: 1, transition: { type: "spring", stiffness: 100 } }
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-1 bg-white/[0.03] border border-[#D4AF37]/20 rounded-full text-[10px] font-mono text-slate-400 uppercase tracking-widest font-semibold"
+          >
             <Cpu className="w-3.5 h-3.5 text-amber-500" />
             <span>Código de Élite & Diseño Sofisticado</span>
-          </div>
+          </motion.div>
 
           {/* Main Title */}
-          <h1 className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight leading-tight sm:leading-none">
+          <motion.h1 
+            variants={{
+              hidden: { y: 30, opacity: 0 },
+              visible: { y: 0, opacity: 1, transition: { duration: 0.8, ease: "easeOut" } }
+            }}
+            className="text-4xl sm:text-6xl font-extrabold text-white tracking-tight leading-tight sm:leading-none"
+          >
             Diseñamos y Programamos <br />
             <span className="bg-gradient-to-r from-amber-500 via-yellow-200 to-amber-600 bg-clip-text text-transparent">
               Experiencias Digitales de Élite
             </span>
-          </h1>
+          </motion.h1>
 
           {/* "Que somos" - High precision agency description */}
-          <p className="text-slate-400 text-sm sm:text-base leading-relaxed max-w-2.5xl font-sans font-light">
+          <motion.p 
+            variants={{
+              hidden: { y: 20, opacity: 0 },
+              visible: { y: 0, opacity: 1, transition: { duration: 0.8, ease: "easeOut" } }
+            }}
+            className="text-slate-400 text-sm sm:text-base leading-relaxed max-w-2.5xl font-sans font-light"
+          >
             Somos <span className="text-white font-semibold flex-inline items-center gap-1"><span className="text-amber-500">Althera</span> Studio</span>, una boutique de desarrollo tecnológico de alta costura. Nos especializamos en materializar ideas ambiciosas transformándolas en 
             <span className="text-amber-400"> plataformas SaaS</span>, <span className="text-yellow-400">webs corporativas interactivas</span> y <span className="text-amber-300">paneles analíticos de alto rendimiento</span>. Centramos nuestros esfuerzos en construir código robusto estructurado en TypeScript, responsive en su totalidad y diseñado con un refinamiento visual impecable.
-          </p>
+          </motion.p>
 
           {/* Call to action actionables */}
-          <div className="flex flex-col sm:flex-row items-center gap-4 mt-4">
-            <a
+          <motion.div 
+            variants={{
+              hidden: { y: 15, opacity: 0 },
+              visible: { y: 0, opacity: 1, transition: { duration: 0.6 } }
+            }}
+            className="flex flex-col sm:flex-row items-center gap-4 mt-4"
+          >
+            <motion.a
+              whileHover={{ scale: 1.04, y: -2, boxShadow: "0 10px 25px -5px rgba(255, 255, 255, 0.15)" }}
+              whileTap={{ scale: 0.98 }}
               href="#proyectos"
-              className="w-full sm:w-auto bg-white hover:bg-slate-200 text-slate-950 text-xs font-bold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-white/5 active:scale-95"
+              className="w-full sm:w-auto bg-white text-slate-950 text-xs font-bold px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>Explorar Proyectos Llevados a Cabo</span>
               <ArrowRight className="w-4 h-4 text-slate-950" />
-            </a>
-            <a
+            </motion.a>
+            <motion.a
+              whileHover={{ scale: 1.04, y: -2, backgroundColor: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.3)" }}
+              whileTap={{ scale: 0.98 }}
               href="#contacto"
-              className="w-full sm:w-auto px-6 py-3 border border-white/10 hover:border-white/20 bg-white/[0.02] hover:bg-white/[0.05] rounded-xl text-slate-300 hover:text-white transition-all text-xs font-semibold text-center cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3 border border-white/10 bg-white/[0.02] rounded-xl text-slate-300 hover:text-white transition-all text-xs font-semibold text-center cursor-pointer"
             >
               Hablemos de tu Proyecto
-            </a>
-          </div>
+            </motion.a>
+          </motion.div>
 
-        </section>
+        </motion.section>
 
         {/* CORE CAPABILITIES CHECK */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {CAPABILITIES.map((cap, idx) => {
             const IconComp = cap.icon;
             return (
-              <div key={idx} className="bg-white/[0.02] border border-white/5 hover:border-white/10 rounded-2xl p-6 transition-all backdrop-blur-3xl flex flex-col gap-3 group">
+              <motion.div 
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: idx * 0.1 }}
+                whileHover={{ y: -6, borderColor: "rgba(255, 255, 255, 0.15)", backgroundColor: "rgba(255, 255, 255, 0.04)" }}
+                key={idx} 
+                className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 transition-all backdrop-blur-3xl flex flex-col gap-3 group cursor-default"
+              >
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20 group-hover:bg-blue-500/20 group-hover:text-blue-300 transition-all">
                   <IconComp className="w-5 h-5 font-bold" />
                 </div>
                 <h3 className="text-sm font-semibold text-white tracking-tight">{cap.title}</h3>
                 <p className="text-slate-400 text-xs leading-relaxed font-light">{cap.description}</p>
-              </div>
+              </motion.div>
             );
           })}
         </section>
@@ -281,23 +375,38 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
         <section id="proyectos" className="space-y-12 scroll-mt-24">
           
           {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/5 pb-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/5 pb-6"
+          >
             <div className="space-y-1">
               <span className="text-[10px] font-mono text-blue-400 uppercase tracking-widest font-semibold block">Nuestra Galería de Código</span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Proyectos Llevados a Cabo</h2>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Proyectos Levados a Cabo</h2>
             </div>
             <p className="text-slate-400 text-xs max-w-sm leading-relaxed font-light">
               Desarrollamos soluciones digitales que aúnan estética ultra-moderna y flujos lógicos eficientes bajo estándares de ingeniería excepcionales.
             </p>
-          </div>
+          </motion.div>
 
           {/* Grid list of detailed elite projects with visual browser mockups */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {displayProjects.map((proj, idx) => {
               return (
-                <div 
+                <motion.div 
                   key={idx} 
-                  className="group relative bg-[#060c1d] border border-white/5 hover:border-white/10 hover:shadow-2xl hover:shadow-blue-500/[0.04] p-5 sm:p-6 rounded-3xl transition-all duration-300 flex flex-col gap-5 overflow-hidden"
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-100px" }}
+                  transition={{ duration: 0.6, delay: idx * 0.15 }}
+                  whileHover={{ 
+                    y: -10, 
+                    borderColor: "rgba(255, 255, 255, 0.12)",
+                    boxShadow: "0 25px 50px -12px rgba(59, 130, 246, 0.08)"
+                  }}
+                  className="group relative bg-[#060c1d] border border-white/5 p-5 sm:p-6 rounded-3xl transition-all duration-300 flex flex-col gap-5 overflow-hidden"
                 >
                   
                   {/* High Quality Web Browser Mockup Frame enclosing real website image */}
@@ -326,11 +435,13 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
 
                     {/* Web Preview Screen */}
                     <div className="relative flex-grow overflow-hidden bg-slate-950">
-                      <img 
+                      <motion.img 
                         src={proj.image} 
                         alt={proj.title}
                         referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover object-top filter contrast-[1.05] brightness-[0.9] group-hover:scale-105 transition-transform duration-500 ease-out"
+                        whileHover={{ scale: 1.06 }}
+                        transition={{ duration: 0.6, ease: "easeOut" }}
+                        className="w-full h-full object-cover object-top filter contrast-[1.05] brightness-[0.9] transition-transform duration-500 ease-out"
                       />
                       {/* Visual Gradient Mesh Overlay */}
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none" />
@@ -367,7 +478,7 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
                     ))}
                   </div>
 
-                </div>
+                </motion.div>
               );
             })}
           </div>
@@ -375,7 +486,13 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
         </section>
 
         {/* DETAILED SERVICES BLOCK */}
-        <section className="bg-slate-950/40 border border-white/5 rounded-3xl p-8 sm:p-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative overflow-hidden backdrop-blur-3xl">
+        <motion.section 
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.7 }}
+          className="bg-slate-950/40 border border-white/5 rounded-3xl p-8 sm:p-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative overflow-hidden backdrop-blur-3xl"
+        >
           <div className="lg:col-span-5 space-y-4">
             <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-widest font-bold">Por qué nosotros</span>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Especialistas en Código Limpio y Rendimiento</h2>
@@ -400,21 +517,33 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
           <div className="lg:col-span-7 bg-slate-900/50 border border-white/5 rounded-2xl p-6 relative overflow-hidden flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <span className="text-xs font-mono text-slate-400">Stack Tecnológico Principal</span>
-              <span className="text-[9px] font-mono text-blue-400 uppercase font-bold">100% Controlado</span>
+              <span className="text-[9px] font-mono text-blue-400 uppercase font-bold animate-pulse">100% Controlado</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {['TypeScript', 'React / Next.js', 'Tailwind CSS', 'Supabase Cloud', 'PostgreSQL DB', 'D3.js & Motion', 'Node / Express', 'Stripe Payments', 'Vite Bundle Engine'].map((tech, idx) => (
-                <div key={idx} className="bg-slate-950 border border-white/5 text-[11px] font-mono text-slate-300 p-2.5 rounded-lg flex items-center gap-2">
+                <motion.div 
+                  whileHover={{ scale: 1.05, borderColor: "rgba(59, 130, 246, 0.3)", backgroundColor: "rgba(30, 41, 59, 0.4)" }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  key={idx} 
+                  className="bg-slate-950 border border-white/5 text-[11px] font-mono text-slate-300 p-2.5 rounded-lg flex items-center gap-2 cursor-default"
+                >
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
                   <span>{tech}</span>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
-        </section>
+        </motion.section>
 
         {/* BOTTOM REAL INQUIRY FORM FOR CLIENTS - "Hablemos de tu Proyecto" */}
-        <section id="contacto" className="max-w-2xl mx-auto w-full bg-[#080d22] border border-white/5 rounded-3xl p-8 sm:p-10 relative overflow-hidden backdrop-blur-3xl shadow-xl">
+        <motion.section 
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.7 }}
+          id="contacto" 
+          className="max-w-2xl mx-auto w-full bg-[#080d22] border border-white/5 rounded-3xl p-8 sm:p-10 relative overflow-hidden backdrop-blur-3xl shadow-xl hover:border-slate-800 transition-all duration-550"
+        >
           <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
           
           <div className="text-center space-y-2 mb-8">
@@ -425,7 +554,11 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
           </div>
 
           {isSubmitted ? (
-            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-8 text-center space-y-3">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-8 text-center space-y-3"
+            >
               <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center mx-auto">
                 <CheckCircle className="w-6 h-6" />
               </div>
@@ -433,52 +566,57 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
               <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
                 Nuestro personal de ingeniería analizará los requerimientos técnicos y se pondrá en contacto contigo en las próximas 12 horas. ¡Gracias por confiar en Althera Studio!
               </p>
-            </div>
+            </motion.div>
           ) : (
             <form onSubmit={handleInquirySubmit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase tracking-wider font-mono text-slate-400 font-semibold">Tu Nombre</label>
-                  <input 
+                  <motion.input 
                     type="text" 
                     required
                     placeholder="Ej. Juan Pérez"
                     value={inquiryName}
                     onChange={(e) => setInquiryName(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
+                    whileFocus={{ scale: 1.01, borderColor: "rgba(212, 175, 55, 0.4)" }}
+                    className="w-full bg-[#050505] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase tracking-wider font-mono text-slate-400 font-semibold">Correo Electrónico</label>
-                  <input 
+                  <motion.input 
                     type="email" 
                     required
                     placeholder="juan@empresa.com"
                     value={inquiryEmail}
                     onChange={(e) => setInquiryEmail(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
+                    whileFocus={{ scale: 1.01, borderColor: "rgba(212, 175, 55, 0.4)" }}
+                    className="w-full bg-[#050505] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-[10px] uppercase tracking-wider font-mono text-slate-400 font-semibold">Cuéntanos sobre los requerimientos</label>
-                <textarea 
+                <motion.textarea 
                   rows={4}
                   placeholder="Detalla tu idea o necesidades tecnológicas (ej. Web Corporativa, Panel de Administración, etc.)"
                   value={inquiryMessage}
                   onChange={(e) => setInquiryMessage(e.target.value)}
-                  className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all resize-none"
+                  whileFocus={{ scale: 1.01, borderColor: "rgba(212, 175, 55, 0.4)" }}
+                  className="w-full bg-[#050505] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all resize-none"
                 />
               </div>
 
-              <button
+              <motion.button
+                whileHover={{ scale: 1.02, boxShadow: "0 10px 20px -10px rgba(212, 175, 55, 0.4)" }}
+                whileTap={{ scale: 0.98 }}
                 type="submit"
-                className="w-full bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-xs text-black font-extrabold py-3 px-6 rounded-xl transition-all shadow-lg shadow-amber-500/10 cursor-pointer flex items-center justify-center gap-2"
+                className="w-full bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-xs text-black font-extrabold py-3 px-6 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
               >
                 <span>Enviar Solicitud</span>
                 <Send className="w-3.5 h-3.5 text-black" />
-              </button>
+              </motion.button>
             </form>
           )}
 
@@ -489,18 +627,27 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
             </p>
           </div>
 
-        </section>
+        </motion.section>
 
       </main>
 
       {/* FOOTER */}
       <footer className="relative z-10 border-t border-white/5 bg-[#050505] py-8">
         <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-4.5 h-4.5 flex items-center justify-center bg-black rounded p-0.5 border border-amber-500/20">
-              <img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="A" className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />
+          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-4.5 h-4.5 flex items-center justify-center bg-black rounded p-0.5 border border-amber-500/20">
+                <img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="A" className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />
+              </div>
+              <span className="text-[11px] font-semibold text-slate-450">Althera Studio • Tecnología de Alta Costura</span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-450">Althera Studio • Tecnología de Alta Costura</span>
+            {/* Added Acceso a Comerciales button */}
+            <button 
+              onClick={() => onNavigate('comerciales_acceso', 'push')}
+              className="text-[11px] text-amber-500 hover:text-amber-400 font-bold transition duration-200 cursor-pointer p-1.5 px-3 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/15 rounded-lg flex items-center gap-1 leading-none"
+            >
+              💼 <span>Acceso a Comerciales</span>
+            </button>
           </div>
           <p className="text-[10px] text-slate-500 font-mono">
             © {new Date().getFullYear()} Althera Studio. Reservados todos los derechos.
