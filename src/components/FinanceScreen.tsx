@@ -929,15 +929,6 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12" id="finance-module-root">
       
-      {/* Toast alert system */}
-      <div 
-        id="toast-msg" 
-        className="fixed bottom-5 right-5 z-50 bg-emerald-500 text-slate-950 font-bold px-4 py-3 rounded-2xl shadow-xl border border-emerald-400/20 text-xs transition-opacity duration-300 opacity-0 pointer-events-none flex items-center gap-2"
-      >
-        <Check className="w-4 h-4" />
-        <span />
-      </div>
-
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-6">
         <div className="space-y-1.5 text-left">

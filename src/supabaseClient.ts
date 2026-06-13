@@ -412,7 +412,8 @@ export const db = {
 
   async updateContact(contact: ClientContact, userId?: string): Promise<void> {
     const serialized = this.serializeContactMetadata(contact);
-    const payload = { ...serialized, user_id: userId || null };
+    // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
+    const { user_id, ...payload } = serialized;
     const { error } = await supabase.from('contacts').update(payload).eq('id', contact.id);
     if (error) throw error;
   },
@@ -439,7 +440,8 @@ export const db = {
   },
 
   async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
-    const payload = { ...transaction, user_id: userId || null };
+    // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
+    const { user_id, ...payload } = transaction as any;
     const { error } = await supabase.from('finance_transactions').update(payload).eq('id', transaction.id);
     if (error) throw error;
   },
@@ -466,7 +468,8 @@ export const db = {
   },
 
   async updateFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
-    const payload = { ...invoice, user_id: userId || null };
+    // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
+    const { user_id, ...payload } = invoice as any;
     const { error } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id);
     if (error) throw error;
   },
@@ -493,7 +496,8 @@ export const db = {
   },
 
   async updateContractAlthera(contract: any, userId?: string): Promise<void> {
-    const payload = { ...contract, user_id: userId || null };
+    // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
+    const { user_id, ...payload } = contract;
     const { error } = await supabase.from('contracts_althera').update(payload).eq('id', contract.id);
     if (error) throw error;
   },
@@ -624,9 +628,9 @@ export const db = {
 
   async updateEvent(event: CalendarEvent, userId?: string): Promise<void> {
     const serialized = this.serializeEventMetadata(event);
-    const { status, parentEventId, ...cleanEvent } = serialized;
-    const payload = { ...cleanEvent, user_id: userId || null };
-    const { error } = await supabase.from('events').update(payload).eq('id', event.id);
+    // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
+    const { status, parentEventId, user_id, ...cleanEvent } = serialized;
+    const { error } = await supabase.from('events').update(cleanEvent).eq('id', event.id);
     if (error) throw error;
   },
 

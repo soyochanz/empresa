@@ -486,6 +486,36 @@ export default function App() {
     };
   }, []);
 
+  // Synchronize toast showing mechanisms (classList hidden vs opacity-0 / class toggle)
+  useEffect(() => {
+    const toastElem = document.getElementById('toast-msg');
+    if (!toastElem) return;
+
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'class') {
+          const classes = toastElem.className;
+          const hasHidden = classes.includes('hidden');
+          const hasOpacity100 = classes.includes('opacity-100');
+          const hasOpacity0 = classes.includes('opacity-0');
+          
+          if (!hasHidden && !hasOpacity100 && hasOpacity0) {
+            // hidden was removed by code, but opacity-0 is still there. Convert to opacity-100
+            toastElem.classList.remove('opacity-0', 'pointer-events-none');
+            toastElem.classList.add('opacity-100');
+          } else if (hasHidden && hasOpacity100) {
+            // hidden was added, convert opacity back to 0
+            toastElem.classList.remove('opacity-100');
+            toastElem.classList.add('opacity-0', 'pointer-events-none');
+          }
+        }
+      });
+    });
+
+    observer.observe(toastElem, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, [currentScreen]);
+
   // Handle active signIn from login screen
   const handleSignInAndNavigate = (sessionUser?: { id: string | null; email: string; name: string }) => {
     if (sessionUser) {
@@ -1169,6 +1199,15 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
+      
+      {/* Global Toast Alert System */}
+      <div 
+        id="toast-msg" 
+        className="fixed bottom-6 right-6 z-50 bg-[#09090f]/90 border border-violet-500/30 text-white font-sans text-xs px-5 py-3 rounded-2xl shadow-2xl backdrop-blur flex items-center gap-2 max-w-sm opacity-0 pointer-events-none transition-all duration-300 hidden"
+      >
+        <Check className="w-4 h-4 text-violet-400" />
+        <span />
+      </div>
 
     </div>
   );

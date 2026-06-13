@@ -135,6 +135,7 @@ export interface ComercialLead {
   notes: string;
   createdAt: string;
   temperature?: 'Frío' | 'Templado' | 'Caliente';
+  isDone?: boolean;
 }
 
 export interface ColdCallingLead {
@@ -161,6 +162,7 @@ export interface ColdCallingLead {
   assignedToEmail: string;         // Assigned comercial's email, or 'unassigned'
   assignedToName?: string;         // Assigned comercial's name
   archived?: boolean;              // archived flag
+  isDone?: boolean;                // Done (tick) flag for comercial organization
   createdAt: string;
 }
 
