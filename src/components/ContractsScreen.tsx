@@ -1959,16 +1959,16 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                       <div className="relative">
                         <p className="font-semibold text-neutral-900 text-xs">D. Carlos Ronco Meneses</p>
                         <p className="text-[10px] text-neutral-500">DNI: {prestador1Dni}</p>
-                        <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[170px]">
+                        <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[200px]">
                           {includeDefaultSignatures && (
-                            <div className="absolute bottom-1.5 left-2 pointer-events-none select-none">
+                            <div className="absolute bottom-2.5 left-1 pointer-events-none select-none">
                               <span 
-                                style={{ fontFamily: '"Caveat", cursive' }}
-                                className="font-signature1 text-[32px] text-[#0f2d59] font-bold inline-block transform -rotate-3 leading-none drop-shadow-sm"
+                                style={{ fontFamily: '"Mr De Haviland", cursive' }}
+                                className="font-signature1 text-[52px] text-[#1d3e6d] inline-block transform -rotate-3 leading-none drop-shadow-sm whitespace-nowrap"
                               >
                                 Carlos Ronco
                               </span>
-                              <span className="block text-[6px] text-neutral-400 font-mono tracking-tight mt-0">
+                              <span className="block text-[6px] text-neutral-400 font-mono tracking-tight mt-1.5 pl-1">
                                 Firmado digitalmente • Althera ID: CR-0910
                               </span>
                             </div>
@@ -1978,16 +1978,16 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                       <div className="relative mt-2">
                         <p className="font-semibold text-neutral-900 text-xs">D. Ignacio Martin Gonzalez</p>
                         <p className="text-[10px] text-neutral-500">DNI: {prestador2Dni}</p>
-                        <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[170px]">
+                        <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[200px]">
                           {includeDefaultSignatures && (
-                            <div className="absolute bottom-1.5 left-2 pointer-events-none select-none">
+                            <div className="absolute bottom-2.5 left-1 pointer-events-none select-none">
                               <span 
-                                style={{ fontFamily: '"Alex Brush", cursive' }}
-                                className="font-signature2 text-[38px] text-[#123668] inline-block transform rotate-1 leading-none drop-shadow-sm pb-1"
+                                style={{ fontFamily: '"Herr Von Muellerhoff", cursive' }}
+                                className="font-signature2 text-[58px] text-[#1a3861] inline-block transform rotate-2 leading-none drop-shadow-sm whitespace-nowrap"
                               >
-                                Ignacio Martin G.
+                                I. Martin Gonzalez
                               </span>
-                              <span className="block text-[6px] text-neutral-400 font-mono tracking-tight -mt-0.5">
+                              <span className="block text-[6px] text-neutral-400 font-mono tracking-tight mt-1.5 pl-1">
                                 Firmado digitalmente • Althera ID: IM-7593
                               </span>
                             </div>

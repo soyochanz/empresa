@@ -28,8 +28,9 @@ import {
 
 // Helper to determine or estimate the date of an activity dynamically
 const getActivityDate = (act: Activity): Date => {
-  if (act.created_at) {
-    return new Date(act.created_at);
+  const customAct = act as any;
+  if (customAct.created_at) {
+    return new Date(customAct.created_at);
   }
   
   const now = new Date();
