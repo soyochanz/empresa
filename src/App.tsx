@@ -30,22 +30,101 @@ import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, Connection
 import SupabaseInfoModal from './components/SupabaseInfoModal';
 import { Bell, X, Calendar as CalendarAtom, Check } from 'lucide-react';
 
+function getScreenFromHash(hashString: string, isLoggedIn: boolean, isComercialLoggedIn: boolean): { screen: Screen; redirectedHash?: string } {
+  const hash = hashString || '#/';
+  
+  if (hash === '#/' || hash === '#' || hash === '') {
+    return { screen: 'landing' };
+  }
+  
+  if (hash === '#/acceso' || hash === '#/login') {
+    if (isLoggedIn) {
+      return { screen: 'dashboard', redirectedHash: '#/admin/dashboard' };
+    }
+    return { screen: 'acceso' };
+  }
+  
+  if (hash === '#/comerciales') {
+    if (isComercialLoggedIn) {
+      return { screen: 'comerciales_panel', redirectedHash: '#/comerciales/panel' };
+    }
+    return { screen: 'comerciales_acceso', redirectedHash: '#/comerciales/acceso' };
+  }
+  if (hash === '#/comerciales/acceso') {
+    if (isComercialLoggedIn) {
+      return { screen: 'comerciales_panel', redirectedHash: '#/comerciales/panel' };
+    }
+    return { screen: 'comerciales_acceso' };
+  }
+  if (hash === '#/comerciales/panel') {
+    if (!isComercialLoggedIn) {
+      return { screen: 'comerciales_acceso', redirectedHash: '#/comerciales/acceso' };
+    }
+    return { screen: 'comerciales_panel' };
+  }
+
+  // Admin and sub panels
+  if (hash.startsWith('#/admin')) {
+    if (!isLoggedIn) {
+      return { screen: 'acceso', redirectedHash: '#/acceso' };
+    }
+    
+    if (hash === '#/admin' || hash === '#/admin/' || hash === '#/admin/dashboard') {
+      return { screen: 'dashboard' };
+    }
+    if (hash === '#/admin/calendar') return { screen: 'calendar' };
+    if (hash === '#/admin/crm') return { screen: 'crm' };
+    if (hash === '#/admin/notes') return { screen: 'notes' };
+    if (hash === '#/admin/projects') return { screen: 'projects' };
+    if (hash === '#/admin/finanzas') return { screen: 'finanzas' };
+    if (hash === '#/admin/contactos') return { screen: 'contactos' };
+    if (hash === '#/admin/citas') return { screen: 'citas' };
+    if (hash === '#/admin/contratos') return { screen: 'contratos' };
+    if (hash === '#/admin/comerciales') return { screen: 'comerciales_admin' };
+    if (hash === '#/admin/cold-calling') return { screen: 'cold_calling' };
+    
+    return { screen: 'dashboard' };
+  }
+
+  return { screen: 'landing' };
+}
+
+function getHashFromScreen(screen: Screen): string {
+  switch (screen) {
+    case 'landing': return '#/';
+    case 'acceso': return '#/acceso';
+    case 'comerciales_acceso': return '#/comerciales/acceso';
+    case 'comerciales_panel': return '#/comerciales/panel';
+    case 'dashboard': return '#/admin/dashboard';
+    case 'calendar': return '#/admin/calendar';
+    case 'crm': return '#/admin/crm';
+    case 'notes': return '#/admin/notes';
+    case 'projects': return '#/admin/projects';
+    case 'finanzas': return '#/admin/finanzas';
+    case 'contactos': return '#/admin/contactos';
+    case 'citas': return '#/admin/citas';
+    case 'contratos': return '#/admin/contratos';
+    case 'comerciales_admin': return '#/admin/comerciales';
+    case 'cold_calling': return '#/admin/cold-calling';
+    default: return '#/';
+  }
+}
+
 export default function App() {
   // Screens state
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
-    // Session state identifier to distinguish a fresh tab load from a page refresh
-    const isSessionActive = sessionStorage.getItem('agency_session_active');
-    if (!isSessionActive) {
-      sessionStorage.setItem('agency_session_active', 'true');
-      localStorage.setItem('agency_current_screen', 'landing');
-      return 'landing';
-    }
-    const saved = localStorage.getItem('agency_current_screen');
-    return (saved as Screen) || 'landing';
+    const initialHash = window.location.hash || '#/';
+    const savedUser = localStorage.getItem('agency_user');
+    const isLoggedIn = !!savedUser;
+    const savedComercial = localStorage.getItem('agency_current_comercial');
+    const isComercialLoggedIn = !!savedComercial;
+
+    const { screen } = getScreenFromHash(initialHash, isLoggedIn, isComercialLoggedIn);
+    return screen;
   });
   const [transitionType, setTransitionType] = useState<'none' | 'push' | 'push_back'>('none');
 
-  // Track the current screen for route-refresh recovery
+  // Track current screen for background persistence
   useEffect(() => {
     localStorage.setItem('agency_current_screen', currentScreen);
   }, [currentScreen]);
@@ -422,11 +501,41 @@ export default function App() {
     }
   };
 
+  // Router synchronization effect
+  useEffect(() => {
+    const handleHashChange = () => {
+      const { screen, redirectedHash } = getScreenFromHash(
+        window.location.hash,
+        !!currentUser,
+        !!currentComercial
+      );
+      
+      setCurrentScreen(screen);
+      
+      if (redirectedHash && window.location.hash !== redirectedHash) {
+        window.location.hash = redirectedHash;
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    
+    // Initial sync
+    const initialHash = window.location.hash || '#/';
+    const { screen, redirectedHash } = getScreenFromHash(initialHash, !!currentUser, !!currentComercial);
+    setCurrentScreen(screen);
+    if (redirectedHash && window.location.hash !== redirectedHash) {
+      window.location.hash = redirectedHash;
+    } else if (!window.location.hash) {
+      window.location.hash = '#/';
+    }
+
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [currentUser, currentComercial]);
+
   // Auth synchronization effect
   useEffect(() => {
     // Check initial active session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const savedScr = localStorage.getItem('agency_current_screen');
       if (session?.user) {
         const u = {
           id: session.user.id,
@@ -435,46 +544,37 @@ export default function App() {
         };
         setCurrentUser(u);
         localStorage.setItem('agency_user', JSON.stringify(u));
-        // Soft navigate: check localStorage first to preserve screen completely
-        setCurrentScreen(prev => {
-          if (savedScr && savedScr !== 'landing' && savedScr !== 'acceso') {
-            return savedScr as Screen;
-          }
-          return prev === 'landing' || prev === 'acceso' ? 'dashboard' : prev;
-        });
         syncWithSupabase(session.user.id);
+        
+        // Let the hash determine the screen; if they were on /acceso or login, redirect to admin
+        const initialHash = window.location.hash || '#/';
+        if (initialHash === '#/acceso' || initialHash === '#/login') {
+          navigateTo('dashboard', 'none');
+        }
       } else {
         const saved = localStorage.getItem('agency_user');
         const savedUser = saved ? JSON.parse(saved) : null;
         if (savedUser && savedUser.id === null) {
-          // Preserve demo/local session and restore screen correctly
+          // Preserve demo/local session
           setCurrentUser(savedUser);
-          setCurrentScreen(prev => {
-            if (savedScr && savedScr !== 'landing' && savedScr !== 'acceso') {
-              return savedScr as Screen;
-            }
-            return prev === 'landing' || prev === 'acceso' ? 'dashboard' : prev;
-          });
         } else if (savedUser) {
           setCurrentUser(savedUser);
-          setCurrentScreen(prev => {
-            if (savedScr && savedScr !== 'landing' && savedScr !== 'acceso') {
-              return savedScr as Screen;
-            }
-            return prev === 'landing' || prev === 'acceso' ? 'dashboard' : prev;
-          });
           syncWithSupabase(savedUser.id);
         } else {
           setCurrentUser(null);
           localStorage.removeItem('agency_user');
-          setCurrentScreen('landing');
+          
+          // If they were on an admin screen but not logged in, redirect to login
+          const initialHash = window.location.hash || '#/';
+          if (initialHash.startsWith('#/admin')) {
+            navigateTo('acceso', 'none');
+          }
         }
       }
     });
 
     // Listen to real auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      const savedScr = localStorage.getItem('agency_current_screen');
       if (session?.user) {
         const u = {
           id: session.user.id,
@@ -483,19 +583,17 @@ export default function App() {
         };
         setCurrentUser(u);
         localStorage.setItem('agency_user', JSON.stringify(u));
-        // Soft navigate on tab-focus or session change, restoring screen accurately
-        setCurrentScreen(prev => {
-          if (savedScr && savedScr !== 'landing' && savedScr !== 'acceso') {
-            return savedScr as Screen;
-          }
-          return prev === 'landing' || prev === 'acceso' ? 'dashboard' : prev;
-        });
         syncWithSupabase(session.user.id);
+        
+        const initialHash = window.location.hash || '#/';
+        if (initialHash === '#/acceso' || initialHash === '#/login') {
+          navigateTo('dashboard', 'none');
+        }
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
         localStorage.removeItem('agency_user');
         localStorage.removeItem('agency_current_screen');
-        setCurrentScreen('landing');
+        navigateTo('landing', 'none');
       }
     });
 
@@ -617,7 +715,12 @@ export default function App() {
   // Main navigation handles with transition controls
   const navigateTo = (target: Screen, transition: 'none' | 'push' | 'push_back') => {
     setTransitionType(transition);
-    setCurrentScreen(target);
+    const targetHash = getHashFromScreen(target);
+    if (window.location.hash !== targetHash) {
+      window.location.hash = targetHash;
+    } else {
+      setCurrentScreen(target);
+    }
     setGlobalSearch(''); // reset search on navigation
   };
 

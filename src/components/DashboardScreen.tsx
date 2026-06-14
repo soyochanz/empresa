@@ -15,6 +15,75 @@ import {
   PlusCircle,
   X
 } from 'lucide-react';
+import { 
+  ResponsiveContainer, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Cell 
+} from 'recharts';
+
+// Helper to determine or estimate the date of an activity dynamically
+const getActivityDate = (act: Activity): Date => {
+  if (act.created_at) {
+    return new Date(act.created_at);
+  }
+  
+  const now = new Date();
+  
+  // Specific elegant distribution for initial mock activities so chart looks alive
+  if (act.id === 'a1') {
+    return now;
+  }
+  if (act.id === 'a2') {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d;
+  }
+  if (act.id === 'a3') {
+    const d = new Date();
+    d.setDate(d.getDate() - 3);
+    return d;
+  }
+  if (act.id === 'a4') {
+    const d = new Date();
+    d.setDate(d.getDate() - 5);
+    return d;
+  }
+
+  const ts = (act.timestamp || '').toLowerCase().trim();
+  if (ts === 'just now' || ts.includes('ago') || ts.includes('h') || ts.includes('m')) {
+    return now;
+  }
+  if (ts.includes('yesterday')) {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d;
+  }
+  
+  return now;
+};
+
+// Custom Tooltip component styled precisely to match the slate-dark theme
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-slate-950/95 backdrop-blur-md border border-white/10 p-3 rounded-2xl shadow-2xl text-xs font-sans">
+        <p className="text-slate-400 font-semibold mb-1 font-mono">{payload[0].payload.label}</p>
+        <div className="flex items-center gap-1.5 font-mono">
+          <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+          <span className="text-white font-bold">
+            {payload[0].value} {payload[0].value === 1 ? 'actividad' : 'actividades'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 interface DashboardScreenProps {
   events: CalendarEvent[];

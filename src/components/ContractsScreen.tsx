@@ -378,6 +378,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const [fin4Coste, setFin4Coste] = useState(50);
 
   const [selectedModality, setSelectedModality] = useState<'single' | 'fin3' | 'fin4'>('single');
+  const [includeDefaultSignatures, setIncludeDefaultSignatures] = useState(true);
 
   // Auto Calculations when base price changes
   const handleBasePriceChange = (val: number) => {
@@ -1176,6 +1177,20 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                       className="bg-black border border-neutral-900 rounded-lg p-2 text-[10px] text-slate-300 focus:outline-none"
                     />
                   </div>
+                  
+                  {/* Default Signature Toggle Selection with Golden Accent */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-neutral-900">
+                    <input
+                      type="checkbox"
+                      id="includeDefaultSignatures"
+                      checked={includeDefaultSignatures}
+                      onChange={(e) => setIncludeDefaultSignatures(e.target.checked)}
+                      className="accent-amber-500 rounded border-neutral-800 bg-black cursor-pointer w-3.5 h-3.5"
+                    />
+                    <label htmlFor="includeDefaultSignatures" className="text-[10px] font-mono text-slate-400 hover:text-slate-200 cursor-pointer select-none transition">
+                      Incluir firmas por defecto (Carlos e Ignacio)
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -1941,15 +1956,43 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                       LOS PRESTADORES (Althera)
                     </p>
                     <div className="space-y-4">
-                      <div>
+                      <div className="relative">
                         <p className="font-semibold text-neutral-900 text-xs">D. Carlos Ronco Meneses</p>
                         <p className="text-[10px] text-neutral-500">DNI: {prestador1Dni}</p>
-                        <div className="h-10 mt-2 border-b border-dotted border-neutral-400 max-w-[170px]" />
+                        <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[170px]">
+                          {includeDefaultSignatures && (
+                            <div className="absolute bottom-1.5 left-2 pointer-events-none select-none">
+                              <span 
+                                style={{ fontFamily: '"Caveat", cursive' }}
+                                className="font-signature1 text-[32px] text-[#0f2d59] font-bold inline-block transform -rotate-3 leading-none drop-shadow-sm"
+                              >
+                                Carlos Ronco
+                              </span>
+                              <span className="block text-[6px] text-neutral-400 font-mono tracking-tight mt-0">
+                                Firmado digitalmente • Althera ID: CR-0910
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-neutral-900 text-xs mt-2">D. Ignacio Martin Gonzalez</p>
+                      <div className="relative mt-2">
+                        <p className="font-semibold text-neutral-900 text-xs">D. Ignacio Martin Gonzalez</p>
                         <p className="text-[10px] text-neutral-500">DNI: {prestador2Dni}</p>
-                        <div className="h-10 mt-2 border-b border-dotted border-neutral-400 max-w-[170px]" />
+                        <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[170px]">
+                          {includeDefaultSignatures && (
+                            <div className="absolute bottom-1.5 left-2 pointer-events-none select-none">
+                              <span 
+                                style={{ fontFamily: '"Alex Brush", cursive' }}
+                                className="font-signature2 text-[38px] text-[#123668] inline-block transform rotate-1 leading-none drop-shadow-sm pb-1"
+                              >
+                                Ignacio Martin G.
+                              </span>
+                              <span className="block text-[6px] text-neutral-400 font-mono tracking-tight -mt-0.5">
+                                Firmado digitalmente • Althera ID: IM-7593
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -23,7 +23,7 @@ import {
   CheckCircle,
   ExternalLink
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, useScroll, useTransform } from 'motion/react';
 
 interface LandingScreenProps {
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
@@ -31,15 +31,10 @@ interface LandingScreenProps {
 }
 
 export default function LandingScreen({ onNavigate, projects }: LandingScreenProps) {
-  const [scrollY, setScrollY] = useState(0);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setScrollY(window.scrollY);
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  const { scrollY } = useScroll();
+  const topoScale = useTransform(scrollY, [0, 1000], [1, 1.4]);
+  const topoRotate = useTransform(scrollY, [0, 1000], [0, 40]);
+  const topoYTranslate = useTransform(scrollY, [0, 1000], [0, 100]);
 
   const [inquiryName, setInquiryName] = useState('');
   const [inquiryEmail, setInquiryEmail] = useState('');
@@ -206,9 +201,9 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
         <div className="absolute right-[-10%] top-[-10%] lg:right-[-5%] lg:top-[5%] w-[120%] lg:w-[60%] aspect-square flex items-center justify-center opacity-85 z-0">
           <motion.div
             style={{
-              scale: 1 + scrollY * 0.0004,
-              rotate: scrollY * 0.04,
-              y: scrollY * 0.1,
+              scale: topoScale,
+              rotate: topoRotate,
+              y: topoYTranslate,
             }}
             className="relative w-[100%] h-[100%] max-w-[850px] max-h-[850px] transition-transform duration-75 ease"
           >
