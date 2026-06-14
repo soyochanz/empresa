@@ -48,9 +48,13 @@ export interface AgencyProject {
 interface ProjectsScreenProps {
   contacts: ClientContact[];
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
+  projects: AgencyProject[];
+  onAddProject: (newProj: AgencyProject) => void;
+  onUpdateProject: (updatedProj: AgencyProject) => void;
+  onDeleteProject: (id: string) => void;
 }
 
-const INITIAL_PROJECTS: AgencyProject[] = [
+export const INITIAL_PROJECTS: AgencyProject[] = [
   {
     id: 'p1',
     title: "NovaAI - IA Generativa de Siguiente Generación",
@@ -120,18 +124,14 @@ const INITIAL_PROJECTS: AgencyProject[] = [
   }
 ];
 
-export default function ProjectsScreen({ contacts, onNavigate }: ProjectsScreenProps) {
-  // Persistence state
-  const [projects, setProjects] = useState<AgencyProject[]>(() => {
-    const saved = localStorage.getItem('agency_projects_list');
-    return saved ? JSON.parse(saved) : INITIAL_PROJECTS;
-  });
-
-  const saveProjects = (updated: AgencyProject[]) => {
-    setProjects(updated);
-    localStorage.setItem('agency_projects_list', JSON.stringify(updated));
-  };
-
+export default function ProjectsScreen({
+  contacts,
+  onNavigate,
+  projects,
+  onAddProject,
+  onUpdateProject,
+  onDeleteProject
+}: ProjectsScreenProps) {
   // Search and filter states
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -174,14 +174,11 @@ export default function ProjectsScreen({ contacts, onNavigate }: ProjectsScreenP
 
   const toggleShowOnLanding = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const updated = projects.map(p => {
-      if (p.id === id) {
-        const currentVal = p.showOnLanding !== false;
-        return { ...p, showOnLanding: !currentVal };
-      }
-      return p;
-    });
-    saveProjects(updated);
+    const match = projects.find(p => p.id === id);
+    if (match) {
+      const currentVal = match.showOnLanding !== false;
+      onUpdateProject({ ...match, showOnLanding: !currentVal });
+    }
   };
 
   const handleOpenAddModal = () => {
@@ -237,29 +234,27 @@ export default function ProjectsScreen({ contacts, onNavigate }: ProjectsScreenP
     const aArr = formAddonsMsg.split(',').map(s => s.trim()).filter(Boolean);
 
     if (isEditMode && editingId) {
-      const updated = projects.map(p => {
-        if (p.id === editingId) {
-          return {
-            ...p,
-            title: formTitle,
-            category: formCategory,
-            clientName,
-            clientContactId: formClientContactId || undefined,
-            description: formDescription,
-            detailText: formDetailText,
-            performanceScore: Number(formPerfScore) || 90,
-            seoScore: Number(formSeoScore) || 90,
-            image: formImage || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80',
-            url: formUrl || 'live.agencyflow.com',
-            tools: tArr,
-            addons: aArr,
-            status: formStatus,
-            showOnLanding: formShowOnLanding
-          };
-        }
-        return p;
-      });
-      saveProjects(updated);
+      const match = projects.find(p => p.id === editingId);
+      if (match) {
+        const updated = {
+          ...match,
+          title: formTitle,
+          category: formCategory,
+          clientName,
+          clientContactId: formClientContactId || undefined,
+          description: formDescription,
+          detailText: formDetailText,
+          performanceScore: Number(formPerfScore) || 90,
+          seoScore: Number(formSeoScore) || 90,
+          image: formImage || 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80',
+          url: formUrl || 'live.agencyflow.com',
+          tools: tArr,
+          addons: aArr,
+          status: formStatus,
+          showOnLanding: formShowOnLanding
+        };
+        onUpdateProject(updated);
+      }
     } else {
       const newProj: AgencyProject = {
         id: 'p_' + Date.now().toString().slice(-5),
@@ -278,7 +273,7 @@ export default function ProjectsScreen({ contacts, onNavigate }: ProjectsScreenP
         status: formStatus,
         showOnLanding: formShowOnLanding
       };
-      saveProjects([newProj, ...projects]);
+      onAddProject(newProj);
       setSelectedProjectId(newProj.id);
     }
 
@@ -296,8 +291,8 @@ export default function ProjectsScreen({ contacts, onNavigate }: ProjectsScreenP
   const handleDeleteProject = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!window.confirm("¿Seguro que deseas eliminar el registro de este proyecto de la bitácora interna?")) return;
+    onDeleteProject(id);
     const filtered = projects.filter(p => p.id !== id);
-    saveProjects(filtered);
     if (selectedProjectId === id && filtered.length > 0) {
       setSelectedProjectId(filtered[0].id);
     }

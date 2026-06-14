@@ -16,7 +16,7 @@ import DashboardScreen from './components/DashboardScreen';
 import CalendarScreen from './components/CalendarScreen';
 import CrmScreen from './components/CrmScreen';
 import NotesScreen from './components/NotesScreen';
-import ProjectsScreen from './components/ProjectsScreen';
+import ProjectsScreen, { INITIAL_PROJECTS } from './components/ProjectsScreen';
 import ContactosScreen from './components/ContactosScreen';
 import FinanceScreen from './components/FinanceScreen';
 import CitasScreen from './components/CitasScreen';
@@ -115,6 +115,20 @@ export default function App() {
   const [activities, setActivities] = useState<Activity[]>(() => {
     const saved = localStorage.getItem('agency_activities');
     return saved ? JSON.parse(saved) : initialActivities;
+  });
+
+  // Global projects state with safe localStorage caching
+  const [projects, setProjects] = useState<any[]>(() => {
+    const saved = localStorage.getItem('agency_projects_list');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (err) {
+        console.error('Error parsing agency_projects_list:', err);
+      }
+    }
+    return INITIAL_PROJECTS;
   });
 
   // Dynamic users state
@@ -387,6 +401,15 @@ export default function App() {
         setNotes(fetchedNotes || []);
         setActivities(fetchedActivities || []);
 
+        try {
+          const fetchedProjects = await db.getProjects();
+          if (fetchedProjects && fetchedProjects.length > 0) {
+            setProjects(fetchedProjects);
+          }
+        } catch (projErr) {
+          console.warn('Could not sync projects table from Supabase:', projErr);
+        }
+
         await fetchAndSetProfiles();
       }
     } catch (err: any) {
@@ -584,6 +607,10 @@ export default function App() {
     localStorage.setItem('agency_activities', JSON.stringify(activities));
   }, [activities]);
 
+  useEffect(() => {
+    localStorage.setItem('agency_projects_list', JSON.stringify(projects));
+  }, [projects]);
+
   // Combined dynamic search value for header syncing
   const [globalSearch, setGlobalSearch] = useState('');
 
@@ -631,6 +658,48 @@ export default function App() {
         await db.updateContact(updated, currentUser.id);
       } catch (err) {
         console.error('Supabase failed to update contact:', err);
+      }
+    }
+  };
+
+  const handleAddProject = async (newProj: any) => {
+    // 1. Optimistic update
+    setProjects(prev => [newProj, ...prev]);
+
+    // 2. Persist to Supabase
+    if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.insertProject(newProj, currentUser.id);
+      } catch (err) {
+        console.error('Supabase failed to register project:', err);
+      }
+    }
+  };
+
+  const handleUpdateProject = async (updatedProj: any) => {
+    // 1. Optimistic update
+    setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
+
+    // 2. Persist to Supabase
+    if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.updateProject(updatedProj, currentUser.id);
+      } catch (err) {
+        console.error('Supabase failed to update project:', err);
+      }
+    }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    // 1. Optimistic update
+    setProjects(prev => prev.filter(p => p.id !== id));
+
+    // 2. Persist to Supabase
+    if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.deleteProject(id, currentUser.id);
+      } catch (err) {
+        console.error('Supabase failed to delete project:', err);
       }
     }
   };
@@ -850,6 +919,10 @@ export default function App() {
           <ProjectsScreen 
             contacts={contacts}
             onNavigate={navigateTo}
+            projects={projects}
+            onAddProject={handleAddProject}
+            onUpdateProject={handleUpdateProject}
+            onDeleteProject={handleDeleteProject}
           />
         );
       case 'finanzas':
@@ -928,7 +1001,7 @@ export default function App() {
           exit="exit"
           className="w-full h-full min-h-screen"
         >
-          <LandingScreen onNavigate={navigateTo} />
+          <LandingScreen onNavigate={navigateTo} projects={projects} />
         </motion.div>
       </AnimatePresence>
     );

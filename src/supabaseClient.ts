@@ -64,6 +64,12 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 -- Enable Row Level Security (RLS) and allow public/anonymous access for demo/testing
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON contacts;
+DROP POLICY IF EXISTS "Public Insert Access" ON contacts;
+DROP POLICY IF EXISTS "Public Update Access" ON contacts;
+DROP POLICY IF EXISTS "Public Delete Access" ON contacts;
+DROP POLICY IF EXISTS "Allows individual updates" ON contacts;
+DROP POLICY IF EXISTS "Allow users to update own contacts" ON contacts;
 CREATE POLICY "Public Read Access" ON contacts FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON contacts FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON contacts FOR UPDATE USING (true) WITH CHECK (true);
@@ -88,6 +94,10 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON events;
+DROP POLICY IF EXISTS "Public Insert Access" ON events;
+DROP POLICY IF EXISTS "Public Update Access" ON events;
+DROP POLICY IF EXISTS "Public Delete Access" ON events;
 CREATE POLICY "Public Read Access" ON events FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON events FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON events FOR UPDATE USING (true) WITH CHECK (true);
@@ -107,6 +117,10 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 
 ALTER TABLE notes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON notes;
+DROP POLICY IF EXISTS "Public Insert Access" ON notes;
+DROP POLICY IF EXISTS "Public Update Access" ON notes;
+DROP POLICY IF EXISTS "Public Delete Access" ON notes;
 CREATE POLICY "Public Read Access" ON notes FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON notes FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON notes FOR UPDATE USING (true) WITH CHECK (true);
@@ -245,7 +259,39 @@ ALTER TABLE contracts_althera ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Read Access" ON contracts_althera FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON contracts_althera FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON contracts_althera FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Public Delete Access" ON contracts_althera FOR DELETE USING (true);`;
+CREATE POLICY "Public Delete Access" ON contracts_althera FOR DELETE USING (true);
+
+
+-- 10. Create projects table with user_id support
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  title TEXT NOT NULL,
+  category TEXT,
+  "clientName" TEXT,
+  "clientContactId" TEXT,
+  description TEXT,
+  "detailText" TEXT,
+  "performanceScore" INTEGER,
+  "seoScore" INTEGER,
+  image TEXT,
+  url TEXT,
+  tools TEXT[],
+  addons TEXT[],
+  status TEXT,
+  "showOnLanding" BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON projects;
+DROP POLICY IF EXISTS "Public Insert Access" ON projects;
+DROP POLICY IF EXISTS "Public Update Access" ON projects;
+DROP POLICY IF EXISTS "Public Delete Access" ON projects;
+CREATE POLICY "Public Read Access" ON projects FOR SELECT USING (true);
+CREATE POLICY "Public Insert Access" ON projects FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Access" ON projects FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Public Delete Access" ON projects FOR DELETE USING (true);`;
 
 export interface ConnectionStatus {
   connected: boolean;
@@ -345,6 +391,10 @@ export const db = {
     let assignedUserEmail: string | undefined = undefined;
     let phone: string | undefined = undefined;
     let linkedin: string | undefined = undefined;
+    let notes: string | undefined = undefined;
+    let contactedByComercialName: string | undefined = undefined;
+    let contactedByComercialEmail: string | undefined = undefined;
+    let originalLeadNotes: string | undefined = undefined;
     
     if (parts.length > 1) {
       const metadataLines = parts[1].split('\n');
@@ -358,6 +408,17 @@ export const db = {
           if (key === 'assignedUserEmail') assignedUserEmail = val || undefined;
           if (key === 'phone') phone = val || undefined;
           if (key === 'linkedin') linkedin = val || undefined;
+          try {
+            if (key === 'notes') notes = decodeURIComponent(val) || undefined;
+            if (key === 'contactedByComercialName') contactedByComercialName = decodeURIComponent(val) || undefined;
+            if (key === 'contactedByComercialEmail') contactedByComercialEmail = val || undefined;
+            if (key === 'originalLeadNotes') originalLeadNotes = decodeURIComponent(val) || undefined;
+          } catch (e) {
+            if (key === 'notes') notes = val || undefined;
+            if (key === 'contactedByComercialName') contactedByComercialName = val || undefined;
+            if (key === 'contactedByComercialEmail') contactedByComercialEmail = val || undefined;
+            if (key === 'originalLeadNotes') originalLeadNotes = val || undefined;
+          }
         }
       });
     }
@@ -369,6 +430,10 @@ export const db = {
       assignedUserEmail,
       phone,
       linkedin,
+      notes,
+      contactedByComercialName,
+      contactedByComercialEmail,
+      originalLeadNotes,
       hostingCredentials: cleanCredentials
     };
   },
@@ -376,19 +441,44 @@ export const db = {
   serializeContactMetadata(contact: ClientContact): any {
     if (!contact) return contact;
     let metadataStr = '';
-    if (contact.color || contact.assignedUserId || contact.assignedUserEmail || contact.phone || contact.linkedin) {
+    if (
+      contact.color || 
+      contact.assignedUserId || 
+      contact.assignedUserEmail || 
+      contact.phone || 
+      contact.linkedin ||
+      contact.notes ||
+      contact.contactedByComercialName ||
+      contact.contactedByComercialEmail ||
+      contact.originalLeadNotes
+    ) {
       metadataStr = '\n\n---METADATA---';
       if (contact.color) metadataStr += `\ncolor: ${contact.color}`;
       if (contact.assignedUserId) metadataStr += `\nassignedUserId: ${contact.assignedUserId}`;
       if (contact.assignedUserEmail) metadataStr += `\nassignedUserEmail: ${contact.assignedUserEmail}`;
       if (contact.phone) metadataStr += `\nphone: ${contact.phone}`;
       if (contact.linkedin) metadataStr += `\nlinkedin: ${contact.linkedin}`;
+      if (contact.notes) metadataStr += `\nnotes: ${encodeURIComponent(contact.notes)}`;
+      if (contact.contactedByComercialName) metadataStr += `\ncontactedByComercialName: ${encodeURIComponent(contact.contactedByComercialName)}`;
+      if (contact.contactedByComercialEmail) metadataStr += `\ncontactedByComercialEmail: ${contact.contactedByComercialEmail}`;
+      if (contact.originalLeadNotes) metadataStr += `\noriginalLeadNotes: ${encodeURIComponent(contact.originalLeadNotes)}`;
     }
     const cleanCredentials = (contact.hostingCredentials || '').split('\n\n---METADATA---')[0];
     
     // Create a database-safe copy without custom props that are not database columns
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { color, assignedUserId, assignedUserEmail, phone, linkedin, ...dbSafeContact } = contact;
+    const { 
+      color, 
+      assignedUserId, 
+      assignedUserEmail, 
+      phone, 
+      linkedin, 
+      notes,
+      contactedByComercialName,
+      contactedByComercialEmail,
+      originalLeadNotes,
+      ...dbSafeContact 
+    } = contact;
     return {
       ...dbSafeContact,
       hostingCredentials: cleanCredentials + metadataStr
@@ -807,6 +897,66 @@ export const db = {
 
   async deleteInquiry(id: string): Promise<void> {
     const { error } = await supabase.from('inquiries').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // --- PROJECTS ---
+  async getProjects(userId?: string): Promise<any[]> {
+    const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('projects table read error:', error.message);
+      throw error;
+    }
+    return data || [];
+  },
+
+  async insertProject(project: any, userId?: string): Promise<void> {
+    const payload = {
+      id: project.id,
+      title: project.title,
+      category: project.category,
+      clientName: project.clientName,
+      clientContactId: project.clientContactId,
+      description: project.description,
+      detailText: project.detailText,
+      performanceScore: project.performanceScore,
+      seoScore: project.seoScore,
+      image: project.image,
+      url: project.url,
+      tools: project.tools,
+      addons: project.addons,
+      status: project.status,
+      showOnLanding: project.showOnLanding ?? true,
+      user_id: userId || null
+    };
+    const { error } = await supabase.from('projects').insert(payload);
+    if (error) throw error;
+  },
+
+  async updateProject(project: any, userId?: string): Promise<void> {
+    const { user_id, ...payload } = project;
+    const dbPayload = {
+      title: payload.title,
+      category: payload.category,
+      clientName: payload.clientName,
+      clientContactId: payload.clientContactId,
+      description: payload.description,
+      detailText: payload.detailText,
+      performanceScore: Number(payload.performanceScore) || 90,
+      seoScore: Number(payload.seoScore) || 90,
+      image: payload.image,
+      url: payload.url,
+      tools: payload.tools,
+      addons: payload.addons,
+      status: payload.status,
+      showOnLanding: payload.showOnLanding
+    };
+    const { error } = await supabase.from('projects').update(dbPayload).eq('id', project.id);
+    if (error) throw error;
+  },
+
+  async deleteProject(id: string, _userId?: string): Promise<void> {
+    const { error } = await supabase.from('projects').delete().eq('id', id);
     if (error) throw error;
   }
 };

@@ -75,6 +75,7 @@ export default function ColdCallingScreen({
   const [tempFilter, setTempFilter] = useState<'Todos' | 'Frío' | 'Templado' | 'Caliente'>('Todos');
   const [assignedFilter, setAssignedFilter] = useState<string>('todos');
   const [showArchived, setShowArchived] = useState(false);
+  const [showOnlySelf, setShowOnlySelf] = useState(false);
 
   // Task calendar date state
   const [selectedTaskDate, setSelectedTaskDate] = useState<string>(() => {
@@ -120,7 +121,11 @@ export default function ColdCallingScreen({
         .slice(0, 2)
         .toUpperCase() || 'CLI',
       color: subtleColor,
-      assignedUserEmail: lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : undefined
+      assignedUserEmail: lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : undefined,
+      contactedByComercialEmail: lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : undefined,
+      contactedByComercialName: lead.assignedToName && lead.assignedToName !== 'Sin asignar' ? lead.assignedToName : undefined,
+      originalLeadNotes: lead.notes || undefined,
+      notes: lead.notes ? `[Historial de llamada] ${lead.notes}` : undefined
     };
 
     onAddContact(newContact);
@@ -193,6 +198,12 @@ export default function ColdCallingScreen({
   const visibleLeads = coldLeads.filter(lead => {
     // Permission scope: Comercial only sees assigned, Admin sees all
     if (!isAdmin && lead.assignedToEmail.toLowerCase() !== comercialEmail.toLowerCase()) {
+      return false;
+    }
+
+    // Show only self assigned filter if enabled
+    const myEmail = (currentUser?.email || currentComercial?.email || '').toLowerCase();
+    if (showOnlySelf && lead.assignedToEmail.toLowerCase() !== myEmail) {
       return false;
     }
 
@@ -531,6 +542,20 @@ export default function ColdCallingScreen({
                 </div>
               )}
 
+              {/* Solo mis asignados toggle */}
+              <button
+                onClick={() => setShowOnlySelf(!showOnlySelf)}
+                className={`p-2 rounded-xl border font-bold transition-all flex items-center justify-center gap-1 bg-slate-950 cursor-pointer ${
+                  showOnlySelf 
+                    ? 'border-violet-500 text-violet-400 bg-violet-600/5 shadow-[0_0_8px_rgba(139,92,246,0.15)]' 
+                    : 'border-white/5 text-slate-400 hover:text-white'
+                }`}
+                title="Mostrar solo los asignados a ti"
+              >
+                <Users className="w-3.5 h-3.5 text-violet-400" />
+                <span className="text-[10px] uppercase font-mono tracking-wider">Solo Míos</span>
+              </button>
+
               {/* Archived toggle */}
               <button
                 onClick={() => setShowArchived(!showArchived)}
@@ -599,7 +624,24 @@ export default function ColdCallingScreen({
                     {/* Business Column */}
                     <div className="col-span-3 space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-bold text-xs sm:text-sm text-white">{lead.businessName}</h4>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUpdateColdLead({
+                              ...lead,
+                              isDone: !lead.isDone
+                            });
+                          }}
+                          className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all flex-shrink-0 ${
+                            lead.isDone 
+                              ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400' 
+                              : 'border-white/10 text-transparent hover:border-white/30 hover:bg-white/[0.02]'
+                          }`}
+                          title={lead.isDone ? "Marcar como pendiente" : "Marcar como hecho (llamado)"}
+                        >
+                          <Check className="w-3.5 h-3.5 stroke-[3px]" />
+                        </button>
+                        <h4 className={`font-bold text-xs sm:text-sm text-white transition-all ${lead.isDone ? 'line-through text-slate-500' : ''}`}>{lead.businessName}</h4>
                         {lead.archived && (
                           <span className="text-[8px] bg-amber-500/10 text-amber-450 border border-amber-500/20 font-bold px-1.5 py-0.5 rounded uppercase">Archivado</span>
                         )}
@@ -792,7 +834,26 @@ export default function ColdCallingScreen({
                       </div>
 
                       {/* Business & Contact Name */}
-                      <h3 className="text-sm font-bold text-white line-clamp-1">{lead.businessName}</h3>
+                      <div className="flex items-center gap-2 mt-1 mb-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUpdateColdLead({
+                              ...lead,
+                              isDone: !lead.isDone
+                            });
+                          }}
+                          className={`w-4.5 h-4.5 rounded-md flex items-center justify-center border transition-all flex-shrink-0 ${
+                            lead.isDone 
+                              ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400' 
+                              : 'border-white/10 text-transparent hover:border-white/30 hover:bg-white/[0.02]'
+                          }`}
+                          title={lead.isDone ? "Marcar como pendiente" : "Marcar como hecho (llamado)"}
+                        >
+                          <Check className="w-3 h-3 stroke-[3px]" />
+                        </button>
+                        <h3 className={`text-sm font-bold text-white line-clamp-1 ${lead.isDone ? 'line-through text-slate-500' : ''}`}>{lead.businessName}</h3>
+                      </div>
                       <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-sans">
                         <span className="text-slate-500 text-xs font-mono">👨‍💼</span>
                         <span className="font-semibold text-slate-305">{lead.contactPerson}</span>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Network, Mail, Lock, Eye, EyeOff, ArrowRight, User, AlertCircle, CheckCircle, Database } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, User, AlertCircle, CheckCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface LoginScreenProps {
@@ -98,48 +98,65 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
   // Demo mode handler removed to enforce mandatory account entry
 
   return (
-    <div className="relative min-h-screen w-full bg-slate-950 text-slate-100 flex items-center justify-center overflow-hidden font-sans p-4">
+    <div className="relative min-h-screen w-full bg-[#020204] text-slate-100 flex items-center justify-center overflow-hidden font-sans p-4">
       
-      {/* Background Elements to match mood board layout */}
+      {/* Dynamic Grid Overlay & Orbs */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-blue-600/30 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-purple-600/20 rounded-full blur-[150px]" />
-        <div className="absolute top-[20%] right-[15%] w-[30%] h-[30%] bg-indigo-500/20 rounded-full blur-[100px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#110f1c_1px,transparent_1px),linear-gradient(to_bottom,#110f1c_1px,transparent_1px)] bg-[size:4.5rem_4.5rem] opacity-45" />
+        <div className="absolute -top-[15%] -left-[15%] w-[60%] h-[60%] bg-violet-605/15 rounded-full blur-[140px]" />
+        <div className="absolute bottom-[-15%] right-[-15%] w-[70%] h-[70%] bg-amber-500/5 rounded-full blur-[160px]" />
+        <div className="absolute top-[25%] left-[30%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px]" />
       </div>
 
       <main className="relative z-10 w-full max-w-[440px] px-4 py-8">
         
         {/* Header Branding */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-black border border-[#D4AF37]/25 flex items-center justify-center rounded-2xl mb-4 shadow-2xl shadow-amber-500/5 p-1">
+          <div className="w-18 h-18 bg-black/60 border border-amber-500/20 backdrop-blur-md flex items-center justify-center rounded-2xl mb-4 shadow-[0_0_30px_rgba(212,175,55,0.08)] p-2 transition-transform hover:scale-105 duration-300">
             <img 
               src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
               alt="Althera Logo" 
-              className="w-12 h-12 object-contain"
+              className="w-14 h-14 object-contain"
               referrerPolicy="no-referrer"
             />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white font-sans uppercase gold-gradient-text">Althera</h1>
-          <p className="text-amber-500 text-xs mt-1 font-mono uppercase tracking-widest font-semibold">Portal de Control v2.0</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white font-sans uppercase bg-gradient-to-r from-amber-200 via-yellow-450 to-amber-500 bg-clip-text text-transparent">Althera</h1>
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <p className="text-amber-500/80 text-[10px] font-mono uppercase tracking-[0.25em] font-bold">Portal de Control v2.0</p>
+          </div>
         </div>
 
         {/* Central Card */}
-        <div className="bg-white/5 backdrop-blur-3xl border border-white/10 p-8 rounded-3xl shadow-2xl shadow-black/50">
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-white mb-1 tracking-tight">
-              {isSignUp ? 'Crear una cuenta' : 'Welcome Back'}
-            </h2>
-            <p className="text-slate-400 text-xs">
+        <div className="bg-[#030306]/90 backdrop-blur-3xl border border-white/5 p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] hover:border-amber-500/10 transition-all duration-300">
+          <div className="mb-6 text-left">
+            <div className="flex justify-between items-center mb-1.5">
+              <h2 className="text-xl font-bold text-white tracking-tight">
+                {isSignUp ? 'Crear una cuenta' : 'Welcome Back'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setErrorMsg(null);
+                  setSuccessMsg(null);
+                }}
+                className="text-[10px] text-amber-550 hover:text-amber-400 font-mono uppercase tracking-wider font-semibold cursor-pointer underline-offset-4 hover:underline"
+              >
+                {isSignUp ? 'Inicia Sesión' : 'Regístrate'}
+              </button>
+            </div>
+            <p className="text-slate-450 text-xs leading-relaxed font-sans font-medium">
               {isSignUp 
-                ? 'Regístrate para almacenar eventos, CRM y notas en tu propio Supabase.' 
-                : 'Please enter your credentials to access the portal.'}
+                ? 'Regístrate para almacenar leads, CRM y notas bajo tu titularidad.' 
+                : 'Introduce tus credenciales para acceder al panel de control corporativo.'}
             </p>
           </div>
 
           {/* Feedback messages */}
           {errorMsg && (
-            <div className="mb-4 p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-start gap-2.5 text-rose-300 text-xs text-left">
-              <AlertCircle className="w-4.5 h-4.5 text-rose-400 flex-shrink-0 mt-0.5" />
+            <div className="mb-5 p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-start gap-2.5 text-rose-300 text-xs text-left">
+              <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-white">Error de Autenticación</p>
                 <p className="leading-relaxed mt-0.5">{errorMsg}</p>
@@ -148,8 +165,8 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
           )}
 
           {successMsg && (
-            <div className="mb-4 p-3.5 bg-emerald-500/10 border border-emerald-400/20 rounded-xl flex items-start gap-2.5 text-emerald-300 text-xs text-left animate-pulse">
-              <CheckCircle className="w-4.5 h-4.5 text-emerald-400 flex-shrink-0 mt-0.5" />
+            <div className="mb-5 p-3.5 bg-emerald-500/10 border border-emerald-400/20 rounded-xl flex items-start gap-2.5 text-emerald-300 text-xs text-left animate-pulse">
+              <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-white">Procesando</p>
                 <p className="leading-relaxed mt-0.5">{successMsg}</p>
@@ -161,18 +178,18 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
             
             {/* Full Name field (Only during Sign Up) */}
             {isSignUp && (
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider ml-1">
-                  Your Full Name
+              <div className="space-y-1.5 space-y-y">
+                <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest ml-1 block text-left">
+                  Tu nombre completo
                 </label>
                 <div className="relative group">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4.5 h-4.5 group-focus-within:text-blue-400 transition-colors" />
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 group-focus-within:text-amber-500 transition-colors" />
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-[#060e20]/60 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-100 placeholder:text-slate-600"
-                    placeholder="John Doe"
+                    className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-4 text-xs focus:outline-none focus:border-amber-500/30 transition-all text-slate-100 placeholder:text-slate-650 font-sans"
+                    placeholder="Escribe tu nombre y apellido"
                     required={isSignUp}
                   />
                 </div>
@@ -181,17 +198,17 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
 
             {/* Email Field */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider ml-1">
-                Email Address
+              <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest ml-1 block text-left">
+                Nombre de Usuario o Email
               </label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4.5 h-4.5 group-focus-within:text-blue-400 transition-colors" />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 group-focus-within:text-amber-500 transition-colors" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-[#060e20]/60 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-100 placeholder:text-slate-600"
-                  placeholder="name@agency.com"
+                  className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-4 text-xs focus:outline-none focus:border-amber-500/30 ring-offset-[#020204] focus:ring-1 focus:ring-amber-500/10 transition-all text-slate-100 placeholder:text-slate-600 text-left font-sans"
+                  placeholder="nombre@agency.com"
                   required
                 />
               </div>
@@ -199,23 +216,23 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
 
             {/* Password Field */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-mono font-medium text-slate-400 uppercase tracking-wider ml-1">
-                Password
+              <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest ml-1 block text-left">
+                Contraseña Administrativa
               </label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4.5 h-4.5 group-focus-within:text-blue-400 transition-colors" />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 group-focus-within:text-amber-500 transition-colors" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#060e20]/60 border border-white/10 rounded-xl py-3 pl-11 pr-12 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-slate-100 placeholder:text-slate-600"
+                  className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-12 text-xs focus:outline-none focus:border-amber-500/30 ring-offset-[#020204] focus:ring-1 focus:ring-amber-500/10 transition-all text-slate-100 placeholder:text-slate-600 text-left font-sans"
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-505 hover:text-slate-300 transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -224,24 +241,24 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
 
             {/* Remember Me & Help Links */}
             {!isSignUp && (
-              <div className="flex items-center justify-between pt-1 text-xs">
+              <div className="flex items-center justify-between pt-1 text-[11px]">
                 <label className="flex items-center space-x-2 cursor-pointer group select-none">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={() => setRememberMe(!rememberMe)}
-                    className="rounded border-white/10 bg-[#060e20] text-blue-500 focus:ring-0 focus:ring-offset-0 transition cursor-pointer"
+                    className="rounded border-white/5 bg-[#020204] text-amber-500 focus:ring-0 focus:ring-offset-0 transition cursor-pointer w-3.5 h-3.5"
                   />
-                  <span className="text-slate-400 group-hover:text-slate-200 transition-colors">
-                    Remember me
+                  <span className="text-slate-450 group-hover:text-slate-200 transition-colors font-sans font-medium">
+                    Recordarme en este equipo
                   </span>
                 </label>
                 <a 
                   href="#" 
-                  onClick={(e) => { e.preventDefault(); alert("Por favor contacta al administrador del sistema para restablecer tu contraseña."); }} 
-                  className="text-blue-400 hover:underline transition-all"
+                  onClick={(e) => { e.preventDefault(); alert("Por favor contacta al administrador de Althera para recibir tus claves administrativas."); }} 
+                  className="text-amber-500/90 hover:text-amber-400 hover:underline transition-all font-medium"
                 >
-                  Forgot password?
+                  ¿Olvidada?
                 </a>
               </div>
             )}
@@ -250,34 +267,32 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-500 hover:bg-blue-400 disabled:bg-blue-800 disabled:cursor-not-allowed active:scale-95 text-white font-semibold py-3 rounded-xl flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/20 transition-all cursor-pointer mt-6 duration-200"
+              className="w-full bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-600 hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed text-[#020204] font-extrabold text-xs uppercase tracking-widest py-3 rounded-xl flex items-center justify-center space-x-2 shadow-[0_4px_20px_rgba(245,158,11,0.15)] hover:shadow-[0_4px_25px_rgba(245,158,11,0.25)] transition-all cursor-pointer mt-7 duration-200"
             >
               {loading ? (
                 <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-white animate-spin" />
-                  <span>Procesando...</span>
+                  <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-slate-950 animate-spin" />
+                  <span>Autenticando...</span>
                 </div>
               ) : (
                 <>
-                  <span>{isSignUp ? 'Crear mi cuenta' : 'Sign In'}</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>{isSignUp ? 'Crear mi cuenta' : 'Ingresar al sistema'}</span>
+                  <ArrowRight className="w-4 h-4 stroke-[2.5px]" />
                 </>
               )}
             </button>
 
           </form>
 
-          {/* Separation divider removed to disable Sign Up */}
-
           {/* Back to landing option */}
           {onBackToLanding && (
-            <div className="mt-5 border-t border-white/5 pt-4 text-center">
+            <div className="mt-5 border-t border-white/5 pt-4 text-center font-sans">
               <button 
                 type="button"
                 onClick={onBackToLanding}
-                className="text-xs text-slate-500 hover:text-slate-300 font-sans tracking-wide hover:underline cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
+                className="text-[10px] text-slate-500 hover:text-slate-350 font-sans uppercase tracking-wider hover:underline cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
               >
-                <span>← Volver a la página principal</span>
+                <span>← Volver a Althera Web</span>
               </button>
             </div>
           )}
@@ -285,9 +300,14 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
         </div>
 
         {/* Footer info banner */}
-        <p className="mt-8 text-center text-xs text-slate-500 font-sans leading-relaxed">
-          Las credenciales ingresadas son gestionadas íntegramente por tu servidor de base de datos Supabase en la nube.
-        </p>
+        <div className="mt-8 text-center space-y-1.5 max-w-xs mx-auto">
+          <p className="text-[10px] text-slate-500 font-sans leading-relaxed">
+            Las credenciales ingresadas son gestionadas íntegramente por tu servidor de base de datos Supabase en la nube.
+          </p>
+          <p className="text-[9px] font-mono text-slate-650">
+            Secure SSL Socket • Althera Corp
+          </p>
+        </div>
 
       </main>
 

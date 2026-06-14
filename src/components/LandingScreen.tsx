@@ -27,9 +27,10 @@ import { motion } from 'motion/react';
 
 interface LandingScreenProps {
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
+  projects?: any[];
 }
 
-export default function LandingScreen({ onNavigate }: LandingScreenProps) {
+export default function LandingScreen({ onNavigate, projects }: LandingScreenProps) {
   const [scrollY, setScrollY] = useState(0);
 
   useEffect(() => {
@@ -46,33 +47,37 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
   const [isSubmitted, setIsSubmitted] = useState(false);
 
   // High-fidelity real projects carried out by the digital boutique agency
-  const [displayProjects] = useState(() => {
-    const saved = localStorage.getItem('agency_projects_list');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Filter projects that are marked to show on landing page
-          const activeOnLanding = parsed.filter(p => p.showOnLanding !== false);
-          if (activeOnLanding.length > 0) {
-            return activeOnLanding.map(p => ({
-              title: p.title,
-              category: p.category,
-              tag: p.status, // e.g. 'Completed', 'Beta Active'
-              description: p.description,
-              image: p.image || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-              url: p.url,
-              tech: [...(p.tools || []), ...(p.addons || [])].slice(0, 5) // combine tools and addons as tech
-            }));
-          }
-        }
-      } catch (e) {
-        console.error("Error reading projects on landing page", e);
+  const displayProjects = React.useMemo(() => {
+    const rawProjects = (projects && projects.length > 0) ? projects : (() => {
+      const saved = localStorage.getItem('agency_projects_list');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {}
+      }
+      return [];
+    })();
+
+    if (rawProjects.length > 0) {
+      // Filter projects that are marked to show on landing page
+      const activeOnLanding = rawProjects.filter((p: any) => p.showOnLanding !== false);
+      if (activeOnLanding.length > 0) {
+        return activeOnLanding.map((p: any) => ({
+          title: p.title,
+          category: p.category,
+          tag: p.status, // e.g. 'Completed', 'Beta Active'
+          description: p.description,
+          image: p.image || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+          url: p.url,
+          tech: [...(p.tools || []), ...(p.addons || [])].slice(0, 5) // combine tools and addons as tech
+        }));
       }
     }
+
     return [
       {
-        title: "NovaSaaS - IA Generativa de Siguiente Generación",
+        title: "NovaAI - IA Generativa de Siguiente Generación",
         category: "SaaS & Web App",
         tag: "Live Website",
         description: "Diseño minimalista premium para una plataforma internacional de inteligencia artificial. Rendimiento 100% en Lighthouse con micro-animaciones SVG, optimización máxima de SEO y pasarelas de pago automatizadas.",
@@ -112,7 +117,7 @@ export default function LandingScreen({ onNavigate }: LandingScreenProps) {
         color: "from-amber-500/20 to-orange-500/20"
       }
     ];
-  });
+  }, [projects]);
 
   const CAPABILITIES = [
     {

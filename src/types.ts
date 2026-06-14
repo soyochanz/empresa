@@ -31,6 +31,10 @@ export interface ClientContact {
   initials: string;
   color?: string;
   temperature?: 'Frío' | 'Templado' | 'Caliente';
+  notes?: string;
+  contactedByComercialName?: string;
+  contactedByComercialEmail?: string;
+  originalLeadNotes?: string;
 }
 
 export interface CalendarEvent {

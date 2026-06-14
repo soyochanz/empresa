@@ -704,6 +704,53 @@ export default function CrmScreen({
                 </div>
               </div>
 
+              {/* Comercial & Call Notes Section */}
+              <div className="space-y-2 border-b border-white/5 pb-4">
+                <h4 className="text-[9px] font-mono uppercase tracking-widest text-[#D4AF37] font-bold">Historial de Prospección</h4>
+                <div className="bg-[#030306]/40 p-4 rounded-xl space-y-3.5 border border-white/5">
+                  <div className="flex justify-between items-center text-xs text-slate-300">
+                    <span className="text-slate-500 font-medium font-sans">Comercial que le contactó:</span>
+                    <span className="font-semibold text-white bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded text-[10px]">
+                      {selectedContact.contactedByComercialName || selectedContact.contactedByComercialEmail || 'No registrado en llamada previa'}
+                    </span>
+                  </div>
+
+                  {selectedContact.contactedByComercialEmail && (
+                    <div className="flex justify-between items-center text-xs text-slate-350">
+                      <span className="text-slate-500 text-[10px] font-mono">Email Comercial:</span>
+                      <span className="text-[10px] font-mono select-all text-slate-400">{selectedContact.contactedByComercialEmail}</span>
+                    </div>
+                  )}
+
+                  {selectedContact.originalLeadNotes && (
+                    <div className="space-y-1 bg-slate-950 p-2.5 rounded-lg border border-white/5">
+                      <p className="text-[10px] font-mono text-slate-505 uppercase tracking-wider font-semibold">Notas de llamada original:</p>
+                      <p className="text-xs text-slate-300 font-sans leading-relaxed italic pr-2">
+                        "{selectedContact.originalLeadNotes}"
+                      </p>
+                    </div>
+                  )}
+
+                  {/* General CRM Notes Editable Space */}
+                  <div className="pt-2 border-t border-white/5 space-y-1.5 text-left">
+                    <label className="text-[10px] font-semibold font-mono text-slate-400 uppercase tracking-widest block">Notas del Cliente (CRM):</label>
+                    <textarea
+                      value={selectedContact.notes || ''}
+                      onChange={(e) => {
+                        if (onUpdateContact) {
+                          onUpdateContact({
+                            ...selectedContact,
+                            notes: e.target.value
+                          });
+                        }
+                      }}
+                      placeholder="Escribe notas de seguimiento para este cliente, acuerdos, presupuestos..."
+                      className="w-full bg-[#030306] border border-white/5 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-violet-500 transition-colors block leading-relaxed resize-y h-24"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Assigned User Section */}
               <div className="space-y-2 border-b border-white/5 pb-4">
                 <h4 className="text-[9px] font-mono uppercase tracking-widest text-slate-500 font-bold">Assigned Panel User</h4>
