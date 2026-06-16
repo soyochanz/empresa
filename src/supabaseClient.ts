@@ -140,6 +140,10 @@ CREATE TABLE IF NOT EXISTS activities (
 );
 
 ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON activities;
+DROP POLICY IF EXISTS "Public Insert Access" ON activities;
+DROP POLICY IF EXISTS "Public Update Access" ON activities;
+DROP POLICY IF EXISTS "Public Delete Access" ON activities;
 CREATE POLICY "Public Read Access" ON activities FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON activities FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON activities FOR UPDATE USING (true) WITH CHECK (true);
@@ -154,6 +158,10 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON profiles;
+DROP POLICY IF EXISTS "Public Insert Access" ON profiles;
+DROP POLICY IF EXISTS "Public Update Access" ON profiles;
+DROP POLICY IF EXISTS "Public Delete Access" ON profiles;
 CREATE POLICY "Public Read Access" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON profiles FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON profiles FOR UPDATE USING (true) WITH CHECK (true);
@@ -170,6 +178,10 @@ CREATE TABLE IF NOT EXISTS inquiries (
 );
 
 ALTER TABLE inquiries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON inquiries;
+DROP POLICY IF EXISTS "Public Insert Access" ON inquiries;
+DROP POLICY IF EXISTS "Public Update Access" ON inquiries;
+DROP POLICY IF EXISTS "Public Delete Access" ON inquiries;
 CREATE POLICY "Public Read Access" ON inquiries FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON inquiries FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON inquiries FOR UPDATE USING (true) WITH CHECK (true);
@@ -192,6 +204,10 @@ CREATE TABLE IF NOT EXISTS finance_transactions (
 );
 
 ALTER TABLE finance_transactions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON finance_transactions;
+DROP POLICY IF EXISTS "Public Insert Access" ON finance_transactions;
+DROP POLICY IF EXISTS "Public Update Access" ON finance_transactions;
+DROP POLICY IF EXISTS "Public Delete Access" ON finance_transactions;
 CREATE POLICY "Public Read Access" ON finance_transactions FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON finance_transactions FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON finance_transactions FOR UPDATE USING (true) WITH CHECK (true);
@@ -218,6 +234,10 @@ CREATE TABLE IF NOT EXISTS finance_invoices (
 );
 
 ALTER TABLE finance_invoices ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON finance_invoices;
+DROP POLICY IF EXISTS "Public Insert Access" ON finance_invoices;
+DROP POLICY IF EXISTS "Public Update Access" ON finance_invoices;
+DROP POLICY IF EXISTS "Public Delete Access" ON finance_invoices;
 CREATE POLICY "Public Read Access" ON finance_invoices FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON finance_invoices FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON finance_invoices FOR UPDATE USING (true) WITH CHECK (true);
@@ -256,6 +276,10 @@ CREATE TABLE IF NOT EXISTS contracts_althera (
 );
 
 ALTER TABLE contracts_althera ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON contracts_althera;
+DROP POLICY IF EXISTS "Public Insert Access" ON contracts_althera;
+DROP POLICY IF EXISTS "Public Update Access" ON contracts_althera;
+DROP POLICY IF EXISTS "Public Delete Access" ON contracts_althera;
 CREATE POLICY "Public Read Access" ON contracts_althera FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON contracts_althera FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON contracts_althera FOR UPDATE USING (true) WITH CHECK (true);
