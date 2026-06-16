@@ -467,7 +467,29 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
 
   // Print helper for invoice preview
   const handlePrintPreview = () => {
-    window.print();
+    const printArea = document.getElementById('invoice-modal-print-area');
+    if (!printArea) {
+      window.print();
+      return;
+    }
+
+    // Create temporary wrapper that will be the only visible child with tailwind/parent styles
+    const tempWrapper = document.createElement('div');
+    tempWrapper.id = 'temp-print-wrapper';
+    tempWrapper.className = 'p-8 bg-white text-slate-900 font-sans border-none rounded-none m-0 space-y-8 select-text';
+    tempWrapper.innerHTML = printArea.innerHTML;
+    
+    document.body.classList.add('is-printing');
+    document.body.appendChild(tempWrapper);
+
+    setTimeout(() => {
+      window.print();
+      document.body.classList.remove('is-printing');
+      const attached = document.getElementById('temp-print-wrapper');
+      if (attached) {
+        document.body.removeChild(attached);
+      }
+    }, 150);
   };
 
   // Convert a transaction (cobro) directly into a detailed draft / paid invoice
@@ -2120,7 +2142,7 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
             </div>
 
             {/* Printable Frame Box Container */}
-            <div className="p-8 bg-neutral-900 text-slate-200 font-sans border border-neutral-800 rounded-2xl m-3 space-y-8 select-text relative">
+            <div id="invoice-modal-print-area" className="p-8 bg-neutral-900 text-slate-200 font-sans border border-neutral-800 rounded-2xl m-3 space-y-8 select-text relative">
               
               {/* Logo & ID Banner Header */}
               <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b border-neutral-800">

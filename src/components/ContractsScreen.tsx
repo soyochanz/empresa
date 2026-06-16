@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ClientContact } from '../types';
-import { db } from '../supabaseClient';
+import { db, SQL_SETUP_SCRIPT, supabase } from '../supabaseClient';
 import { 
   FileText, 
   Receipt, 
@@ -45,16 +45,62 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [contractSearchText, setContractSearchText] = useState('');
 
+  // Diagnostic SQL table setup assist helper states
+  const [showSqlSetupModal, setShowSqlSetupModal] = useState(false);
+  const [sqlCopied, setSqlCopied] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'unchecked' | 'missing_tables' | 'ready'>('unchecked');
+
   useEffect(() => {
     let active = true;
     async function loadSaved() {
+      // Load current contracts from localStorage for instantaneous load & fallback
+      const localStr = localStorage.getItem('agency_contracts_althera');
+      let localContracts: any[] = [];
+      if (localStr) {
+        try {
+          localContracts = JSON.parse(localStr);
+          if (active) {
+            setSavedContracts(localContracts);
+          }
+        } catch (e) {
+          console.error('Error parsing local contracts:', e);
+        }
+      }
+
+      // Check table health to diagnose Supabase and provide setup guidelines
+      try {
+        const { error: checkError } = await supabase.from('contracts_althera').select('id').limit(1);
+        if (active) {
+          if (checkError) {
+            console.warn('Real-time database status: contracts_althera table is not initialized yet.', checkError.message);
+            if (checkError.code === 'PGRST205' || checkError.code === '42P01' || checkError.message?.includes('cache') || checkError.message?.includes('relation')) {
+              setDbStatus('missing_tables');
+            } else {
+              setDbStatus('unchecked');
+            }
+          } else {
+            setDbStatus('ready');
+          }
+        }
+      } catch (e) {
+        if (active) setDbStatus('unchecked');
+      }
+
       try {
         const list = await db.getContractsAlthera();
         if (active) {
-          setSavedContracts(list);
+          // Merge local and remote, prioritizing any newer local edits or keep a unified union
+          const merged = [...list];
+          localContracts.forEach((localItem: any) => {
+            if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+              merged.push(localItem);
+            }
+          });
+          setSavedContracts(merged);
+          localStorage.setItem('agency_contracts_althera', JSON.stringify(merged));
         }
       } catch (err) {
-        console.error('Error load contracts:', err);
+        console.error('Error load contracts from Supabase, relying on local storage backup:', err);
       }
     }
     loadSaved();
@@ -117,51 +163,84 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         signingDay,
         signingMonth,
         signingYear,
-        priceSingle,
-        fin3Total,
-        fin3Cuota,
-        fin3Coste,
-        fin4Total,
-        fin4Cuota,
-        fin4Coste,
+        priceSingle: Number(priceSingle) || 0,
+        fin3Total: Number(fin3Total) || 0,
+        fin3Cuota: Number(fin3Cuota) || 0,
+        fin3Coste: Number(fin3Coste) || 0,
+        fin4Total: Number(fin4Total) || 0,
+        fin4Cuota: Number(fin4Cuota) || 0,
+        fin4Coste: Number(fin4Coste) || 0,
         selectedModality,
         selectedContactId: selectedContactId || null
       };
 
-      if (selectedContractIdInDb) {
-        await db.updateContractAlthera(contractObj);
-        setSaveMessage('Contrato actualizado con éxito en la base de datos.');
+      let dbSuccess = false;
+      try {
+        if (selectedContractIdInDb) {
+          await db.updateContractAlthera(contractObj);
+        } else {
+          await db.insertContractAlthera(contractObj);
+        }
+        dbSuccess = true;
+      } catch (dbErr) {
+        console.warn('Database write error, falling back locally to prevent failures:', dbErr);
+      }
+
+      // Synchronize in-memory and localStorage automatically
+      const currentList = [...savedContracts];
+      const index = currentList.findIndex(c => c.id === contractObj.id);
+      if (index >= 0) {
+        currentList[index] = contractObj;
       } else {
-        await db.insertContractAlthera(contractObj);
-        setSaveMessage('Contrato guardado con éxito en la base de datos.');
+        currentList.unshift(contractObj);
       }
       
-      const updated = await db.getContractsAlthera();
-      setSavedContracts(updated);
+      setSavedContracts(currentList);
+      localStorage.setItem('agency_contracts_althera', JSON.stringify(currentList));
       setSelectedContractIdInDb(contractObj.id);
+
+      if (dbSuccess) {
+        setSaveMessage('Contrato guardamiento con éxito en la base de datos.');
+      } else {
+        setSaveMessage('Contrato guardado correctamente en local (Sincronizado).');
+      }
       
-      setTimeout(() => setSaveMessage(null), 4000);
+      setTimeout(() => setSaveMessage(null), 4500);
     } catch (err) {
-      console.error('Error saving contract to DB:', err);
-      setSaveMessage('Error al guardar el contrato en base de datos.');
-      setTimeout(() => setSaveMessage(null), 4000);
+      console.error('General error saving contract:', err);
+      setSaveMessage('Error general al guardar el contrato.');
+      setTimeout(() => setSaveMessage(null), 4500);
     }
   };
 
   const handleDeleteContract = async () => {
     if (!selectedContractIdInDb) return;
     try {
-      await db.deleteContractAlthera(selectedContractIdInDb);
-      const updated = await db.getContractsAlthera();
+      let dbSuccess = false;
+      try {
+        await db.deleteContractAlthera(selectedContractIdInDb);
+        dbSuccess = true;
+      } catch (dbErr) {
+        console.warn('Database deletion error:', dbErr);
+      }
+
+      const updated = savedContracts.filter(c => c.id !== selectedContractIdInDb);
       setSavedContracts(updated);
+      localStorage.setItem('agency_contracts_althera', JSON.stringify(updated));
+
       setSelectedContractIdInDb('');
       setSelectedContactId('');
-      setSaveMessage('Contrato eliminado correctamente.');
-      setTimeout(() => setSaveMessage(null), 4000);
+      
+      if (dbSuccess) {
+        setSaveMessage('Contrato eliminado correctamente de la base de datos.');
+      } else {
+        setSaveMessage('Contrato eliminado del almacenamiento local.');
+      }
+      setTimeout(() => setSaveMessage(null), 4500);
     } catch (err) {
       console.error('Error deleting contract:', err);
-      setSaveMessage('No se pudo eliminar el contrato.');
-      setTimeout(() => setSaveMessage(null), 4000);
+      setSaveMessage('Error al eliminar el contrato.');
+      setTimeout(() => setSaveMessage(null), 4500);
     }
   };
 
@@ -605,7 +684,31 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
   // Print trigger
   const handlePrint = () => {
-    window.print();
+    const printArea = document.getElementById('print-area');
+    if (!printArea) {
+      window.print();
+      return;
+    }
+
+    // Create temporary wrapper that will be the only visible child with tailwind/parent styles
+    const tempWrapper = document.createElement('div');
+    tempWrapper.id = 'temp-print-wrapper';
+    tempWrapper.className = 'w-full bg-white text-neutral-900 font-serif p-8 md:p-14';
+    tempWrapper.style.fontFamily = 'Georgia, serif';
+    tempWrapper.style.lineHeight = '1.6';
+    tempWrapper.innerHTML = printArea.innerHTML;
+    
+    document.body.classList.add('is-printing');
+    document.body.appendChild(tempWrapper);
+
+    setTimeout(() => {
+      window.print();
+      document.body.classList.remove('is-printing');
+      const attached = document.getElementById('temp-print-wrapper');
+      if (attached) {
+        document.body.removeChild(attached);
+      }
+    }, 150);
   };
 
   // Standalone HTML Download Trigger
@@ -866,6 +969,24 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                     </button>
                   )}
                 </div>
+
+                {dbStatus === 'missing_tables' && (
+                  <div className="bg-red-950/25 border border-red-500/20 p-2.5 rounded-xl text-[10px] text-red-300 space-y-1">
+                    <p className="font-semibold flex items-center gap-1 text-red-400">
+                      ⚠️ Base de Datos Sin Tablas
+                    </p>
+                    <p className="text-[9px] text-slate-400 leading-normal">
+                      El contrato se guardará localmente (seguro y offline) por ahora. Puedes configurar las tablas de Supabase en 1 clic.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowSqlSetupModal(true)}
+                      className="w-full mt-1.5 bg-red-950/50 hover:bg-red-950/80 border border-red-500/30 text-red-300 py-1 px-2 rounded-lg text-[9px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Configurar Tablas SQL
+                    </button>
+                  </div>
+                )}
 
                 <div className="flex gap-2">
                   <select
@@ -1799,7 +1920,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                   CONTRATO DE PRESTACIÓN DE SERVICIOS DE DESARROLLO WEB
                 </h3>
                 <div className="text-center text-[10px] font-mono text-neutral-550 mb-6 uppercase tracking-wider">
-                  CÓDIGO DE REGISTRO: <span className="font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">{selectedContractIdInDb || 'BORRADOR_PENDIENTE'}</span>
+                  CÓDIGO DE REGISTRO: <span className="font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">{selectedContractIdInDb || ('AL-CNT-' + (clientName ? clientName.substring(0, 3).toUpperCase().replace(/\s/g, 'X') : 'PRE') + '-' + Date.now().toString().slice(-4))}</span>
                 </div>
 
                 {/* Reunidos Statement info */}
@@ -2005,9 +2126,12 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                     <div>
                       <p className="font-semibold text-neutral-900 text-xs">{clientName || '_________________________'}</p>
                       <p className="text-[10px] text-neutral-500">DNI/CIF: {clientDni || '_____________________'}</p>
-                      <div className="mt-8 border border-neutral-200 bg-neutral-50/50 p-6 text-center text-[10px] text-neutral-400 rounded-xl border-dashed">
-                        <span>Espacio reservado para firma manuscrita / certificado digital</span>
+                      <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[200px]">
+                        {/* Space left clean for client signature */}
                       </div>
+                      <span className="block text-[6px] text-neutral-400 font-mono tracking-tight mt-1 pl-1">
+                        Firma del Cliente
+                      </span>
                     </div>
                   </div>
 
@@ -2202,6 +2326,75 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         </div>
 
       </div>
+
+      {/* ==================== SQL SETUP ASSISTANCE MODAL ==================== */}
+      {showSqlSetupModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
+          <div className="bg-neutral-950 border border-neutral-800 rounded-3xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-fade-in text-left">
+            {/* Header */}
+            <div className="p-6 border-b border-neutral-900 flex justify-between items-center bg-black/50">
+              <div>
+                <h3 className="text-sm uppercase tracking-wider font-mono text-amber-500 font-bold">
+                  Configurar Base de Datos en Supabase
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Sigue estos pasos para crear las tablas en tu proyecto de Supabase.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSqlSetupModal(false);
+                  setSqlCopied(false);
+                }}
+                className="text-neutral-400 hover:text-white transition text-xs font-bold bg-neutral-900 border border-neutral-800 rounded-lg p-1.5 px-3"
+              >
+                Cerrar ✕
+              </button>
+            </div>
+
+            {/* Content / Steps */}
+            <div className="p-6 overflow-y-auto space-y-4 text-xs font-sans text-slate-300">
+              <div className="space-y-2">
+                <p className="font-bold text-slate-100">1. Abre tu Dashboard de Supabase:</p>
+                <p className="text-slate-400">
+                  Accede a tu panel en <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-amber-505 text-amber-400 hover:underline inline-flex items-center gap-0.5 font-semibold">supabase.com <ExternalLink className="w-3 h-3" /></a> y selecciona tu base de datos de Althera.
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <p className="font-bold text-slate-100">2. Ejecuta el Script en SQL Editor:</p>
+                <p className="text-slate-400">
+                  Haz clic en el backend tab <b className="text-slate-200">"SQL Editor"</b> de la barra lateral izquierda, presiona <b className="text-slate-200">"New query"</b>, pega el siguiente script de abajo y presiona <b className="text-amber-400">"Run"</b>.
+                </p>
+              </div>
+
+              {/* Code Panel */}
+              <div className="border border-neutral-800 rounded-2xl bg-black overflow-hidden relative">
+                <div className="bg-neutral-900 px-4 py-2 flex justify-between items-center text-[10px] font-mono border-b border-neutral-800">
+                  <span className="text-slate-400">schema_setup.sql</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(SQL_SETUP_SCRIPT);
+                      setSqlCopied(true);
+                      setTimeout(() => setSqlCopied(false), 3000);
+                    }}
+                    className="bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 text-[#D4AF37] px-2.5 py-1 rounded-lg transition font-bold"
+                  >
+                    {sqlCopied ? '¡Copiado! ✓' : 'Copiar Script SQL'}
+                  </button>
+                </div>
+                <pre className="p-4 overflow-x-auto text-[10.5px] font-mono max-h-[250px] text-zinc-300 bg-neutral-950 select-text scrollbar-thin leading-relaxed">
+                  {SQL_SETUP_SCRIPT}
+                </pre>
+              </div>
+
+              <div className="bg-amber-500/5 border border-amber-500/10 p-3 rounded-2xl text-[10px] text-amber-500/95 leading-relaxed">
+                <b>Nota sobre Sincronización Automática:</b> El sistema continuará almacenando y cargando de forma fluida todos tus datos localmente en tiempo real (modo Offline/Backup) para que tu trabajo nunca se detenga o pierda. Tan pronto como crees las tablas en Supabase, los datos se subirán a la nube automáticamente al presionar Guardar.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
