@@ -121,6 +121,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [isInvModalOpen, setIsInvModalOpen] = useState(false);
   const [isEditingInv, setIsEditingInv] = useState(false);
   const [editingInvId, setEditingInvId] = useState<string | null>(null);
+  const [originatingTxId, setOriginatingTxId] = useState<string | null>(null);
 
   // Invoice view preview modal controls
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
@@ -148,6 +149,19 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [bankSwift, setBankSwift] = useState('REVOIE23');
   const [bankNameAddress, setBankNameAddress] = useState('Revolut Bank UAB, 2 Dublin Landings, North Dock, Dublin 1, D01 V4A3, Ireland');
   const [bankCorrespondentBic, setBankCorrespondentBic] = useState('CHASDEFX');
+
+  // Helper to discover if a transaction has a matching created invoice
+  const getLinkedInvoice = (tx: FinanceTransaction): Invoice | undefined => {
+    if (tx.invoiceId) {
+      const matchKey = invoices.find(inv => inv.id === tx.invoiceId);
+      if (matchKey) return matchKey;
+    }
+    // Deep fallback search: search invoice list to see if invoice ID matches transaction description, or transaction ID is stored in invoice client notes
+    return invoices.find(inv => 
+      tx.description.toLowerCase().includes(inv.id.toLowerCase()) || 
+      (inv.notes && inv.notes.toLowerCase().includes(tx.id.toLowerCase()))
+    );
+  };
 
   // Calculations for transactions
   const totalIncomes = transactions
@@ -344,8 +358,23 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
       setInvoices(prev => [payload, ...prev]);
       db.insertFinanceInvoice(payload).catch(err => console.error('Error inserting invoice into DB:', err));
 
-      // Automatically register paid invoices as pending/paid income in finance transaction hub!
-      if (invStatus === 'paid') {
+      if (originatingTxId) {
+        // Automatically link the preexisting transaction to this invoice
+        setTransactions(prev => prev.map(t => {
+          if (t.id === originatingTxId) {
+            const updatedTx = { 
+              ...t, 
+              invoiceId: invoiceId,
+              status: (invStatus === 'paid' ? 'paid' : t.status) as 'paid' | 'pending'
+            };
+            db.updateFinanceTransaction(updatedTx).catch(err => console.error('Error updating originating transaction with inlink:', err));
+            return updatedTx;
+          }
+          return t;
+        }));
+        setOriginatingTxId(null);
+      } else if (invStatus === 'paid') {
+        // Automatically register paid invoices as pending/paid income in finance transaction hub!
         const autoTx: FinanceTransaction = {
           id: 'tx_auto_' + Date.now(),
           type: 'income',
@@ -428,6 +457,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const resetInvForm = () => {
     setIsEditingInv(false);
     setEditingInvId(null);
+    setOriginatingTxId(null);
     setInvClientId('');
     setInvClientName('');
     setInvClientEmail('');
@@ -496,6 +526,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const handleCreateInvoiceFromTransaction = (tx: FinanceTransaction) => {
     setIsEditingInv(false);
     setEditingInvId(null);
+    setOriginatingTxId(tx.id);
     
     // Find client in contacts list if possible
     const matchedContact = contacts.find(c => 
@@ -940,8 +971,13 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   });
 
   const filteredInvoices = invoices.filter(inv => {
-    const matchesSearch = inv.clientName.toLowerCase().includes(invSearch.toLowerCase()) || 
-                          inv.id.toLowerCase().includes(invSearch.toLowerCase());
+    const searchLower = invSearch.toLowerCase();
+    const matchesSearch = inv.clientName.toLowerCase().includes(searchLower) || 
+                          inv.id.toLowerCase().includes(searchLower) ||
+                          (inv.notes && inv.notes.toLowerCase().includes(searchLower)) ||
+                          inv.date.includes(searchLower) ||
+                          inv.total.toString().includes(searchLower) ||
+                          inv.items.some(item => item.description.toLowerCase().includes(searchLower));
     const matchesStatus = invoiceStatusFilter === 'all' || inv.status === invoiceStatusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -1322,9 +1358,17 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                         'Facturado': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
                       };
                       const tagStyle = catColors[t.category] || 'bg-white/5 text-slate-300 border-white/10';
+                      const linkedInv = getLinkedInvoice(t);
 
                       return (
-                        <tr key={t.id} className="hover:bg-white/[0.01] text-xs transition-colors group">
+                        <tr 
+                          key={t.id} 
+                          className={`text-xs transition-colors group relative ${
+                            linkedInv 
+                              ? 'bg-blue-500/5 hover:bg-blue-500/10 border-l border-l-blue-500' 
+                              : 'hover:bg-white/[0.01]'
+                          }`}
+                        >
                           <td className="p-4 text-left">
                             <div className="max-w-xs sm:max-w-md text-left">
                               <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block leading-none mb-1 select-all">
@@ -1333,11 +1377,21 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                               <span className="font-bold text-white text-xs block leading-snug group-hover:text-emerald-400 transition-colors">
                                 {t.description}
                               </span>
-                              {t.isRecurring && (
-                                <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-purple-400 bg-purple-500/10 border border-purple-500/25 px-1.5 py-0.5 rounded-md mt-1.5">
-                                  <Repeat className="w-2.5 h-2.5" />
-                                  <span>Gasto recurrente ({t.recurrencePeriod})</span>
-                                </span>
+                              {linkedInv ? (
+                                <div className="mt-1.5 flex items-center gap-1.5">
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg shadow-sm">
+                                    <FileText className="w-3 h-3 text-blue-400" />
+                                    <span>Con Factura: {linkedInv.id}</span>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${linkedInv.status === 'paid' ? 'bg-emerald-400' : 'bg-amber-400'}`} title={linkedInv.status === 'paid' ? 'Factura Pagada' : 'Factura Pendiente / Borrador'} />
+                                  </span>
+                                </div>
+                              ) : (
+                                t.isRecurring && (
+                                  <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-purple-400 bg-purple-500/10 border border-purple-500/25 px-1.5 py-0.5 rounded-md mt-1.5">
+                                    <Repeat className="w-2.5 h-2.5" />
+                                    <span>Gasto recurrente ({t.recurrencePeriod})</span>
+                                  </span>
+                                )
                               )}
                             </div>
                           </td>
@@ -1350,7 +1404,7 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                             {t.date}
                           </td>
                           <td className="p-4 text-left">
-                            <span className={`font-mono text-xs font-bold tracking-tight ${t.type === 'income' ? 'text-emerald-400' : 'text-slate-100'}`}>
+                            <span className={`font-mono text-xs font-bold tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-slate-100'}`}>
                               {t.type === 'income' ? '+' : '-'}{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
                             </span>
                           </td>
@@ -1369,14 +1423,24 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              {t.type === 'income' && (
+                              {linkedInv ? (
                                 <button
-                                  onClick={() => handleCreateInvoiceFromTransaction(t)}
-                                  className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors cursor-pointer"
-                                  title="Facturar este cobro (Generar y editar factura)"
+                                  onClick={() => setPreviewInvoice(linkedInv)}
+                                  className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer"
+                                  title={`Ver Factura Vinculada (${linkedInv.id})`}
                                 >
-                                  <FileText className="w-3.5 h-3.5" />
+                                  <FileText className="w-3.5 h-3.5 text-blue-400 stroke-[2.5]" />
                                 </button>
+                              ) : (
+                                t.type === 'income' && (
+                                  <button
+                                    onClick={() => handleCreateInvoiceFromTransaction(t)}
+                                    className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors cursor-pointer"
+                                    title="Facturar este cobro (Generar y editar factura)"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                  </button>
+                                )
                               )}
                               <button
                                 onClick={() => handleEditTx(t)}
