@@ -116,6 +116,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [txPeriod, setTxPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [txStatus, setTxStatus] = useState<'paid' | 'pending'>('paid');
   const [txInvoiceId, setTxInvoiceId] = useState<string>('');
+  const [txPaymentMethod, setTxPaymentMethod] = useState<'cash' | 'transfer' | undefined>(undefined);
 
   // INVOICE MODAL controls
   const [isInvModalOpen, setIsInvModalOpen] = useState(false);
@@ -221,7 +222,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
       isRecurring: txIsRecurring,
       recurrencePeriod: txIsRecurring ? txPeriod : undefined,
       status: txStatus,
-      invoiceId: txInvoiceId || undefined
+      invoiceId: txInvoiceId || undefined,
+      paymentMethod: txPaymentMethod
     };
 
     if (isEditingTx && editingTxId) {
@@ -248,6 +250,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setTxPeriod(tx.recurrencePeriod || 'monthly');
     setTxStatus(tx.status);
     setTxInvoiceId(tx.invoiceId || '');
+    setTxPaymentMethod(tx.paymentMethod);
     setIsTxModalOpen(true);
   };
 
@@ -270,6 +273,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setTxPeriod('monthly');
     setTxStatus('paid');
     setTxInvoiceId('');
+    setTxPaymentMethod(undefined);
   };
 
   // Handler: Invoice items manipulation
@@ -321,69 +325,94 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     }
   };
 
-  const handleMarkTransactionAsPaid = async (tx: FinanceTransaction) => {
-    const updatedTx: FinanceTransaction = { ...tx, status: 'paid' };
-    
-    // Update locally
+  const handleToggleTransactionStatus = async (tx: FinanceTransaction) => {
+    const nextStatus = tx.status === 'paid' ? 'pending' : 'paid';
+    const updatedTx: FinanceTransaction = { ...tx, status: nextStatus };
+
+    // Update transactions list locally
     setTransactions(prev => prev.map(t => t.id === tx.id ? updatedTx : t));
-    
-    // Persist to database
+
+    // Update transaction on DB
     try {
       await db.updateFinanceTransaction(updatedTx);
     } catch (err) {
-      console.error('Error updating transaction status in DB:', err);
+      console.error('Error toggling transaction status in DB:', err);
     }
 
-    // Search for any invoice containing an item with pendingTxId matching this transaction id
-    let matchedInvoice: Invoice | null = null;
+    // 1. Sync any Invoice Item where pendingTxId === tx.id
+    let hasUpdatedAnyInvoice = false;
     const updatedInvoices = invoices.map(inv => {
       const hasMatchingItem = inv.items.some(item => item.pendingTxId === tx.id);
       if (hasMatchingItem) {
         const updatedItems = inv.items.map(item => {
           if (item.pendingTxId === tx.id) {
-            return { ...item, isPending: false };
+            // If transaction is now paid, concept is NOT pending (isPending = false)
+            // If transaction is now pending, concept IS pending (isPending = true)
+            return { ...item, isPending: nextStatus === 'pending' };
           }
           return item;
         });
-        matchedInvoice = { ...inv, items: updatedItems };
-        return matchedInvoice;
+
+        // Determine new invoice status
+        const allItemsPaid = updatedItems.every(it => !it.isPending);
+        let newStatus = inv.status;
+        if (allItemsPaid) {
+          newStatus = 'paid';
+        } else if (inv.status === 'paid') {
+          // If it was paid, but now an item is pending, revert invoice status back to 'sent'
+          newStatus = 'sent';
+        }
+
+        hasUpdatedAnyInvoice = true;
+        const updatedInv = { ...inv, items: updatedItems, status: newStatus };
+        
+        // Also update preview invoice if needed
+        if (previewInvoice && previewInvoice.id === inv.id) {
+          setPreviewInvoice(updatedInv);
+        }
+
+        // Persist to DB
+        db.updateFinanceInvoice(updatedInv).catch(err => console.error('Error updating invoice item status in DB:', err));
+        return updatedInv;
       }
       return inv;
     });
 
-    if (matchedInvoice) {
+    if (hasUpdatedAnyInvoice) {
       setInvoices(updatedInvoices);
-      try {
-        await db.updateFinanceInvoice(matchedInvoice);
-      } catch (err) {
-        console.error('Error updating invoice item status in DB:', err);
+    }
+
+    // 2. Also look up general linked invoice by invoiceId
+    const linkedInvoice = getLinkedInvoice(tx);
+    if (linkedInvoice) {
+      // If transaction is now paid and invoice is not paid, let's mark it as paid.
+      // If transaction is now pending and invoice is paid, let's revert it to 'sent'.
+      let newInvStatus = linkedInvoice.status;
+      if (nextStatus === 'paid' && linkedInvoice.status !== 'paid') {
+        newInvStatus = 'paid';
+      } else if (nextStatus === 'pending' && linkedInvoice.status === 'paid') {
+        newInvStatus = 'sent';
+      }
+
+      if (newInvStatus !== linkedInvoice.status) {
+        const updatedInv: Invoice = { ...linkedInvoice, status: newInvStatus };
+        setInvoices(prev => prev.map(inv => inv.id === linkedInvoice.id ? updatedInv : inv));
+        if (previewInvoice && previewInvoice.id === linkedInvoice.id) {
+          setPreviewInvoice(updatedInv);
+        }
+        try {
+          await db.updateFinanceInvoice(updatedInv);
+        } catch (err) {
+          console.error('Error updating linked invoice status in DB:', err);
+        }
       }
     }
 
-    // Also look up any general linked invoice by invoiceId
-    const linkedInvoice = getLinkedInvoice(tx);
-    if (linkedInvoice && linkedInvoice.status !== 'paid') {
-      const updatedInv: Invoice = { ...linkedInvoice, status: 'paid' };
-      setInvoices(prev => prev.map(inv => inv.id === linkedInvoice.id ? updatedInv : inv));
-      try {
-        await db.updateFinanceInvoice(updatedInv);
-      } catch (err) {
-        console.error('Error updating linked invoice status in DB:', err);
-      }
-      
-      const toast = document.getElementById('toast-msg');
-      if (toast) {
-        toast.innerText = `Éxito: Se ha cobrado la transacción y se ha marcado la factura vinculada ${linkedInvoice.id} como PAGADA con éxito.`;
-        toast.classList.remove('opacity-0');
-        setTimeout(() => toast.classList.add('opacity-0'), 3500);
-      }
-    } else {
-      const toast = document.getElementById('toast-msg');
-      if (toast) {
-        toast.innerText = `Éxito: Transacción marcada como Cobrada / Liquidada con éxito y factura de origen actualizada.`;
-        toast.classList.remove('opacity-0');
-        setTimeout(() => toast.classList.add('opacity-0'), 3500);
-      }
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      toast.innerText = `Éxito: Registro marcado como ${nextStatus === 'paid' ? 'COBRADO / LIQUIDADO' : 'PENDIENTE'} con éxito y sincronizado.`;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => toast.classList.add('opacity-0'), 3500);
     }
   };
 
@@ -1327,7 +1356,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const recurringExpenses = transactions.filter(t => t.type === 'expense' && t.isRecurring);
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12" id="finance-module-root">
+    <div className="w-full h-full overflow-y-auto p-8 scrollbar-thin @container" id="finance-module-root">
+      <div className="space-y-6 max-w-7xl mx-auto pb-12">
       
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-6">
@@ -1719,27 +1749,35 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                               <span className="font-bold text-white text-xs block leading-snug group-hover:text-emerald-400 transition-colors">
                                 {t.description}
                               </span>
-                              {linkedInv ? (
-                                <div className="mt-1.5 flex items-center gap-1.5">
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                {linkedInv && (
                                   <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg shadow-sm">
                                     <FileText className="w-3 h-3 text-blue-400" />
                                     <span>Con Factura: {linkedInv.id}</span>
                                     <span className={`w-1.5 h-1.5 rounded-full ${linkedInv.status === 'paid' ? 'bg-emerald-400' : 'bg-amber-400'}`} title={linkedInv.status === 'paid' ? 'Factura Pagada' : 'Factura Pendiente / Borrador'} />
                                   </span>
-                                </div>
-                              ) : (
-                                t.isRecurring && (
-                                  <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-purple-400 bg-purple-500/10 border border-purple-500/25 px-1.5 py-0.5 rounded-md mt-1.5">
+                                )}
+                                {t.isRecurring && (
+                                  <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-purple-400 bg-purple-500/10 border border-purple-500/25 px-1.5 py-0.5 rounded-md">
                                     <Repeat className="w-2.5 h-2.5" />
                                     <span>Gasto recurrente ({t.recurrencePeriod})</span>
                                   </span>
-                                )
-                              )}
+                                )}
+                                {t.paymentMethod && (
+                                  <span className={`inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded-md select-none ${
+                                    t.paymentMethod === 'cash' 
+                                      ? 'bg-purple-500/10 border border-purple-500/25 text-purple-300' 
+                                      : 'bg-cyan-500/10 border border-cyan-500/25 text-cyan-300'
+                                  }`}>
+                                    {t.paymentMethod === 'cash' ? '💸 Efectivo / Cash' : '🏦 Transferencia'}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="p-4 text-left">
                             <span className={`text-[9px] font-mono border px-2 py-0.5 rounded-full uppercase tracking-wider font-bold ${tagStyle}`}>
-                              {t.category}
+                                {t.category}
                             </span>
                           </td>
                           <td className="p-4 text-left text-slate-400 font-mono">
@@ -1752,10 +1790,15 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                           </td>
                           <td className="p-4 text-left">
                             {t.status === 'paid' ? (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-lg">
+                              <button
+                                onClick={() => handleToggleTransactionStatus(t)}
+                                className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 px-2 py-0.5 rounded-lg transition-all cursor-pointer group"
+                                title="Haga clic para revertir / desmarcar de Bitácora (cambiará a Pendiente)"
+                              >
                                 <span className="w-1 h-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(16,185,129)]" />
-                                Liquidado
-                              </span>
+                                <span className="group-hover:hidden">Liquidado</span>
+                                <span className="hidden group-hover:inline text-emerald-300">↩ Pendiente</span>
+                              </button>
                             ) : (
                               <div className="flex items-center gap-2">
                                 <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-lg text-amber-400">
@@ -1763,9 +1806,9 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                                   Pendiente
                                 </span>
                                 <button
-                                  onClick={() => handleMarkTransactionAsPaid(t)}
+                                  onClick={() => handleToggleTransactionStatus(t)}
                                   className="text-[9px] font-sans font-extrabold bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 px-2 py-1 rounded-lg transition-all cursor-pointer shadow-md flex items-center gap-0.5 leading-none"
-                                  title="Marcar como Cobrado/Pagado y actualizar factura vinculada"
+                                  title="Marcar como Liquidado y sincronizar facturas/conceptos"
                                 >
                                   <span>💵 Cobrar</span>
                                 </button>
@@ -2211,6 +2254,46 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 </select>
               </div>
 
+              {/* Método de Pago input */}
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Método de Pago</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTxPaymentMethod(undefined)}
+                    className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer ${
+                      txPaymentMethod === undefined
+                        ? 'bg-slate-700/30 border-slate-500 text-slate-300'
+                        : 'bg-transparent border-white/5 text-slate-500 hover:bg-white/5'
+                    }`}
+                  >
+                    Ninguno
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTxPaymentMethod('cash')}
+                    className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer flex items-center justify-center gap-1 ${
+                      txPaymentMethod === 'cash'
+                        ? 'bg-purple-500/10 border-purple-500/30 text-purple-300 shadow-sm'
+                        : 'bg-transparent border-white/5 text-slate-400 hover:bg-white/5'
+                    }`}
+                  >
+                    <span>💸 Efectivo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTxPaymentMethod('transfer')}
+                    className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer flex items-center justify-center gap-1 ${
+                      txPaymentMethod === 'transfer'
+                        ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 shadow-sm'
+                        : 'bg-transparent border-white/5 text-slate-400 hover:bg-white/5'
+                    }`}
+                  >
+                    <span>🏦 Transferencia</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Vincular a Factura */}
               <div className="space-y-1">
                 <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Vincular a Factura (Opcional)</label>
@@ -2449,11 +2532,11 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                   {invItems.map((item, index) => (
                     <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-slate-950/40 p-2.5 rounded-xl border border-white/5 text-left">
-                      <div className="col-span-5 space-y-0.5">
-                        <span className="text-[8px] font-mono text-slate-500 uppercase">Descripción del Servicio</span>
+                      <div className="col-span-4 space-y-0.5">
+                        <span className="text-[8px] font-mono text-slate-500 uppercase">Descripción</span>
                         <input
                           type="text"
-                          placeholder="e.g. Horas de Consultores Senior React"
+                          placeholder="e.g. Consultoría"
                           value={item.description}
                           onChange={(e) => handleUpdateInvoiceItemField(index, 'description', e.target.value)}
                           required
@@ -2485,8 +2568,20 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                         />
                       </div>
 
-                      <div className="col-span-2 space-y-0.5 flex flex-col items-center justify-center">
-                        <span className="text-[8px] font-mono text-slate-500 uppercase text-center font-bold tracking-tight">¿Pendiente?</span>
+                      <div className="col-span-2 space-y-0.5">
+                        <span className="text-[8px] font-mono text-slate-500 uppercase">Método Pago</span>
+                        <select
+                          value={item.paymentMethod || 'transfer'}
+                          onChange={(e) => handleUpdateInvoiceItemField(index, 'paymentMethod', e.target.value as any)}
+                          className="w-full bg-slate-950 border border-white/10 rounded-lg py-1 px-1.5 text-[11px] text-slate-200 focus:outline-none cursor-pointer"
+                        >
+                          <option value="transfer">🏦 Trsf.</option>
+                          <option value="cash">💸 Cash</option>
+                        </select>
+                      </div>
+
+                      <div className="col-span-1 space-y-0.5 flex flex-col items-center justify-center">
+                        <span className="text-[8px] font-mono text-slate-500 uppercase text-center font-bold tracking-tight">Pend.</span>
                         <label className="relative inline-flex items-center cursor-pointer mt-1">
                           <input
                             type="checkbox"
@@ -2494,7 +2589,7 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                             onChange={(e) => handleUpdateInvoiceItemField(index, 'isPending', e.target.checked)}
                             className="sr-only peer"
                           />
-                          <div className="w-8 h-4 bg-slate-950 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-500 after:border-slate-400 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500/30 peer-checked:after:bg-amber-400 border border-white/10"></div>
+                          <div className="w-7 h-4 bg-slate-950 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-500 after:border-slate-400 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500/30 peer-checked:after:bg-amber-400 border border-white/10"></div>
                         </label>
                       </div>
 
@@ -2713,7 +2808,7 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                       {previewInvoice.items.map((it, idx) => (
                         <tr key={it.id || idx} className="text-[11px] text-slate-300">
                           <td className="p-3 font-medium text-white">
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 flex-wrap">
                               <span>{it.description}</span>
                               {it.isPending ? (
                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-mono font-bold bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.2 rounded text-amber-400 select-none leading-none">
@@ -2726,6 +2821,15 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                                   Cobrado
                                 </span>
                               ) : null}
+                              {it.paymentMethod && (
+                                <span className={`inline-flex items-center gap-0.5 text-[8px] font-mono font-bold px-1.5 py-0.2 rounded select-none leading-none uppercase ${
+                                  it.paymentMethod === 'cash' 
+                                    ? 'bg-purple-500/10 border border-purple-500/25 text-purple-300' 
+                                    : 'bg-cyan-500/10 border border-cyan-500/25 text-cyan-300'
+                                }`}>
+                                  {it.paymentMethod === 'cash' ? '💸 Efectivo / Cash' : '🏦 Trsf.'}
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="p-3 text-center">{it.quantity}</td>
@@ -2878,6 +2982,7 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
         </div>
       )}
 
+      </div>
     </div>
   );
 }

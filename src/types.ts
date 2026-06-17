@@ -91,6 +91,7 @@ export interface FinanceTransaction {
   recurrencePeriod?: 'weekly' | 'monthly' | 'yearly';
   invoiceId?: string; // Optional reference to a generated invoice
   status: 'paid' | 'pending';
+  paymentMethod?: 'cash' | 'transfer'; // New: payment method 'cash' or 'transfer'
 }
 
 export interface InvoiceItem {
@@ -101,6 +102,7 @@ export interface InvoiceItem {
   total: number;
   isPending?: boolean;     // New: indicates if this item is currently pending payment (cobro pendiente)
   pendingTxId?: string;    // New: matching pending FinanceTransaction ID
+  paymentMethod?: 'cash' | 'transfer'; // New: payment method 'cash' or 'transfer'
 }
 
 export interface Invoice {

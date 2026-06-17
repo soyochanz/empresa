@@ -544,18 +544,48 @@ export const db = {
        console.error('finance_transactions table read error:', error);
        throw error;
     }
-    return (data || []) as FinanceTransaction[];
+    const list = (data || []) as FinanceTransaction[];
+    return list.map(tx => {
+      let paymentMethod: 'cash' | 'transfer' | undefined = undefined;
+      let cleanDesc = tx.description || '';
+      if (cleanDesc.endsWith(' [PM:cash]')) {
+        paymentMethod = 'cash';
+        cleanDesc = cleanDesc.replace(' [PM:cash]', '');
+      } else if (cleanDesc.endsWith(' [PM:transfer]')) {
+        paymentMethod = 'transfer';
+        cleanDesc = cleanDesc.replace(' [PM:transfer]', '');
+      }
+      return {
+        ...tx,
+        description: cleanDesc,
+        paymentMethod
+      };
+    });
   },
 
   async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
-    const payload = { ...transaction, user_id: userId || null };
+    const { paymentMethod, ...rest } = transaction;
+    let desc = rest.description || '';
+    if (paymentMethod === 'cash') {
+      desc = desc + ' [PM:cash]';
+    } else if (paymentMethod === 'transfer') {
+      desc = desc + ' [PM:transfer]';
+    }
+    const payload = { ...rest, description: desc, user_id: userId || null };
     const { error } = await supabase.from('finance_transactions').insert(payload);
     if (error) throw error;
   },
 
   async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
     // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
-    const { user_id, ...payload } = transaction as any;
+    const { paymentMethod, user_id, ...rest } = transaction as any;
+    let desc = rest.description || '';
+    if (paymentMethod === 'cash') {
+      desc = desc + ' [PM:cash]';
+    } else if (paymentMethod === 'transfer') {
+      desc = desc + ' [PM:transfer]';
+    }
+    const payload = { ...rest, description: desc };
     const { error } = await supabase.from('finance_transactions').update(payload).eq('id', transaction.id);
     if (error) throw error;
   },

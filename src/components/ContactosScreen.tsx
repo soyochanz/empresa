@@ -139,7 +139,8 @@ export default function ContactosScreen() {
   const selectedInquiry = inquiries.find(item => item.id === selectedInquiryId) || filtered[0] || null;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="w-full h-full overflow-y-auto p-8 scrollbar-thin">
+      <div className="space-y-6 max-w-7xl mx-auto pb-12">
       
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-5">
@@ -416,6 +417,7 @@ export default function ContactosScreen() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

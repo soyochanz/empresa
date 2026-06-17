@@ -174,7 +174,8 @@ export default function CitasScreen({
   });
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="w-full h-full overflow-y-auto p-8 scrollbar-thin">
+      <div className="max-w-7xl mx-auto space-y-6 pb-12">
       
       {/* Intro Header Section */}
       <div className="bg-[#030303] border border-violet-500/10 rounded-3xl p-6 relative overflow-hidden group shadow-2xl">
@@ -773,6 +774,7 @@ export default function CitasScreen({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
