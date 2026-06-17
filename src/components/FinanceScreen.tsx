@@ -122,6 +122,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [isEditingInv, setIsEditingInv] = useState(false);
   const [editingInvId, setEditingInvId] = useState<string | null>(null);
   const [originatingTxId, setOriginatingTxId] = useState<string | null>(null);
+  const [selectedTxIdsForInvoice, setSelectedTxIdsForInvoice] = useState<string[]>([]);
 
   // Invoice view preview modal controls
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
@@ -299,6 +300,67 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     }));
   };
 
+  const handleAddPendingTransactionAsInvoiceItem = (tx: FinanceTransaction) => {
+    // If the first item is empty, let's replace or add to the list
+    setInvItems(prev => {
+      const filtered = prev.filter(item => item.description.trim() !== '');
+      return [
+        ...filtered,
+        { 
+          id: 'temp_tx_' + tx.id + '_' + Date.now(), 
+          description: tx.description, 
+          quantity: 1, 
+          unitPrice: tx.amount, 
+          total: tx.amount 
+        }
+      ];
+    });
+    // Add to our tracks list to set its invoiceId on save
+    if (!selectedTxIdsForInvoice.includes(tx.id)) {
+      setSelectedTxIdsForInvoice(prev => [...prev, tx.id]);
+    }
+  };
+
+  const handleMarkTransactionAsPaid = async (tx: FinanceTransaction) => {
+    const updatedTx: FinanceTransaction = { ...tx, status: 'paid' };
+    
+    // Update locally
+    setTransactions(prev => prev.map(t => t.id === tx.id ? updatedTx : t));
+    
+    // Persist to database
+    try {
+      await db.updateFinanceTransaction(updatedTx);
+    } catch (err) {
+      console.error('Error updating transaction status in DB:', err);
+    }
+
+    // Also look up any linked invoice
+    const linkedInvoice = getLinkedInvoice(tx);
+    if (linkedInvoice && linkedInvoice.status !== 'paid') {
+      const updatedInv: Invoice = { ...linkedInvoice, status: 'paid' };
+      setInvoices(prev => prev.map(inv => inv.id === linkedInvoice.id ? updatedInv : inv));
+      try {
+        await db.updateFinanceInvoice(updatedInv);
+      } catch (err) {
+        console.error('Error updating linked invoice status in DB:', err);
+      }
+      
+      const toast = document.getElementById('toast-msg');
+      if (toast) {
+        toast.innerText = `Éxito: Se ha cobrado la transacción y se ha marcado la factura vinculada ${linkedInvoice.id} como PAGADA con éxito.`;
+        toast.classList.remove('opacity-0');
+        setTimeout(() => toast.classList.add('opacity-0'), 3500);
+      }
+    } else {
+      const toast = document.getElementById('toast-msg');
+      if (toast) {
+        toast.innerText = `Éxito: Transacción marcada como Cobrada / Liquidada con éxito.`;
+        toast.classList.remove('opacity-0');
+        setTimeout(() => toast.classList.add('opacity-0'), 3500);
+      }
+    }
+  };
+
   // Choose existing client contact
   const handleSelectClient = (clientId: string) => {
     setInvClientId(clientId);
@@ -357,39 +419,47 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     } else {
       setInvoices(prev => [payload, ...prev]);
       db.insertFinanceInvoice(payload).catch(err => console.error('Error inserting invoice into DB:', err));
-
-      if (originatingTxId) {
-        // Automatically link the preexisting transaction to this invoice
-        setTransactions(prev => prev.map(t => {
-          if (t.id === originatingTxId) {
-            const updatedTx = { 
-              ...t, 
-              invoiceId: invoiceId,
-              status: (invStatus === 'paid' ? 'paid' : t.status) as 'paid' | 'pending'
-            };
-            db.updateFinanceTransaction(updatedTx).catch(err => console.error('Error updating originating transaction with inlink:', err));
-            return updatedTx;
-          }
-          return t;
-        }));
-        setOriginatingTxId(null);
-      } else if (invStatus === 'paid') {
-        // Automatically register paid invoices as pending/paid income in finance transaction hub!
-        const autoTx: FinanceTransaction = {
-          id: 'tx_auto_' + Date.now(),
-          type: 'income',
-          category: 'Desarrollo',
-          amount: total,
-          date: invDate,
-          description: `Ingreso Facturado: ${invoiceId} - ${invClientName}`,
-          isRecurring: false,
-          status: 'paid',
-          invoiceId: invoiceId
-        };
-        setTransactions(prev => [autoTx, ...prev]);
-        db.insertFinanceTransaction(autoTx).catch(err => console.error('Error inserting auto invoice transaction in DB:', err));
-      }
     }
+
+    // Link all chosen pending transactions (including originating transactions) to this invoice
+    const txsToLink = [...selectedTxIdsForInvoice];
+    if (originatingTxId) {
+      txsToLink.push(originatingTxId);
+    }
+
+    if (txsToLink.length > 0) {
+      setTransactions(prev => prev.map(t => {
+        if (txsToLink.includes(t.id)) {
+          const updatedTx: FinanceTransaction = { 
+            ...t, 
+            invoiceId: invoiceId,
+            status: (invStatus === 'paid' ? 'paid' : t.status) as 'paid' | 'pending'
+          };
+          db.updateFinanceTransaction(updatedTx).catch(err => console.error('Error updating linked transaction:', err));
+          return updatedTx;
+        }
+        return t;
+      }));
+    } else if (!isEditingInv && invStatus === 'paid') {
+      // Automatically register paid invoices as pending/paid income in finance transaction hub!
+      const autoTx: FinanceTransaction = {
+        id: 'tx_auto_' + Date.now(),
+        type: 'income',
+        category: 'Desarrollo',
+        amount: total,
+        date: invDate,
+        description: `Ingreso Facturado: ${invoiceId} - ${invClientName}`,
+        isRecurring: false,
+        status: 'paid',
+        invoiceId: invoiceId
+      };
+      setTransactions(prev => [autoTx, ...prev]);
+      db.insertFinanceTransaction(autoTx).catch(err => console.error('Error inserting auto invoice transaction in DB:', err));
+    }
+
+    // Reset indicators
+    setOriginatingTxId(null);
+    setSelectedTxIdsForInvoice([]);
 
     setIsInvModalOpen(false);
     resetInvForm();
@@ -458,6 +528,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setIsEditingInv(false);
     setEditingInvId(null);
     setOriginatingTxId(null);
+    setSelectedTxIdsForInvoice([]);
     setInvClientId('');
     setInvClientName('');
     setInvClientEmail('');
@@ -1415,10 +1486,19 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                                 Liquidado
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-lg text-amber-400">
-                                <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
-                                Pendiente
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-lg text-amber-400">
+                                  <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+                                  Pendiente
+                                </span>
+                                <button
+                                  onClick={() => handleMarkTransactionAsPaid(t)}
+                                  className="text-[9px] font-sans font-extrabold bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 px-2 py-1 rounded-lg transition-all cursor-pointer shadow-md flex items-center gap-0.5 leading-none"
+                                  title="Marcar como Cobrado/Pagado y actualizar factura vinculada"
+                                >
+                                  <span>💵 Cobrar</span>
+                                </button>
+                              </div>
                             )}
                           </td>
                           <td className="p-4 text-right">
@@ -2006,16 +2086,45 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
 
               {/* CONCEPT DETAILS (DYNAMIC INVOICEITEMS) */}
               <div className="space-y-2 border-t border-white/5 pt-4">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                   <label className="text-[10px] uppercase font-mono text-slate-400 font-bold tracking-wider block">Líneas de Conceptos Detallados</label>
-                  <button
-                    type="button"
-                    onClick={handleAddInvoiceItem}
-                    className="text-[10px] text-blue-400 hover:text-blue-300 font-bold cursor-pointer flex items-center gap-1 bg-blue-500/10 hover:bg-blue-500/15 border border-blue-500/20 py-1 px-2.5 rounded-lg active:scale-95"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5" />
-                    <span>Añadir Concepto</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Add pending transactions selector dropdown */}
+                    {transactions.filter(t => t.status === 'pending' && t.type === 'income' && !selectedTxIdsForInvoice.includes(t.id)).length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          const txId = e.target.value;
+                          if (txId) {
+                            const tx = transactions.find(t => t.id === txId);
+                            if (tx) {
+                              handleAddPendingTransactionAsInvoiceItem(tx);
+                            }
+                            e.target.value = ''; // Reset select
+                          }
+                        }}
+                        className="text-[10px] uppercase font-mono font-bold bg-slate-950 border border-amber-500/30 text-amber-300 py-1.5 px-3 rounded-xl cursor-pointer max-w-[200px] hover:border-amber-400 focus:outline-none transition-all"
+                      >
+                        <option value="">📂 Cobros Pendientes...</option>
+                        {transactions
+                          .filter(t => t.status === 'pending' && t.type === 'income' && !selectedTxIdsForInvoice.includes(t.id))
+                          .map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.amount.toLocaleString('es-ES')}€ - {t.description.substring(0, 15)}...
+                            </option>
+                          ))
+                        }
+                      </select>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleAddInvoiceItem}
+                      className="text-[10px] text-blue-400 hover:text-blue-300 font-bold cursor-pointer flex items-center gap-1 bg-blue-500/10 hover:bg-blue-500/15 border border-blue-500/20 py-1.5 px-3 rounded-lg active:scale-95"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>Añadir Concepto</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">

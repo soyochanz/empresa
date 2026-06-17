@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead } from './types';
 import { 
   initialContacts, 
@@ -440,11 +440,110 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Sync finance transactions to compute upcoming alerts
+  const [finTransactions, setFinTransactions] = useState<any[]>([]);
+
+  useEffect(() => {
+    const syncFinanceTransactions = () => {
+      const saved = localStorage.getItem('agency_finance_transactions');
+      if (saved) {
+        try {
+          setFinTransactions(JSON.parse(saved));
+        } catch (e) {
+          console.error('Error parsing finance transactions in App.tsx:', e);
+        }
+      }
+    };
+    syncFinanceTransactions();
+    // Keep checking every 3 seconds for updates
+    const interval = setInterval(syncFinanceTransactions, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const financeNotifications = useMemo(() => {
+    const list: any[] = [];
+    if (!currentUser) return list;
+
+    // Get tomorrow's date representation in local time zone
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const isDateTomorrow = (dateStr: string) => {
+      if (!dateStr) return false;
+      const tDate = new Date(dateStr);
+      tDate.setHours(0,0,0,0);
+      return tomorrow.getFullYear() === tDate.getFullYear() &&
+             tomorrow.getMonth() === tDate.getMonth() &&
+             tomorrow.getDate() === tDate.getDate();
+    };
+
+    finTransactions.forEach(tx => {
+      // 1. Pending transaction scheduled for tomorrow
+      if (tx.status === 'pending') {
+        if (isDateTomorrow(tx.date)) {
+          list.push({
+            id: `alert_pending_${tx.id}`,
+            type: 'Deadline', // beautiful red-rose badge e.g. for urgent items
+            title: `⚠️ Vencimiento de Importe Pendiente (${tx.type === 'income' ? 'Cobro' : 'Gasto'})`,
+            description: `${tx.type === 'income' ? 'Cobro' : 'Pago'} de ${tx.amount.toLocaleString('es-ES')} € planificado para mañana: ${tx.description} (${tx.category})`,
+            date: tx.date,
+            time: 'Mañana'
+          });
+        }
+      }
+
+      // 2. Or is recurring and scheduled for tomorrow
+      if (tx.isRecurring && tx.recurrencePeriod) {
+        const base = new Date(tx.date);
+        let next = new Date(base);
+        // keep adding recurrence period until next is equal or future relative to today
+        while (next < today) {
+          if (tx.recurrencePeriod === 'weekly') {
+            next.setDate(next.getDate() + 7);
+          } else if (tx.recurrencePeriod === 'monthly') {
+            next.setMonth(next.getMonth() + 1);
+          } else if (tx.recurrencePeriod === 'yearly') {
+            next.setFullYear(next.getFullYear() + 1);
+          } else {
+            next.setMonth(next.getMonth() + 1);
+          }
+        }
+
+        const isOccurTomorrow = tomorrow.getFullYear() === next.getFullYear() &&
+                                tomorrow.getMonth() === next.getMonth() &&
+                                tomorrow.getDate() === next.getDate();
+
+        if (isOccurTomorrow) {
+          const tomorrowStr = tomorrow.toISOString().split('T')[0];
+          list.push({
+            id: `alert_recurring_${tx.id}_${tomorrowStr}`,
+            type: 'Review', // beautiful purple/pink badge
+            title: `🔄 Próximo Importe Recurrente (${tx.type === 'income' ? 'Ingreso' : 'Gasto'})`,
+            description: `${tx.type === 'income' ? 'Ingreso' : 'Gasto'} automático de ${tx.amount.toLocaleString('es-ES')} € programado para mañana: ${tx.description}`,
+            date: tomorrowStr,
+            time: 'Recurrente Mañana'
+          });
+        }
+      }
+    });
+
+    return list;
+  }, [finTransactions, currentUser]);
+
   // Notifications computation
-  const userNotifications = events.filter(e => 
-    currentUser && e.assignedUserEmail && e.assignedUserEmail.toLowerCase() === currentUser.email.toLowerCase()
-  );
-  const unreadNotifications = userNotifications.filter(e => !readNotificationIds.includes(e.id));
+  const userNotifications = useMemo(() => {
+    const dbNotifications = events.filter(e => 
+      currentUser && e.assignedUserEmail && e.assignedUserEmail.toLowerCase() === currentUser.email.toLowerCase()
+    );
+    return [...financeNotifications, ...dbNotifications];
+  }, [events, financeNotifications, currentUser]);
+
+  const unreadNotifications = useMemo(() => {
+    return userNotifications.filter(e => !readNotificationIds.includes(e.id));
+  }, [userNotifications, readNotificationIds]);
+
   const unreadCount = unreadNotifications.length;
 
   const handleMarkAsRead = (id: string) => {
