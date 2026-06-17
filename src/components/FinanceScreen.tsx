@@ -334,7 +334,33 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
       console.error('Error updating transaction status in DB:', err);
     }
 
-    // Also look up any linked invoice
+    // Search for any invoice containing an item with pendingTxId matching this transaction id
+    let matchedInvoice: Invoice | null = null;
+    const updatedInvoices = invoices.map(inv => {
+      const hasMatchingItem = inv.items.some(item => item.pendingTxId === tx.id);
+      if (hasMatchingItem) {
+        const updatedItems = inv.items.map(item => {
+          if (item.pendingTxId === tx.id) {
+            return { ...item, isPending: false };
+          }
+          return item;
+        });
+        matchedInvoice = { ...inv, items: updatedItems };
+        return matchedInvoice;
+      }
+      return inv;
+    });
+
+    if (matchedInvoice) {
+      setInvoices(updatedInvoices);
+      try {
+        await db.updateFinanceInvoice(matchedInvoice);
+      } catch (err) {
+        console.error('Error updating invoice item status in DB:', err);
+      }
+    }
+
+    // Also look up any general linked invoice by invoiceId
     const linkedInvoice = getLinkedInvoice(tx);
     if (linkedInvoice && linkedInvoice.status !== 'paid') {
       const updatedInv: Invoice = { ...linkedInvoice, status: 'paid' };
@@ -354,7 +380,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     } else {
       const toast = document.getElementById('toast-msg');
       if (toast) {
-        toast.innerText = `Éxito: Transacción marcada como Cobrada / Liquidada con éxito.`;
+        toast.innerText = `Éxito: Transacción marcada como Cobrada / Liquidada con éxito y factura de origen actualizada.`;
         toast.classList.remove('opacity-0');
         setTimeout(() => toast.classList.add('opacity-0'), 3500);
       }
@@ -391,6 +417,51 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
 
     const invoiceId = isEditingInv && editingInvId ? editingInvId : 'FAC-' + new Date().getFullYear() + '-' + String(invoices.length + 1).padStart(3, '0');
 
+    // Create automatic pending transactions for custom invoice items with isPending === true
+    const autoCreatedTxs: FinanceTransaction[] = [];
+    const mappedItems = validItems.map((item, idx) => {
+      const isItemPending = !!item.isPending;
+      let pTxId = item.pendingTxId;
+      const savedItemId = item.id.startsWith('temp') ? 'item_' + idx + '_' + Date.now() : item.id;
+
+      if (isItemPending && !pTxId) {
+        // Generate new pending transaction structure
+        pTxId = 'tx_item_pending_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 6);
+        const newTx: FinanceTransaction = {
+          id: pTxId,
+          type: 'income',
+          category: 'Desarrollo',
+          amount: item.total,
+          date: invDueDate || invDate, // Will raise deadline notice nicely around due date
+          description: `Cobro Pendiente: ${item.description} (${invClientName})`,
+          isRecurring: false,
+          status: 'pending',
+          invoiceId: invoiceId
+        };
+        autoCreatedTxs.push(newTx);
+      }
+
+      return {
+        id: savedItemId,
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.total,
+        isPending: isItemPending,
+        pendingTxId: pTxId
+      };
+    });
+
+    const anyItemPending = mappedItems.some(item => !!item.isPending);
+    let calculatedStatus = invStatus;
+    if (anyItemPending) {
+      if (calculatedStatus === 'paid') {
+        calculatedStatus = 'sent'; // Downgrade to sent because some concepts are pending
+      }
+    } else {
+      calculatedStatus = 'paid'; // Autocomplete as paid since no items are pending
+    }
+
     const payload: Invoice = {
       id: invoiceId,
       clientId: invClientId || undefined,
@@ -398,14 +469,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
       clientEmail: invClientEmail,
       date: invDate,
       dueDate: invDueDate,
-      status: invStatus,
-      items: validItems.map((item, idx) => ({
-        id: item.id.startsWith('temp') ? 'item_' + idx + '_' + Date.now() : item.id,
-        description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        total: item.total
-      })),
+      status: calculatedStatus,
+      items: mappedItems,
       subtotal,
       taxPercentage: invTaxPercentage,
       taxAmount,
@@ -419,6 +484,41 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     } else {
       setInvoices(prev => [payload, ...prev]);
       db.insertFinanceInvoice(payload).catch(err => console.error('Error inserting invoice into DB:', err));
+    }
+
+    // Insert any auto-created pending transactions
+    if (autoCreatedTxs.length > 0) {
+      setTransactions(prev => [...autoCreatedTxs, ...prev]);
+      autoCreatedTxs.forEach(tx => {
+        db.insertFinanceTransaction(tx).catch(err => console.error('Error inserting item-pending transaction:', err));
+      });
+    }
+
+    // Capture transactions transitioning from pending to paid
+    const txsToMarkPaidFromItems: string[] = [];
+    if (isEditingInv && editingInvId) {
+      const originalInvoice = invoices.find(inv => inv.id === editingInvId);
+      if (originalInvoice) {
+        originalInvoice.items.forEach(origIt => {
+          if (origIt.pendingTxId && origIt.isPending) {
+            const nowIt = mappedItems.find(m => m.id === origIt.id);
+            if (nowIt && !nowIt.isPending) {
+              txsToMarkPaidFromItems.push(origIt.pendingTxId);
+            }
+          }
+        });
+      }
+    }
+
+    if (txsToMarkPaidFromItems.length > 0) {
+      setTransactions(prev => prev.map(t => {
+        if (txsToMarkPaidFromItems.includes(t.id)) {
+          const updated = { ...t, status: 'paid' as const };
+          db.updateFinanceTransaction(updated).catch(err => console.error('Error marking linked concept tx as paid:', err));
+          return updated;
+        }
+        return t;
+      }));
     }
 
     // Link all chosen pending transactions (including originating transactions) to this invoice
@@ -519,6 +619,177 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     const toast = document.getElementById('toast-msg');
     if (toast) {
       toast.innerText = `Factura ${inv.id} marcada como PAGADA con éxito e ingresada en cuentas.`;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => toast.classList.add('opacity-0'), 3500);
+    }
+  };
+
+  const handleToggleConceptPaid = async (inv: Invoice, itemId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
+    // Map updated items
+    const updatedItems = inv.items.map(item => {
+      if (item.id === itemId) {
+        return { ...item, isPending: !item.isPending };
+      }
+      return item;
+    });
+
+    // Check if all items are paid now
+    const allItemsPaid = updatedItems.every(it => !it.isPending);
+    
+    // Update invoice status based on items status
+    const newStatus = allItemsPaid ? 'paid' : (inv.status === 'draft' ? 'draft' : 'sent');
+
+    const updatedInv: Invoice = {
+      ...inv,
+      items: updatedItems,
+      status: newStatus
+    };
+
+    // Update local state
+    setInvoices(prev => prev.map(i => i.id === inv.id ? updatedInv : i));
+    if (previewInvoice && previewInvoice.id === inv.id) {
+      setPreviewInvoice(updatedInv);
+    }
+
+    // Persist to DB
+    try {
+      await db.updateFinanceInvoice(updatedInv);
+    } catch (err) {
+      console.error('Error updating invoice item status in DB:', err);
+    }
+
+    // Now look for any linked transactions matching the toggled item
+    const toggledItem = inv.items.find(it => it.id === itemId);
+    if (toggledItem?.pendingTxId) {
+      const txToUpdate = transactions.find(t => t.id === toggledItem.pendingTxId);
+      if (txToUpdate) {
+        const nextPending = !toggledItem.isPending; // Toggled state: if it was pending, it is now not pending (false)
+        const updatedTx: FinanceTransaction = {
+          ...txToUpdate,
+          status: nextPending ? 'pending' : 'paid'
+        };
+
+        setTransactions(prev => prev.map(t => t.id === txToUpdate.id ? updatedTx : t));
+        try {
+          await db.updateFinanceTransaction(updatedTx);
+        } catch (err) {
+          console.error('Error updating item-linked transaction status in DB:', err);
+        }
+      }
+    }
+
+    // Also: if all items are now paid, we should mark any other main pending transaction linked to this invoice as paid
+    if (allItemsPaid) {
+      const mainPendingTx = transactions.find(t => t.invoiceId === inv.id && t.status === 'pending');
+      if (mainPendingTx) {
+        const updatedMainTx: FinanceTransaction = {
+          ...mainPendingTx,
+          status: 'paid'
+        };
+        setTransactions(prev => prev.map(t => t.id === mainPendingTx.id ? updatedMainTx : t));
+        try {
+          await db.updateFinanceTransaction(updatedMainTx);
+        } catch (err) {
+          console.error('Error updating main transaction status in DB:', err);
+        }
+      }
+    } else {
+      // If we are transitioning from paid to non-paid (e.g. marking a concept as pending again), we should revert main transaction of this invoice back to pending if it exists!
+      if (inv.status === 'paid' && newStatus !== 'paid') {
+        const mainPaidTx = transactions.find(t => t.invoiceId === inv.id && t.status === 'paid');
+        if (mainPaidTx) {
+          const updatedMainTx: FinanceTransaction = {
+            ...mainPaidTx,
+            status: 'pending'
+          };
+          setTransactions(prev => prev.map(t => t.id === mainPaidTx.id ? updatedMainTx : t));
+          try {
+            await db.updateFinanceTransaction(updatedMainTx);
+          } catch (err) {
+            console.error('Error reverting main transaction status to pending in DB:', err);
+          }
+        }
+      }
+    }
+
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      toast.innerText = allItemsPaid 
+        ? `Éxito: Se han cobrado todos los conceptos. Factura ${inv.id} cobrada y consolidada con éxito.`
+        : `Éxito: Se ha actualizado el estado de cobro del concepto.`;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => toast.classList.add('opacity-0'), 3500);
+    }
+  };
+
+  const handleMarkAllConceptsPaid = async (inv: Invoice, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
+    // Map all items to not pending
+    const updatedItems = inv.items.map(item => ({ ...item, isPending: false }));
+
+    const updatedInv: Invoice = {
+      ...inv,
+      items: updatedItems,
+      status: 'paid'
+    };
+
+    // Update invoices local state
+    setInvoices(prev => prev.map(i => i.id === inv.id ? updatedInv : i));
+    if (previewInvoice && previewInvoice.id === inv.id) {
+      setPreviewInvoice(updatedInv);
+    }
+
+    // Persist to DB
+    try {
+      await db.updateFinanceInvoice(updatedInv);
+    } catch (err) {
+      console.error('Error updating invoice status to paid in DB:', err);
+    }
+
+    // Update all matching pending transactions linked to this invoice to paid
+    const linkedTxIds = inv.items.map(it => it.pendingTxId).filter(Boolean) as string[];
+    
+    // Also include any other general transaction linked to this invoice
+    const allLinkedTxs = transactions.filter(t => t.invoiceId === inv.id || linkedTxIds.includes(t.id));
+
+    if (allLinkedTxs.length > 0) {
+      const updatedTxs = transactions.map(t => {
+        const isLinkedObj = t.invoiceId === inv.id || linkedTxIds.includes(t.id);
+        if (isLinkedObj && t.status !== 'paid') {
+          const updated = { ...t, status: 'paid' as const };
+          db.updateFinanceTransaction(updated).catch(err => console.error('Error updating transaction in handleMarkAllConceptsPaid:', err));
+          return updated;
+        }
+        return t;
+      });
+      setTransactions(updatedTxs);
+    } else {
+      // If none existed, create a consolidated auto receipt like the original handleInvoiceMarkPaid
+      const autoTx: FinanceTransaction = {
+        id: 'tx_auto_' + Date.now(),
+        type: 'income',
+        category: 'Facturado',
+        amount: inv.total,
+        date: new Date().toISOString().split('T')[0],
+        description: `Pago Factura Autogenerado: ${inv.id} - ${inv.clientName}`,
+        isRecurring: false,
+        status: 'paid',
+        invoiceId: inv.id
+      };
+      setTransactions(prev => [autoTx, ...prev]);
+      try {
+        await db.insertFinanceTransaction(autoTx);
+      } catch (err) {
+        console.error('Error inserting auto invoice transaction:', err);
+      }
+    }
+
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      toast.innerText = `Factura cobrada y todos sus conceptos marcados como PAGADOS con éxito.`;
       toast.classList.remove('opacity-0');
       setTimeout(() => toast.classList.add('opacity-0'), 3500);
     }
@@ -1726,6 +1997,54 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                       <span className="text-[10px] text-slate-500 font-light">{inv.items.length} conceptos detallados</span>
                       <span className="text-sm font-bold text-white font-mono">{inv.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
                     </div>
+
+                    {/* Concept-by-concept interactive list inside card */}
+                    <div className="mt-3 pt-2 border-t border-white/[0.03] space-y-1.5" onClick={e => e.stopPropagation()}>
+                      <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block mb-1">Conceptos (Clic para cobrar/pendiente)</span>
+                      <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                        {inv.items.map((it) => (
+                          <div 
+                            key={it.id} 
+                            onClick={(e) => handleToggleConceptPaid(inv, it.id, e)}
+                            className={`flex items-center justify-between p-1.5 rounded-xl text-xs transition-all border group/item cursor-pointer select-none ${
+                              it.isPending 
+                                ? 'bg-amber-500/[0.02] border-amber-500/10 hover:border-amber-500/30 text-slate-350 hover:bg-amber-500/[0.04]' 
+                                : 'bg-emerald-500/[0.01] border-emerald-500/5 hover:border-emerald-500/15 text-slate-400 hover:bg-emerald-500/[0.02]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0 pr-1.5">
+                              {/* Checkbox status indicator */}
+                              <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border transition-all ${
+                                it.isPending
+                                  ? 'border-amber-500/30 bg-amber-500/5 group-hover/item:border-amber-400'
+                                  : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400'
+                              }`}>
+                                {!it.isPending && (
+                                  <span className="text-[8px] font-bold">✓</span>
+                                )}
+                              </div>
+                              <span className={`truncate text-[10px] leading-tight ${!it.isPending ? 'line-through text-slate-500' : 'font-medium text-slate-200'}`}>
+                                {it.description}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className="font-mono text-[9px] text-slate-400">
+                                {it.total.toLocaleString('es-ES')}€
+                              </span>
+                              {it.isPending ? (
+                                <span className="text-[7px] uppercase font-mono font-bold bg-amber-500/10 border border-amber-500/20 px-1 py-0.2 rounded text-amber-400">
+                                  Pte
+                                </span>
+                              ) : (
+                                <span className="text-[7px] uppercase font-mono font-bold bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded text-emerald-400">
+                                  Cobrado
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Actions drawer */}
@@ -1734,11 +2053,11 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                     <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
                       {inv.status !== 'paid' && (
                         <button
-                          onClick={(e) => handleInvoiceMarkPaid(inv, e)}
+                          onClick={(e) => handleMarkAllConceptsPaid(inv, e)}
                           className="bg-emerald-600/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[9px] font-extrabold py-1.5 px-3 rounded-xl cursor-pointer transition active:scale-95 duration-200"
-                          title="Recibir cobro"
+                          title="Cobrar todos los conceptos de la factura"
                         >
-                          Cobrar
+                          Cobrar Todo
                         </button>
                       )}
                       <button
@@ -2130,7 +2449,7 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                   {invItems.map((item, index) => (
                     <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-slate-950/40 p-2.5 rounded-xl border border-white/5 text-left">
-                      <div className="col-span-6 space-y-0.5">
+                      <div className="col-span-5 space-y-0.5">
                         <span className="text-[8px] font-mono text-slate-500 uppercase">Descripción del Servicio</span>
                         <input
                           type="text"
@@ -2142,15 +2461,15 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                         />
                       </div>
 
-                      <div className="col-span-2 space-y-0.5">
-                        <span className="text-[8px] font-mono text-slate-500 uppercase">Cantidad</span>
+                      <div className="col-span-1 space-y-0.5">
+                        <span className="text-[8px] font-mono text-slate-500 uppercase text-center block">Cant.</span>
                         <input
                           type="number"
                           min="1"
                           value={item.quantity}
                           onChange={(e) => handleUpdateInvoiceItemField(index, 'quantity', Number(e.target.value))}
                           required
-                          className="w-full bg-slate-950 border border-white/10 rounded-lg py-1 px-2 text-xs text-slate-200 font-mono text-center focus:outline-none"
+                          className="w-full bg-slate-950 border border-white/10 rounded-lg py-1 px-1 text-xs text-slate-200 font-mono text-center focus:outline-none"
                         />
                       </div>
 
@@ -2164,6 +2483,19 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                           required
                           className="w-full bg-slate-950 border border-white/10 rounded-lg py-1 px-2 text-xs text-slate-200 font-mono text-left focus:outline-none"
                         />
+                      </div>
+
+                      <div className="col-span-2 space-y-0.5 flex flex-col items-center justify-center">
+                        <span className="text-[8px] font-mono text-slate-500 uppercase text-center font-bold tracking-tight">¿Pendiente?</span>
+                        <label className="relative inline-flex items-center cursor-pointer mt-1">
+                          <input
+                            type="checkbox"
+                            checked={!!item.isPending}
+                            onChange={(e) => handleUpdateInvoiceItemField(index, 'isPending', e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-8 h-4 bg-slate-950 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-500 after:border-slate-400 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500/30 peer-checked:after:bg-amber-400 border border-white/10"></div>
+                        </label>
                       </div>
 
                       {/* Display of total row and remove action button */}
@@ -2380,7 +2712,22 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                     <tbody className="divide-y divide-neutral-850">
                       {previewInvoice.items.map((it, idx) => (
                         <tr key={it.id || idx} className="text-[11px] text-slate-300">
-                          <td className="p-3 font-medium text-white">{it.description}</td>
+                          <td className="p-3 font-medium text-white">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5">
+                              <span>{it.description}</span>
+                              {it.isPending ? (
+                                <span className="inline-flex items-center gap-0.5 text-[8px] font-mono font-bold bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.2 rounded text-amber-400 select-none leading-none">
+                                  <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+                                  Pendiente
+                                </span>
+                              ) : it.pendingTxId ? (
+                                <span className="inline-flex items-center gap-0.5 text-[8px] font-mono font-bold bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.2 rounded text-emerald-400 select-none leading-none">
+                                  <span className="w-1 h-1 rounded-full bg-emerald-400" />
+                                  Cobrado
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
                           <td className="p-3 text-center">{it.quantity}</td>
                           <td className="p-3 text-right font-mono">{it.unitPrice.toLocaleString('es-ES')} €</td>
                           <td className="p-3 text-right font-mono text-white text-xs font-semibold">{it.total.toLocaleString('es-ES')} €</td>

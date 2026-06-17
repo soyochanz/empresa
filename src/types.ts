@@ -99,6 +99,8 @@ export interface InvoiceItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  isPending?: boolean;     // New: indicates if this item is currently pending payment (cobro pendiente)
+  pendingTxId?: string;    // New: matching pending FinanceTransaction ID
 }
 
 export interface Invoice {
