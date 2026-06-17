@@ -92,6 +92,8 @@ export interface FinanceTransaction {
   invoiceId?: string; // Optional reference to a generated invoice
   status: 'paid' | 'pending';
   paymentMethod?: 'cash' | 'transfer'; // New: payment method 'cash' or 'transfer'
+  firstAmount?: number; // Cost of the first occurrence
+  nextAmount?: number;  // Cost of the subsequent occurrences
 }
 
 export interface InvoiceItem {

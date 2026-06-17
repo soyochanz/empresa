@@ -33,6 +33,38 @@ interface FinanceScreenProps {
 
 const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
 
+function getNextPaymentDate(startDateStr: string, period?: string): string {
+  const start = new Date(startDateStr);
+  if (isNaN(start.getTime())) return 'N/A';
+  
+  const today = new Date();
+  let nextDate = new Date(start);
+  
+  const normalizedPeriod = period?.toLowerCase() || 'monthly';
+  
+  const incrementDate = (dateToInc: Date) => {
+    if (normalizedPeriod === 'weekly' || normalizedPeriod === 'semanal') {
+      dateToInc.setDate(dateToInc.getDate() + 7);
+    } else if (normalizedPeriod === 'yearly' || normalizedPeriod === 'anual') {
+      dateToInc.setFullYear(dateToInc.getFullYear() + 1);
+    } else { // default to monthly / mensual
+      dateToInc.setMonth(dateToInc.getMonth() + 1);
+    }
+  };
+
+  // Find the next recurrence date in the future
+  incrementDate(nextDate);
+  while (nextDate < today) {
+    incrementDate(nextDate);
+  }
+  
+  return nextDate.toLocaleDateString('es-ES', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+}
+
 const INITIAL_INVOICES: Invoice[] = [];
 
 export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenProps) {
@@ -99,6 +131,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
 
   // Active list searches
   const [txSearch, setTxSearch] = useState('');
+  const [txCurrentPage, setTxCurrentPage] = useState(1);
   const [invSearch, setInvSearch] = useState('');
 
   // TRANSACTION MODAL controls
@@ -117,6 +150,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [txStatus, setTxStatus] = useState<'paid' | 'pending'>('paid');
   const [txInvoiceId, setTxInvoiceId] = useState<string>('');
   const [txPaymentMethod, setTxPaymentMethod] = useState<'cash' | 'transfer' | undefined>(undefined);
+  const [txFirstAmount, setTxFirstAmount] = useState('');
+  const [txNextAmount, setTxNextAmount] = useState('');
 
   // INVOICE MODAL controls
   const [isInvModalOpen, setIsInvModalOpen] = useState(false);
@@ -151,6 +186,11 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [bankSwift, setBankSwift] = useState('REVOIE23');
   const [bankNameAddress, setBankNameAddress] = useState('Revolut Bank UAB, 2 Dublin Landings, North Dock, Dublin 1, D01 V4A3, Ireland');
   const [bankCorrespondentBic, setBankCorrespondentBic] = useState('CHASDEFX');
+
+  // Reset pagination on search/filter changes
+  useEffect(() => {
+    setTxCurrentPage(1);
+  }, [txSearch, txTypeFilter, txCategoryFilter]);
 
   // Helper to discover if a transaction has a matching created invoice
   const getLinkedInvoice = (tx: FinanceTransaction): Invoice | undefined => {
@@ -208,18 +248,31 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
       return;
     }
 
+    if (txIsRecurring) {
+      if (txFirstAmount && (isNaN(Number(txFirstAmount)) || Number(txFirstAmount) < 0)) {
+        alert('Por favor introduce un importe de primer cargo válido.');
+        return;
+      }
+      if (txNextAmount && (isNaN(Number(txNextAmount)) || Number(txNextAmount) < 0)) {
+        alert('Por favor introduce un importe de siguientes cargos válido.');
+        return;
+      }
+    }
+
     const payload: FinanceTransaction = {
       id: isEditingTx && editingTxId ? editingTxId : 'tx_' + Date.now(),
       type: txType,
       category: txCategory.trim() || 'General',
-      amount: Math.abs(Number(txAmount)),
+      amount: txIsRecurring && txFirstAmount ? Math.abs(Number(txFirstAmount)) : Math.abs(Number(txAmount)),
       date: txDate || new Date().toISOString().split('T')[0],
       description: txDescription.trim() || `${txType === 'income' ? 'Ingreso' : 'Gasto'} registrado`,
       isRecurring: txIsRecurring,
       recurrencePeriod: txIsRecurring ? txPeriod : undefined,
       status: txStatus,
       invoiceId: txInvoiceId || undefined,
-      paymentMethod: txPaymentMethod
+      paymentMethod: txPaymentMethod,
+      firstAmount: txIsRecurring && txFirstAmount ? Math.abs(Number(txFirstAmount)) : undefined,
+      nextAmount: txIsRecurring && txNextAmount ? Math.abs(Number(txNextAmount)) : undefined
     };
 
     if (isEditingTx && editingTxId) {
@@ -247,6 +300,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setTxStatus(tx.status);
     setTxInvoiceId(tx.invoiceId || '');
     setTxPaymentMethod(tx.paymentMethod);
+    setTxFirstAmount(tx.firstAmount ? tx.firstAmount.toString() : '');
+    setTxNextAmount(tx.nextAmount ? tx.nextAmount.toString() : '');
     setIsTxModalOpen(true);
   };
 
@@ -270,6 +325,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setTxStatus('paid');
     setTxInvoiceId('');
     setTxPaymentMethod(undefined);
+    setTxFirstAmount('');
+    setTxNextAmount('');
   };
 
   // Handler: Invoice items manipulation
@@ -841,11 +898,12 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   // Helper to trigger recurrence manual payment simulation
   const handleProcessRecurring = (tx: FinanceTransaction) => {
     // Generate a new transaction on today's date mimicking this recurrence
+    const chargeAmount = tx.nextAmount ?? tx.amount;
     const manualPayment: FinanceTransaction = {
       id: 'tx_' + Date.now() + '_rec',
       type: tx.type,
       category: tx.category,
-      amount: tx.amount,
+      amount: chargeAmount,
       date: new Date().toISOString().split('T')[0],
       description: `${tx.description} (Cargo Procesado)`,
       isRecurring: false,
@@ -856,7 +914,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
 
     const toast = document.getElementById('toast-msg');
     if (toast) {
-      toast.innerText = `Pago de ${tx.amount}€ procesado para: "${tx.description}"`;
+      toast.innerText = `Pago de ${chargeAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ procesado para: "${tx.description}"`;
       toast.classList.remove('opacity-0');
       setTimeout(() => toast.classList.add('opacity-0'), 3000);
     }
@@ -1337,6 +1395,12 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     return matchesSearch && matchesType && matchesCategory;
   });
 
+  // Pagination for transactions
+  const txItemsPerPage = 10;
+  const totalTxPages = Math.ceil(filteredTxs.length / txItemsPerPage);
+  const safeCurrentPage = Math.min(txCurrentPage, Math.max(1, totalTxPages));
+  const currentTxs = filteredTxs.slice((safeCurrentPage - 1) * txItemsPerPage, safeCurrentPage * txItemsPerPage);
+
   const filteredInvoices = invoices.filter(inv => {
     const searchLower = invSearch.toLowerCase();
     const matchesSearch = inv.clientName.toLowerCase().includes(searchLower) || 
@@ -1349,7 +1413,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     return matchesSearch && matchesStatus;
   });
 
-  const recurringExpenses = transactions.filter(t => t.type === 'expense' && t.isRecurring);
+  const recurringExpenses = transactions.filter(t => !!t.isRecurring);
 
   return (
     <div className="w-full h-full overflow-y-auto p-8 scrollbar-thin @container" id="finance-module-root">
@@ -1707,14 +1771,14 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {filteredTxs.length === 0 ? (
+                  {currentTxs.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="p-16 text-center text-slate-500 text-xs font-light">
                         No se encontraron registros de transacciones.
                       </td>
                     </tr>
                   ) : (
-                    filteredTxs.map(t => {
+                    currentTxs.map(t => {
                       // Custom aesthetic colors for categories
                       const catColors: Record<string, string> = {
                         'Desarrollo': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -1780,7 +1844,7 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                             {t.date}
                           </td>
                           <td className="p-4 text-left">
-                            <span className={`font-mono text-xs font-bold tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-slate-100'}`}>
+                            <span className={`font-mono text-xs font-bold tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
                               {t.type === 'income' ? '+' : '-'}{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
                             </span>
                           </td>
@@ -1855,6 +1919,53 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalTxPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 px-6 border-t border-white/5 bg-[#0b1329]/15 text-xs">
+                <span className="text-slate-400 font-sans">
+                  Mostrando registros <strong className="text-slate-200">{(safeCurrentPage - 1) * txItemsPerPage + 1}</strong> - <strong className="text-slate-200">{Math.min(safeCurrentPage * txItemsPerPage, filteredTxs.length)}</strong> de <strong className="text-slate-300 font-bold">{filteredTxs.length}</strong>
+                </span>
+                <div className="flex items-center gap-1.5 font-mono">
+                  <button
+                    onClick={() => {
+                      setTxCurrentPage(prev => Math.max(1, prev - 1));
+                      document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    disabled={safeCurrentPage === 1}
+                    className="px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
+                  >
+                    ← Anterior
+                  </button>
+                  {Array.from({ length: totalTxPages }, (_, i) => i + 1).map(pageNum => (
+                    <button
+                      key={pageNum}
+                      onClick={() => {
+                        setTxCurrentPage(pageNum);
+                        document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className={`w-7 h-7 flex items-center justify-center rounded-xl font-bold text-[11px] transition cursor-pointer border ${
+                        pageNum === safeCurrentPage
+                          ? 'bg-purple-600/10 text-purple-400 border-purple-500/30'
+                          : 'bg-transparent border-transparent hover:border-white/5 hover:bg-white/[0.02] text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => {
+                      setTxCurrentPage(prev => Math.min(totalTxPages, prev + 1));
+                      document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    disabled={safeCurrentPage === totalTxPages}
+                    className="px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
+                  >
+                    Siguiente →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1891,11 +2002,28 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                   <div className="space-y-3">
                     <div className="flex justify-between items-start gap-2">
                       <span className="text-[9px] font-mono bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2.5 py-1 rounded-xl uppercase tracking-wider font-extrabold">
-                        {item.recurrencePeriod === 'mensual' ? 'Mensual' : 'Anual'}
+                        {item.recurrencePeriod === 'weekly' || item.recurrencePeriod === 'semanal' 
+                          ? 'Semanal' 
+                          : item.recurrencePeriod === 'yearly' || item.recurrencePeriod === 'anual' 
+                            ? 'Anual' 
+                            : 'Mensual'}
                       </span>
-                      <span className="font-bold text-xs font-mono text-white text-right shrink-0">
-                        {item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
-                      </span>
+                      <div className="text-right shrink-0">
+                        {item.firstAmount !== undefined || item.nextAmount !== undefined ? (
+                          <div className="space-y-0.5">
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              1º: <span className="font-bold text-white">{((item.firstAmount !== undefined ? item.firstAmount : item.amount)).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                            </div>
+                            <div className="text-[10px] text-purple-400 font-mono">
+                              Próx: <span className="font-bold text-purple-300">{(item.nextAmount ?? item.amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="font-bold text-xs font-mono text-white">
+                            {item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div>
@@ -1905,6 +2033,11 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                       <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-wider">
                         {item.category}
                       </p>
+                    </div>
+
+                    <div className="pt-2 flex items-center gap-1.5 text-[10px] text-purple-300 font-mono bg-purple-500/5 px-2.5 py-1.5 rounded-xl border border-purple-500/10">
+                      <Calendar className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Siguiente cargo: <strong className="text-white">{getNextPaymentDate(item.date, item.recurrencePeriod)}</strong></span>
                     </div>
                   </div>
 
@@ -2330,17 +2463,45 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 </div>
 
                 {txIsRecurring && (
-                  <div className="pt-2 animate-fade-in space-y-1 block">
-                    <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block">Periodo de cobro</label>
-                    <select
-                      value={txPeriod}
-                      onChange={(e) => setTxPeriod(e.target.value as any)}
-                      className="w-full bg-slate-950 border border-purple-500/20 rounded-xl py-1 px-2.5 text-xs text-slate-200 cursor-pointer"
-                    >
-                      <option value="weekly">Semanal</option>
-                      <option value="monthly">Mensual</option>
-                      <option value="yearly">Anual</option>
-                    </select>
+                  <div className="pt-2 animate-fade-in space-y-3 block">
+                    <div className="block">
+                      <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">Periodo de cobro</label>
+                      <select
+                        value={txPeriod}
+                        onChange={(e) => setTxPeriod(e.target.value as any)}
+                        className="w-full bg-slate-950 border border-purple-500/20 rounded-xl py-2 px-3 text-xs text-slate-200 cursor-pointer focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="weekly">Semanal</option>
+                        <option value="monthly">Mensual</option>
+                        <option value="yearly">Anual</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="block">
+                        <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">Primero Costó / Costará (€)</label>
+                        <input
+                          type="number"
+                          placeholder={txAmount || "0.00"}
+                          value={txFirstAmount}
+                          onChange={(e) => setTxFirstAmount(e.target.value)}
+                          className="w-full bg-slate-950 border border-purple-500/20 rounded-xl py-2 px-3 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+                      <div className="block">
+                        <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">Siguientes Próximos (€)</label>
+                        <input
+                          type="number"
+                          placeholder={txAmount || "0.00"}
+                          value={txNextAmount}
+                          onChange={(e) => setTxNextAmount(e.target.value)}
+                          className="w-full bg-slate-950 border border-purple-500/20 rounded-xl py-2 px-3 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    </div>
+                    <span className="text-[8px] text-slate-500 block leading-tight font-sans">
+                      * El cargo inicial tendrá el precio del primero. Al pulsar "Procesar Cargo" para los siguientes vencimientos, se asentarpa el precio de los próximos.
+                    </span>
                   </div>
                 )}
               </div>
