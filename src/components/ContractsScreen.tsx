@@ -34,6 +34,9 @@ interface FacturaItem {
   description: string;
   quantity: number;
   unitPrice: number;
+  isPending?: boolean;
+  paymentMethod?: 'cash' | 'transfer';
+  pendingTxId?: string;
 }
 
 export default function ContractsScreen({ contacts, onNavigate }: ContractsScreenProps) {
@@ -262,20 +265,56 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
           description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
           quantity: 1,
           unitPrice: netPrice,
-          total: netPrice
+          total: netPrice,
+          isPending: tx.status === 'pending' || tx.status === 'draft',
+          pendingTxId: tx.id,
+          paymentMethod: tx.paymentMethod || 'transfer'
+        };
+      });
+
+      const autoCreatedTxs: any[] = [];
+      const mappedItems = validItems.map((item, idx) => {
+        const isItemPending = !!item.isPending;
+        let pTxId = item.pendingTxId;
+        const savedItemId = item.id.startsWith('temp') || isNaN(Number(item.id)) ? 'item_' + idx + '_' + Date.now() : item.id;
+
+        if (isItemPending && !pTxId) {
+          // Generate new pending transaction structure
+          pTxId = 'tx_item_pending_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 6);
+          const newTx: any = {
+            id: pTxId,
+            type: 'income',
+            category: 'Desarrollo',
+            amount: item.quantity * item.unitPrice,
+            date: showDueDate && invoiceDueDate ? invoiceDueDate : invoiceDate, // Will raise deadline notice nicely around due date
+            description: `Cobro Pendiente: ${item.description} (${invoiceClientName})`,
+            isRecurring: false,
+            status: 'pending',
+            invoiceId: invoiceNumber,
+            paymentMethod: item.paymentMethod || 'transfer'
+          };
+          autoCreatedTxs.push(newTx);
+        }
+
+        return {
+          id: savedItemId,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.quantity * item.unitPrice,
+          isPending: isItemPending,
+          pendingTxId: pTxId,
+          paymentMethod: item.paymentMethod || 'transfer'
         };
       });
 
       const finalItems = [
-        ...validItems.map(item => ({
-          id: item.id,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice
-        })),
+        ...mappedItems,
         ...linkedTxsMapped
       ];
+
+      const anyPending = finalItems.some(it => !!it.isPending);
+      const calculatedStatus = anyPending ? 'sent' : 'paid';
 
       const invoicePayload: any = {
         id: invoiceNumber,
@@ -284,7 +323,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         clientEmail: invoiceClientEmail,
         date: invoiceDate,
         dueDate: showDueDate ? invoiceDueDate : invoiceDate,
-        status: 'draft',
+        status: calculatedStatus,
         items: finalItems,
         subtotal: subtotal,
         taxPercentage: taxPercentage,
@@ -309,23 +348,48 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       }
 
       // Synchronize associated transactions
-      const updatedTxs = allTransactions.map(t => {
+      let updatedTxs = allTransactions.map(t => {
         if (linkedTxIds.includes(t.id)) {
           return { ...t, invoiceId: invoiceNumber };
         } else if (t.invoiceId === invoiceNumber) {
+          const matchedItem = finalItems.find(it => it.pendingTxId === t.id);
+          if (matchedItem) {
+            return {
+              ...t,
+              amount: matchedItem.total,
+              description: `Cobro Pendiente: ${matchedItem.description} (${invoiceClientName})`,
+              paymentMethod: matchedItem.paymentMethod || 'transfer'
+            };
+          }
           return { ...t, invoiceId: null };
         }
         return t;
       });
 
+      // Insert fresh pending transactions if any
+      if (autoCreatedTxs.length > 0) {
+        for (const newTx of autoCreatedTxs) {
+          try {
+            await db.insertFinanceTransaction(newTx);
+          } catch (txErr) {
+            console.error('Error inserting auto-created transaction:', txErr);
+          }
+        }
+        updatedTxs = [...autoCreatedTxs, ...updatedTxs];
+      }
+
       // Update in database safely
       for (const tx of updatedTxs) {
         const originalTx = allTransactions.find(ot => ot.id === tx.id);
-        if (originalTx && originalTx.invoiceId !== tx.invoiceId) {
-          try {
-            await db.updateFinanceTransaction(tx);
-          } catch (txErr) {
-            console.error(`Error updating transaction ${tx.id} in DB:`, txErr);
+        if (originalTx) {
+          const hasInvoiceIdChanged = originalTx.invoiceId !== tx.invoiceId;
+          const hasAmountOrDescChanged = originalTx.amount !== tx.amount || originalTx.description !== tx.description || originalTx.paymentMethod !== tx.paymentMethod;
+          if (hasInvoiceIdChanged || hasAmountOrDescChanged) {
+            try {
+              await db.updateFinanceTransaction(tx);
+            } catch (txErr) {
+              console.error(`Error updating transaction ${tx.id} in DB:`, txErr);
+            }
           }
         }
       }
@@ -358,20 +422,55 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
           description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
           quantity: 1,
           unitPrice: netPrice,
-          total: netPrice
+          total: netPrice,
+          isPending: tx.status === 'pending' || tx.status === 'draft',
+          pendingTxId: tx.id,
+          paymentMethod: tx.paymentMethod || 'transfer'
+        };
+      });
+
+      const autoCreatedTxs: any[] = [];
+      const mappedItems = validItems.map((item, idx) => {
+        const isItemPending = !!item.isPending;
+        let pTxId = item.pendingTxId;
+        const savedItemId = item.id.startsWith('temp') || isNaN(Number(item.id)) ? 'item_' + idx + '_' + Date.now() : item.id;
+
+        if (isItemPending && !pTxId) {
+          pTxId = 'tx_item_pending_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 6);
+          const newTx = {
+            id: pTxId,
+            type: 'income',
+            category: 'Desarrollo',
+            amount: item.quantity * item.unitPrice,
+            date: showDueDate && invoiceDueDate ? invoiceDueDate : invoiceDate,
+            description: `Cobro Pendiente: ${item.description} (${invoiceClientName})`,
+            isRecurring: false,
+            status: 'pending',
+            invoiceId: invoiceNumber,
+            paymentMethod: item.paymentMethod || 'transfer'
+          };
+          autoCreatedTxs.push(newTx);
+        }
+
+        return {
+          id: savedItemId,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.quantity * item.unitPrice,
+          isPending: isItemPending,
+          pendingTxId: pTxId,
+          paymentMethod: item.paymentMethod || 'transfer'
         };
       });
 
       const finalItems = [
-        ...validItems.map(item => ({
-          id: item.id,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice
-        })),
+        ...mappedItems,
         ...linkedTxsMapped
       ];
+
+      const anyPending = finalItems.some(it => !!it.isPending);
+      const calculatedStatus = anyPending ? 'sent' : 'paid';
 
       const invoicePayload: any = {
         id: invoiceNumber,
@@ -380,7 +479,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         clientEmail: invoiceClientEmail,
         date: invoiceDate,
         dueDate: showDueDate ? invoiceDueDate : invoiceDate,
-        status: 'draft',
+        status: calculatedStatus,
         items: finalItems,
         subtotal: subtotal,
         taxPercentage: taxPercentage,
@@ -404,14 +503,28 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       }
       localStorage.setItem('agency_finance_invoices', JSON.stringify(savedInvoices));
 
-      const updatedTxs = allTransactions.map(t => {
+      let updatedTxs = allTransactions.map(t => {
         if (linkedTxIds.includes(t.id)) {
           return { ...t, invoiceId: invoiceNumber };
         } else if (t.invoiceId === invoiceNumber) {
+          const matchedItem = finalItems.find(it => it.pendingTxId === t.id);
+          if (matchedItem) {
+            return {
+              ...t,
+              amount: matchedItem.total,
+              description: `Cobro Pendiente: ${matchedItem.description} (${invoiceClientName})`,
+              paymentMethod: matchedItem.paymentMethod || 'transfer'
+            };
+          }
           return { ...t, invoiceId: null };
         }
         return t;
       });
+
+      if (autoCreatedTxs.length > 0) {
+        updatedTxs = [...autoCreatedTxs, ...updatedTxs];
+      }
+
       setAllTransactions(updatedTxs);
       localStorage.setItem('agency_finance_transactions', JSON.stringify(updatedTxs));
       
@@ -1498,9 +1611,9 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                         className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-xs text-slate-350"
                       />
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[8px] font-mono text-slate-500">Cantidad</label>
+                      <div className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-2">
+                          <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Cant.</label>
                           <input
                             type="number"
                             min="1"
@@ -1509,14 +1622,37 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                             className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-xs text-center text-slate-100"
                           />
                         </div>
-                        <div>
-                          <label className="text-[8px] font-mono text-slate-500">Precio Unitario (€)</label>
+                        <div className="col-span-3">
+                          <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Precio (€)</label>
                           <input
                             type="number"
                             value={item.unitPrice}
                             onChange={(e) => handleUpdateItem(item.id, 'unitPrice', Number(e.target.value))}
-                            className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-xs text-center text-slate-100"
+                            className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-xs text-left text-slate-100"
                           />
+                        </div>
+                        <div className="col-span-4">
+                          <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Método</label>
+                          <select
+                            value={item.paymentMethod || 'transfer'}
+                            onChange={(e) => handleUpdateItem(item.id, 'paymentMethod', e.target.value as any)}
+                            className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-[11px] text-slate-100 cursor-pointer focus:outline-none"
+                          >
+                            <option value="transfer">🏦 Trsf.</option>
+                            <option value="cash">💸 Cash</option>
+                          </select>
+                        </div>
+                        <div className="col-span-3 flex flex-col items-center justify-center pb-1">
+                          <label className="text-[8px] font-mono text-slate-500 block mb-1">Pendiente</label>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!!item.isPending}
+                              onChange={(e) => handleUpdateItem(item.id, 'isPending', e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-8 h-4 bg-neutral-900 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-500 after:border-neutral-700 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-amber-500/30 peer-checked:after:bg-amber-400 border border-neutral-800"></div>
+                          </label>
                         </div>
                       </div>
                     </div>
@@ -2218,7 +2354,29 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                       {invoiceItems.map((item) => (
                         <tr key={item.id} className="text-neutral-800">
                           <td className="py-3 px-1 leading-relaxed">
-                            <span className="font-semibold text-neutral-900">{item.description}</span>
+                            <div className="flex flex-col text-left">
+                              <span className="font-semibold text-neutral-900 flex items-center gap-1.5 flex-wrap">
+                                <span>{item.description}</span>
+                                {item.isPending ? (
+                                  <span className="text-[8px] px-1 py-0.5 rounded uppercase font-extrabold tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
+                                    Pendiente
+                                  </span>
+                                ) : (
+                                  <span className="text-[8px] px-1 py-0.5 rounded uppercase font-extrabold tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    Cobrado
+                                  </span>
+                                )}
+                                {item.paymentMethod && (
+                                  <span className={`text-[8px] px-1 py-0.5 rounded uppercase font-extrabold tracking-wider ${
+                                    item.paymentMethod === 'cash'
+                                      ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                      : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                                  }`}>
+                                    {item.paymentMethod === 'cash' ? '💸 Efectivo' : '🏦 Trsf.'}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
                           </td>
                           <td className="py-3 px-2 text-center font-mono">{item.quantity}</td>
                           <td className="py-3 px-3 text-right font-mono">{item.unitPrice.toFixed(2)} €</td>
