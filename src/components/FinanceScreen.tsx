@@ -195,11 +195,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     .filter(t => t.type === 'expense' && t.status === 'pending')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const unpaidInvoicesTotal = invoices
-    .filter(inv => inv.status === 'sent' || inv.status === 'overdue')
-    .reduce((sum, inv) => sum + inv.total, 0);
-
-  const pendingBalance = pendingIncomes + unpaidInvoicesTotal - pendingExpenses;
+  const pendingBalance = pendingIncomes - pendingExpenses;
 
   // Filter transaction categories
   const categories = ['All', ...Array.from(new Set(transactions.map(t => t.category)))];
