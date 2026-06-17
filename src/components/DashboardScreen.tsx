@@ -86,6 +86,35 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
+// Custom Note Date formatter (handles direct/formatted strings & parseable timestamp comparisons in local language)
+function renderNoteDate(updatedAt: string) {
+  if (!updatedAt) return '';
+  const parsed = Date.parse(updatedAt);
+  if (isNaN(parsed)) {
+    return updatedAt; // already-formatted string e.g., 'Oct 12, 2023' or 'Yesterday'
+  }
+  const date = new Date(parsed);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) {
+    return 'Hace un momento';
+  } else if (diffMins < 60) {
+    return `Hace ${diffMins} min`;
+  } else if (diffHours < 24) {
+    return `Hace ${diffHours} h`;
+  } else if (diffDays === 1) {
+    return 'Ayer';
+  } else if (diffDays < 7) {
+    return `Hace ${diffDays} días`;
+  } else {
+    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+}
+
 interface DashboardScreenProps {
   events: CalendarEvent[];
   notes: Note[];
@@ -131,8 +160,28 @@ export default function DashboardScreen({
     }
   };
 
-  // Get next 3 meetings
-  const upcomingMeetings = events.slice(0, 3);
+  // Get next 3 meetings (filtering out past events, keeping future events and current day events that have not passed)
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const curHours = new Date().getHours().toString().padStart(2, '0');
+  const curMins = new Date().getMinutes().toString().padStart(2, '0');
+  const currentTimeStr = `${curHours}:${curMins}`;
+
+  const upcomingMeetings = events
+    .filter(ev => {
+      if (!ev.date) return false;
+      if (ev.date > todayStr) return true;
+      if (ev.date === todayStr) {
+        return (ev.time || '00:00') >= currentTimeStr;
+      }
+      return false;
+    })
+    .sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return (a.time || '00:00').localeCompare(b.time || '00:00');
+    })
+    .slice(0, 3);
+
   const recentTwoNotes = notes.slice(0, 2);
 
   return (
@@ -230,37 +279,51 @@ export default function DashboardScreen({
             </div>
 
             <div className="p-6 space-y-4 max-h-[340px] overflow-y-auto">
-              {upcomingMeetings.map((ev) => {
-                let badgeColor = "bg-blue-500/20 text-blue-400 border-blue-500/20";
-                if (ev.type === "Deadline") badgeColor = "bg-red-500/20 text-red-400 border-red-500/20";
-                else if (ev.type === "Review") badgeColor = "bg-purple-500/20 text-purple-400 border-purple-500/20";
-                else if (ev.type === "Kickoff") badgeColor = "bg-emerald-500/20 text-emerald-400 border-emerald-500/20";
+              {upcomingMeetings.length === 0 ? (
+                <p className="text-xs text-slate-500 font-light py-8 text-center">No hay eventos programados próximamente.</p>
+              ) : (
+                upcomingMeetings.map((ev) => {
+                  let badgeColor = "bg-blue-500/20 text-blue-400 border-blue-500/20";
+                  if (ev.type === "Deadline") badgeColor = "bg-red-500/20 text-red-400 border-red-500/20";
+                  else if (ev.type === "Review") badgeColor = "bg-purple-500/20 text-purple-400 border-purple-500/20";
+                  else if (ev.type === "Kickoff") badgeColor = "bg-emerald-500/20 text-emerald-400 border-emerald-500/20";
 
-                return (
-                  <div key={ev.id} className="flex gap-4 group">
-                    <div className="w-16 flex flex-col items-center justify-center py-2.5 rounded-xl bg-slate-950/60 border border-white/5">
-                      <span className="text-xs font-bold text-slate-300">{ev.time}</span>
-                      <span className="text-[9px] uppercase font-mono tracking-wider text-slate-500">am</span>
-                    </div>
+                  const parsedHours = parseInt((ev.time || '12').split(':')[0], 10);
+                  const isPm = !isNaN(parsedHours) && parsedHours >= 12;
 
-                    <div className={`flex-1 p-4 rounded-xl border-l-4 bg-slate-950/30 hover:bg-white/5 transition-all duration-200 ${
-                      ev.type === 'Deadline' ? 'border-red-500' : ev.type === 'Review' ? 'border-purple-500' : 'border-blue-500'
-                    }`}>
-                      <div className="flex justify-between items-start gap-2">
-                        <h5 className="font-semibold text-xs text-white group-hover:text-blue-400 transition-colors">
-                          {ev.title}
-                        </h5>
-                        <span className={`px-2 py-0.5 rounded border text-[8px] font-mono uppercase tracking-wider ${badgeColor}`}>
-                          {ev.type}
-                        </span>
+                  return (
+                    <div key={ev.id} className="flex gap-4 group">
+                      <div className="w-16 flex flex-col items-center justify-center py-2.5 rounded-xl bg-slate-950/60 border border-white/5 shrink-0">
+                        <span className="text-xs font-bold text-slate-300">{ev.time || '12:00'}</span>
+                        <span className="text-[9px] uppercase font-mono tracking-wider text-slate-500">{isPm ? 'pm' : 'am'}</span>
                       </div>
-                      <p className="text-slate-400 text-xs mt-1.5 line-clamp-2">
-                        {ev.description}
-                      </p>
+
+                      <div className={`flex-1 p-4 rounded-xl border-l-4 bg-slate-950/30 hover:bg-white/5 transition-all duration-200 ${
+                        ev.type === 'Deadline' ? 'border-red-500' : ev.type === 'Review' ? 'border-purple-500' : 'border-blue-500'
+                      }`}>
+                        <div className="flex justify-between items-start gap-2">
+                          <h5 className="font-semibold text-xs text-white group-hover:text-blue-400 transition-colors">
+                            {ev.title}
+                          </h5>
+                          <span className={`px-2 py-0.5 rounded border text-[8px] font-mono uppercase tracking-wider ${badgeColor}`}>
+                            {ev.type}
+                          </span>
+                        </div>
+                        
+                        {ev.date && ev.date !== todayStr && (
+                          <p className="text-[9px] text-blue-400 font-mono font-medium mt-1 uppercase tracking-wider">
+                            📅 {new Date(`${ev.date}T12:00:00`).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+                          </p>
+                        )}
+
+                        <p className="text-slate-400 text-xs mt-1.5 line-clamp-2">
+                          {ev.description}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -290,7 +353,7 @@ export default function DashboardScreen({
                     <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 font-mono text-[9px] uppercase tracking-wider border border-purple-500/20">
                       {note.category}
                     </span>
-                    <span className="text-[9px] text-slate-500 font-mono">{note.updatedAt}</span>
+                    <span className="text-[9px] text-slate-500 font-mono">{renderNoteDate(note.updatedAt)}</span>
                   </div>
 
                   <h5 className="font-semibold text-xs text-white group-hover:text-purple-400 transition-colors mb-2 line-clamp-1">

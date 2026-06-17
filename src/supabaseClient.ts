@@ -789,15 +789,21 @@ export const db = {
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     
-    const notes = (data || []).map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      content: row.content,
-      category: row.category,
-      updatedAt: row.updatedAt || row.updated_at || new Date().toISOString(),
-      authorName: row.authorName || row.author_name || 'Alex Rivera',
-      authorAvatar: row.authorAvatar || row.author_avatar || ''
-    })) as Note[];
+    const notes = (data || []).map((row: any) => {
+      let cleanUpdate = row.updatedAt || row.updated_at;
+      if (cleanUpdate === 'Just now' || !cleanUpdate) {
+        cleanUpdate = row.created_at || new Date().toISOString();
+      }
+      return {
+        id: row.id,
+        title: row.title,
+        content: row.content,
+        category: row.category,
+        updatedAt: cleanUpdate,
+        authorName: row.authorName || row.author_name || 'Alex Rivera',
+        authorAvatar: row.authorAvatar || row.author_avatar || ''
+      };
+    }) as Note[];
 
     return notes.map(n => this.parseNoteMetadata(n));
   },
