@@ -1,4 +1,4 @@
-export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling';
+export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub';
 
 export interface InquiryMessage {
   id: string;
@@ -35,6 +35,13 @@ export interface ClientContact {
   contactedByComercialName?: string;
   contactedByComercialEmail?: string;
   originalLeadNotes?: string;
+  // Developer Hub Properties
+  devStatus?: 'backlog' | 'design' | 'development' | 'testing' | 'deployed' | 'completed';
+  devAssignedTo?: string;
+  devDeadline?: string;
+  devTechStack?: string[];
+  devChecklist?: string; // stringified JSON tasks: { id: string; text: string; done: boolean }[]
+  devNotes?: string;
 }
 
 export interface CalendarEvent {

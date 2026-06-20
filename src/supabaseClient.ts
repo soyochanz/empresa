@@ -421,6 +421,14 @@ export const db = {
     let originalLeadNotes: string | undefined = undefined;
     let temperature: 'Frío' | 'Templado' | 'Caliente' | undefined = undefined;
     
+    // Dev metadata properties
+    let devStatus: 'backlog' | 'design' | 'development' | 'testing' | 'deployed' | 'completed' | undefined = undefined;
+    let devAssignedTo: string | undefined = undefined;
+    let devDeadline: string | undefined = undefined;
+    let devTechStack: string[] | undefined = undefined;
+    let devChecklist: string | undefined = undefined;
+    let devNotes: string | undefined = undefined;
+    
     if (parts.length > 1) {
       const metadataLines = parts[1].split('\n');
       metadataLines.forEach(line => {
@@ -439,16 +447,30 @@ export const db = {
               temperature = v;
             }
           }
+          if (key === 'devStatus') {
+            const v = val.trim();
+            if (['backlog', 'design', 'development', 'testing', 'deployed', 'completed'].includes(v)) {
+              devStatus = v as any;
+            }
+          }
+          if (key === 'devAssignedTo') devAssignedTo = val || undefined;
+          if (key === 'devDeadline') devDeadline = val || undefined;
+          if (key === 'devTechStack') devTechStack = val ? val.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+          
           try {
             if (key === 'notes') notes = decodeURIComponent(val) || undefined;
             if (key === 'contactedByComercialName') contactedByComercialName = decodeURIComponent(val) || undefined;
             if (key === 'contactedByComercialEmail') contactedByComercialEmail = val || undefined;
             if (key === 'originalLeadNotes') originalLeadNotes = decodeURIComponent(val) || undefined;
+            if (key === 'devChecklist') devChecklist = decodeURIComponent(val) || undefined;
+            if (key === 'devNotes') devNotes = decodeURIComponent(val) || undefined;
           } catch (e) {
             if (key === 'notes') notes = val || undefined;
             if (key === 'contactedByComercialName') contactedByComercialName = val || undefined;
             if (key === 'contactedByComercialEmail') contactedByComercialEmail = val || undefined;
             if (key === 'originalLeadNotes') originalLeadNotes = val || undefined;
+            if (key === 'devChecklist') devChecklist = val || undefined;
+            if (key === 'devNotes') devNotes = val || undefined;
           }
         }
       });
@@ -466,6 +488,12 @@ export const db = {
       contactedByComercialEmail,
       originalLeadNotes,
       temperature,
+      devStatus,
+      devAssignedTo,
+      devDeadline,
+      devTechStack,
+      devChecklist,
+      devNotes,
       hostingCredentials: cleanCredentials
     };
   },
@@ -483,7 +511,13 @@ export const db = {
       contact.contactedByComercialName ||
       contact.contactedByComercialEmail ||
       contact.originalLeadNotes ||
-      contact.temperature
+      contact.temperature ||
+      contact.devStatus ||
+      contact.devAssignedTo ||
+      contact.devDeadline ||
+      contact.devTechStack ||
+      contact.devChecklist ||
+      contact.devNotes
     ) {
       metadataStr = '\n\n---METADATA---';
       if (contact.color) metadataStr += `\ncolor: ${contact.color}`;
@@ -496,6 +530,12 @@ export const db = {
       if (contact.contactedByComercialEmail) metadataStr += `\ncontactedByComercialEmail: ${contact.contactedByComercialEmail}`;
       if (contact.originalLeadNotes) metadataStr += `\noriginalLeadNotes: ${encodeURIComponent(contact.originalLeadNotes)}`;
       if (contact.temperature) metadataStr += `\ntemperature: ${contact.temperature}`;
+      if (contact.devStatus) metadataStr += `\ndevStatus: ${contact.devStatus}`;
+      if (contact.devAssignedTo) metadataStr += `\ndevAssignedTo: ${contact.devAssignedTo}`;
+      if (contact.devDeadline) metadataStr += `\ndevDeadline: ${contact.devDeadline}`;
+      if (contact.devTechStack) metadataStr += `\ndevTechStack: ${contact.devTechStack.join(',')}`;
+      if (contact.devChecklist) metadataStr += `\ndevChecklist: ${encodeURIComponent(contact.devChecklist)}`;
+      if (contact.devNotes) metadataStr += `\ndevNotes: ${encodeURIComponent(contact.devNotes)}`;
     }
     const cleanCredentials = (contact.hostingCredentials || '').split('\n\n---METADATA---')[0];
     

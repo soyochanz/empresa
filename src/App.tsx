@@ -25,6 +25,7 @@ import ComercialesAccesoScreen from './components/ComercialesAccesoScreen';
 import ComercialesPanelScreen from './components/ComercialesPanelScreen';
 import ComercialesAdminScreen from './components/ComercialesAdminScreen';
 import ColdCallingScreen from './components/ColdCallingScreen';
+import DeveloperHubScreen from './components/DeveloperHubScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
@@ -82,6 +83,7 @@ function getScreenFromHash(hashString: string, isLoggedIn: boolean, isComercialL
     if (hash === '#/admin/contratos') return { screen: 'contratos' };
     if (hash === '#/admin/comerciales') return { screen: 'comerciales_admin' };
     if (hash === '#/admin/cold-calling') return { screen: 'cold_calling' };
+    if (hash === '#/admin/dev-hub') return { screen: 'developer_hub' };
     
     return { screen: 'dashboard' };
   }
@@ -100,6 +102,7 @@ function getHashFromScreen(screen: Screen): string {
     case 'crm': return '#/admin/crm';
     case 'notes': return '#/admin/notes';
     case 'projects': return '#/admin/projects';
+    case 'developer_hub': return '#/admin/dev-hub';
     case 'finanzas': return '#/admin/finanzas';
     case 'contactos': return '#/admin/contactos';
     case 'citas': return '#/admin/citas';
@@ -1183,6 +1186,17 @@ export default function App() {
             onNavigate={navigateTo}
             onAddEvent={handleAddEvent}
             onAddContact={handleAddContact}
+          />
+        );
+      case 'developer_hub':
+        return (
+          <DeveloperHubScreen
+            contacts={contacts}
+            projects={projects}
+            onUpdateContact={handleUpdateContact}
+            onAddProject={handleAddProject}
+            onNavigate={navigateTo}
+            usersList={usersList}
           />
         );
       default:

@@ -12,7 +12,8 @@ import {
   Briefcase,
   Mail,
   Receipt,
-  Phone
+  Phone,
+  Code
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -177,6 +178,21 @@ export default function Sidebar({
             currentScreen === 'projects' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
           }`} />
           <span className="font-sans text-sm">Proyectos</span>
+        </button>
+
+        {/* Organización Devs */}
+        <button
+          onClick={() => onNavigate('developer_hub', 'none')}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
+            currentScreen === 'developer_hub'
+              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
+              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
+          }`}
+        >
+          <Code className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
+            currentScreen === 'developer_hub' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
+          }`} />
+          <span className="font-sans text-sm">Organización Devs</span>
         </button>
 
         {/* Finanzas (Ingresos, Gastos, Gastos Recurrentes, Facturas) */}
