@@ -419,6 +419,7 @@ export const db = {
     let contactedByComercialName: string | undefined = undefined;
     let contactedByComercialEmail: string | undefined = undefined;
     let originalLeadNotes: string | undefined = undefined;
+    let temperature: 'Frío' | 'Templado' | 'Caliente' | undefined = undefined;
     
     if (parts.length > 1) {
       const metadataLines = parts[1].split('\n');
@@ -432,6 +433,12 @@ export const db = {
           if (key === 'assignedUserEmail') assignedUserEmail = val || undefined;
           if (key === 'phone') phone = val || undefined;
           if (key === 'linkedin') linkedin = val || undefined;
+          if (key === 'temperature') {
+            const v = val.trim();
+            if (v === 'Frío' || v === 'Templado' || v === 'Caliente') {
+              temperature = v;
+            }
+          }
           try {
             if (key === 'notes') notes = decodeURIComponent(val) || undefined;
             if (key === 'contactedByComercialName') contactedByComercialName = decodeURIComponent(val) || undefined;
@@ -458,6 +465,7 @@ export const db = {
       contactedByComercialName,
       contactedByComercialEmail,
       originalLeadNotes,
+      temperature,
       hostingCredentials: cleanCredentials
     };
   },
@@ -474,7 +482,8 @@ export const db = {
       contact.notes ||
       contact.contactedByComercialName ||
       contact.contactedByComercialEmail ||
-      contact.originalLeadNotes
+      contact.originalLeadNotes ||
+      contact.temperature
     ) {
       metadataStr = '\n\n---METADATA---';
       if (contact.color) metadataStr += `\ncolor: ${contact.color}`;
@@ -486,27 +495,30 @@ export const db = {
       if (contact.contactedByComercialName) metadataStr += `\ncontactedByComercialName: ${encodeURIComponent(contact.contactedByComercialName)}`;
       if (contact.contactedByComercialEmail) metadataStr += `\ncontactedByComercialEmail: ${contact.contactedByComercialEmail}`;
       if (contact.originalLeadNotes) metadataStr += `\noriginalLeadNotes: ${encodeURIComponent(contact.originalLeadNotes)}`;
+      if (contact.temperature) metadataStr += `\ntemperature: ${contact.temperature}`;
     }
     const cleanCredentials = (contact.hostingCredentials || '').split('\n\n---METADATA---')[0];
     
-    // Create a database-safe copy without custom props that are not database columns
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { 
-      color, 
-      assignedUserId, 
-      assignedUserEmail, 
-      phone, 
-      linkedin, 
-      notes,
-      contactedByComercialName,
-      contactedByComercialEmail,
-      originalLeadNotes,
-      ...dbSafeContact 
-    } = contact;
-    return {
-      ...dbSafeContact,
-      hostingCredentials: cleanCredentials + metadataStr
-    };
+    // Construct database-safe object strictly conforming to PostgreSQL contacts table schema
+    const dbSafeContact: any = {};
+    if (contact.id !== undefined) dbSafeContact.id = contact.id;
+    if (contact.name !== undefined) dbSafeContact.name = contact.name;
+    if (contact.email !== undefined) dbSafeContact.email = contact.email;
+    if (contact.company !== undefined) dbSafeContact.company = contact.company;
+    if (contact.status !== undefined) dbSafeContact.status = contact.status;
+    if (contact.lastContacted !== undefined) dbSafeContact.lastContacted = contact.lastContacted;
+    if (contact.role !== undefined) dbSafeContact.role = contact.role;
+    if (contact.priority !== undefined) dbSafeContact.priority = contact.priority;
+    if (contact.avatarUrl !== undefined) dbSafeContact.avatarUrl = contact.avatarUrl;
+    if (contact.location !== undefined) dbSafeContact.location = contact.location;
+    if (contact.addedDate !== undefined) dbSafeContact.addedDate = contact.addedDate;
+    if (contact.website !== undefined) dbSafeContact.website = contact.website;
+    if (contact.githubRepo !== undefined) dbSafeContact.githubRepo = contact.githubRepo;
+    if (contact.initials !== undefined) dbSafeContact.initials = contact.initials;
+    
+    dbSafeContact.hostingCredentials = cleanCredentials + metadataStr;
+    
+    return dbSafeContact;
   },
 
   async getContacts(userId?: string): Promise<ClientContact[]> {
