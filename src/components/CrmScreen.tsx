@@ -568,12 +568,29 @@ export default function CrmScreen({
                     <span className="text-[10px] opacity-70">📋</span>
                   </button>
 
-                  <div className="flex justify-center gap-1.5 mt-3">
-                    <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      {selectedContact.status}
-                    </span>
+                  <div className="flex justify-center gap-1.5 mt-4 items-center">
+                    <div className="relative">
+                      <select 
+                        value={selectedContact.status}
+                        onChange={(e) => {
+                          const val = e.target.value as 'Client' | 'Lead';
+                          if (onUpdateContact) {
+                            onUpdateContact({
+                              ...selectedContact,
+                              status: val
+                            });
+                          }
+                        }}
+                        className="appearance-none font-bold text-[9px] uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 pl-2.5 pr-6 py-1 rounded-xl cursor-pointer transition focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/20"
+                        title="Cambiar estado del contacto"
+                      >
+                        <option value="Lead" className="bg-[#0e1628] text-slate-300 font-sans font-medium text-xs">Lead</option>
+                        <option value="Client" className="bg-[#0e1628] text-slate-300 font-sans font-medium text-xs">Client</option>
+                      </select>
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none text-[8px] scale-75">▼</span>
+                    </div>
                     {selectedContact.priority && (
-                      <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                      <span className="px-2.5 py-1 rounded-xl text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
                         High Priority
                       </span>
                     )}

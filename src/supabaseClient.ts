@@ -526,8 +526,8 @@ export const db = {
 
   async updateContact(contact: ClientContact, userId?: string): Promise<void> {
     const serialized = this.serializeContactMetadata(contact);
-    // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
-    const { user_id, ...payload } = serialized;
+    // Prevent overwriting the user_id column or immutable primary key id column on update to allow admins to edit other admins' entries.
+    const { user_id, id, ...payload } = serialized;
     const { error } = await supabase.from('contacts').update(payload).eq('id', contact.id);
     if (error) throw error;
   },
@@ -578,7 +578,7 @@ export const db = {
 
   async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
     // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
-    const { paymentMethod, user_id, ...rest } = transaction as any;
+    const { paymentMethod, user_id, id, ...rest } = transaction as any;
     let desc = rest.description || '';
     if (paymentMethod === 'cash') {
       desc = desc + ' [PM:cash]';
@@ -613,7 +613,7 @@ export const db = {
 
   async updateFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
     // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
-    const { user_id, ...payload } = invoice as any;
+    const { user_id, id, ...payload } = invoice as any;
     const { error } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id);
     if (error) throw error;
   },
@@ -773,7 +773,7 @@ export const db = {
   async updateEvent(event: CalendarEvent, userId?: string): Promise<void> {
     const serialized = this.serializeEventMetadata(event);
     // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
-    const { status, parentEventId, user_id, ...cleanEvent } = serialized;
+    const { status, parentEventId, user_id, id, ...cleanEvent } = serialized;
     const { error } = await supabase.from('events').update(cleanEvent).eq('id', event.id);
     if (error) throw error;
   },
