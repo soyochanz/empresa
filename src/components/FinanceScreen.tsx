@@ -2042,7 +2042,22 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                   </div>
 
                   <div className="mt-5 pt-3 border-t border-white/5 flex items-center justify-between gap-1.5">
-                    <span className="text-[10px] text-slate-500 font-mono">Liquidación</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleEditTx(item)}
+                        className="p-1.5 text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded-xl transition duration-200 cursor-pointer"
+                        title="Editar cargo recurrente"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTx(item.id)}
+                        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition duration-200 cursor-pointer"
+                        title="Eliminar cargo recurrente"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <button
                       onClick={() => handleProcessRecurring(item)}
                       className="text-[10px] bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white font-extrabold px-3.5 py-2 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1 active:scale-95 shadow-md shadow-purple-500/10"

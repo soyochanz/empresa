@@ -854,7 +854,51 @@ export default function App() {
   };
 
   const handleUpdateContact = async (updated: ClientContact) => {
-    // 1. Optimistic UI update
+    // 1. Apply user production rules:
+    // If devStatus is set to 'completed', devAssignedTo must always be 'Nacho'
+    if (updated.devStatus === 'completed') {
+      updated.devAssignedTo = 'Nacho';
+      
+      // Auto-archive completed project/contact in local storage so it is moved to "Archivados" tab in CRM
+      try {
+        const saved = localStorage.getItem('archived_contacts_ids');
+        let archivedIds: string[] = [];
+        if (saved) {
+          archivedIds = JSON.parse(saved);
+        }
+        if (!archivedIds.includes(updated.id)) {
+          archivedIds.push(updated.id);
+          localStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds));
+        }
+      } catch (err) {
+        console.error('Error auto-archiving completed project:', err);
+      }
+    }
+
+    // Once a contact has been marked as completed, even if they put it in red in the future,
+    // it remains fully completed 'completed' and assigned to 'Nacho'
+    const existingContact = contacts.find(c => c.id === updated.id);
+    if (existingContact && existingContact.devStatus === 'completed') {
+      updated.devStatus = 'completed';
+      updated.devAssignedTo = 'Nacho';
+
+      // Also ensure it stays archived
+      try {
+        const saved = localStorage.getItem('archived_contacts_ids');
+        let archivedIds: string[] = [];
+        if (saved) {
+          archivedIds = JSON.parse(saved);
+        }
+        if (!archivedIds.includes(updated.id)) {
+          archivedIds.push(updated.id);
+          localStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds));
+        }
+      } catch (err) {
+        console.error('Error auto-archiving completed project:', err);
+      }
+    }
+
+    // 2. Optimistic UI update
     setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
 
     // 2. Persistent Supabase write

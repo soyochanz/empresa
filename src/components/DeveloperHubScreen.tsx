@@ -299,7 +299,18 @@ export default function DeveloperHubScreen({
   };
 
   // Filter contacts (every CRM contact represents a potential web project)
-  const filteredDevWorks = contacts.filter(contact => {
+  // Rule: "en dev ops solo saldran pendientes las que estan en rojo en clientes"
+  const devHubContacts = contacts.filter(contact => {
+    const isCompleted = contact.devStatus === 'completed';
+    const isPending = !isCompleted;
+    const contactColor = contact.color?.toLowerCase() || '';
+    const isRose = contactColor === 'rose' || contactColor === 'red';
+
+    // If pending, it must have a red/rose color to be listed in DevOps
+    return isCompleted || isRose;
+  });
+
+  const filteredDevWorks = devHubContacts.filter(contact => {
     const query = searchQuery.toLowerCase();
     const matchesSearch = 
       contact.name.toLowerCase().includes(query) ||
@@ -319,12 +330,12 @@ export default function DeveloperHubScreen({
     return matchesSearch && matchStatus && matchCrmType;
   });
 
-  // KPI Calculations
-  const totalTickets = contacts.length;
-  const backlogCount = contacts.filter(c => !c.devStatus || c.devStatus === 'backlog').length;
-  const inDevCount = contacts.filter(c => c.devStatus === 'development').length;
-  const inDesignCount = contacts.filter(c => c.devStatus === 'design').length;
-  const completedDevCount = contacts.filter(c => c.devStatus === 'completed' || c.devStatus === 'deployed').length;
+  // KPI Calculations based on eligible DevOps contacts
+  const totalTickets = devHubContacts.length;
+  const backlogCount = devHubContacts.filter(c => !c.devStatus || c.devStatus === 'backlog').length;
+  const inDevCount = devHubContacts.filter(c => c.devStatus === 'development').length;
+  const inDesignCount = devHubContacts.filter(c => c.devStatus === 'design').length;
+  const completedDevCount = devHubContacts.filter(c => c.devStatus === 'completed' || c.devStatus === 'deployed').length;
 
   return (
     <div className="p-8 space-y-8 flex-1 overflow-y-auto bg-transparent text-slate-100 relative min-h-screen">

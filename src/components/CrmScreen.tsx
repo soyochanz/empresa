@@ -419,8 +419,13 @@ export default function CrmScreen({
                             )}
                           </div>
                           <div>
-                            <div>
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-semibold text-xs text-white pb-0.5">{contact.name}</p>
+                              {(contactColor === 'rose' || contact.color === 'red') && (
+                                <span className="px-1.5 py-0.2 bg-rose-500/10 text-[8px] font-bold text-rose-455 border border-rose-500/15 rounded uppercase tracking-wider font-mono">
+                                  Le Falta Web
+                                </span>
+                              )}
                             </div>
                             <p className="text-[10px] text-slate-505">{contact.email}</p>
                           </div>
@@ -610,7 +615,7 @@ export default function CrmScreen({
                             currentColor === 'rose' ? 'bg-rose-500/10 text-rose-455 border-rose-500/20' :
                             'bg-violet-500/10 text-violet-400 border-violet-500/20'
                           }`}>
-                            {currentColor}
+                            {currentColor === 'rose' ? 'ROJO (Falta Web)' : currentColor}
                           </span>
                         </div>
                         

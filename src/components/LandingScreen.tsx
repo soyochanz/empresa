@@ -177,19 +177,9 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
         @keyframes spinAndWarpTopography {
           0% {
             transform: rotate(0deg) scale(1);
-            border-radius: 43% 57% 49% 51% / 46% 54% 46% 54%;
-          }
-          33% {
-            transform: rotate(45deg) scale(1.04);
-            border-radius: 52% 48% 58% 42% / 49% 51% 53% 47%;
-          }
-          66% {
-            transform: rotate(115deg) scale(0.96);
-            border-radius: 39% 61% 41% 59% / 42% 58% 38% 62%;
           }
           100% {
-            transform: rotate(180deg) scale(1);
-            border-radius: 43% 57% 49% 51% / 46% 54% 46% 54%;
+            transform: rotate(180deg) scale(1.06);
           }
         }
       `}</style>
@@ -208,18 +198,19 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
             className="relative w-[100%] h-[100%] max-w-[850px] max-h-[850px] transition-transform duration-75 ease"
           >
             {/* Concentric layered wave paths resembling the black topographic wavy landscape of the image */}
-            {[...Array(16)].map((_, i) => (
+            {[...Array(7)].map((_, i) => (
               <div
                 key={i}
                 style={{
-                  width: `${100 - i * 5}%`,
-                  height: `${100 - i * 5}%`,
+                  width: `${100 - i * 14}%`,
+                  height: `${100 - i * 14}%`,
                   borderWidth: '1.5px',
                   borderColor: i % 3 === 0 ? 'rgba(168, 85, 247, 0.22)' : 'rgba(244, 63, 94, 0.08)', // Interactive purple vs rose border lines
                   boxShadow: 'inset 0 0 25px rgba(0,0,0,0.95), 0 0 15px rgba(168, 85, 247, 0.01)',
-                  animation: `spinAndWarpTopography ${14 + i * 1.5}s infinite linear alternate`,
+                  animation: `spinAndWarpTopography ${14 + i * 2}s infinite linear alternate`,
+                  borderRadius: '50%',
                 }}
-                className="absolute bg-[#020204]/70 backdrop-blur-[0.5px]"
+                className="absolute bg-[#020204]/70"
               />
             ))}
 
