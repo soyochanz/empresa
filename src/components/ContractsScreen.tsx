@@ -569,7 +569,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const [fin4Cuota, setFin4Cuota] = useState(250);
   const [fin4Coste, setFin4Coste] = useState(50);
 
-  const [selectedModality, setSelectedModality] = useState<'single' | 'fin3' | 'fin4'>('single');
+  const [selectedModality, setSelectedModality] = useState<'single' | 'fin3' | 'fin4' | 'rrss'>('single');
   const [includeDefaultSignatures, setIncludeDefaultSignatures] = useState(true);
 
   // Auto Calculations when base price changes
@@ -1182,6 +1182,45 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                 )}
               </div>
               
+              {/* Plantilla de Contrato Selector */}
+              <div className="bg-[#0c0c0c] border border-amber-500/10 p-3.5 rounded-2xl space-y-2.5">
+                <label className="text-[10px] font-mono text-amber-500 uppercase tracking-widest font-extrabold flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-amber-500" /> Plantilla de Contrato
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedModality('single');
+                      setPriceSingle(950);
+                    }}
+                    className={`py-2 px-1.5 text-[10px] font-mono rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                      selectedModality !== 'rrss' 
+                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-bold' 
+                        : 'bg-black border-transparent text-slate-500 hover:text-slate-350'
+                    }`}
+                  >
+                    <span>💻 Web Dev</span>
+                    <span className="text-[7.5px] text-slate-500">Contrato de Obra</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedModality('rrss');
+                      setPriceSingle(170);
+                    }}
+                    className={`py-2 px-1.5 text-[10px] font-mono rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                      selectedModality === 'rrss' 
+                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-bold' 
+                        : 'bg-black border-transparent text-slate-500 hover:text-slate-350'
+                    }`}
+                  >
+                    <span>📱 RRSS & SEO</span>
+                    <span className="text-[7.5px] text-slate-500">Suscripción Mensual</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Optional CRM Link Pre-fill */}
               <div className="bg-[#0c0c0c] border border-amber-500/10 p-3 rounded-2xl">
                 <label className="text-[10px] font-mono text-amber-500 uppercase tracking-widest font-bold flex items-center gap-1.5 mb-2">

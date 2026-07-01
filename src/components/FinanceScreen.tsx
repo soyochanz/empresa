@@ -67,6 +67,53 @@ function getNextPaymentDate(startDateStr: string, period?: string): string {
 
 const INITIAL_INVOICES: Invoice[] = [];
 
+const getInvoiceCardStyles = (color: string | undefined) => {
+  switch (color?.toLowerCase()) {
+    case 'indigo':
+      return {
+        bg: 'bg-indigo-950/15 border-indigo-500/15 hover:border-indigo-500/40 hover:shadow-indigo-500/[0.02]',
+        accent: 'text-indigo-400',
+        badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+        dot: 'bg-indigo-400'
+      };
+    case 'emerald':
+      return {
+        bg: 'bg-emerald-950/15 border-emerald-500/15 hover:border-emerald-500/40 hover:shadow-emerald-500/[0.02]',
+        accent: 'text-emerald-400',
+        badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+        dot: 'bg-emerald-400'
+      };
+    case 'amber':
+      return {
+        bg: 'bg-amber-950/15 border-amber-500/15 hover:border-amber-500/40 hover:shadow-amber-500/[0.02]',
+        accent: 'text-amber-400',
+        badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+        dot: 'bg-amber-400'
+      };
+    case 'rose':
+      return {
+        bg: 'bg-rose-950/15 border-rose-500/15 hover:border-rose-500/40 hover:shadow-rose-500/[0.02]',
+        accent: 'text-rose-400',
+        badge: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+        dot: 'bg-rose-400'
+      };
+    case 'violet':
+      return {
+        bg: 'bg-violet-950/15 border-violet-500/15 hover:border-violet-500/40 hover:shadow-violet-500/[0.02]',
+        accent: 'text-violet-400',
+        badge: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+        dot: 'bg-violet-400'
+      };
+    default:
+      return {
+        bg: 'bg-[#0b1329]/20 border-white/5 hover:border-blue-500/30 hover:shadow-blue-500/[0.01]',
+        accent: 'text-blue-400',
+        badge: 'bg-blue-500/10 text-blue-400 border-blue-500/25',
+        dot: 'bg-blue-400'
+      };
+  }
+};
+
 export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenProps) {
   // Navigation tabs: 'transactions' | 'recurring' | 'invoices'
   const [activeTab, setActiveTab] = useState<'transactions' | 'recurring' | 'invoices'>('transactions');
@@ -179,6 +226,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     { id: 'temp1', description: '', quantity: 1, unitPrice: 0, total: 0 }
   ]);
   const [invTaxPercentage, setInvTaxPercentage] = useState<number>(21);
+  const [invAlias, setInvAlias] = useState('');
+  const [invColor, setInvColor] = useState('');
 
   // Banking defaults matching Revolut and Ibiza specs
   const [paymentDetails, setPaymentDetails] = useState('IE84 REVO 9903 6065 8046 06');
@@ -557,7 +606,9 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
       taxPercentage: invTaxPercentage,
       taxAmount,
       total,
-      notes: invNotes
+      notes: invNotes,
+      alias: invAlias || undefined,
+      color: invColor || undefined
     };
 
     if (isEditingInv && editingInvId) {
@@ -660,6 +711,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setInvNotes(inv.notes || '');
     setInvTaxPercentage(inv.taxPercentage);
     setInvItems(inv.items.map(it => ({ ...it })));
+    setInvAlias(inv.alias || '');
+    setInvColor(inv.color || '');
     setIsInvModalOpen(true);
   };
 
@@ -893,6 +946,8 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     setInvNotes('');
     setInvTaxPercentage(21);
     setInvItems([{ id: 'temp1', description: '', quantity: 1, unitPrice: 0, total: 0 }]);
+    setInvAlias('');
+    setInvColor('');
   };
 
   // Helper to trigger recurrence manual payment simulation
@@ -1544,6 +1599,8 @@ CREATE TABLE IF NOT EXISTS finance_invoices (
   "taxAmount" NUMERIC,
   total NUMERIC,
   notes TEXT,
+  alias TEXT,
+  color TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -1551,7 +1608,11 @@ ALTER TABLE finance_invoices ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Read Access" ON finance_invoices FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON finance_invoices FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON finance_invoices FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true);`;
+CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true);
+
+-- Si la tabla ya existía, añadimos las nuevas columnas alias y color
+ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS alias TEXT;
+ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                 navigator.clipboard.writeText(sql);
                 const toast = document.getElementById('toast-msg');
                 if (toast) {
@@ -2142,20 +2203,29 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                 No se encontraron facturas registradas.
               </div>
             ) : (
-              filteredInvoices.map((inv) => (
-                <div 
-                  key={inv.id}
-                  onClick={() => setPreviewInvoice(inv)}
-                  className="bg-[#0b1329]/20 backdrop-blur-md border border-white/5 hover:border-blue-500/30 p-5 rounded-3xl flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/[0.01] hover:-translate-y-0.5 group cursor-pointer text-left relative overflow-hidden"
-                >
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0">
-                        <span className="text-[9px] text-slate-500 font-mono tracking-wider block uppercase">{inv.id}</span>
-                        <h4 className="font-bold text-xs text-white leading-snug group-hover:text-blue-400 transition-colors mt-1 truncate">
-                          {inv.clientName}
-                        </h4>
-                      </div>
+              filteredInvoices.map((inv) => {
+                const cardStyles = getInvoiceCardStyles(inv.color);
+                return (
+                  <div 
+                    key={inv.id}
+                    onClick={() => setPreviewInvoice(inv)}
+                    className={`${cardStyles.bg} backdrop-blur-md p-5 rounded-3xl flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 group cursor-pointer text-left relative overflow-hidden`}
+                  >
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[9px] text-slate-500 font-mono tracking-wider block uppercase">{inv.id}</span>
+                            {inv.alias && (
+                              <span className="px-1.5 py-0.2 bg-white/5 text-[8px] font-bold text-slate-350 border border-white/10 rounded uppercase tracking-wider font-mono">
+                                {inv.alias}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className={`font-bold text-xs text-white leading-snug group-hover:${cardStyles.accent} transition-colors mt-1 truncate`}>
+                            {inv.clientName}
+                          </h4>
+                        </div>
                       
                       {/* Status Badges */}
                       {inv.status === 'paid' ? (
@@ -2264,7 +2334,8 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                   </div>
 
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -2603,6 +2674,50 @@ CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true)
                     required
                     className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
+                </div>
+              </div>
+
+              {/* Alias & Color selection */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-b border-white/5 py-3">
+                <div className="space-y-1 text-left">
+                  <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">🏷️ Alias del Elemento (Opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Proyecto Web, Mantenimiento"
+                    value={invAlias}
+                    onChange={(e) => setInvAlias(e.target.value)}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1 text-left">
+                  <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">🎨 Color del Elemento Entero</label>
+                  <div className="flex items-center gap-2.5 py-1.5">
+                    {[
+                      { name: 'Predeterminado', value: '', class: 'bg-blue-600' },
+                      { name: 'Indigo', value: 'indigo', class: 'bg-indigo-600' },
+                      { name: 'Emerald', value: 'emerald', class: 'bg-emerald-600' },
+                      { name: 'Amber', value: 'amber', class: 'bg-amber-600' },
+                      { name: 'Rose', value: 'rose', class: 'bg-rose-600' },
+                      { name: 'Violet', value: 'violet', class: 'bg-violet-600' },
+                    ].map((col) => (
+                      <button
+                        key={col.name}
+                        type="button"
+                        onClick={() => setInvColor(col.value)}
+                        className={`w-5 h-5 rounded-full transition-all relative cursor-pointer ${col.class} ${
+                          invColor === col.value 
+                            ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900 scale-110' 
+                            : 'opacity-70 hover:opacity-100 hover:scale-105'
+                        }`}
+                        title={col.name}
+                      >
+                        {invColor === col.value && (
+                          <span className="absolute inset-0 flex items-center justify-center text-white text-[8px] font-bold">✓</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 

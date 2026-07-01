@@ -128,6 +128,8 @@ export interface Invoice {
   taxAmount: number;
   total: number;
   notes?: string;
+  alias?: string;
+  color?: string;
 }
 
 export interface ComercialAccount {

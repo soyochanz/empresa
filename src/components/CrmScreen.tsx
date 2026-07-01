@@ -94,6 +94,161 @@ export default function CrmScreen({
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Drag and drop states for Kanban layout
+  const [draggedContactId, setDraggedContactId] = useState<string | null>(null);
+  const [draggedOverCol, setDraggedOverCol] = useState<'lead' | 'client' | 'archived' | null>(null);
+
+  const handleDropContact = (contactId: string, targetCol: 'lead' | 'client' | 'archived') => {
+    if (!contactId) return;
+    const contact = contacts.find(c => c.id === contactId);
+    if (!contact) return;
+
+    let updatedContact = { ...contact };
+    let newArchivedIds = [...archivedContactIds];
+
+    if (targetCol === 'lead') {
+      updatedContact.status = 'Lead';
+      newArchivedIds = newArchivedIds.filter(id => id !== contactId);
+    } else if (targetCol === 'client') {
+      updatedContact.status = 'Client';
+      newArchivedIds = newArchivedIds.filter(id => id !== contactId);
+    } else if (targetCol === 'archived') {
+      if (!newArchivedIds.includes(contactId)) {
+        newArchivedIds.push(contactId);
+      }
+    }
+
+    setArchivedContactIds(newArchivedIds);
+    localStorage.setItem('archived_contacts_ids', JSON.stringify(newArchivedIds));
+
+    if (onUpdateContact) {
+      onUpdateContact(updatedContact);
+    }
+    
+    setSelectedContactId(contactId);
+
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      const colNames = { lead: 'Prospectos (Leads)', client: 'Clientes Activos', archived: 'Archivados' };
+      toast.innerText = `Cliente "${contact.name}" movido a ${colNames[targetCol]}.`;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => toast.classList.add('opacity-0'), 2500);
+    }
+  };
+
+  const renderContactCard = (contact: ClientContact) => {
+    const isSelected = contact.id === selectedContactId;
+    const contactColor = getContactColor(contact.color);
+
+    let cardBorderClass = 'border-slate-850 hover:border-slate-700/60 bg-slate-950/30';
+    let dotColor = 'bg-blue-500';
+
+    if (contactColor === 'rose') {
+      dotColor = 'bg-rose-500';
+      if (isSelected) cardBorderClass = 'border-rose-500/40 bg-rose-950/10 shadow-[0_0_15px_rgba(244,63,94,0.05)]';
+    } else if (contactColor === 'emerald') {
+      dotColor = 'bg-emerald-500';
+      if (isSelected) cardBorderClass = 'border-emerald-500/40 bg-emerald-950/10 shadow-[0_0_15px_rgba(16,185,129,0.05)]';
+    } else if (contactColor === 'amber') {
+      dotColor = 'bg-amber-500';
+      if (isSelected) cardBorderClass = 'border-amber-500/40 bg-amber-950/10 shadow-[0_0_15px_rgba(245,158,11,0.05)]';
+    } else if (contactColor === 'violet') {
+      dotColor = 'bg-violet-500';
+      if (isSelected) cardBorderClass = 'border-violet-500/40 bg-violet-950/10 shadow-[0_0_15px_rgba(139,92,246,0.05)]';
+    } else {
+      dotColor = 'bg-indigo-500';
+      if (isSelected) cardBorderClass = 'border-indigo-500/40 bg-indigo-950/10 shadow-[0_0_15px_rgba(99,102,241,0.05)]';
+    }
+
+    return (
+      <div
+        key={contact.id}
+        draggable
+        onDragStart={() => setDraggedContactId(contact.id)}
+        onDragEnd={() => {
+          setDraggedContactId(null);
+          setDraggedOverCol(null);
+        }}
+        onClick={() => setSelectedContactId(contact.id)}
+        className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-grab active:cursor-grabbing text-left relative overflow-hidden group select-none ${cardBorderClass} ${
+          isSelected ? 'ring-1 ring-blue-500/15' : ''
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-slate-800 text-slate-400 overflow-hidden shrink-0">
+            {contact.avatarUrl ? (
+              <img 
+                alt={contact.name}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+                src={contact.avatarUrl}
+              />
+            ) : (
+              contact.initials
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+              <h4 className="font-semibold text-[11px] text-white truncate">{contact.name}</h4>
+              {contact.priority && (
+                <span className="text-[10px] text-amber-400 select-none">★</span>
+              )}
+            </div>
+            
+            <p className="text-[10px] text-slate-400 truncate mt-0.5">{contact.company} • <span className="text-slate-500 font-mono text-[9px]">{contact.role || 'Partner'}</span></p>
+            <p className="text-[9px] text-slate-505 truncate font-mono mt-1">{contact.email}</p>
+
+            <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+              <span className={`px-1.5 py-0.2 rounded-[4px] text-[7.5px] font-mono font-bold uppercase tracking-wider border ${
+                contact.status === 'Client'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/15'
+                  : 'bg-blue-500/10 text-blue-400 border-blue-500/15'
+              }`}>
+                {contact.status}
+              </span>
+
+              {(contactColor === 'rose' || contact.color === 'red') && (
+                <span className="px-1.5 py-0.2 bg-rose-500/10 text-[7.5px] font-bold text-rose-455 border border-rose-500/15 rounded uppercase tracking-wider font-mono">
+                  Le Falta Web
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-2.5 pt-2 border-t border-white/[0.03] flex justify-between items-center text-[8.5px] font-mono text-slate-500">
+          <span>Contacto: {contact.lastContacted || 'N/A'}</span>
+          <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition duration-150">
+            <span className="text-[8px] uppercase tracking-widest font-bold">Mover</span>
+            <div className="w-1.5 h-2.5 flex flex-col justify-between gap-0.5">
+              <div className="h-0.5 bg-slate-400 rounded-full" />
+              <div className="h-0.5 bg-slate-400 rounded-full" />
+              <div className="h-0.5 bg-slate-400 rounded-full" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderEmptyPlaceholder = (col: 'lead' | 'client' | 'archived') => {
+    const titles = { lead: 'Prospectos', client: 'Clientes Activos', archived: 'Archivados' };
+    const desc = { 
+      lead: 'No hay prospectos. Arrastra un cliente o añade uno nuevo.', 
+      client: 'No hay clientes activos en desarrollo o producción.', 
+      archived: 'No tienes clientes archivados en tu historial comercial.' 
+    };
+    return (
+      <div className="py-12 border border-dashed border-white/5 rounded-2xl flex flex-col items-center justify-center p-6 text-center text-slate-600">
+        <span className="text-xl mb-1 opacity-60">📂</span>
+        <h4 className="text-[10px] font-mono uppercase tracking-widest text-slate-400 font-bold mb-1">Sin {titles[col]}</h4>
+        <p className="text-[9px] text-slate-550 max-w-[160px] leading-relaxed">{desc[col]}</p>
+      </div>
+    );
+  };
+
   const toggleArchiveContact = (id: string) => {
     const isCurrentlyArchived = archivedContactIds.includes(id);
     const updated = isCurrentlyArchived 
@@ -269,17 +424,20 @@ export default function CrmScreen({
   };
 
   // Filter contacts by search query & archive status
-  const filteredContacts = contacts.filter(c => {
-    const isArchived = archivedContactIds.includes(c.id);
-    if (crmFilter === 'active' && isArchived) return false;
-    if (crmFilter === 'archived' && !isArchived) return false;
-
-    const nameMatch = c.name ? c.name.toLowerCase().includes(searchQuery.toLowerCase()) : false;
-    const companyMatch = c.company ? c.company.toLowerCase().includes(searchQuery.toLowerCase()) : false;
-    const emailMatch = c.email ? c.email.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+  const searchLower = searchQuery.toLowerCase();
+  const searchFilteredContacts = contacts.filter(c => {
+    const nameMatch = c.name ? c.name.toLowerCase().includes(searchLower) : false;
+    const companyMatch = c.company ? c.company.toLowerCase().includes(searchLower) : false;
+    const emailMatch = c.email ? c.email.toLowerCase().includes(searchLower) : false;
 
     return nameMatch || companyMatch || emailMatch;
   });
+
+  const activeLeads = searchFilteredContacts.filter(c => c.status === 'Lead' && !archivedContactIds.includes(c.id));
+  const activeClients = searchFilteredContacts.filter(c => c.status === 'Client' && !archivedContactIds.includes(c.id));
+  const archivedContacts = searchFilteredContacts.filter(c => archivedContactIds.includes(c.id));
+
+  const filteredContacts = crmFilter === 'active' ? [...activeLeads, ...activeClients] : archivedContacts;
 
   return (
     <div className="flex-1 p-8 flex gap-8 h-[calc(100vh-80px)] overflow-hidden bg-transparent text-slate-100">
@@ -347,122 +505,138 @@ export default function CrmScreen({
           </div>
         </div>
 
-        {/* Table layout container */}
-        <div className="bg-white/5 backdrop-blur-xl rounded-3xl overflow-hidden flex-1 flex flex-col border border-white/10 shadow-2xl shadow-black/15">
-          <div className="overflow-y-auto flex-1">
-            <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 bg-slate-950/80 backdrop-blur-md z-10 border-b border-white/5">
-                <tr>
-                  <th className="px-6 py-4 text-[10px] font-mono uppercase text-slate-400 tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-[10px] font-mono uppercase text-slate-400 tracking-wider">Company</th>
-                  <th className="px-6 py-4 text-[10px] font-mono uppercase text-slate-400 tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-[10px] font-mono uppercase text-slate-400 tracking-wider">Last Contacted</th>
-                  <th className="px-6 py-4 text-right"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {filteredContacts.map((contact) => {
-                  const isSelected = contact.id === selectedContactId;
-
-                  let bgBgClass = '';
-                  let borderColClass = 'border-l-4 border-transparent';
-
-                  const contactColor = getContactColor(contact.color);
-
-                  if (contactColor === 'indigo') {
-                    bgBgClass = isSelected 
-                      ? 'bg-indigo-500/10 text-white shadow-inner shadow-indigo-900/15' 
-                      : 'bg-transparent text-slate-300 hover:bg-indigo-500/5';
-                    borderColClass = 'border-l-4 border-indigo-500/80';
-                  } else if (contactColor === 'emerald') {
-                    bgBgClass = isSelected 
-                      ? 'bg-emerald-500/10 text-white shadow-inner shadow-emerald-900/15' 
-                      : 'bg-transparent text-slate-300 hover:bg-emerald-500/5';
-                    borderColClass = 'border-l-4 border-emerald-500/80';
-                  } else if (contactColor === 'amber') {
-                    bgBgClass = isSelected 
-                      ? 'bg-amber-500/10 text-white shadow-inner shadow-amber-900/15' 
-                      : 'bg-transparent text-slate-300 hover:bg-amber-500/5';
-                    borderColClass = 'border-l-4 border-amber-500/80';
-                  } else if (contactColor === 'rose') {
-                    bgBgClass = isSelected 
-                      ? 'bg-rose-500/10 text-white shadow-inner shadow-rose-900/15' 
-                      : 'bg-transparent text-slate-300 hover:bg-rose-500/5';
-                    borderColClass = 'border-l-4 border-rose-500/80';
-                  } else if (contactColor === 'violet') {
-                    bgBgClass = isSelected 
-                      ? 'bg-violet-500/10 text-white shadow-inner shadow-violet-900/15' 
-                      : 'bg-transparent text-slate-300 hover:bg-violet-500/5';
-                    borderColClass = 'border-l-4 border-violet-500/80';
-                  }
-
-                  return (
-                    <tr 
-                      key={contact.id}
-                      onClick={() => setSelectedContactId(contact.id)}
-                      className={`cursor-pointer transition-all duration-150 group ${bgBgClass} ${borderColClass}`}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                            isSelected ? 'bg-indigo-500/20 text-indigo-400' : 'bg-slate-800 text-slate-450'
-                          } overflow-hidden`}>
-                            {contact.avatarUrl ? (
-                              <img 
-                                alt={contact.name}
-                                referrerPolicy="no-referrer"
-                                className="w-full h-full object-cover"
-                                src={contact.avatarUrl}
-                              />
-                            ) : (
-                              contact.initials
-                            )}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-semibold text-xs text-white pb-0.5">{contact.name}</p>
-                              {(contactColor === 'rose' || contact.color === 'red') && (
-                                <span className="px-1.5 py-0.2 bg-rose-500/10 text-[8px] font-bold text-rose-455 border border-rose-500/15 rounded uppercase tracking-wider font-mono">
-                                  Le Falta Web
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[10px] text-slate-505">{contact.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-xs text-slate-450">
-                        {contact.company}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase tracking-wider border ${
-                          contact.status === 'Client'
-                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
-                            : 'bg-blue-500/15 text-blue-400 border-blue-500/20'
-                        }`}>
-                          {contact.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-xs text-slate-500 font-sans">
-                        {contact.lastContacted}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <ChevronRight className={`w-4 h-4 transition-all ${
-                          isSelected ? 'text-blue-400 translate-x-1' : 'text-slate-600 opacity-0 group-hover:opacity-100'
-                        }`} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            
-            {filteredContacts.length === 0 && (
-              <div className="text-center p-12 text-slate-500 italic text-xs">
-                No se encontraron contactos que coincidan con la búsqueda.
+        {/* Kanban Board Container */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {crmFilter === 'active' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 flex-1 min-h-0 overflow-hidden">
+              {/* Leads Column */}
+              <div 
+                className={`flex flex-col bg-white/[0.02] backdrop-blur-md rounded-3xl border border-white/5 p-4.5 min-h-0 transition-all duration-300 ${
+                  draggedOverCol === 'lead' ? 'bg-blue-500/[0.03] border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.05)]' : ''
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedOverCol !== 'lead') setDraggedOverCol('lead');
+                }}
+                onDragLeave={() => setDraggedOverCol(null)}
+                onDrop={() => handleDropContact(draggedContactId || '', 'lead')}
+              >
+                <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                    <h3 className="font-semibold text-xs uppercase tracking-wider text-slate-300 font-mono">Prospectos (Leads)</h3>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-white/5 text-slate-400 font-bold">
+                    {activeLeads.length}
+                  </span>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto pr-1 space-y-3.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-800/80">
+                  {activeLeads.map((contact) => renderContactCard(contact))}
+                  {activeLeads.length === 0 && renderEmptyPlaceholder('lead')}
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* Clients Column */}
+              <div 
+                className={`flex flex-col bg-white/[0.02] backdrop-blur-md rounded-3xl border border-white/5 p-4.5 min-h-0 transition-all duration-300 ${
+                  draggedOverCol === 'client' ? 'bg-emerald-500/[0.03] border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.05)]' : ''
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedOverCol !== 'client') setDraggedOverCol('client');
+                }}
+                onDragLeave={() => setDraggedOverCol(null)}
+                onDrop={() => handleDropContact(draggedContactId || '', 'client')}
+              >
+                <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <h3 className="font-semibold text-xs uppercase tracking-wider text-slate-300 font-mono">Clientes Activos</h3>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-white/5 text-slate-400 font-bold">
+                    {activeClients.length}
+                  </span>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto pr-1 space-y-3.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-800/80">
+                  {activeClients.map((contact) => renderContactCard(contact))}
+                  {activeClients.length === 0 && renderEmptyPlaceholder('client')}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Archived Column (Full width when on Archived tab) */
+            <div 
+              className={`flex flex-col bg-white/[0.02] backdrop-blur-md rounded-3xl border border-white/5 p-5 flex-1 min-h-0 transition-all duration-300 ${
+                draggedOverCol === 'archived' ? 'bg-amber-500/[0.03] border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.05)]' : ''
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (draggedOverCol !== 'archived') setDraggedOverCol('archived');
+              }}
+              onDragLeave={() => setDraggedOverCol(null)}
+              onDrop={() => handleDropContact(draggedContactId || '', 'archived')}
+            >
+              <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/5">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <h3 className="font-semibold text-xs uppercase tracking-wider text-slate-300 font-mono">Histórico Archivados</h3>
+                </div>
+                <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-slate-900 border border-white/5 text-slate-400 font-bold">
+                  {archivedContacts.length}
+                </span>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto pr-1 space-y-3.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-800/80">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {archivedContacts.map((contact) => renderContactCard(contact))}
+                </div>
+                {archivedContacts.length === 0 && renderEmptyPlaceholder('archived')}
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Drag Drop Zones for Archiving/Unarchiving when card is being dragged */}
+          {draggedContactId && (
+            <div className="mt-4 transition-all duration-300">
+              {crmFilter === 'active' ? (
+                <div 
+                  className={`border-2 border-dashed rounded-2xl p-4.5 flex items-center justify-center gap-2.5 transition-all duration-200 cursor-pointer ${
+                    draggedOverCol === 'archived' 
+                      ? 'bg-amber-500/15 border-amber-500/50 text-amber-200 shadow-lg shadow-amber-500/[0.05] scale-[1.01]' 
+                      : 'bg-amber-950/10 border-amber-500/20 text-amber-400 hover:bg-amber-950/15'
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggedOverCol !== 'archived') setDraggedOverCol('archived');
+                  }}
+                  onDragLeave={() => setDraggedOverCol(null)}
+                  onDrop={() => handleDropContact(draggedContactId, 'archived')}
+                >
+                  <Archive className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-semibold uppercase tracking-wider font-mono">Arrastrar aquí para ARCHIVAR cliente</span>
+                </div>
+              ) : (
+                <div 
+                  className={`border-2 border-dashed rounded-2xl p-4.5 flex items-center justify-center gap-2.5 transition-all duration-200 cursor-pointer ${
+                    draggedOverCol === 'lead' 
+                      ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200 shadow-lg shadow-emerald-500/[0.05] scale-[1.01]' 
+                      : 'bg-emerald-950/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-950/15'
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggedOverCol !== 'lead') setDraggedOverCol('lead');
+                  }}
+                  onDragLeave={() => setDraggedOverCol(null)}
+                  onDrop={() => handleDropContact(draggedContactId, 'lead')}
+                >
+                  <Plus className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-semibold uppercase tracking-wider font-mono">Arrastrar aquí para DESARCHIVAR y reactivar</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
       </section>

@@ -230,6 +230,8 @@ CREATE TABLE IF NOT EXISTS finance_invoices (
   "taxAmount" NUMERIC,
   total NUMERIC,
   notes TEXT,
+  alias TEXT,
+  color TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
