@@ -64,9 +64,9 @@ export default function CalendarScreen({
   // Global toggle to view/hide archived events on the calendar grid
   const [showArchivedEvents, setShowArchivedEvents] = useState<boolean>(false);
 
-  // State linking archived events in localStorage
+  // State linking archived events in sessionStorage
   const [archivedEventIds, setArchivedEventIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('archived_events_ids');
+    const saved = sessionStorage.getItem('archived_events_ids');
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -76,7 +76,7 @@ export default function CalendarScreen({
       ? archivedEventIds.filter(item => item !== id)
       : [...archivedEventIds, id];
     setArchivedEventIds(updated);
-    localStorage.setItem('archived_events_ids', JSON.stringify(updated));
+    sessionStorage.setItem('archived_events_ids', JSON.stringify(updated));
 
     const toast = document.getElementById('toast-msg');
     if (toast) {

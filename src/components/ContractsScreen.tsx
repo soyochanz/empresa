@@ -56,20 +56,6 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   useEffect(() => {
     let active = true;
     async function loadSaved() {
-      // Load current contracts from localStorage for instantaneous load & fallback
-      const localStr = localStorage.getItem('agency_contracts_althera');
-      let localContracts: any[] = [];
-      if (localStr) {
-        try {
-          localContracts = JSON.parse(localStr);
-          if (active) {
-            setSavedContracts(localContracts);
-          }
-        } catch (e) {
-          console.error('Error parsing local contracts:', e);
-        }
-      }
-
       // Check table health to diagnose Supabase and provide setup guidelines
       try {
         const { error: checkError } = await supabase.from('contracts_althera').select('id').limit(1);
@@ -92,18 +78,10 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       try {
         const list = await db.getContractsAlthera();
         if (active) {
-          // Merge local and remote, prioritizing any newer local edits or keep a unified union
-          const merged = [...list];
-          localContracts.forEach((localItem: any) => {
-            if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-              merged.push(localItem);
-            }
-          });
-          setSavedContracts(merged);
-          localStorage.setItem('agency_contracts_althera', JSON.stringify(merged));
+          setSavedContracts(list);
         }
       } catch (err) {
-        console.error('Error load contracts from Supabase, relying on local storage backup:', err);
+        console.error('Error load contracts from Supabase:', err);
       }
     }
     loadSaved();
@@ -189,7 +167,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
         console.warn('Database write error, falling back locally to prevent failures:', dbErr);
       }
 
-      // Synchronize in-memory and localStorage automatically
+      // Synchronize in-memory list
       const currentList = [...savedContracts];
       const index = currentList.findIndex(c => c.id === contractObj.id);
       if (index >= 0) {
@@ -199,13 +177,12 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       }
       
       setSavedContracts(currentList);
-      localStorage.setItem('agency_contracts_althera', JSON.stringify(currentList));
       setSelectedContractIdInDb(contractObj.id);
 
       if (dbSuccess) {
-        setSaveMessage('Contrato guardamiento con éxito en la base de datos.');
+        setSaveMessage('Contrato guardado con éxito en la base de datos.');
       } else {
-        setSaveMessage('Contrato guardado correctamente en local (Sincronizado).');
+        setSaveMessage('Contrato actualizado temporalmente.');
       }
       
       setTimeout(() => setSaveMessage(null), 4500);
@@ -229,7 +206,6 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
       const updated = savedContracts.filter(c => c.id !== selectedContractIdInDb);
       setSavedContracts(updated);
-      localStorage.setItem('agency_contracts_althera', JSON.stringify(updated));
 
       setSelectedContractIdInDb('');
       setSelectedContactId('');
@@ -237,7 +213,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       if (dbSuccess) {
         setSaveMessage('Contrato eliminado correctamente de la base de datos.');
       } else {
-        setSaveMessage('Contrato eliminado del almacenamiento local.');
+        setSaveMessage('Contrato quitado de la lista.');
       }
       setTimeout(() => setSaveMessage(null), 4500);
     } catch (err) {
@@ -395,140 +371,12 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       }
 
       setAllTransactions(updatedTxs);
-      localStorage.setItem('agency_finance_transactions', JSON.stringify(updatedTxs));
-
-      // Also ensure localStorage is perfectly synchronized for real-time responsiveness
-      const savedInvoicesRaw = localStorage.getItem('agency_finance_invoices');
-      let savedInvoices = savedInvoicesRaw ? JSON.parse(savedInvoicesRaw) : [];
-      const index = savedInvoices.findIndex((inv: any) => inv.id === invoiceNumber);
-      if (index >= 0) {
-        savedInvoices[index] = invoicePayload;
-      } else {
-        savedInvoices = [invoicePayload, ...savedInvoices];
-      }
-      localStorage.setItem('agency_finance_invoices', JSON.stringify(savedInvoices));
 
       setSaveMessage('Factura y transacciones vinculadas guardadas con éxito.');
       setTimeout(() => setSaveMessage(null), 4000);
     } catch (err) {
       console.error('Error saving invoice to DB:', err);
-      // Local-only save fallback
-      const validItems = invoiceItems.filter(item => item.description.trim() !== '');
-      const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
-      const linkedTxsMapped = linkedTransactions.map(tx => {
-        const netPrice = tx.amount / (1 + taxPercentage / 100);
-        return {
-          id: tx.id,
-          description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
-          quantity: 1,
-          unitPrice: netPrice,
-          total: netPrice,
-          isPending: tx.status === 'pending' || tx.status === 'draft',
-          pendingTxId: tx.id,
-          paymentMethod: tx.paymentMethod || 'transfer'
-        };
-      });
-
-      const autoCreatedTxs: any[] = [];
-      const mappedItems = validItems.map((item, idx) => {
-        const isItemPending = !!item.isPending;
-        let pTxId = item.pendingTxId;
-        const savedItemId = item.id.startsWith('temp') || isNaN(Number(item.id)) ? 'item_' + idx + '_' + Date.now() : item.id;
-
-        if (isItemPending && !pTxId) {
-          pTxId = 'tx_item_pending_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 6);
-          const newTx = {
-            id: pTxId,
-            type: 'income',
-            category: 'Desarrollo',
-            amount: item.quantity * item.unitPrice,
-            date: showDueDate && invoiceDueDate ? invoiceDueDate : invoiceDate,
-            description: `Cobro Pendiente: ${item.description} (${invoiceClientName})`,
-            isRecurring: false,
-            status: 'pending',
-            invoiceId: invoiceNumber,
-            paymentMethod: item.paymentMethod || 'transfer'
-          };
-          autoCreatedTxs.push(newTx);
-        }
-
-        return {
-          id: savedItemId,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice,
-          isPending: isItemPending,
-          pendingTxId: pTxId,
-          paymentMethod: item.paymentMethod || 'transfer'
-        };
-      });
-
-      const finalItems = [
-        ...mappedItems,
-        ...linkedTxsMapped
-      ];
-
-      const anyPending = finalItems.some(it => !!it.isPending);
-      const calculatedStatus = anyPending ? 'sent' : 'paid';
-
-      const invoicePayload: any = {
-        id: invoiceNumber,
-        clientId: invoiceClientId || undefined,
-        clientName: invoiceClientName,
-        clientEmail: invoiceClientEmail,
-        date: invoiceDate,
-        dueDate: showDueDate ? invoiceDueDate : invoiceDate,
-        status: calculatedStatus,
-        items: finalItems,
-        subtotal: subtotal,
-        taxPercentage: taxPercentage,
-        taxAmount: taxAmount,
-        total: total,
-        notes: `Creado desde el Generador de Contratos de Althera. Método de pago: ${
-          paymentMethod === 'transferencia' ? 'Transferencia Bancaria' :
-          paymentMethod === 'bizum' ? 'Bizum' :
-          paymentMethod === 'cash' ? 'Efectivo (Cash)' :
-          'Ingreso Bancario'
-        }`
-      };
-      
-      const savedInvoicesRaw = localStorage.getItem('agency_finance_invoices');
-      let savedInvoices = savedInvoicesRaw ? JSON.parse(savedInvoicesRaw) : [];
-      const index = savedInvoices.findIndex((inv: any) => inv.id === invoiceNumber);
-      if (index >= 0) {
-        savedInvoices[index] = invoicePayload;
-      } else {
-        savedInvoices = [invoicePayload, ...savedInvoices];
-      }
-      localStorage.setItem('agency_finance_invoices', JSON.stringify(savedInvoices));
-
-      let updatedTxs = allTransactions.map(t => {
-        if (linkedTxIds.includes(t.id)) {
-          return { ...t, invoiceId: invoiceNumber };
-        } else if (t.invoiceId === invoiceNumber) {
-          const matchedItem = finalItems.find(it => it.pendingTxId === t.id);
-          if (matchedItem) {
-            return {
-              ...t,
-              amount: matchedItem.total,
-              description: `Cobro Pendiente: ${matchedItem.description} (${invoiceClientName})`,
-              paymentMethod: matchedItem.paymentMethod || 'transfer'
-            };
-          }
-          return { ...t, invoiceId: null };
-        }
-        return t;
-      });
-
-      if (autoCreatedTxs.length > 0) {
-        updatedTxs = [...autoCreatedTxs, ...updatedTxs];
-      }
-
-      setAllTransactions(updatedTxs);
-      localStorage.setItem('agency_finance_transactions', JSON.stringify(updatedTxs));
-      
-      setSaveMessage('Guardado localmente con éxito.');
+      setSaveMessage('Error de base de datos al guardar la factura.');
       setTimeout(() => setSaveMessage(null), 4000);
     }
   };
@@ -616,7 +464,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const [showProviderInfo, setShowProviderInfo] = useState(true);
   const [providers, setProviders] = useState<any[]>(() => {
     try {
-      const saved = localStorage.getItem('agency_invoice_providers');
+      const saved = sessionStorage.getItem('agency_invoice_providers');
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error('Error loading providers:', e);
@@ -635,7 +483,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   });
 
   useEffect(() => {
-    localStorage.setItem('agency_invoice_providers', JSON.stringify(providers));
+    sessionStorage.setItem('agency_invoice_providers', JSON.stringify(providers));
   }, [providers]);
 
   // --- SHOW PAYMENT INFO STATE ---
@@ -681,24 +529,9 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
           setAllTransactions(list);
           const matchedTxIds = list.filter((t: any) => t.invoiceId === invoiceNumber).map((t: any) => t.id);
           setLinkedTxIds(matchedTxIds);
-        } else {
-          const localSaved = localStorage.getItem('agency_finance_transactions');
-          if (localSaved) {
-            const parsed = JSON.parse(localSaved);
-            setAllTransactions(parsed);
-            const matchedTxIds = parsed.filter((t: any) => t.invoiceId === invoiceNumber).map((t: any) => t.id);
-            setLinkedTxIds(matchedTxIds);
-          }
         }
       } catch (err) {
         console.error('Error fetching transactions in invoice generator:', err);
-        const localSaved = localStorage.getItem('agency_finance_transactions');
-        if (localSaved) {
-          const parsed = JSON.parse(localSaved);
-          setAllTransactions(parsed);
-          const matchedTxIds = parsed.filter((t: any) => t.invoiceId === invoiceNumber).map((t: any) => t.id);
-          setLinkedTxIds(matchedTxIds);
-        }
       }
     };
     fetchTransactions();

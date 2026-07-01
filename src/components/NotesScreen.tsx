@@ -65,9 +65,9 @@ export default function NotesScreen({ notes, onAddNote, onUpdateNote, onDeleteNo
   const [selectedCategory, setSelectedCategory] = useState<string>('All Notes');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Archive tracker state linked to localStorage
+  // Archive tracker state linked to sessionStorage
   const [archivedNoteIds, setArchivedNoteIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('archived_notes_ids');
+    const saved = sessionStorage.getItem('archived_notes_ids');
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -77,7 +77,7 @@ export default function NotesScreen({ notes, onAddNote, onUpdateNote, onDeleteNo
       ? archivedNoteIds.filter(item => item !== id)
       : [...archivedNoteIds, id];
     setArchivedNoteIds(updated);
-    localStorage.setItem('archived_notes_ids', JSON.stringify(updated));
+    sessionStorage.setItem('archived_notes_ids', JSON.stringify(updated));
     
     const toast = document.getElementById('toast-msg');
     if (toast) {

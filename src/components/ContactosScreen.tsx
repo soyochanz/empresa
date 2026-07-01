@@ -30,38 +30,17 @@ export default function ContactosScreen() {
     try {
       // Try to load from Supabase
       const remote = await db.getInquiries();
-      
-      // Let's merge both Remote and Local storage items to make sure nothing is lost
-      const localSaved = localStorage.getItem('agency_inquiries_local');
-      const localList: InquiryMessage[] = localSaved ? JSON.parse(localSaved) : [];
-      
-      // Merge by ID to prevent duplicates
-      const mergedMap = new Map<string, InquiryMessage>();
-      
-      // Place local items first
-      localList.forEach(item => mergedMap.set(item.id, item));
-      // Overwrite with remote live items
-      remote.forEach(item => mergedMap.set(item.id, item));
-      
-      const mergedList = Array.from(mergedMap.values()).sort((a, b) => {
+      const sorted = remote.sort((a, b) => {
         return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
       });
 
-      setInquiries(mergedList);
-      if (mergedList.length > 0 && !selectedInquiryId) {
-        setSelectedInquiryId(mergedList[0].id);
-      }
-    } catch (err) {
-      console.warn("Could not query inquiries from Supabase, loading from localStorage fallback:", err);
-      const localSaved = localStorage.getItem('agency_inquiries_local');
-      const localList: InquiryMessage[] = localSaved ? JSON.parse(localSaved) : [];
-      const sorted = localList.sort((a, b) => {
-        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
-      });
       setInquiries(sorted);
       if (sorted.length > 0 && !selectedInquiryId) {
         setSelectedInquiryId(sorted[0].id);
       }
+    } catch (err) {
+      console.warn("Could not query inquiries from Supabase:", err);
+      setInquiries([]);
     } finally {
       setIsLoading(false);
     }
@@ -69,12 +48,6 @@ export default function ContactosScreen() {
 
   useEffect(() => {
     fetchInquiries();
-
-    // Listen to local submissions to reload panel automatically
-    window.addEventListener('local_inquiries_updated', fetchInquiries);
-    return () => {
-      window.removeEventListener('local_inquiries_updated', fetchInquiries);
-    };
   }, []);
 
   const handleArchive = async (inq: InquiryMessage) => {
@@ -84,15 +57,7 @@ export default function ContactosScreen() {
     // 1. Update state
     setInquiries(prev => prev.map(item => item.id === inq.id ? itemToUpdate : item));
     
-    // 2. Persist in localStorage backup
-    const localSaved = localStorage.getItem('agency_inquiries_local');
-    if (localSaved) {
-      const list: InquiryMessage[] = JSON.parse(localSaved);
-      const updatedList = list.map(item => item.id === inq.id ? { ...item, archived: updatedStatus } : item);
-      localStorage.setItem('agency_inquiries_local', JSON.stringify(updatedList));
-    }
-
-    // 3. Persist in Supabase
+    // 2. Persist in Supabase
     try {
       await db.updateInquiry(itemToUpdate);
     } catch (err) {
@@ -109,15 +74,7 @@ export default function ContactosScreen() {
       setSelectedInquiryId(null);
     }
 
-    // 2. Persist in localStorage backup
-    const localSaved = localStorage.getItem('agency_inquiries_local');
-    if (localSaved) {
-      const list: InquiryMessage[] = JSON.parse(localSaved);
-      const filteredList = list.filter(item => item.id !== id);
-      localStorage.setItem('agency_inquiries_local', JSON.stringify(filteredList));
-    }
-
-    // 3. Persist in Supabase
+    // 2. Persist in Supabase
     try {
       await db.deleteInquiry(id);
     } catch (err) {

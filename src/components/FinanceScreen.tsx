@@ -122,16 +122,10 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Transactions local state
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>(() => {
-    const saved = localStorage.getItem('agency_finance_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
-  });
+  const [transactions, setTransactions] = useState<FinanceTransaction[]>(INITIAL_TRANSACTIONS);
 
   // Invoices local state
-  const [invoices, setInvoices] = useState<Invoice[]>(() => {
-    const saved = localStorage.getItem('agency_finance_invoices');
-    return saved ? JSON.parse(saved) : INITIAL_INVOICES;
-  });
+  const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES);
 
   // Fetch real-time Supabase entries on mount
   useEffect(() => {
@@ -149,7 +143,7 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
           setSyncError(null);
         }
       } catch (err: any) {
-        console.warn('Real-time database fetch error, using local storage fallback:', err);
+        console.warn('Real-time database fetch error:', err);
         if (active) {
           setSyncStatus('error');
           setSyncError(err?.message || String(err));
@@ -161,15 +155,6 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
       active = false;
     };
   }, []);
-
-  // Save utility
-  useEffect(() => {
-    localStorage.setItem('agency_finance_transactions', JSON.stringify(transactions));
-  }, [transactions]);
-
-  useEffect(() => {
-    localStorage.setItem('agency_finance_invoices', JSON.stringify(invoices));
-  }, [invoices]);
 
   // Filters
   const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'income' | 'expense'>('all');

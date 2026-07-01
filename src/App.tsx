@@ -93,7 +93,7 @@ function getScreenFromHash(hashString: string, isLoggedIn: boolean, isComercialL
 
 function getHashFromScreen(screen: Screen): string {
   switch (screen) {
-    case 'landing': return '#/';
+    case 'landing': return '';
     case 'acceso': return '#/acceso';
     case 'comerciales_acceso': return '#/comerciales/acceso';
     case 'comerciales_panel': return '#/comerciales/panel';
@@ -109,17 +109,17 @@ function getHashFromScreen(screen: Screen): string {
     case 'contratos': return '#/admin/contratos';
     case 'comerciales_admin': return '#/admin/comerciales';
     case 'cold_calling': return '#/admin/cold-calling';
-    default: return '#/';
+    default: return '';
   }
 }
 
 export default function App() {
   // Screens state
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
-    const initialHash = window.location.hash || '#/';
-    const savedUser = localStorage.getItem('agency_user');
+    const initialHash = window.location.hash || '';
+    const savedUser = sessionStorage.getItem('agency_user');
     const isLoggedIn = !!savedUser;
-    const savedComercial = localStorage.getItem('agency_current_comercial');
+    const savedComercial = sessionStorage.getItem('agency_current_comercial');
     const isComercialLoggedIn = !!savedComercial;
 
     const { screen } = getScreenFromHash(initialHash, isLoggedIn, isComercialLoggedIn);
@@ -129,7 +129,7 @@ export default function App() {
 
   // Track current screen for background persistence
   useEffect(() => {
-    localStorage.setItem('agency_current_screen', currentScreen);
+    sessionStorage.setItem('agency_current_screen', currentScreen);
   }, [currentScreen]);
 
   // Supabase connection and state synchronization status
@@ -143,19 +143,15 @@ export default function App() {
 
   // Authentication state
   const [currentUser, setCurrentUser] = useState<{ id: string | null; email: string; name: string } | null>(() => {
-    const saved = localStorage.getItem('agency_user');
+    const saved = sessionStorage.getItem('agency_user');
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Persistence Engine Database State (with standard fallback to localStorage/mockData)
-  const [contacts, setContacts] = useState<ClientContact[]>(() => {
-    const saved = localStorage.getItem('agency_contacts');
-    return saved ? JSON.parse(saved) : initialContacts;
-  });
+  // Persistence Engine Database State (with standard fallback to mockData)
+  const [contacts, setContacts] = useState<ClientContact[]>(initialContacts);
 
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
-    const saved = localStorage.getItem('agency_events');
-    const parsed = saved ? JSON.parse(saved) : initialEvents;
+    const parsed = initialEvents;
     // Auto-migrate old October 2023 static dates to today's current month/year
     return parsed.map((e: any) => {
       if (e.date && e.date.startsWith('201') || e.date && e.date.startsWith('202')) {
@@ -175,69 +171,36 @@ export default function App() {
   });
 
   const [notes, setNotes] = useState<Note[]>(() => {
-    const saved = localStorage.getItem('agency_notes');
-    if (saved) {
-      try {
-        const parsed: Note[] = JSON.parse(saved);
-        return parsed.map(n => {
-          if (n.updatedAt === 'Just now' || !n.updatedAt) {
-            const daysAgo = new Date();
-            daysAgo.setDate(daysAgo.getDate() - 3);
-            return { ...n, updatedAt: daysAgo.toISOString() };
-          }
-          return n;
-        });
-      } catch (err) {
-        return initialNotes;
+    return initialNotes.map(n => {
+      if (n.updatedAt === 'Just now' || !n.updatedAt) {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - 3);
+        return { ...n, updatedAt: daysAgo.toISOString() };
       }
-    }
-    return initialNotes;
+      return n;
+    });
   });
 
-  const [activities, setActivities] = useState<Activity[]>(() => {
-    const saved = localStorage.getItem('agency_activities');
-    return saved ? JSON.parse(saved) : initialActivities;
-  });
+  const [activities, setActivities] = useState<Activity[]>(initialActivities);
 
-  // Global projects state with safe localStorage caching
-  const [projects, setProjects] = useState<any[]>(() => {
-    const saved = localStorage.getItem('agency_projects_list');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (err) {
-        console.error('Error parsing agency_projects_list:', err);
-      }
-    }
-    return INITIAL_PROJECTS;
-  });
+  // Global projects state
+  const [projects, setProjects] = useState<any[]>(INITIAL_PROJECTS);
 
   // Dynamic users state
   const [usersList, setUsersList] = useState<PanelUser[]>(REGISTERED_USERS);
 
   // Comerciales accounts and logged-in state
-  const [comercialesList, setComercialesList] = useState<ComercialAccount[]>(() => {
-    const saved = localStorage.getItem('agency_comerciales_accounts');
-    if (saved) return JSON.parse(saved);
-    return [
-      { id: 'com_demo', name: 'Alfonso Sales', email: 'vendedor@agency.com', password: 'password123', createdAt: new Date().toISOString(), phone: '+34 622 111 000' }
-    ];
-  });
+  const [comercialesList, setComercialesList] = useState<ComercialAccount[]>([
+    { id: 'com_demo', name: 'Alfonso Sales', email: 'vendedor@agency.com', password: 'password123', createdAt: new Date().toISOString(), phone: '+34 622 111 000' }
+  ]);
 
-  const [leadsList, setLeadsList] = useState<ComercialLead[]>(() => {
-    const saved = localStorage.getItem('agency_comerciales_leads');
-    if (saved) return JSON.parse(saved);
-    return [
-      { id: 'l1', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Beatriz Soler', company: 'Soler Soluciones SL', email: 'beatriz@solersol.es', phone: '611222333', status: 'Negociación', value: 8500, notes: 'Interesada en el desarrollo de la web corporativa a medida con Next.js y panel headless CRM.', createdAt: new Date().toISOString() },
-      { id: 'l2', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Javier Castillo', company: 'Castillo Logistics', email: 'castillo@logistics.com', phone: '655000444', status: 'Ganado', value: 12400, notes: 'Proyecto cerrado para el sistema ERP de tracking vehicular en tiempo real.', createdAt: new Date().toISOString() },
-      { id: 'l3', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Marta Rivas', company: 'AeroGroup Inc', email: 'marta@aerogroup.org', phone: '677999888', status: 'Pendiente', value: 3500, notes: 'Solicitó presupuesto para auditoría técnica de seguridad en sus servicios AWS.', createdAt: new Date().toISOString() }
-    ];
-  });
+  const [leadsList, setLeadsList] = useState<ComercialLead[]>([
+    { id: 'l1', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Beatriz Soler', company: 'Soler Soluciones SL', email: 'beatriz@solersol.es', phone: '611222333', status: 'Negociación', value: 8500, notes: 'Interesada en el desarrollo de la web corporativa a medida con Next.js y panel headless CRM.', createdAt: new Date().toISOString() },
+    { id: 'l2', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Javier Castillo', company: 'Castillo Logistics', email: 'castillo@logistics.com', phone: '655000444', status: 'Ganado', value: 12400, notes: 'Proyecto cerrado para el sistema ERP de tracking vehicular en tiempo real.', createdAt: new Date().toISOString() },
+    { id: 'l3', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Marta Rivas', company: 'AeroGroup Inc', email: 'marta@aerogroup.org', phone: '677999888', status: 'Pendiente', value: 3500, notes: 'Solicitó presupuesto para auditoría técnica de seguridad en sus servicios AWS.', createdAt: new Date().toISOString() }
+  ]);
 
   const [coldLeads, setColdLeads] = useState<ColdCallingLead[]>(() => {
-    const saved = localStorage.getItem('agency_cold_calling_leads');
-    if (saved) return JSON.parse(saved);
     const todayStr = new Date().toISOString().split('T')[0];
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -318,40 +281,28 @@ export default function App() {
     ];
   });
 
-  useEffect(() => {
-    localStorage.setItem('agency_cold_calling_leads', JSON.stringify(coldLeads));
-  }, [coldLeads]);
-
   const [currentComercial, setCurrentComercial] = useState<ComercialAccount | null>(() => {
-    const saved = localStorage.getItem('agency_current_comercial');
+    const saved = sessionStorage.getItem('agency_current_comercial');
     return saved ? JSON.parse(saved) : null;
   });
 
   useEffect(() => {
-    localStorage.setItem('agency_comerciales_accounts', JSON.stringify(comercialesList));
-  }, [comercialesList]);
-
-  useEffect(() => {
-    localStorage.setItem('agency_comerciales_leads', JSON.stringify(leadsList));
-  }, [leadsList]);
-
-  useEffect(() => {
     if (currentComercial) {
-      localStorage.setItem('agency_current_comercial', JSON.stringify(currentComercial));
+      sessionStorage.setItem('agency_current_comercial', JSON.stringify(currentComercial));
     } else {
-      localStorage.removeItem('agency_current_comercial');
+      sessionStorage.removeItem('agency_current_comercial');
     }
   }, [currentComercial]);
 
   // Notifications states
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('agency_read_notifications');
+    const saved = sessionStorage.getItem('agency_read_notifications');
     return saved ? JSON.parse(saved) : [];
   });
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('agency_read_notifications', JSON.stringify(readNotificationIds));
+    sessionStorage.setItem('agency_read_notifications', JSON.stringify(readNotificationIds));
   }, [readNotificationIds]);
 
   const mergeUsers = (dbProfiles: any[], activeUser: any) => {
@@ -388,25 +339,13 @@ export default function App() {
   };
 
   const fetchAndSetProfiles = async (activeUser?: any) => {
-    let localProfiles: any[] = [];
-    const saved = localStorage.getItem('agency_profiles');
-    if (saved) {
-      try { localProfiles = JSON.parse(saved); } catch (err) {}
-    }
-
     try {
       const dbProfiles = await db.getProfiles();
-      const combined = [...dbProfiles];
-      localProfiles.forEach(lp => {
-        if (!combined.some(u => u.email.toLowerCase() === lp.email.toLowerCase())) {
-          combined.push(lp);
-        }
-      });
-      const merged = mergeUsers(combined, activeUser || currentUser);
+      const merged = mergeUsers(dbProfiles, activeUser || currentUser);
       setUsersList(merged);
     } catch (e) {
-      console.warn('Could not fetch profiles from Supabase, using local fallback:', e);
-      const merged = mergeUsers(localProfiles, activeUser || currentUser);
+      console.warn('Could not fetch profiles from Supabase:', e);
+      const merged = mergeUsers([], activeUser || currentUser);
       setUsersList(merged);
     }
   };
@@ -416,17 +355,7 @@ export default function App() {
     try {
       await db.upsertProfile({ id, name: profileData.name, email: profileData.email });
     } catch (e) {
-      console.warn('Could not upsert profile to Supabase, saving locally:', e);
-    }
-
-    let localProfiles: any[] = [];
-    const saved = localStorage.getItem('agency_profiles');
-    if (saved) {
-      try { localProfiles = JSON.parse(saved); } catch (err) {}
-    }
-    if (!localProfiles.some(u => u.email.toLowerCase() === profileData.email.toLowerCase())) {
-      localProfiles.push({ id, name: profileData.name, email: profileData.email });
-      localStorage.setItem('agency_profiles', JSON.stringify(localProfiles));
+      console.warn('Could not upsert profile to Supabase:', e);
     }
     
     await fetchAndSetProfiles();
@@ -447,19 +376,19 @@ export default function App() {
   const [finTransactions, setFinTransactions] = useState<any[]>([]);
 
   useEffect(() => {
-    const syncFinanceTransactions = () => {
-      const saved = localStorage.getItem('agency_finance_transactions');
-      if (saved) {
-        try {
-          setFinTransactions(JSON.parse(saved));
-        } catch (e) {
-          console.error('Error parsing finance transactions in App.tsx:', e);
+    const syncFinanceTransactions = async () => {
+      try {
+        const dbTxs = await db.getFinanceTransactions();
+        if (dbTxs) {
+          setFinTransactions(dbTxs);
         }
+      } catch (e) {
+        console.error('Error fetching finance transactions in App.tsx:', e);
       }
     };
     syncFinanceTransactions();
-    // Keep checking every 3 seconds for updates
-    const interval = setInterval(syncFinanceTransactions, 3000);
+    // Keep checking every 8 seconds for updates
+    const interval = setInterval(syncFinanceTransactions, 8000);
     return () => clearInterval(interval);
   }, []);
 
@@ -679,16 +608,16 @@ export default function App() {
           name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Agency Member'
         };
         setCurrentUser(u);
-        localStorage.setItem('agency_user', JSON.stringify(u));
+        sessionStorage.setItem('agency_user', JSON.stringify(u));
         syncWithSupabase(session.user.id);
         
         // Let the hash determine the screen; if they were on /acceso or login, redirect to admin
-        const initialHash = window.location.hash || '#/';
+        const initialHash = window.location.hash || '';
         if (initialHash === '#/acceso' || initialHash === '#/login') {
           navigateTo('dashboard', 'none');
         }
       } else {
-        const saved = localStorage.getItem('agency_user');
+        const saved = sessionStorage.getItem('agency_user');
         const savedUser = saved ? JSON.parse(saved) : null;
         if (savedUser && savedUser.id === null) {
           // Preserve demo/local session
@@ -698,10 +627,10 @@ export default function App() {
           syncWithSupabase(savedUser.id);
         } else {
           setCurrentUser(null);
-          localStorage.removeItem('agency_user');
+          sessionStorage.removeItem('agency_user');
           
           // If they were on an admin screen but not logged in, redirect to login
-          const initialHash = window.location.hash || '#/';
+          const initialHash = window.location.hash || '';
           if (initialHash.startsWith('#/admin')) {
             navigateTo('acceso', 'none');
           }
@@ -718,7 +647,7 @@ export default function App() {
           name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Agency Member'
         };
         setCurrentUser(u);
-        localStorage.setItem('agency_user', JSON.stringify(u));
+        sessionStorage.setItem('agency_user', JSON.stringify(u));
         syncWithSupabase(session.user.id);
         
         const initialHash = window.location.hash || '#/';
@@ -727,8 +656,8 @@ export default function App() {
         }
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
-        localStorage.removeItem('agency_user');
-        localStorage.removeItem('agency_current_screen');
+        sessionStorage.removeItem('agency_user');
+        sessionStorage.removeItem('agency_current_screen');
         navigateTo('landing', 'none');
       }
     });
@@ -780,7 +709,7 @@ export default function App() {
   const handleSignInAndNavigate = (sessionUser?: { id: string | null; email: string; name: string }) => {
     if (sessionUser) {
       setCurrentUser(sessionUser);
-      localStorage.setItem('agency_user', JSON.stringify(sessionUser));
+      sessionStorage.setItem('agency_user', JSON.stringify(sessionUser));
       
       // Load user templates if it is first-time demo access
       if (!sessionUser.id) {
@@ -806,7 +735,7 @@ export default function App() {
       console.error('Logout error:', err);
     }
     setCurrentUser(null);
-    localStorage.removeItem('agency_user');
+    sessionStorage.removeItem('agency_user');
     navigateTo('acceso', 'push_back');
   };
 
@@ -826,27 +755,6 @@ export default function App() {
       throw err;
     }
   };
-
-  // Sync back to local backup cache (localStorage) for reliability
-  useEffect(() => {
-    localStorage.setItem('agency_contacts', JSON.stringify(contacts));
-  }, [contacts]);
-
-  useEffect(() => {
-    localStorage.setItem('agency_events', JSON.stringify(events));
-  }, [events]);
-
-  useEffect(() => {
-    localStorage.setItem('agency_notes', JSON.stringify(notes));
-  }, [notes]);
-
-  useEffect(() => {
-    localStorage.setItem('agency_activities', JSON.stringify(activities));
-  }, [activities]);
-
-  useEffect(() => {
-    localStorage.setItem('agency_projects_list', JSON.stringify(projects));
-  }, [projects]);
 
   // Combined dynamic search value for header syncing
   const [globalSearch, setGlobalSearch] = useState('');
@@ -896,16 +804,16 @@ export default function App() {
     if (updated.devStatus === 'completed') {
       updated.devAssignedTo = 'Nacho';
       
-      // Auto-archive completed project/contact in local storage so it is moved to "Archivados" tab in CRM
+      // Auto-archive completed project/contact in session storage so it is moved to "Archivados" tab in CRM
       try {
-        const saved = localStorage.getItem('archived_contacts_ids');
+        const saved = sessionStorage.getItem('archived_contacts_ids');
         let archivedIds: string[] = [];
         if (saved) {
           archivedIds = JSON.parse(saved);
         }
         if (!archivedIds.includes(updated.id)) {
           archivedIds.push(updated.id);
-          localStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds));
+          sessionStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds));
         }
       } catch (err) {
         console.error('Error auto-archiving completed project:', err);
@@ -921,14 +829,14 @@ export default function App() {
 
       // Also ensure it stays archived
       try {
-        const saved = localStorage.getItem('archived_contacts_ids');
+        const saved = sessionStorage.getItem('archived_contacts_ids');
         let archivedIds: string[] = [];
         if (saved) {
           archivedIds = JSON.parse(saved);
         }
         if (!archivedIds.includes(updated.id)) {
           archivedIds.push(updated.id);
-          localStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds));
+          sessionStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds));
         }
       } catch (err) {
         console.error('Error auto-archiving completed project:', err);

@@ -88,9 +88,9 @@ export default function CrmScreen({
   // Tab/filter for Active vs Archived contacts
   const [crmFilter, setCrmFilter] = useState<'active' | 'archived'>('active');
 
-  // Archive tracker state linked to localStorage
+  // Archive tracker state linked to sessionStorage
   const [archivedContactIds, setArchivedContactIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('archived_contacts_ids');
+    const saved = sessionStorage.getItem('archived_contacts_ids');
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -119,7 +119,7 @@ export default function CrmScreen({
     }
 
     setArchivedContactIds(newArchivedIds);
-    localStorage.setItem('archived_contacts_ids', JSON.stringify(newArchivedIds));
+    sessionStorage.setItem('archived_contacts_ids', JSON.stringify(newArchivedIds));
 
     if (onUpdateContact) {
       onUpdateContact(updatedContact);
@@ -255,7 +255,7 @@ export default function CrmScreen({
       ? archivedContactIds.filter(item => item !== id)
       : [...archivedContactIds, id];
     setArchivedContactIds(updated);
-    localStorage.setItem('archived_contacts_ids', JSON.stringify(updated));
+    sessionStorage.setItem('archived_contacts_ids', JSON.stringify(updated));
 
     const toast = document.getElementById('toast-msg');
     if (toast) {

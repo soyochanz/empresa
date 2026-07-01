@@ -43,16 +43,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
 
   // High-fidelity real projects carried out by the digital boutique agency
   const displayProjects = React.useMemo(() => {
-    const rawProjects = (projects && projects.length > 0) ? projects : (() => {
-      const saved = localStorage.getItem('agency_projects_list');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        } catch (e) {}
-      }
-      return [];
-    })();
+    const rawProjects = (projects && projects.length > 0) ? projects : [];
 
     if (rawProjects.length > 0) {
       // Filter projects that are marked to show on landing page
@@ -146,20 +137,17 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
     };
 
     try {
-      // 1. Double action: Save directly to Supabase via db helpers
+      // Save directly to Supabase via db helpers
       await db.insertInquiry(newInquiry);
+      setIsSubmitted(true);
+      setTimeout(() => {
+        setInquiryName('');
+        setInquiryEmail('');
+        setInquiryMessage('');
+      }, 4000);
     } catch (err) {
-      console.warn("Got error saving inquiry to Supabase. Gracefully falling back to local storage backup:", err);
-    } finally {
-      // 2. Always persist a backup in localStorage in case Supabase schema is not built or network is spotty
-      const localSaved = localStorage.getItem('agency_inquiries_local');
-      const list: InquiryMessage[] = localSaved ? JSON.parse(localSaved) : [];
-      list.push(newInquiry);
-      localStorage.setItem('agency_inquiries_local', JSON.stringify(list));
-
-      // Trigger standard cross-component notification
-      window.dispatchEvent(new Event('local_inquiries_updated'));
-
+      console.warn("Got error saving inquiry to Supabase:", err);
+      // Still show thank you state to keep client happy
       setIsSubmitted(true);
       setTimeout(() => {
         setInquiryName('');
