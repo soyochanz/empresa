@@ -2089,154 +2089,278 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
             {activeTab === 'contract' ? (
               /* ==================== CONTRACT HTML SHEET ==================== */
               <div className="space-y-6 text-xs text-justify text-neutral-800 tracking-normal leading-relaxed">
-                
-                {/* Contract Title */}
-                <h3 className="text-center font-bold text-sm uppercase tracking-wide text-neutral-950 font-sans mb-2">
-                  CONTRATO DE PRESTACIÓN DE SERVICIOS DE DESARROLLO WEB
-                </h3>
-                <div className="text-center text-[10px] font-mono text-neutral-550 mb-6 uppercase tracking-wider">
-                  CÓDIGO DE REGISTRO: <span className="font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">{selectedContractIdInDb || ('AL-CNT-' + (clientName ? clientName.substring(0, 3).toUpperCase().replace(/\s/g, 'X') : 'PRE') + '-' + Date.now().toString().slice(-4))}</span>
-                </div>
-
-                {/* Reunidos Statement info */}
-                <p>
-                  <strong className="font-sans font-semibold text-neutral-950">REUNIDOS</strong> De una parte: 
-                  <strong> {prestador1Name}</strong>, con DNI nº <strong>{prestador1Dni}</strong> y 
-                  <strong> {prestador2Name}</strong>, con DNI nº <strong>{prestador2Dni}</strong>, actuando conjuntamente como prestadores de servicios, en adelante, <strong className="font-sans">“LOS PRESTADORES”</strong>.
-                </p>
-                
-                <p>
-                  Y de otra parte: 
-                  <strong> {clientName || '_______________'}</strong>, con DNI/CIF nº 
-                  <strong> {clientDni || '_______________'}</strong>, con domicilio en 
-                  <strong> {clientAddress || '_______________'}</strong>, Teléfono: 
-                  <strong> {clientPhone || '_______________'}</strong>, Correo electrónico: 
-                  <strong> {clientEmail || '_______________'}</strong>, en adelante, <strong className="font-sans">“EL CLIENTE”</strong>.
-                </p>
-
-                {/* Objeto */}
-                <div>
-                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
-                    1. OBJETO DEL CONTRATO
-                  </h4>
-                  <p>
-                    LOS PRESTADORES se comprometen a desarrollar para EL CLIENTE una página web profesional que incluirá las siguientes características en su entrega final:
-                  </p>
-                  <ul className="list-disc pl-5 mt-2 space-y-1">
-                    <li>Diseño y desarrollo de interfaz web a medida.</li>
-                    <li>Adaptación inteligente a todo tipo de dispositivos móviles (Responsividad).</li>
-                    <li>Sistema de reservas / citas integrado y panel autogestionable.</li>
-                    <li>Configuración de SEO básico inicial para indexado rápido.</li>
-                    <li>1 mes de soporte de posicionamiento web gratuito.</li>
-                  </ul>
-                </div>
-
-                {/* Precios */}
-                <div>
-                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
-                    2. PRECIO Y FORMAS DE PAGO
-                  </h4>
-                  <p>
-                    El precio del servicio de desarrollo web pactado asciende a <strong>{priceSingle} €</strong> mediante pago único. Con el fin de facilitar la financiación y el correcto acceso tecnológico de EL CLIENTE, se ofrecen opcionalmente las siguientes modalidades de abono diferido:
-                  </p>
-
-                  <div className="mt-3 pl-4 space-y-2 border-l-2 border-[#D4AF37] font-sans text-[11px]">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
-                        {selectedModality === 'single' ? '✓' : ''}
-                      </span>
-                      <span>
-                        <strong>OPCIÓN A – PAGO ÚNICO:</strong> Importe total de <strong>{priceSingle} €</strong> en un único abono al formalizar la firma.
-                      </span>
+                {selectedModality === 'rrss' ? (
+                  /* ==================== SOCIAL MEDIA / RRSS CONTRACT ==================== */
+                  <>
+                    {/* Contract Title */}
+                    <h3 className="text-center font-bold text-sm uppercase tracking-wide text-neutral-950 font-sans mb-2">
+                      CONTRATO DE PRESTACIÓN DE SERVICIOS DE GESTIÓN DE REDES SOCIALES Y SEO
+                    </h3>
+                    <div className="text-center text-[10px] font-mono text-neutral-550 mb-6 uppercase tracking-wider">
+                      CÓDIGO DE REGISTRO: <span className="font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">{selectedContractIdInDb || ('AL-CNT-RRSS-' + (clientName ? clientName.substring(0, 3).toUpperCase().replace(/\s/g, 'X') : 'PRE') + '-' + Date.now().toString().slice(-4))}</span>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
-                        {selectedModality === 'fin3' ? '✓' : ''}
-                      </span>
-                      <span>
-                        <strong>OPCIÓN B – FINANCIACIÓN A 3 MESES:</strong> Importe total financiado de <strong>{fin3Total} €</strong> devengados en 3 cuotas mensuales de <strong>{fin3Cuota} €</strong> (Coste de financiación acumulado: {fin3Coste} €).
-                      </span>
+                    {/* Reunidos Statement info */}
+                    <p>
+                      <strong className="font-sans font-semibold text-neutral-950">REUNIDOS</strong> De una parte: 
+                      <strong> {prestador1Name}</strong>, con DNI nº <strong>{prestador1Dni}</strong> y 
+                      <strong> {prestador2Name}</strong>, con DNI nº <strong>{prestador2Dni}</strong>, actuando conjuntamente como prestadores de servicios, en adelante, <strong className="font-sans">“LOS PRESTADORES”</strong>.
+                    </p>
+                    
+                    <p>
+                      Y de otra parte: 
+                      <strong> {clientName || '_______________'}</strong>, con DNI/CIF nº 
+                      <strong> {clientDni || '_______________'}</strong>, con domicilio en 
+                      <strong> {clientAddress || '_______________'}</strong>, Teléfono: 
+                      <strong> {clientPhone || '_______________'}</strong>, Correo electrónico: 
+                      <strong> {clientEmail || '_______________'}</strong>, en adelante, <strong className="font-sans">“EL CLIENTE”</strong>.
+                    </p>
+
+                    {/* Objeto */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        1. OBJETO DEL CONTRATO
+                      </h4>
+                      <p>
+                        LOS PRESTADORES se comprometen a prestar al CLIENTE los servicios profesionales de gestión de redes sociales (Social Media & Community Management) y optimización de posicionamiento orgánico en motores de búsqueda (SEO), incluyendo las siguientes prestaciones periódicas en su ejecución mensual:
+                      </p>
+                      <ul className="list-disc pl-5 mt-2 space-y-1">
+                        <li>Planificación, diseño estratégico y redacción de contenidos personalizados mensuales adaptados a la identidad corporativa.</li>
+                        <li>Publicación regular de posts, stories y contenidos interactivos en las redes sociales acordadas (Instagram, Facebook, LinkedIn, etc.).</li>
+                        <li>Monitorización diaria de la comunidad, respuesta profesional a mensajes y comentarios entrantes (Community Management).</li>
+                        <li>Optimización periódica del posicionamiento SEO en motores de búsqueda para potenciar la visibilidad digital.</li>
+                        <li>Reuniones periódicas de seguimiento y presentación de informes mensuales detallados de rendimiento de marca.</li>
+                      </ul>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
-                        {selectedModality === 'fin4' ? '✓' : ''}
-                      </span>
-                      <span>
-                        <strong>OPCIÓN C – FINANCIACIÓN A 4 MESES:</strong> Importe total financiado de <strong>{fin4Total} €</strong> devengados en 4 cuotas mensuales de <strong>{fin4Cuota} €</strong> (Coste de financiación acumulado: {fin4Coste} €).
-                      </span>
+                    {/* Precios */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        2. CONDICIONES ECONÓMICAS Y SUSCRIPCIÓN
+                      </h4>
+                      <p>
+                        El precio de los servicios técnicos descritos en la cláusula anterior se establece en régimen de suscripción mensual por un importe de <strong>{priceSingle} € / mes</strong> (más impuestos aplicables vigentes).
+                      </p>
+                      <p className="mt-2">
+                        Dicho abono se devengará de forma anticipada dentro de los primeros <strong>cinco (5) días hábiles</strong> de cada mes facturado. El abono periódico de la primera cuota inicial ratifica formalmente la aceptación del CLIENTE sobre el inicio y continuidad de los planes estratégicos acordados.
+                      </p>
                     </div>
-                  </div>
 
-                  <p className="mt-3">
-                    <strong className="font-sans">Modalidad formalmente elegida por EL CLIENTE: </strong> 
-                    <span className="bg-neutral-100 px-2.5 py-0.5 rounded border border-neutral-300 font-sans font-bold">
-                      {selectedModality === 'single' && 'Opción A - Pago único de ' + priceSingle + ' €'}
-                      {selectedModality === 'fin3' && 'Opción B - Financiación 3 meses de ' + fin3Total + ' €'}
-                      {selectedModality === 'fin4' && 'Opción C - Financiación 4 meses de ' + fin4Total + ' €'}
-                    </span>
-                  </p>
-                </div>
+                    {/* Duracion */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        3. DURACIÓN DEL CONTRATO Y RESCISIÓN
+                      </h4>
+                      <p>
+                        El presente acuerdo entrará en vigor en la fecha de firma del mismo y se establece una duración mínima inicial de <strong>tres (3) meses</strong> a fin de garantizar el período de rodaje, maduración y correcto impacto de las campañas y el SEO orgánico.
+                      </p>
+                      <p className="mt-2">
+                        Una vez transcurrido este plazo contractual mínimo obligatorio, el contrato se prorrogará de forma tácita y automática mes a mes, a menos que cualquiera de las partes exprese formalmente su deseo de resolverlo mediante notificación fehaciente por escrito a la otra parte con un preaviso mínimo de <strong>quince (15) días de antelación</strong> a la fecha del siguiente cobro programado.
+                      </p>
+                    </div>
 
-                {/* Inicio de los trabajos */}
-                <div>
-                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                    3. INICIO DE LOS TRABAJOS
-                  </h4>
-                  <p>
-                    Los trabajos técnicos requeridos no comenzarán formalmente hasta que EL CLIENTE haya abonado la primera cuota o el importe de pago único correspondiente a la modalidad de adquisición seleccionada en la cláusula segunda. El abono efectivo inicial ratifica la conformidad absoluta con los términos expuestos en este instrumento.
-                  </p>
-                </div>
+                    {/* Propiedad Intelectual */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        4. PROPIEDAD INTELECTUAL Y ACCESOS
+                      </h4>
+                      <p>
+                        EL CLIENTE concede autorización expresa a LOS PRESTADORES para el uso y manejo temporal de sus credenciales, material fotográfico, logos y marcas con el único fin de llevar a cabo los servicios descritos. LOS PRESTADORES garantizan la confidencialidad absoluta sobre dichos accesos. Asimismo, una vez se encuentre al corriente de pago de todas sus cuotas mensuales de forma completa, EL CLIENTE dispondrá de la plena propiedad intelectual de todos los materiales finales publicados.
+                      </p>
+                    </div>
 
-                {/* Clausulado extra */}
-                <div>
-                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                    4. COMPROMISO DE PAGO Y DEUDA
-                  </h4>
-                  <p>
-                    EL CLIENTE reconoce de forma líquida, exigible e incondicional adeudar el total correspondiente de las cuotas indicadas. La cancelación unilateral de los trabajos iniciados por decisión ajena a LOS PRESTADORES no extingue ni aminora la obligación contractual de pago total pendiente correspondiente.
-                  </p>
-                </div>
+                    {/* Suspension */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        5. IMPAGOS Y SUSPENSIÓN DE ACTIVIDAD
+                      </h4>
+                      <p>
+                        El impago de la cuota mensual en la fecha estipulada habilitará de pleno derecho a LOS PRESTADORES a suspender la creación de contenidos, monitorización de redes sociales y servicios de optimización SEO tras transcurrir 5 días naturales desde el envío de un recordatorio de pago, sin que de ello se derive reclamación alguna por parte de EL CLIENTE.
+                      </p>
+                    </div>
 
-                <div>
-                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                    5. IMPAGOS Y COBROS
-                  </h4>
-                  <p>
-                    En caso de incurrir en retraso superior a 7 días hábiles sobre los plazos pactados en cualquiera de las cuotas mensuales, LOS PRESTADORES quedan facultados de pleno derecho para suspender temporalmente el hosting, servicio técnico y trabajos concurrentes asociados hasta el abono completo del devengo.
-                  </p>
-                </div>
+                    {/* Inversión Publicitaria */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        6. INVERSIÓN PUBLICITARIA Y SERVICIOS EXTRA
+                      </h4>
+                      <p>
+                        La cuota fija mensual pactada cubre únicamente el servicio de gestión de marca orgánica, redacción, SEO y diseño. No incluye presupuestos de inversión publicitaria adicional (como presupuestos asignados a Meta Ads o Google Ads), sesiones de fotografía/vídeo presenciales fuera de zona, o desarrollo de subsistemas de software personalizados, que se presupuestarán individualmente en caso de ser solicitados por EL CLIENTE.
+                      </p>
+                    </div>
 
-                {/* Entrega */}
-                <div>
-                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                    6. PLAZO DE ENTREGA
-                  </h4>
-                  <p>
-                    El plazo de entrega estimado del proyecto final será de <strong>{deliveryDays} días hábiles</strong>, computables a partir del día hábil posterior a la recepción de toda la información corporativa, accesos iniciales y materiales requeridos por parte de EL CLIENTE.
-                  </p>
-                </div>
+                    {/* Responsabilidad */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        7. LÍMITES DE RESPONSABILIDAD
+                      </h4>
+                      <p>
+                        LOS PRESTADORES se comprometen a emplear el máximo rigor profesional e idoneidad en la ejecución de las campañas. No obstante, no serán responsables de caídas de servicio ajenas en las propias plataformas de redes sociales, cambios repentinos en las APIs o algoritmos internos de los buscadores y redes que alteren la visibilidad de forma ajena a su intervención.
+                      </p>
+                    </div>
 
-                {/* Servicios adicionales */}
-                <div>
-                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                    7. SERVICIOS Y CUOTAS ADICIONALES
-                  </h4>
-                  <p>
-                    EL CLIENTE podrá encomendar trabajos opcionales y de soporte post-lanzamiento tales como posicionamiento SEO periódico, marketing en Facebook Ads, mantenimiento preventivo de código, agentes o integraciones de Inteligencia Artificial avanzadas y automatizaciones. Estos servicios dispondrán de una tarifa de abono mensual estándar de <strong>97 €/mes</strong>, salvo estipulaciones específicas suscritas por separado.
-                  </p>
-                </div>
+                    {/* Tribunales */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        8. RESOLUCIÓN DE CONFLICTOS
+                      </h4>
+                      <p>
+                        Para dirimir cualquier controversia o discrepancia derivada del cumplimiento, ejecución o interpretación de este documento, las partes contratantes se someten formalmente a la exclusiva jurisdicción de los Juzgados y Tribunales de la ciudad de <strong>{courtCity}</strong>, renunciando de común acuerdo a cualquier fuero local propio alternativo que pudiera corresponderles.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  /* ==================== WEB DEVELOPMENT CONTRACT ==================== */
+                  <>
+                    {/* Contract Title */}
+                    <h3 className="text-center font-bold text-sm uppercase tracking-wide text-neutral-950 font-sans mb-2">
+                      CONTRATO DE PRESTACIÓN DE SERVICIOS DE DESARROLLO WEB
+                    </h3>
+                    <div className="text-center text-[10px] font-mono text-neutral-550 mb-6 uppercase tracking-wider">
+                      CÓDIGO DE REGISTRO: <span className="font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">{selectedContractIdInDb || ('AL-CNT-' + (clientName ? clientName.substring(0, 3).toUpperCase().replace(/\s/g, 'X') : 'PRE') + '-' + Date.now().toString().slice(-4))}</span>
+                    </div>
 
-                {/* Tribunales */}
-                <div>
-                  <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                    8. RESOLUCIÓN DE CONFLICTOS
-                  </h4>
-                  <p>
-                    Para dirimir cualquier controversia o discrepancia derivada del cumplimiento, ejecución o interpretación de este documento, las partes contratantes se someten formalmente a la exclusiva jurisdicción de los Juzgados y Tribunales de la ciudad de <strong>{courtCity}</strong>, renunciando de común acuerdo a cualquier fuero local propio alternativo que pudiera corresponderles.
-                  </p>
-                </div>
+                    {/* Reunidos Statement info */}
+                    <p>
+                      <strong className="font-sans font-semibold text-neutral-950">REUNIDOS</strong> De una parte: 
+                      <strong> {prestador1Name}</strong>, con DNI nº <strong>{prestador1Dni}</strong> y 
+                      <strong> {prestador2Name}</strong>, con DNI nº <strong>{prestador2Dni}</strong>, actuando conjuntamente como prestadores de servicios, en adelante, <strong className="font-sans">“LOS PRESTADORES”</strong>.
+                    </p>
+                    
+                    <p>
+                      Y de otra parte: 
+                      <strong> {clientName || '_______________'}</strong>, con DNI/CIF nº 
+                      <strong> {clientDni || '_______________'}</strong>, con domicilio en 
+                      <strong> {clientAddress || '_______________'}</strong>, Teléfono: 
+                      <strong> {clientPhone || '_______________'}</strong>, Correo electrónico: 
+                      <strong> {clientEmail || '_______________'}</strong>, en adelante, <strong className="font-sans">“EL CLIENTE”</strong>.
+                    </p>
+
+                    {/* Objeto */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        1. OBJETO DEL CONTRATO
+                      </h4>
+                      <p>
+                        LOS PRESTADORES se comprometen a desarrollar para EL CLIENTE una página web profesional que incluirá las siguientes características en su entrega final:
+                      </p>
+                      <ul className="list-disc pl-5 mt-2 space-y-1">
+                        <li>Diseño y desarrollo de interfaz web a medida.</li>
+                        <li>Adaptación inteligente a todo tipo de dispositivos móviles (Responsividad).</li>
+                        <li>Sistema de reservas / citas integrado y panel autogestionable.</li>
+                        <li>Configuración de SEO básico inicial para indexado rápido.</li>
+                        <li>1 mes de soporte de posicionamiento web gratuito.</li>
+                      </ul>
+                    </div>
+
+                    {/* Precios */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        2. PRECIO Y FORMAS DE PAGO
+                      </h4>
+                      <p>
+                        El precio del servicio de desarrollo web pactado asciende a <strong>{priceSingle} €</strong> mediante pago único. Con el fin de facilitar la financiación y el correcto acceso tecnológico de EL CLIENTE, se ofrecen opcionalmente las siguientes modalidades de abono diferido:
+                      </p>
+
+                      <div className="mt-3 pl-4 space-y-2 border-l-2 border-[#D4AF37] font-sans text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
+                            {selectedModality === 'single' ? '✓' : ''}
+                          </span>
+                          <span>
+                            <strong>OPCIÓN A – PAGO ÚNICO:</strong> Importe total de <strong>{priceSingle} €</strong> en un único abono al formalizar la firma.
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
+                            {selectedModality === 'fin3' ? '✓' : ''}
+                          </span>
+                          <span>
+                            <strong>OPCIÓN B – FINANCIACIÓN A 3 MESES:</strong> Importe total financiado de <strong>{fin3Total} €</strong> devengados en 3 cuotas mensuales de <strong>{fin3Cuota} €</strong> (Coste de financiación acumulado: {fin3Coste} €).
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
+                            {selectedModality === 'fin4' ? '✓' : ''}
+                          </span>
+                          <span>
+                            <strong>OPCIÓN C – FINANCIACIÓN A 4 MESES:</strong> Importe total financiado de <strong>{fin4Total} €</strong> devengados en 4 cuotas mensuales de <strong>{fin4Cuota} €</strong> (Coste de financiación acumulado: {fin4Coste} €).
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="mt-3">
+                        <strong className="font-sans">Modalidad formalmente elegida por EL CLIENTE: </strong> 
+                        <span className="bg-neutral-100 px-2.5 py-0.5 rounded border border-neutral-300 font-sans font-bold">
+                          {selectedModality === 'single' && 'Opción A - Pago único de ' + priceSingle + ' €'}
+                          {selectedModality === 'fin3' && 'Opción B - Financiación 3 meses de ' + fin3Total + ' €'}
+                          {selectedModality === 'fin4' && 'Opción C - Financiación 4 meses de ' + fin4Total + ' €'}
+                        </span>
+                      </p>
+                    </div>
+
+                    {/* Inicio de los trabajos */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        3. INICIO DE LOS TRABAJOS
+                      </h4>
+                      <p>
+                        Los trabajos técnicos requeridos no comenzarán formalmente hasta que EL CLIENTE haya abonado la primera cuota o el importe de pago único correspondiente a la modalidad de adquisición seleccionada en la cláusula segunda. El abono efectivo inicial ratifica la conformidad absoluta con los términos expuestos en este instrumento.
+                      </p>
+                    </div>
+
+                    {/* Clausulado extra */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        4. COMPROMISO DE PAGO Y DEUDA
+                      </h4>
+                      <p>
+                        EL CLIENTE reconoce de forma líquida, exigible e incondicional adeudar el total correspondiente de las cuotas indicadas. La cancelación unilateral de los trabajos iniciados por decisión ajena a LOS PRESTADORES no extingue ni aminora la obligación contractual de pago total pendiente correspondiente.
+                      </p>
+                    </div>
+
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        5. IMPAGOS Y COBROS
+                      </h4>
+                      <p>
+                        En caso de incurrir en retraso superior a 7 días hábiles sobre los plazos pactados en cualquiera de las cuotas mensuales, LOS PRESTADORES quedan facultados de pleno derecho para suspender temporalmente el hosting, servicio técnico y trabajos concurrentes asociados hasta el abono completo del devengo.
+                      </p>
+                    </div>
+
+                    {/* Entrega */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        6. PLAZO DE ENTREGA
+                      </h4>
+                      <p>
+                        El plazo de entrega estimado del proyecto final será de <strong>{deliveryDays} días hábiles</strong>, computables a partir del día hábil posterior a la recepción de toda la información corporativa, accesos iniciales y materiales requeridos por parte de EL CLIENTE.
+                      </p>
+                    </div>
+
+                    {/* Servicios adicionales */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        7. SERVICIOS Y CUOTAS ADICIONALES
+                      </h4>
+                      <p>
+                        EL CLIENTE podrá encomendar trabajos opcionales y de soporte post-lanzamiento tales como posicionamiento SEO periódico, marketing en Facebook Ads, mantenimiento preventivo de código, agentes o integraciones de Inteligencia Artificial avanzadas y automatizaciones. Estos servicios dispondrán de una tarifa de abono mensual estándar de <strong>97 €/mes</strong>, salvo estipulaciones específicas suscritas por separado.
+                      </p>
+                    </div>
+
+                    {/* Tribunales */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
+                        8. RESOLUCIÓN DE CONFLICTOS
+                      </h4>
+                      <p>
+                        Para dirimir cualquier controversia o discrepancia derivada del cumplimiento, ejecución o interpretación de este documento, las partes contratantes se someten formalmente a la exclusiva jurisdicción de los Juzgados y Tribunales de la ciudad de <strong>{courtCity}</strong>, renunciando de común acuerdo a cualquier fuero local propio alternativo que pudiera corresponderles.
+                      </p>
+                    </div>
+                  </>
+                )}
 
                 {/* Firma date block */}
                 <p className="pt-2 text-right">

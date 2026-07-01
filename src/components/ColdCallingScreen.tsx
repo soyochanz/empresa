@@ -196,11 +196,6 @@ export default function ColdCallingScreen({
 
   // Filtering leads based on permissions and filters
   const visibleLeads = coldLeads.filter(lead => {
-    // Permission scope: Comercial only sees assigned, Admin sees all
-    if (!isAdmin && lead.assignedToEmail.toLowerCase() !== comercialEmail.toLowerCase()) {
-      return false;
-    }
-
     // Show only self assigned filter if enabled
     const myEmail = (currentUser?.email || currentComercial?.email || '').toLowerCase();
     if (showOnlySelf && lead.assignedToEmail.toLowerCase() !== myEmail) {
@@ -230,10 +225,17 @@ export default function ColdCallingScreen({
     return matchesSearch && matchesTemp && matchesAssigned;
   });
 
-  // Calculate Metrics
-  const relevantLeads = isAdmin 
-    ? coldLeads.filter(l => !l.archived)
-    : coldLeads.filter(l => !l.archived && l.assignedToEmail.toLowerCase() === comercialEmail.toLowerCase());
+  // Calculate Metrics based on current filter preferences (All vs Solo Míos)
+  const relevantLeads = coldLeads.filter(l => {
+    if (l.archived) return false;
+    
+    const myEmail = (currentUser?.email || currentComercial?.email || '').toLowerCase();
+    if (showOnlySelf && l.assignedToEmail.toLowerCase() !== myEmail) {
+      return false;
+    }
+    
+    return true;
+  });
 
   const totalCount = relevantLeads.length;
   const answeredCount = relevantLeads.filter(l => l.answered === 'Sí').length;

@@ -561,11 +561,17 @@ export default function App() {
   };
 
   // Verify and hydrate state from Supabase
-  const syncWithSupabase = async (userIdToSync?: string) => {
+  const syncWithSupabase = async (userIdToSync?: string, silent = false) => {
     try {
-      setSupabaseStatus(prev => ({ ...prev, loading: true }));
+      if (!silent) {
+        setSupabaseStatus(prev => ({ ...prev, loading: true }));
+      }
       const status = await checkSupabaseConnection();
-      setSupabaseStatus({ ...status, loading: false });
+      if (!silent) {
+        setSupabaseStatus({ ...status, loading: false });
+      } else {
+        setSupabaseStatus(prev => ({ ...prev, connected: status.connected, tablesExist: status.tablesExist }));
+      }
 
       if (status.connected && status.tablesExist) {
         // Sync CRM / Commercial calling lists from Supabase
@@ -613,13 +619,23 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Failed to sync state with Supabase:', err);
-      setSupabaseStatus(prev => ({ 
-        ...prev, 
-        loading: false, 
-        error: err?.message || 'Database link error' 
-      }));
+      if (!silent) {
+        setSupabaseStatus(prev => ({ 
+          ...prev, 
+          loading: false, 
+          error: err?.message || 'Database link error' 
+        }));
+      }
     }
   };
+
+  // Keep checking for database updates in the background (silent sync) every 8 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      syncWithSupabase(undefined, true);
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [currentUser, currentComercial]);
 
   // Router synchronization effect
   useEffect(() => {
