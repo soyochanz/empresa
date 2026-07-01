@@ -567,31 +567,49 @@ export default function App() {
       const status = await checkSupabaseConnection();
       setSupabaseStatus({ ...status, loading: false });
 
-      const activeUid = userIdToSync || currentUser?.id;
-      if (status.connected && status.tablesExist && activeUid) {
-        const [fetchedContacts, fetchedEvents, fetchedNotes, fetchedActivities] = await Promise.all([
-          db.getContacts(),
-          db.getEvents(),
-          db.getNotes(),
-          db.getActivities()
-        ]);
-
-        // Always update state blocks to allow deletions leading to zero records to persist correctly
-        setContacts(fetchedContacts || []);
-        setEvents(fetchedEvents || []);
-        setNotes(fetchedNotes || []);
-        setActivities(fetchedActivities || []);
-
+      if (status.connected && status.tablesExist) {
+        // Sync CRM / Commercial calling lists from Supabase
         try {
-          const fetchedProjects = await db.getProjects();
-          if (fetchedProjects && fetchedProjects.length > 0) {
-            setProjects(fetchedProjects);
+          const [fetchedCold, fetchedComercialLeads, fetchedComercialAccs] = await Promise.all([
+            db.getColdLeads(),
+            db.getComercialLeads(),
+            db.getComercialesAccounts()
+          ]);
+          if (fetchedCold) setColdLeads(fetchedCold);
+          if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
+          if (fetchedComercialAccs && fetchedComercialAccs.length > 0) {
+            setComercialesList(fetchedComercialAccs);
           }
-        } catch (projErr) {
-          console.warn('Could not sync projects table from Supabase:', projErr);
+        } catch (crmErr) {
+          console.warn('Could not load shared CRM tables from Supabase (tables may not exist yet):', crmErr);
         }
 
-        await fetchAndSetProfiles();
+        const activeUid = userIdToSync || currentUser?.id;
+        if (activeUid) {
+          const [fetchedContacts, fetchedEvents, fetchedNotes, fetchedActivities] = await Promise.all([
+            db.getContacts(),
+            db.getEvents(),
+            db.getNotes(),
+            db.getActivities()
+          ]);
+
+          // Always update state blocks to allow deletions leading to zero records to persist correctly
+          setContacts(fetchedContacts || []);
+          setEvents(fetchedEvents || []);
+          setNotes(fetchedNotes || []);
+          setActivities(fetchedActivities || []);
+
+          try {
+            const fetchedProjects = await db.getProjects();
+            if (fetchedProjects && fetchedProjects.length > 0) {
+              setProjects(fetchedProjects);
+            }
+          } catch (projErr) {
+            console.warn('Could not sync projects table from Supabase:', projErr);
+          }
+
+          await fetchAndSetProfiles();
+        }
       }
     } catch (err: any) {
       console.error('Failed to sync state with Supabase:', err);
@@ -702,6 +720,9 @@ export default function App() {
     // Verify general connection health on mount
     checkSupabaseConnection().then(status => {
       setSupabaseStatus({ ...status, loading: false });
+      if (status.connected && status.tablesExist) {
+        syncWithSupabase();
+      }
     });
 
     return () => {
@@ -949,6 +970,95 @@ export default function App() {
         await db.deleteProject(id, currentUser.id);
       } catch (err) {
         console.error('Supabase failed to delete project:', err);
+      }
+    }
+  };
+
+  const handleAddColdLead = async (newLead: ColdCallingLead) => {
+    setColdLeads(prev => [newLead, ...prev]);
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.insertColdLead(newLead, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to register cold lead:', err);
+      }
+    }
+  };
+
+  const handleUpdateColdLead = async (updated: ColdCallingLead) => {
+    setColdLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.updateColdLead(updated, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to update cold lead:', err);
+      }
+    }
+  };
+
+  const handleDeleteColdLead = async (id: string) => {
+    setColdLeads(prev => prev.filter(l => l.id !== id));
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.deleteColdLead(id, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to delete cold lead:', err);
+      }
+    }
+  };
+
+  const handleAddComercialLead = async (newLead: ComercialLead) => {
+    setLeadsList(prev => [newLead, ...prev]);
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.insertComercialLead(newLead, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to register comercial lead:', err);
+      }
+    }
+  };
+
+  const handleUpdateComercialLead = async (updated: ComercialLead) => {
+    setLeadsList(prev => prev.map(l => l.id === updated.id ? updated : l));
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.updateComercialLead(updated, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to update comercial lead:', err);
+      }
+    }
+  };
+
+  const handleDeleteComercialLead = async (id: string) => {
+    setLeadsList(prev => prev.filter(l => l.id !== id));
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.deleteComercialLead(id, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to delete comercial lead:', err);
+      }
+    }
+  };
+
+  const handleAddComercialAccount = async (newC: ComercialAccount) => {
+    setComercialesList(prev => [...prev, newC]);
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.insertComercialAccount(newC, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to register comercial account:', err);
+      }
+    }
+  };
+
+  const handleDeleteComercialAccount = async (id: string) => {
+    setComercialesList(prev => prev.filter(c => c.id !== id));
+    setLeadsList(prev => prev.filter(l => l.comercialId !== id));
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.deleteComercialAccount(id, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to delete comercial account:', err);
       }
     }
   };
@@ -1209,11 +1319,8 @@ export default function App() {
           <ComercialesAdminScreen
             comercialesList={comercialesList}
             leadsList={leadsList}
-            onAddComercial={(newC) => setComercialesList(prev => [...prev, newC])}
-            onDeleteComercial={(id) => {
-              setComercialesList(prev => prev.filter(c => c.id !== id));
-              setLeadsList(prev => prev.filter(l => l.comercialId !== id));
-            }}
+            onAddComercial={handleAddComercialAccount}
+            onDeleteComercial={handleDeleteComercialAccount}
           />
         );
       case 'cold_calling':
@@ -1222,9 +1329,9 @@ export default function App() {
             coldLeads={coldLeads}
             comercialesList={comercialesList}
             usersList={usersList}
-            onAddColdLead={(newLead) => setColdLeads(prev => [newLead, ...prev])}
-            onUpdateColdLead={(updated) => setColdLeads(prev => prev.map(l => l.id === updated.id ? updated : l))}
-            onDeleteColdLead={(id) => setColdLeads(prev => prev.filter(l => l.id !== id))}
+            onAddColdLead={handleAddColdLead}
+            onUpdateColdLead={handleUpdateColdLead}
+            onDeleteColdLead={handleDeleteColdLead}
             currentUser={currentUser}
             currentComercial={null}
             onNavigate={navigateTo}
@@ -1328,9 +1435,9 @@ export default function App() {
           <ComercialesPanelScreen
             comercial={currentComercial || comercialesList[0] || { id: 'com_demo', name: 'Alfonso Sales', email: 'vendedor@agency.com', createdAt: '' }}
             leadsList={leadsList}
-            onAddLead={(newLead) => setLeadsList(prev => [newLead, ...prev])}
-            onUpdateLead={(updated) => setLeadsList(prev => prev.map(l => l.id === updated.id ? updated : l))}
-            onDeleteLead={(id) => setLeadsList(prev => prev.filter(l => l.id !== id))}
+            onAddLead={handleAddComercialLead}
+            onUpdateLead={handleUpdateComercialLead}
+            onDeleteLead={handleDeleteComercialLead}
             onLogout={() => {
               setCurrentComercial(null);
               navigateTo('landing', 'push_back');
@@ -1339,9 +1446,9 @@ export default function App() {
             // Cold calling bindings
             coldLeads={coldLeads}
             comercialesList={comercialesList}
-            onAddColdLead={(newLead) => setColdLeads(prev => [newLead, ...prev])}
-            onUpdateColdLead={(updated) => setColdLeads(prev => prev.map(l => l.id === updated.id ? updated : l))}
-            onDeleteColdLead={(id) => setColdLeads(prev => prev.filter(l => l.id !== id))}
+            onAddColdLead={handleAddColdLead}
+            onUpdateColdLead={handleUpdateColdLead}
+            onDeleteColdLead={handleDeleteColdLead}
           />
         </motion.div>
       </AnimatePresence>

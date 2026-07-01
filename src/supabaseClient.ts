@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice } from './types';
+import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ComercialLead, ComercialAccount } from './types';
 
 // Use environment variables or fallback directly to the provided credentials
 const getSupabaseConfig = () => {
@@ -317,7 +317,92 @@ DROP POLICY IF EXISTS "Public Delete Access" ON projects;
 CREATE POLICY "Public Read Access" ON projects FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON projects FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON projects FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Public Delete Access" ON projects FOR DELETE USING (true);`;
+CREATE POLICY "Public Delete Access" ON projects FOR DELETE USING (true);
+
+
+-- 11. Create cold_calling_leads table
+CREATE TABLE IF NOT EXISTS cold_calling_leads (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  "businessName" TEXT NOT NULL,
+  "contactPerson" TEXT,
+  phone TEXT NOT NULL,
+  "callDate" TEXT,
+  contacted TEXT,
+  "isOwner" TEXT,
+  answered TEXT,
+  temperature TEXT,
+  "callbackScheduled" TEXT,
+  "callbackDate" TEXT,
+  "callbackTime" TEXT,
+  notes TEXT,
+  "assignedToEmail" TEXT,
+  "assignedToName" TEXT,
+  archived BOOLEAN DEFAULT false,
+  "isDone" BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE cold_calling_leads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON cold_calling_leads;
+DROP POLICY IF EXISTS "Public Insert Access" ON cold_calling_leads;
+DROP POLICY IF EXISTS "Public Update Access" ON cold_calling_leads;
+DROP POLICY IF EXISTS "Public Delete Access" ON cold_calling_leads;
+CREATE POLICY "Public Read Access" ON cold_calling_leads FOR SELECT USING (true);
+CREATE POLICY "Public Insert Access" ON cold_calling_leads FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Access" ON cold_calling_leads FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Public Delete Access" ON cold_calling_leads FOR DELETE USING (true);
+
+
+-- 12. Create comercial_leads table
+CREATE TABLE IF NOT EXISTS comercial_leads (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  "comercialId" TEXT,
+  "comercialName" TEXT,
+  name TEXT NOT NULL,
+  company TEXT,
+  email TEXT,
+  phone TEXT,
+  status TEXT,
+  value NUMERIC,
+  notes TEXT,
+  temperature TEXT,
+  "isDone" BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE comercial_leads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON comercial_leads;
+DROP POLICY IF EXISTS "Public Insert Access" ON comercial_leads;
+DROP POLICY IF EXISTS "Public Update Access" ON comercial_leads;
+DROP POLICY IF EXISTS "Public Delete Access" ON comercial_leads;
+CREATE POLICY "Public Read Access" ON comercial_leads FOR SELECT USING (true);
+CREATE POLICY "Public Insert Access" ON comercial_leads FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Access" ON comercial_leads FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Public Delete Access" ON comercial_leads FOR DELETE USING (true);
+
+
+-- 13. Create comerciales_accounts table
+CREATE TABLE IF NOT EXISTS comerciales_accounts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  password TEXT,
+  phone TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE comerciales_accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON comerciales_accounts;
+DROP POLICY IF EXISTS "Public Insert Access" ON comerciales_accounts;
+DROP POLICY IF EXISTS "Public Update Access" ON comerciales_accounts;
+DROP POLICY IF EXISTS "Public Delete Access" ON comerciales_accounts;
+CREATE POLICY "Public Read Access" ON comerciales_accounts FOR SELECT USING (true);
+CREATE POLICY "Public Insert Access" ON comerciales_accounts FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Access" ON comerciales_accounts FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Public Delete Access" ON comerciales_accounts FOR DELETE USING (true);`;
 
 export interface ConnectionStatus {
   connected: boolean;
@@ -1071,6 +1156,81 @@ export const db = {
 
   async deleteProject(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('projects').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // --- COLD LEADS ---
+  async getColdLeads(): Promise<ColdCallingLead[]> {
+    const { data, error } = await supabase.from('cold_calling_leads').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('cold_calling_leads table read error:', error.message);
+      throw error;
+    }
+    return (data || []) as ColdCallingLead[];
+  },
+
+  async insertColdLead(lead: ColdCallingLead, userId?: string): Promise<void> {
+    const payload = { ...lead, user_id: userId || null };
+    const { error } = await supabase.from('cold_calling_leads').insert(payload);
+    if (error) throw error;
+  },
+
+  async updateColdLead(lead: ColdCallingLead, userId?: string): Promise<void> {
+    const { user_id, id, ...payload } = lead as any;
+    const { error } = await supabase.from('cold_calling_leads').update(payload).eq('id', lead.id);
+    if (error) throw error;
+  },
+
+  async deleteColdLead(id: string, _userId?: string): Promise<void> {
+    const { error } = await supabase.from('cold_calling_leads').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // --- COMERCIAL LEADS ---
+  async getComercialLeads(): Promise<ComercialLead[]> {
+    const { data, error } = await supabase.from('comercial_leads').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('comercial_leads table read error:', error.message);
+      throw error;
+    }
+    return (data || []) as ComercialLead[];
+  },
+
+  async insertComercialLead(lead: ComercialLead, userId?: string): Promise<void> {
+    const payload = { ...lead, user_id: userId || null };
+    const { error } = await supabase.from('comercial_leads').insert(payload);
+    if (error) throw error;
+  },
+
+  async updateComercialLead(lead: ComercialLead, userId?: string): Promise<void> {
+    const { user_id, id, ...payload } = lead as any;
+    const { error } = await supabase.from('comercial_leads').update(payload).eq('id', lead.id);
+    if (error) throw error;
+  },
+
+  async deleteComercialLead(id: string, _userId?: string): Promise<void> {
+    const { error } = await supabase.from('comercial_leads').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // --- COMERCIAL ACCOUNTS ---
+  async getComercialesAccounts(): Promise<ComercialAccount[]> {
+    const { data, error } = await supabase.from('comerciales_accounts').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('comerciales_accounts table read error:', error.message);
+      throw error;
+    }
+    return (data || []) as ComercialAccount[];
+  },
+
+  async insertComercialAccount(account: ComercialAccount, userId?: string): Promise<void> {
+    const payload = { ...account, user_id: userId || null };
+    const { error } = await supabase.from('comerciales_accounts').insert(payload);
+    if (error) throw error;
+  },
+
+  async deleteComercialAccount(id: string, _userId?: string): Promise<void> {
+    const { error } = await supabase.from('comerciales_accounts').delete().eq('id', id);
     if (error) throw error;
   }
 };
