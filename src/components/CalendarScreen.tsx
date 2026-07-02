@@ -55,6 +55,7 @@ export default function CalendarScreen({
   });
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [deleteConfirmEventId, setDeleteConfirmEventId] = useState<string | null>(null);
 
   // Quick collaborator states
   const [showQuickAddCollab, setShowQuickAddCollab] = useState(false);
@@ -232,16 +233,18 @@ export default function CalendarScreen({
   };
 
   const handleDeleteEventClick = (id: string) => {
-    if (confirm("¿Estás seguro de que deseas eliminar este evento del calendario?")) {
-      onDeleteEvent(id);
-      setSelectedEventId(events[0]?.id || '');
+    setDeleteConfirmEventId(id);
+  };
 
-      const toast = document.getElementById('toast-msg');
-      if (toast) {
-        toast.innerText = `Evento eliminado`;
-        toast.classList.remove('opacity-0');
-        setTimeout(() => toast.classList.add('opacity-0'), 3000);
-      }
+  const confirmDeleteEvent = (id: string) => {
+    onDeleteEvent(id);
+    setSelectedEventId(events[0]?.id || '');
+
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      toast.innerText = `Evento eliminado`;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => toast.classList.add('opacity-0'), 3000);
     }
   };
 
@@ -1752,6 +1755,48 @@ export default function CalendarScreen({
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
+      {deleteConfirmEventId && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
+          <div className="bg-[#0b1329] border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-500/10 rounded-xl text-red-400">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-sans font-bold text-white uppercase tracking-wide">
+                  ¿Eliminar Evento?
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                  ¿Estás seguro de que deseas eliminar este evento del calendario de forma definitiva? Esta acción es irreversible.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmEventId(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer font-sans"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleteConfirmEventId) {
+                    confirmDeleteEvent(deleteConfirmEventId);
+                    setDeleteConfirmEventId(null);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(239,68,68,0.3)] font-sans"
+              >
+                Eliminar Evento
+              </button>
+            </div>
           </div>
         </div>
       )}

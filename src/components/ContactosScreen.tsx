@@ -24,6 +24,7 @@ export default function ContactosScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'archived'>('active');
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const fetchInquiries = async () => {
     setIsLoading(true);
@@ -65,9 +66,11 @@ export default function ContactosScreen() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Estás seguro de que deseas eliminar permanentemente este contacto de la base de datos?")) return;
-    
+  const handleDelete = (id: string) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async (id: string) => {
     // 1. Update state
     setInquiries(prev => prev.filter(item => item.id !== id));
     if (selectedInquiryId === id) {
@@ -371,6 +374,48 @@ export default function ContactosScreen() {
           <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
             Los datos enviados en la página de inicio se sincronizan por lotes directamente aquí en la sección de Contactos de Landing.
           </p>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN DE CONTACTO */}
+      {deleteId && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-500/10 rounded-xl text-red-400">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-sans font-bold text-white uppercase tracking-wide">
+                  ¿Eliminar Contacto?
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                  ¿Estás seguro de que deseas eliminar permanentemente este contacto de la base de datos de forma definitiva? Esta acción es irreversible.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteId(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer font-sans"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleteId) {
+                    confirmDelete(deleteId);
+                    setDeleteId(null);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(239,68,68,0.3)] font-sans"
+              >
+                Eliminar Registro
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

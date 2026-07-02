@@ -85,6 +85,7 @@ export default function ColdCallingScreen({
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedLeadForCall, setSelectedLeadForCall] = useState<ColdCallingLead | null>(null);
+  const [deleteConfirmLeadId, setDeleteConfirmLeadId] = useState<string | null>(null);
 
   // Dedicated modal state for scheduling in-person meetings (Cita Presencial)
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -758,9 +759,7 @@ export default function ColdCallingScreen({
                           
                           <button
                             onClick={() => {
-                              if (confirm('¿Seguro que deseas eliminar definitivamente este lead de cold calling?')) {
-                                onDeleteColdLead(lead.id);
-                              }
+                              setDeleteConfirmLeadId(lead.id);
                             }}
                             className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 hover:text-white hover:bg-rose-550 transition-colors cursor-pointer"
                             title="Eliminar"
@@ -955,9 +954,7 @@ export default function ColdCallingScreen({
                           
                           <button
                             onClick={() => {
-                              if (confirm('¿Seguro que deseas eliminar definitivamente este lead de cold calling?')) {
-                                onDeleteColdLead(lead.id);
-                              }
+                              setDeleteConfirmLeadId(lead.id);
                             }}
                             className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/25 text-red-400 hover:text-white hover:bg-rose-550 transition-colors cursor-pointer"
                             title="Eliminar de por vida"
@@ -1749,6 +1746,48 @@ export default function ColdCallingScreen({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
+      {deleteConfirmLeadId && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-red-500/10 rounded-xl text-red-400">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-sans font-bold text-white uppercase tracking-wide">
+                  ¿Eliminar Prospecto?
+                </h4>
+                <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                  ¿Seguro que deseas eliminar definitivamente este lead de cold calling? Esta acción es irreversible y se borrarán todos sus registros de por vida.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmLeadId(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer font-sans"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleteConfirmLeadId) {
+                    onDeleteColdLead(deleteConfirmLeadId);
+                    setDeleteConfirmLeadId(null);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(239,68,68,0.3)] font-sans"
+              >
+                Eliminar Registro
+              </button>
+            </div>
           </div>
         </div>
       )}
