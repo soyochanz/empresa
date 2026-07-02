@@ -44,7 +44,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
   // --- DATABASE PERSISTENCE FOR CONTRACTS ---
   const [savedContracts, setSavedContracts] = useState<any[]>([]);
-  const [selectedContractIdInDb, setSelectedContractIdInDb] = useState('');
+  const [selectedContractIdInDb, setSelectedContractIdInDb] = useState('CNT_432830');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [contractSearchText, setContractSearchText] = useState('');
 
@@ -385,14 +385,14 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const [selectedContactId, setSelectedContactId] = useState('');
   
   // Real-time editable parameters for Contract
-  const [clientName, setClientName] = useState('D./Dña. Ignacio Martin');
-  const [clientDni, setClientDni] = useState('45678912A');
-  const [clientAddress, setClientAddress] = useState('Avenida de los Rosales, Nº 45, Ibiza');
-  const [clientPhone, setClientPhone] = useState('+34 612 345 678');
-  const [clientEmail, setClientEmail] = useState('contacto@cliente.com');
+  const [clientName, setClientName] = useState('Dña. María Asunción Romero');
+  const [clientDni, setClientDni] = useState('04585906M');
+  const [clientAddress, setClientAddress] = useState('La Rioja, Local 6');
+  const [clientPhone, setClientPhone] = useState('627 595 129');
+  const [clientEmail, setClientEmail] = useState('romerohemaizmaria@gmail.com');
   
   // Prestadores can be customized too
-  const [prestador1Name, setPrestador1Name] = useState('D. Carlos Ronco');
+  const [prestador1Name, setPrestador1Name] = useState('D. Carlos Ronco Meneses');
   const [prestador1Dni, setPrestador1Dni] = useState('09104663K');
   const [prestador2Name, setPrestador2Name] = useState('D. Ignacio Martin Gonzalez');
   const [prestador2Dni, setPrestador2Dni] = useState('75931136V');
@@ -404,20 +404,20 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   
   // Custom Date
   const [signingDay, setSigningDay] = useState(new Date().getDate().toString());
-  const [signingMonth, setSigningMonth] = useState('Junio');
+  const [signingMonth, setSigningMonth] = useState('Julio');
   const [signingYear, setSigningYear] = useState('2026');
 
   // Prices
-  const [priceSingle, setPriceSingle] = useState(950);
-  const [fin3Total, setFin3Total] = useState(960);
-  const [fin3Cuota, setFin3Cuota] = useState(320);
+  const [priceSingle, setPriceSingle] = useState(170);
+  const [fin3Total, setFin3Total] = useState(180);
+  const [fin3Cuota, setFin3Cuota] = useState(60);
   const [fin3Coste, setFin3Coste] = useState(10);
 
-  const [fin4Total, setFin4Total] = useState(1000);
-  const [fin4Cuota, setFin4Cuota] = useState(250);
+  const [fin4Total, setFin4Total] = useState(220);
+  const [fin4Cuota, setFin4Cuota] = useState(55);
   const [fin4Coste, setFin4Coste] = useState(50);
 
-  const [selectedModality, setSelectedModality] = useState<'single' | 'fin3' | 'fin4' | 'rrss'>('single');
+  const [selectedModality, setSelectedModality] = useState<'single' | 'fin3' | 'fin4' | 'rrss'>('rrss');
   const [includeDefaultSignatures, setIncludeDefaultSignatures] = useState(true);
 
   // Auto Calculations when base price changes
@@ -1926,119 +1926,247 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                   /* ==================== SOCIAL MEDIA / RRSS CONTRACT ==================== */
                   <>
                     {/* Contract Title */}
-                    <h3 className="text-center font-bold text-sm uppercase tracking-wide text-neutral-950 font-sans mb-2">
-                      CONTRATO DE PRESTACIÓN DE SERVICIOS DE GESTIÓN DE REDES SOCIALES Y SEO
+                    <h3 className="text-center font-bold text-sm uppercase tracking-wide text-neutral-950 font-sans mb-1">
+                      CONTRATO DE PRESTACIÓN DE SERVICIOS DE GESTIÓN DE REDES SOCIALES Y POSICIONAMIENTO SEO
                     </h3>
-                    <div className="text-center text-[10px] font-mono text-neutral-550 mb-6 uppercase tracking-wider">
-                      CÓDIGO DE REGISTRO: <span className="font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">{selectedContractIdInDb || ('AL-CNT-RRSS-' + (clientName ? clientName.substring(0, 3).toUpperCase().replace(/\s/g, 'X') : 'PRE') + '-' + Date.now().toString().slice(-4))}</span>
+                    <div className="text-center text-[10px] font-mono text-neutral-550 mb-4 uppercase tracking-wider">
+                      CÓDIGO DE REGISTRO: <span className="font-bold text-neutral-800 bg-neutral-100 px-1.5 py-0.5 rounded border border-neutral-200">{selectedContractIdInDb || 'CNT_432830'}</span>
                     </div>
 
+                    <div className="border-t border-neutral-300 my-4"></div>
+
                     {/* Reunidos Statement info */}
-                    <p>
-                      <strong className="font-sans font-semibold text-neutral-950">REUNIDOS</strong> De una parte: 
-                      <strong> {prestador1Name}</strong>, con DNI nº <strong>{prestador1Dni}</strong> y 
-                      <strong> {prestador2Name}</strong>, con DNI nº <strong>{prestador2Dni}</strong>, actuando conjuntamente como prestadores de servicios, en adelante, <strong className="font-sans">“LOS PRESTADORES”</strong>.
-                    </p>
-                    
-                    <p>
-                      Y de otra parte: 
-                      <strong> {clientName || '_______________'}</strong>, con DNI/CIF nº 
-                      <strong> {clientDni || '_______________'}</strong>, con domicilio en 
-                      <strong> {clientAddress || '_______________'}</strong>, Teléfono: 
-                      <strong> {clientPhone || '_______________'}</strong>, Correo electrónico: 
-                      <strong> {clientEmail || '_______________'}</strong>, en adelante, <strong className="font-sans">“EL CLIENTE”</strong>.
-                    </p>
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        REUNIDOS
+                      </h4>
+                      <p className="mb-2">
+                        De una parte:<br />
+                        <strong>D. {prestador1Name}</strong>, con DNI nº <strong>{prestador1Dni}</strong>, y <strong>D. {prestador2Name}</strong>, con DNI nº <strong>{prestador2Dni}</strong>, actuando conjuntamente como prestadores de servicios, en adelante, <strong>“LOS PRESTADORES”</strong>.
+                      </p>
+                      <p className="mb-2">
+                        Y de otra parte:<br />
+                        <strong>{clientName || '_______________'}</strong>, con DNI nº <strong>{clientDni || '_______________'}</strong>, con domicilio en <strong>{clientAddress || '_______________'}</strong>, teléfono <strong>{clientPhone || '_______________'}</strong>, correo electrónico <strong>{clientEmail || '_______________'}</strong>, en adelante, <strong>“EL CLIENTE”</strong>.
+                      </p>
+                      <p className="mt-3">
+                        Ambas partes, reconociéndose capacidad legal suficiente para contratar,
+                      </p>
+                      <p className="font-sans font-bold text-neutral-950 mt-1">
+                        ACUERDAN suscribir el presente contrato de prestación de servicios conforme a las siguientes cláusulas:
+                      </p>
+                    </div>
+
+                    <div className="border-t border-neutral-200 my-4"></div>
 
                     {/* Objeto */}
                     <div>
                       <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
-                        1. OBJETO DEL CONTRATO
+                        OBJETO DEL CONTRATO
                       </h4>
                       <p>
-                        LOS PRESTADORES se comprometen a prestar al CLIENTE los servicios profesionales de gestión de redes sociales (Social Media & Community Management) y optimización de posicionamiento orgánico en motores de búsqueda (SEO), incluyendo las siguientes prestaciones periódicas en su ejecución mensual:
+                        LOS PRESTADORES se comprometen a prestar a EL CLIENTE un servicio profesional de gestión y mantenimiento de su presencia digital, incluyendo, entre otros, los siguientes servicios:
                       </p>
                       <ul className="list-disc pl-5 mt-2 space-y-1">
-                        <li>Planificación, diseño estratégico y redacción de contenidos personalizados mensuales adaptados a la identidad corporativa.</li>
-                        <li>Publicación regular de posts, stories y contenidos interactivos en las redes sociales acordadas (Instagram, Facebook, LinkedIn, etc.).</li>
-                        <li>Monitorización diaria de la comunidad, respuesta profesional a mensajes y comentarios entrantes (Community Management).</li>
-                        <li>Optimización periódica del posicionamiento SEO en motores de búsqueda para potenciar la visibilidad digital.</li>
-                        <li>Reuniones periódicas de seguimiento y presentación de informes mensuales detallados de rendimiento de marca.</li>
+                        <li>Gestión estratégica de la cuenta de Instagram.</li>
+                        <li>Planificación y creación de contenido.</li>
+                        <li>Diseño y publicación de contenido gráfico y audiovisual.</li>
+                        <li>Optimización del perfil profesional.</li>
+                        <li>Desarrollo de estrategia de crecimiento en redes sociales.</li>
+                        <li>Posicionamiento SEO y optimización de la presencia digital en buscadores.</li>
+                        <li>Seguimiento, análisis y optimización continua de la estrategia digital.</li>
                       </ul>
+                      <p className="mt-2">
+                        Los servicios podrán adaptarse y evolucionar conforme a las necesidades del negocio y a la estrategia acordada entre ambas partes.
+                      </p>
                     </div>
 
                     {/* Precios */}
                     <div>
                       <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
-                        2. CONDICIONES ECONÓMICAS Y SUSCRIPCIÓN
+                        PRECIO Y FORMA DE PAGO
                       </h4>
                       <p>
-                        El precio de los servicios técnicos descritos en la cláusula anterior se establece en régimen de suscripción mensual por un importe de <strong>{priceSingle} € / mes</strong> (más impuestos aplicables vigentes).
+                        El precio del servicio contratado asciende a:
+                      </p>
+                      <p className="my-2 text-sm font-sans font-bold text-neutral-950">
+                        {priceSingle} € mensuales
+                      </p>
+                      <p>
+                        Dicho importe tendrá carácter de cuota mensual recurrente, devengándose mientras el presente contrato permanezca vigente.
                       </p>
                       <p className="mt-2">
-                        Dicho abono se devengará de forma anticipada dentro de los primeros <strong>cinco (5) días hábiles</strong> de cada mes facturado. El abono periódico de la primera cuota inicial ratifica formalmente la aceptación del CLIENTE sobre el inicio y continuidad de los planes estratégicos acordados.
+                        El primer pago deberá realizarse antes del inicio efectivo de los servicios.
+                      </p>
+                      <p className="mt-2">
+                        Las cuotas posteriores serán abonadas mensualmente mediante el medio de pago acordado entre ambas partes.
                       </p>
                     </div>
 
                     {/* Duracion */}
                     <div>
-                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                        3. DURACIÓN DEL CONTRATO Y RESCISIÓN
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        DURACIÓN DEL CONTRATO
                       </h4>
                       <p>
-                        El presente acuerdo entrará en vigor en la fecha de firma del mismo y se establece una duración mínima inicial de <strong>tres (3) meses</strong> a fin de garantizar el período de rodaje, maduración y correcto impacto de las campañas y el SEO orgánico.
+                        El presente contrato tendrá una duración indefinida, entrando en vigor desde la fecha de su firma.
                       </p>
                       <p className="mt-2">
-                        Una vez transcurrido este plazo contractual mínimo obligatorio, el contrato se prorrogará de forma tácita y automática mes a mes, a menos que cualquiera de las partes exprese formalmente su deseo de resolverlo mediante notificación fehaciente por escrito a la otra parte con un preaviso mínimo de <strong>quince (15) días de antelación</strong> a la fecha del siguiente cobro programado.
+                        Permanecerá vigente mientras ninguna de las partes comunique por escrito su voluntad de resolverlo conforme a las condiciones establecidas en la cláusula séptima.
                       </p>
                     </div>
 
-                    {/* Propiedad Intelectual */}
+                    {/* Inicio de los servicios */}
                     <div>
-                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                        4. PROPIEDAD INTELECTUAL Y ACCESOS
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        INICIO DE LOS SERVICIOS
                       </h4>
                       <p>
-                        EL CLIENTE concede autorización expresa a LOS PRESTADORES para el uso y manejo temporal de sus credenciales, material fotográfico, logos y marcas con el único fin de llevar a cabo los servicios descritos. LOS PRESTADORES garantizan la confidencialidad absoluta sobre dichos accesos. Asimismo, una vez se encuentre al corriente de pago de todas sus cuotas mensuales de forma completa, EL CLIENTE dispondrá de la plena propiedad intelectual de todos los materiales finales publicados.
+                        LOS PRESTADORES iniciarán la prestación de los servicios una vez recibido el primer pago mensual.
+                      </p>
+                      <p className="mt-2">
+                        El abono de dicha cuota supone la aceptación íntegra de todas las condiciones recogidas en el presente contrato.
                       </p>
                     </div>
 
-                    {/* Suspension */}
+                    {/* Impagos */}
                     <div>
-                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                        5. IMPAGOS Y SUSPENSIÓN DE ACTIVIDAD
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        IMPAGOS
                       </h4>
                       <p>
-                        El impago de la cuota mensual en la fecha estipulada habilitará de pleno derecho a LOS PRESTADORES a suspender la creación de contenidos, monitorización de redes sociales y servicios de optimización SEO tras transcurrir 5 días naturales desde el envío de un recordatorio de pago, sin que de ello se derive reclamación alguna por parte de EL CLIENTE.
+                        En caso de producirse un retraso superior a 7 días hábiles respecto al vencimiento de cualquiera de las cuotas mensuales, LOS PRESTADORES podrán suspender temporalmente la prestación de los servicios hasta la completa regularización del pago.
+                      </p>
+                      <p className="mt-2">
+                        La suspensión del servicio no extinguirá las obligaciones económicas pendientes del CLIENTE.
                       </p>
                     </div>
 
-                    {/* Inversión Publicitaria */}
+                    {/* Naturaleza */}
                     <div>
-                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                        6. INVERSIÓN PUBLICITARIA Y SERVICIOS EXTRA
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        NATURALEZA DEL SERVICIO
                       </h4>
                       <p>
-                        La cuota fija mensual pactada cubre únicamente el servicio de gestión de marca orgánica, redacción, SEO y diseño. No incluye presupuestos de inversión publicitaria adicional (como presupuestos asignados a Meta Ads o Google Ads), sesiones de fotografía/vídeo presenciales fuera de zona, o desarrollo de subsistemas de software personalizados, que se presupuestarán individualmente en caso de ser solicitados por EL CLIENTE.
+                        EL CLIENTE reconoce que el presente contrato tiene por objeto una prestación continuada de servicios profesionales de marketing digital.
+                      </p>
+                      <p className="mt-2">
+                        LOS PRESTADORES se comprometen a ejecutar los trabajos con la máxima diligencia, profesionalidad y buena fe.
+                      </p>
+                      <p className="mt-2">
+                        No obstante, EL CLIENTE reconoce expresamente que factores ajenos al control de LOS PRESTADORES, tales como modificaciones de algoritmos, competencia, comportamiento del mercado, actividad del negocio o decisiones del propio CLIENTE, pueden influir en los resultados obtenidos.
+                      </p>
+                      <p className="mt-2">
+                        En consecuencia, LOS PRESTADORES no garantizan un número determinado de seguidores, clientes, ventas, posicionamiento o cualquier otro resultado específico, comprometiéndose exclusivamente a prestar el servicio conforme a criterios profesionales y buenas prácticas del sector.
                       </p>
                     </div>
 
-                    {/* Responsabilidad */}
+                    {/* Cancelación */}
                     <div>
-                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                        7. LÍMITES DE RESPONSABILIDAD
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        CANCELACIÓN DEL SERVICIO
                       </h4>
                       <p>
-                        LOS PRESTADORES se comprometen a emplear el máximo rigor profesional e idoneidad en la ejecución de las campañas. No obstante, no serán responsables de caídas de servicio ajenas en las propias plataformas de redes sociales, cambios repentinos en las APIs o algoritmos internos de los buscadores y redes que alteren la visibilidad de forma ajena a su intervención.
+                        Cualquiera de las partes podrá resolver el presente contrato en cualquier momento mediante comunicación escrita con un preaviso mínimo de treinta (30) días naturales.
+                      </p>
+                      <p className="mt-2">
+                        Las cuotas correspondientes a servicios ya prestados o iniciados no serán objeto de devolución.
                       </p>
                     </div>
 
-                    {/* Tribunales */}
+                    {/* Obligaciones */}
                     <div>
-                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-1">
-                        8. RESOLUCIÓN DE CONFLICTOS
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        OBLIGACIONES DEL CLIENTE
                       </h4>
                       <p>
-                        Para dirimir cualquier controversia o discrepancia derivada del cumplimiento, ejecución o interpretación de este documento, las partes contratantes se someten formalmente a la exclusiva jurisdicción de los Juzgados y Tribunales de la ciudad de <strong>{courtCity}</strong>, renunciando de común acuerdo a cualquier fuero local propio alternativo que pudiera corresponderles.
+                        EL CLIENTE se compromete a facilitar toda la información, materiales, imágenes, logotipos, accesos y recursos necesarios para la correcta ejecución de los servicios contratados.
+                      </p>
+                      <p className="mt-2">
+                        Asimismo, se compromete a responder con la mayor diligencia posible a las solicitudes de aprobación de contenidos cuando éstas sean necesarias para la continuidad del servicio.
+                      </p>
+                    </div>
+
+                    {/* Confidencialidad */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        CONFIDENCIALIDAD
+                      </h4>
+                      <p>
+                        LOS PRESTADORES se comprometen a mantener absoluta confidencialidad respecto a toda la información comercial, económica, estratégica o empresarial a la que tengan acceso con motivo de la prestación del servicio.
+                      </p>
+                      <p className="mt-2">
+                        Dicha obligación permanecerá vigente incluso después de la finalización del presente contrato.
+                      </p>
+                    </div>
+
+                    {/* Propiedad contenido */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        PROPIEDAD DEL CONTENIDO
+                      </h4>
+                      <p>
+                        Todo el contenido creado específicamente para EL CLIENTE durante la vigencia del presente contrato será de su propiedad una vez satisfechas las cuotas correspondientes.
+                      </p>
+                      <p className="mt-2">
+                        LOS PRESTADORES conservarán únicamente el derecho de utilizar dicho trabajo como referencia profesional o parte de su portafolio, salvo oposición expresa del CLIENTE.
+                      </p>
+                    </div>
+
+                    {/* Actualización tarifas */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        ACTUALIZACIÓN DE TARIFAS
+                      </h4>
+                      <p>
+                        LOS PRESTADORES podrán revisar y actualizar el importe de la cuota mensual cuando concurran circunstancias que justifiquen una modificación del servicio contratado, incluyendo, entre otras, la ampliación de los servicios prestados, la incorporación de nuevas funcionalidades, el incremento de costes operativos o la actualización general de las tarifas comerciales de LOS PRESTADORES.
+                      </p>
+                      <p className="mt-2">
+                        Cualquier modificación será comunicada a EL CLIENTE por escrito con una antelación mínima de 30 días naturales a su entrada en vigor.
+                      </p>
+                      <p className="mt-2">
+                        En caso de no aceptar la nueva tarifa, EL CLIENTE podrá resolver el presente contrato antes de la fecha de aplicación de la actualización, sin penalización alguna, debiendo únicamente abonar las cantidades correspondientes a los servicios efectivamente prestados hasta la fecha de finalización.
+                      </p>
+                      <p className="mt-2">
+                        La continuidad en la utilización de los servicios una vez transcurrido el plazo de preaviso se entenderá como aceptación de las nuevas condiciones económicas.
+                      </p>
+                    </div>
+
+                    {/* Uso imagen */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        USO DE IMAGEN Y PORTAFOLIO
+                      </h4>
+                      <p>
+                        Salvo oposición expresa de EL CLIENTE manifestada por escrito, LOS PRESTADORES podrán mencionar el nombre comercial del negocio, así como utilizar imágenes, capturas, diseños, publicaciones, resultados obtenidos o cualquier otro material desarrollado durante la prestación del servicio como parte de su portafolio profesional, redes sociales, presentaciones comerciales o material promocional, sin revelar información confidencial.
+                      </p>
+                    </div>
+
+                    {/* Propiedad intelectual accesos */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        PROPIEDAD INTELECTUAL Y ACCESOS
+                      </h4>
+                      <p>
+                        Todo el contenido desarrollado durante la prestación del servicio será propiedad de EL CLIENTE una vez abonadas las cuotas correspondientes.
+                      </p>
+                      <p className="mt-2">
+                        Los perfiles de redes sociales, herramientas digitales, plataformas publicitarias, dominios, cuentas de Google y cualquier otro activo digital seguirán siendo titularidad de EL CLIENTE, quien facilitará los permisos necesarios para la correcta ejecución de los trabajos.
+                      </p>
+                      <p className="mt-2">
+                        Una vez finalizada la relación contractual, LOS PRESTADORES procederán a cesar su acceso a dichas cuentas y entregarán, en su caso, los materiales pendientes de entrega, sin perjuicio de las obligaciones económicas que permanezcan pendientes.
+                      </p>
+                    </div>
+
+                    {/* Resolución de conflictos */}
+                    <div>
+                      <h4 className="font-sans font-bold text-neutral-950 uppercase tracking-wide text-[11px] mb-2">
+                        RESOLUCIÓN DE CONFLICTOS
+                      </h4>
+                      <p>
+                        Las partes se comprometen a intentar resolver amistosamente cualquier discrepancia derivada del presente contrato.
+                      </p>
+                      <p className="mt-2">
+                        En caso de no alcanzarse un acuerdo, ambas partes se someten expresamente a la jurisdicción de los Juzgados y Tribunales de <strong>{courtCity || 'Ibiza'}</strong>, renunciando a cualquier otro fuero que pudiera corresponderles.
                       </p>
                     </div>
                   </>
@@ -2210,7 +2338,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                     </p>
                     <div className="space-y-4">
                       <div className="relative">
-                        <p className="font-semibold text-neutral-900 text-xs">D. Carlos Ronco Meneses</p>
+                        <p className="font-semibold text-neutral-900 text-xs">{prestador1Name}</p>
                         <p className="text-[10px] text-neutral-500">DNI: {prestador1Dni}</p>
                         <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[200px]">
                           {includeDefaultSignatures && (
@@ -2229,7 +2357,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
                         </div>
                       </div>
                       <div className="relative mt-2">
-                        <p className="font-semibold text-neutral-900 text-xs">D. Ignacio Martin Gonzalez</p>
+                        <p className="font-semibold text-neutral-900 text-xs">{prestador2Name}</p>
                         <p className="text-[10px] text-neutral-500">DNI: {prestador2Dni}</p>
                         <div className="h-14 mt-1 relative border-b border-dotted border-neutral-400 max-w-[200px]">
                           {includeDefaultSignatures && (
