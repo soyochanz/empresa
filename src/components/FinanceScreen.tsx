@@ -122,10 +122,10 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Transactions local state
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>(INITIAL_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
 
   // Invoices local state
-  const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
 
   // Fetch real-time Supabase entries on mount
   useEffect(() => {
@@ -239,6 +239,34 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     );
   };
 
+  const showToast = (message: string, isError: boolean = false) => {
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      const span = toast.querySelector('span');
+      if (span) {
+        span.textContent = message;
+      } else {
+        toast.innerText = message;
+      }
+      
+      if (isError) {
+        toast.classList.add('border-rose-500/50');
+        toast.classList.remove('border-violet-500/30', 'border-purple-500/30');
+      } else {
+        toast.classList.remove('border-rose-500/50');
+        toast.classList.add('border-violet-500/30');
+      }
+
+      toast.classList.remove('opacity-0', 'pointer-events-none', 'hidden');
+      toast.classList.add('opacity-100');
+      
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none');
+        toast.classList.remove('opacity-100');
+      }, 3500);
+    }
+  };
+
   // Calculations for transactions
   const totalIncomes = transactions
     .filter(t => t.type === 'income')
@@ -310,11 +338,31 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     };
 
     if (isEditingTx && editingTxId) {
+      const oldTransactions = [...transactions];
       setTransactions(prev => prev.map(t => t.id === editingTxId ? payload : t));
-      db.updateFinanceTransaction(payload).catch(err => console.error('Error updating transaction in DB:', err));
+      db.updateFinanceTransaction(payload)
+        .then(() => {
+          showToast(`Sincronizado: ${payload.type === 'income' ? 'Ingreso' : 'Gasto'} actualizado en Supabase.`);
+        })
+        .catch(err => {
+          console.error('Error updating transaction in DB:', err);
+          showToast(`Error al guardar: ${err.message || 'Error de conexión con Supabase.'}`, true);
+          // Revert local state
+          setTransactions(oldTransactions);
+        });
     } else {
+      const oldTransactions = [...transactions];
       setTransactions(prev => [payload, ...prev]);
-      db.insertFinanceTransaction(payload).catch(err => console.error('Error inserting transaction into DB:', err));
+      db.insertFinanceTransaction(payload)
+        .then(() => {
+          showToast(`Sincronizado: ${payload.type === 'income' ? 'Ingreso' : 'Gasto'} guardado en Supabase.`);
+        })
+        .catch(err => {
+          console.error('Error inserting transaction into DB:', err);
+          showToast(`Error al guardar: ${err.message || 'Error de conexión con Supabase.'}`, true);
+          // Revert local state
+          setTransactions(oldTransactions);
+        });
     }
 
     setIsTxModalOpen(false);
@@ -341,8 +389,17 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
 
   const handleDeleteTx = (id: string) => {
     if (confirm('¿Estás seguro de que deseas eliminar esta transacción?')) {
+      const oldTransactions = [...transactions];
       setTransactions(prev => prev.filter(t => t.id !== id));
-      db.deleteFinanceTransaction(id).catch(err => console.error('Error deleting transaction in DB:', err));
+      db.deleteFinanceTransaction(id)
+        .then(() => {
+          showToast('Sincronizado: Transacción eliminada de Supabase.');
+        })
+        .catch(err => {
+          console.error('Error deleting transaction in DB:', err);
+          showToast('Error al eliminar: ' + (err.message || 'Error de base de datos.'), true);
+          setTransactions(oldTransactions);
+        });
     }
   };
 
@@ -939,24 +996,39 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const handleProcessRecurring = (tx: FinanceTransaction) => {
     // Generate a new transaction on today's date mimicking this recurrence
     const chargeAmount = tx.nextAmount ?? tx.amount;
+    const isIncome = tx.type === 'income';
     const manualPayment: FinanceTransaction = {
       id: 'tx_' + Date.now() + '_rec',
       type: tx.type,
       category: tx.category,
       amount: chargeAmount,
       date: new Date().toISOString().split('T')[0],
-      description: `${tx.description} (Cargo Procesado)`,
+      description: isIncome ? `${tx.description} (Ingreso Procesado)` : `${tx.description} (Cargo Procesado)`,
       isRecurring: false,
       status: 'paid'
     };
 
     setTransactions(prev => [manualPayment, ...prev]);
+    db.insertFinanceTransaction(manualPayment).catch(err => console.error('Error inserting transaction into DB:', err));
 
     const toast = document.getElementById('toast-msg');
     if (toast) {
-      toast.innerText = `Pago de ${chargeAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ procesado para: "${tx.description}"`;
-      toast.classList.remove('opacity-0');
-      setTimeout(() => toast.classList.add('opacity-0'), 3000);
+      const text = isIncome
+        ? `Ingreso de ${chargeAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ procesado para: "${tx.description}"`
+        : `Pago de ${chargeAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ procesado para: "${tx.description}"`;
+      
+      const span = toast.querySelector('span');
+      if (span) {
+        span.textContent = text;
+      } else {
+        toast.innerText = text;
+      }
+      toast.classList.remove('opacity-0', 'pointer-events-none', 'hidden');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none');
+        toast.classList.remove('opacity-100');
+      }, 3500);
     }
   };
 
@@ -1707,7 +1779,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                 : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
             }`}
           >
-            <span>Gastos Recurrentes</span>
+            <span>Conceptos Recurrentes</span>
             <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold ${activeTab === 'recurring' ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-400'}`}>
               {recurringExpenses.length}
             </span>
@@ -1866,7 +1938,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                                 {t.isRecurring && (
                                   <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-purple-400 bg-purple-500/10 border border-purple-500/25 px-1.5 py-0.5 rounded-md">
                                     <Repeat className="w-2.5 h-2.5" />
-                                    <span>Gasto recurrente ({t.recurrencePeriod})</span>
+                                    <span>{t.type === 'income' ? 'Ingreso' : 'Gasto'} recurrente ({t.recurrencePeriod})</span>
                                   </span>
                                 )}
                                 {t.paymentMethod && (
@@ -2016,7 +2088,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         </div>
       )}
 
-      {/* Tab Content 2: Recurring Expenses List */}
+      {/* Tab Content 2: Recurring Expenses/Incomes List */}
       {activeTab === 'recurring' && (
         <div className="space-y-5">
           <div className="bg-[#120e25]/30 backdrop-blur-md border border-purple-500/10 p-5 rounded-3xl text-left relative overflow-hidden group">
@@ -2027,17 +2099,17 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
               </span>
               <Repeat className="w-4 h-4 text-purple-450" />
-              <span>Suscripciones y Gastos Fijos Recurrentes</span>
+              <span>Suscripciones e Ingresos/Gastos Recurrentes</span>
             </h3>
             <p className="text-slate-400 text-xs font-light mt-1.5 leading-relaxed max-w-3xl relative z-10 font-sans">
-              Aquí puedes supervisar los gastos fijos estructurados que se cargan periódicamente. Puedes simular el abono de una nueva cuota instantánea haciendo clic en <strong className="text-purple-300 font-medium">Procesar Cargo</strong> para asentar la fecha actual.
+              Aquí puedes supervisar los ingresos y gastos recurrentes estructurados que se procesan periódicamente. Puedes simular el abono o cobro de una nueva cuota instantánea haciendo clic en <strong className="text-purple-300 font-medium">Procesar Ingreso / Cargo</strong> para asentar la fecha actual.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-sans">
             {recurringExpenses.length === 0 ? (
               <div className="col-span-full py-16 text-center text-slate-500 text-xs bg-slate-900/10 rounded-3xl border border-white/5 font-light">
-                No tienes gastos recurrentes configurados. Registra una nueva transacción y activa el marcador de recurrencia.
+                No tienes conceptos recurrentes configurados. Registra una nueva transacción (ingreso o gasto) y activa el marcador de recurrencia.
               </div>
             ) : (
               recurringExpenses.map(item => (
@@ -2047,13 +2119,22 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                 >
                   <div className="space-y-3">
                     <div className="flex justify-between items-start gap-2">
-                      <span className="text-[9px] font-mono bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2.5 py-1 rounded-xl uppercase tracking-wider font-extrabold">
-                        {item.recurrencePeriod === 'weekly' || item.recurrencePeriod === 'semanal' 
-                          ? 'Semanal' 
-                          : item.recurrencePeriod === 'yearly' || item.recurrencePeriod === 'anual' 
-                            ? 'Anual' 
-                            : 'Mensual'}
-                      </span>
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <span className="text-[9px] font-mono bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2.5 py-1 rounded-xl uppercase tracking-wider font-extrabold">
+                          {item.recurrencePeriod === 'weekly' || item.recurrencePeriod === 'semanal' 
+                            ? 'Semanal' 
+                            : item.recurrencePeriod === 'yearly' || item.recurrencePeriod === 'anual' 
+                              ? 'Anual' 
+                              : 'Mensual'}
+                        </span>
+                        <span className={`text-[9px] font-mono border px-2 py-0.5 rounded-xl uppercase tracking-wider font-bold ${
+                          item.type === 'income' 
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                        }`}>
+                          {item.type === 'income' ? 'Ingreso' : 'Gasto'}
+                        </span>
+                      </div>
                       <div className="text-right shrink-0">
                         {item.firstAmount !== undefined || item.nextAmount !== undefined ? (
                           <div className="space-y-0.5">
@@ -2083,7 +2164,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
                     <div className="pt-2 flex items-center gap-1.5 text-[10px] text-purple-300 font-mono bg-purple-500/5 px-2.5 py-1.5 rounded-xl border border-purple-500/10">
                       <Calendar className="w-3.5 h-3.5 text-purple-400" />
-                      <span>Siguiente cargo: <strong className="text-white">{getNextPaymentDate(item.date, item.recurrencePeriod)}</strong></span>
+                      <span>{item.type === 'income' ? 'Siguiente ingreso' : 'Siguiente cargo'}: <strong className="text-white">{getNextPaymentDate(item.date, item.recurrencePeriod)}</strong></span>
                     </div>
                   </div>
 
@@ -2092,14 +2173,14 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                       <button
                         onClick={() => handleEditTx(item)}
                         className="p-1.5 text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded-xl transition duration-200 cursor-pointer"
-                        title="Editar cargo recurrente"
+                        title={item.type === 'income' ? 'Editar ingreso recurrente' : 'Editar cargo recurrente'}
                       >
                         <Edit className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handleDeleteTx(item.id)}
                         className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition duration-200 cursor-pointer"
-                        title="Eliminar cargo recurrente"
+                        title={item.type === 'income' ? 'Eliminar ingreso recurrente' : 'Eliminar cargo recurrente'}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -2108,7 +2189,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                       onClick={() => handleProcessRecurring(item)}
                       className="text-[10px] bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white font-extrabold px-3.5 py-2 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1 active:scale-95 shadow-md shadow-purple-500/10"
                     >
-                      <span>Procesar Cargo</span>
+                      <span>{item.type === 'income' ? 'Procesar Ingreso' : 'Procesar Cargo'}</span>
                       <ArrowUpRight className="w-3 h-3" />
                     </button>
                   </div>
@@ -2515,8 +2596,12 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
               <div className="bg-white/[0.01] border border-white/5 p-3 rounded-2xl space-y-2 mt-2">
                 <div className="flex items-center justify-between">
                   <div className="text-left">
-                    <span className="text-[10px] font-mono text-slate-300 font-bold block uppercase">Establecer Gasto Recurrente</span>
-                    <span className="text-[9px] text-slate-500 block">Suscripción fija recurrente</span>
+                    <span className="text-[10px] font-mono text-slate-300 font-bold block uppercase">
+                      {txType === 'income' ? 'Establecer Ingreso Recurrente' : 'Establecer Gasto Recurrente'}
+                    </span>
+                    <span className="text-[9px] text-slate-500 block">
+                      {txType === 'income' ? 'Ingreso recurrente estructurado' : 'Suscripción fija recurrente'}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -2536,7 +2621,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                 {txIsRecurring && (
                   <div className="pt-2 animate-fade-in space-y-3 block">
                     <div className="block">
-                      <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">Periodo de cobro</label>
+                      <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">
+                        {txType === 'income' ? 'Periodo de ingreso' : 'Periodo de cobro/pago'}
+                      </label>
                       <select
                         value={txPeriod}
                         onChange={(e) => setTxPeriod(e.target.value as any)}
@@ -2550,7 +2637,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
                     <div className="grid grid-cols-2 gap-2">
                       <div className="block">
-                        <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">Primero Costó / Costará (€)</label>
+                        <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">
+                          {txType === 'income' ? 'Primer Ingreso Recibido (€)' : 'Primero Costó / Costará (€)'}
+                        </label>
                         <input
                           type="number"
                           placeholder={txAmount || "0.00"}
@@ -2560,7 +2649,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                         />
                       </div>
                       <div className="block">
-                        <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">Siguientes Próximos (€)</label>
+                        <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">
+                          {txType === 'income' ? 'Siguientes Ingresos (€)' : 'Siguientes Próximos (€)'}
+                        </label>
                         <input
                           type="number"
                           placeholder={txAmount || "0.00"}
@@ -2571,7 +2662,10 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                       </div>
                     </div>
                     <span className="text-[8px] text-slate-500 block leading-tight font-sans">
-                      * El cargo inicial tendrá el precio del primero. Al pulsar "Procesar Cargo" para los siguientes vencimientos, se asentarpa el precio de los próximos.
+                      {txType === 'income' 
+                        ? '* El ingreso inicial tendrá el importe del primero. Al pulsar "Procesar Ingreso" para los siguientes vencimientos, se asentará el importe de los próximos.'
+                        : '* El cargo inicial tendrá el precio del primero. Al pulsar "Procesar Cargo" para los siguientes vencimientos, se asentará el precio de los próximos.'
+                      }
                     </span>
                   </div>
                 )}

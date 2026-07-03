@@ -676,6 +676,79 @@ export const db = {
     if (error) throw error;
   },
 
+  // --- FINANCE TRANSACTIONS EXTRA HELPERS ---
+  // These helpers serialize/deserialize virtual fields into the description column
+  // to avoid column-not-found errors on any Supabase DB setup.
+  _encodeDescription(description: string, metadata: {
+    paymentMethod?: 'cash' | 'transfer';
+    firstAmount?: number;
+    nextAmount?: number;
+    invoiceId?: string;
+  }): string {
+    let res = description || '';
+    if (metadata.paymentMethod) {
+      res += ` [PM:${metadata.paymentMethod}]`;
+    }
+    if (metadata.firstAmount !== undefined && metadata.firstAmount !== null) {
+      res += ` [FA:${metadata.firstAmount}]`;
+    }
+    if (metadata.nextAmount !== undefined && metadata.nextAmount !== null) {
+      res += ` [NA:${metadata.nextAmount}]`;
+    }
+    if (metadata.invoiceId) {
+      res += ` [INV:${metadata.invoiceId}]`;
+    }
+    return res;
+  },
+
+  _decodeDescription(rawDesc: string): {
+    description: string;
+    paymentMethod?: 'cash' | 'transfer';
+    firstAmount?: number;
+    nextAmount?: number;
+    invoiceId?: string;
+  } {
+    let cleanDesc = rawDesc || '';
+    let paymentMethod: 'cash' | 'transfer' | undefined = undefined;
+    let firstAmount: number | undefined = undefined;
+    let nextAmount: number | undefined = undefined;
+    let invoiceId: string | undefined = undefined;
+
+    const pmRegex = /\s*\[PM:(cash|transfer)\]/g;
+    const faRegex = /\s*\[FA:([\d.]+)\]/g;
+    const naRegex = /\s*\[NA:([\d.]+)\]/g;
+    const invRegex = /\s*\[INV:([^\]]+)\]/g;
+
+    let match;
+    while ((match = pmRegex.exec(cleanDesc)) !== null) {
+      paymentMethod = match[1] as any;
+    }
+    cleanDesc = cleanDesc.replace(pmRegex, '');
+
+    while ((match = faRegex.exec(cleanDesc)) !== null) {
+      firstAmount = parseFloat(match[1]);
+    }
+    cleanDesc = cleanDesc.replace(faRegex, '');
+
+    while ((match = naRegex.exec(cleanDesc)) !== null) {
+      nextAmount = parseFloat(match[1]);
+    }
+    cleanDesc = cleanDesc.replace(naRegex, '');
+
+    while ((match = invRegex.exec(cleanDesc)) !== null) {
+      invoiceId = match[1];
+    }
+    cleanDesc = cleanDesc.replace(invRegex, '');
+
+    return {
+      description: cleanDesc.trim(),
+      paymentMethod,
+      firstAmount,
+      nextAmount,
+      invoiceId
+    };
+  },
+
   // --- FINANCE TRANSACTIONS ---
   async getFinanceTransactions(userId?: string): Promise<FinanceTransaction[]> {
     const { data, error } = await supabase.from('finance_transactions').select('*').order('date', { ascending: false });
@@ -683,49 +756,78 @@ export const db = {
        console.error('finance_transactions table read error:', error);
        throw error;
     }
-    const list = (data || []) as FinanceTransaction[];
+    const list = (data || []) as any[];
     return list.map(tx => {
-      let paymentMethod: 'cash' | 'transfer' | undefined = undefined;
-      let cleanDesc = tx.description || '';
-      if (cleanDesc.endsWith(' [PM:cash]')) {
-        paymentMethod = 'cash';
-        cleanDesc = cleanDesc.replace(' [PM:cash]', '');
-      } else if (cleanDesc.endsWith(' [PM:transfer]')) {
-        paymentMethod = 'transfer';
-        cleanDesc = cleanDesc.replace(' [PM:transfer]', '');
-      }
+      const decoded = this._decodeDescription(tx.description || '');
       return {
-        ...tx,
-        description: cleanDesc,
-        paymentMethod
+        id: tx.id,
+        type: tx.type,
+        category: tx.category,
+        amount: Number(tx.amount),
+        date: tx.date,
+        status: tx.status,
+        isRecurring: tx.isRecurring,
+        recurrencePeriod: tx.recurrencePeriod,
+        description: decoded.description,
+        paymentMethod: decoded.paymentMethod,
+        firstAmount: decoded.firstAmount,
+        nextAmount: decoded.nextAmount,
+        invoiceId: decoded.invoiceId
       };
     });
   },
 
   async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
-    const { paymentMethod, ...rest } = transaction;
-    let desc = rest.description || '';
-    if (paymentMethod === 'cash') {
-      desc = desc + ' [PM:cash]';
-    } else if (paymentMethod === 'transfer') {
-      desc = desc + ' [PM:transfer]';
-    }
-    const payload = { ...rest, description: desc, user_id: userId || null };
+    const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
+    const { paymentMethod, firstAmount, nextAmount, invoiceId } = transaction;
+
+    const encodedDesc = this._encodeDescription(description, {
+      paymentMethod,
+      firstAmount,
+      nextAmount,
+      invoiceId
+    });
+
+    const payload = {
+      id,
+      type,
+      category,
+      amount,
+      date,
+      description: encodedDesc,
+      isRecurring: isRecurring ?? false,
+      recurrencePeriod: recurrencePeriod || null,
+      status,
+      user_id: userId || null
+    };
+
     const { error } = await supabase.from('finance_transactions').insert(payload);
     if (error) throw error;
   },
 
   async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
-    // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
-    const { paymentMethod, user_id, id, ...rest } = transaction as any;
-    let desc = rest.description || '';
-    if (paymentMethod === 'cash') {
-      desc = desc + ' [PM:cash]';
-    } else if (paymentMethod === 'transfer') {
-      desc = desc + ' [PM:transfer]';
-    }
-    const payload = { ...rest, description: desc };
-    const { error } = await supabase.from('finance_transactions').update(payload).eq('id', transaction.id);
+    const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
+    const { paymentMethod, firstAmount, nextAmount, invoiceId } = transaction;
+
+    const encodedDesc = this._encodeDescription(description, {
+      paymentMethod,
+      firstAmount,
+      nextAmount,
+      invoiceId
+    });
+
+    const payload = {
+      type,
+      category,
+      amount,
+      date,
+      description: encodedDesc,
+      isRecurring: isRecurring ?? false,
+      recurrencePeriod: recurrencePeriod || null,
+      status
+    };
+
+    const { error } = await supabase.from('finance_transactions').update(payload).eq('id', id);
     if (error) throw error;
   },
 

@@ -147,139 +147,27 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  // Persistence Engine Database State (with standard fallback to mockData)
-  const [contacts, setContacts] = useState<ClientContact[]>(initialContacts);
+   // Persistence Engine Database State (with standard fallback to empty arrays)
+  const [contacts, setContacts] = useState<ClientContact[]>([]);
 
-  const [events, setEvents] = useState<CalendarEvent[]>(() => {
-    const parsed = initialEvents;
-    // Auto-migrate old October 2023 static dates to today's current month/year
-    return parsed.map((e: any) => {
-      if (e.date && e.date.startsWith('201') || e.date && e.date.startsWith('202')) {
-        const parts = e.date.split('-');
-        if (parts[0] !== String(new Date().getFullYear()) || parts[1] !== String(new Date().getMonth() + 1).padStart(2, '0')) {
-          const dayPart = parts[2] || '12';
-          const d = new Date();
-          const padM = String(d.getMonth() + 1).padStart(2, '0');
-          return {
-            ...e,
-            date: `${d.getFullYear()}-${padM}-${dayPart}`
-          };
-        }
-      }
-      return e;
-    });
-  });
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
 
-  const [notes, setNotes] = useState<Note[]>(() => {
-    return initialNotes.map(n => {
-      if (n.updatedAt === 'Just now' || !n.updatedAt) {
-        const daysAgo = new Date();
-        daysAgo.setDate(daysAgo.getDate() - 3);
-        return { ...n, updatedAt: daysAgo.toISOString() };
-      }
-      return n;
-    });
-  });
+  const [notes, setNotes] = useState<Note[]>([]);
 
-  const [activities, setActivities] = useState<Activity[]>(initialActivities);
+  const [activities, setActivities] = useState<Activity[]>([]);
 
   // Global projects state
-  const [projects, setProjects] = useState<any[]>(INITIAL_PROJECTS);
+  const [projects, setProjects] = useState<any[]>([]);
 
   // Dynamic users state
   const [usersList, setUsersList] = useState<PanelUser[]>(REGISTERED_USERS);
 
   // Comerciales accounts and logged-in state
-  const [comercialesList, setComercialesList] = useState<ComercialAccount[]>([
-    { id: 'com_demo', name: 'Alfonso Sales', email: 'vendedor@agency.com', password: 'password123', createdAt: new Date().toISOString(), phone: '+34 622 111 000' }
-  ]);
+  const [comercialesList, setComercialesList] = useState<ComercialAccount[]>([]);
 
-  const [leadsList, setLeadsList] = useState<ComercialLead[]>([
-    { id: 'l1', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Beatriz Soler', company: 'Soler Soluciones SL', email: 'beatriz@solersol.es', phone: '611222333', status: 'Negociación', value: 8500, notes: 'Interesada en el desarrollo de la web corporativa a medida con Next.js y panel headless CRM.', createdAt: new Date().toISOString() },
-    { id: 'l2', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Javier Castillo', company: 'Castillo Logistics', email: 'castillo@logistics.com', phone: '655000444', status: 'Ganado', value: 12400, notes: 'Proyecto cerrado para el sistema ERP de tracking vehicular en tiempo real.', createdAt: new Date().toISOString() },
-    { id: 'l3', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Marta Rivas', company: 'AeroGroup Inc', email: 'marta@aerogroup.org', phone: '677999888', status: 'Pendiente', value: 3500, notes: 'Solicitó presupuesto para auditoría técnica de seguridad en sus servicios AWS.', createdAt: new Date().toISOString() }
-  ]);
+  const [leadsList, setLeadsList] = useState<ComercialLead[]>([]);
 
-  const [coldLeads, setColdLeads] = useState<ColdCallingLead[]>(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
-    return [
-      {
-        id: 'cold_1',
-        businessName: 'Clínica Dental DentalDent',
-        contactPerson: 'Dr. Alejandro Sanz (Dueño)',
-        phone: '+34 611 223 344',
-        callDate: todayStr,
-        contacted: 'Sí',
-        isOwner: 'Sí',
-        answered: 'Sí',
-        temperature: 'Caliente',
-        callbackScheduled: 'Llamar más tarde',
-        callbackDate: todayStr,
-        callbackTime: '16:30',
-        notes: 'Hablé directamente con el dueño Alejandro. Está abriendo su segunda clínica dental en Madrid y le urge un diseño web corporativo y automatización de citas por WhatsApp. Rellamar hoy para cerrar presupuesto.',
-        assignedToEmail: 'vendedor@agency.com',
-        assignedToName: 'Alfonso Sales',
-        archived: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'cold_2',
-        businessName: 'Restaurante GastroGourmet',
-        contactPerson: 'Marta Rivas (Gerente)',
-        phone: '+34 655 444 333',
-        callDate: todayStr,
-        contacted: 'Sí',
-        isOwner: 'No',
-        answered: 'Sí',
-        temperature: 'Templado',
-        callbackScheduled: 'Llamar más tarde',
-        callbackDate: tomorrowStr,
-        callbackTime: '11:00',
-        notes: 'Hablé con Marta la gerente de sala. El dueño no estaba. Le interesó la carta digital con código QR interactivo y el pasador de pedidos. Me pidió enviarle un dossier por WhatsApp para verlo mañana con el dueño Alfonso.',
-        assignedToEmail: 'vendedor@agency.com',
-        assignedToName: 'Alfonso Sales',
-        archived: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'cold_3',
-        businessName: 'Talleres Mecánicos CarsPro',
-        contactPerson: 'Sin especificar',
-        phone: '+34 699 888 777',
-        callDate: todayStr,
-        contacted: 'No',
-        isOwner: 'No',
-        answered: 'No',
-        temperature: 'Frío',
-        callbackScheduled: 'No',
-        notes: 'Llamada no atendida en el primer barrido de frío. Probar de nuevo en diferente horario a ver si descolgan.',
-        assignedToEmail: 'unassigned',
-        assignedToName: 'Sin asignar',
-        archived: false,
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: 'cold_4',
-        businessName: 'Gimnasio FitPulse Club',
-        contactPerson: 'Carlos Gómez (Dueño)',
-        phone: '+34 644 123 456',
-        callDate: todayStr,
-        contacted: 'Sí',
-        isOwner: 'Sí',
-        answered: 'Sí',
-        temperature: 'Caliente',
-        callbackScheduled: 'Sí',
-        notes: 'Cargado y contactado hoy mismo. Carlos está entusiasmado con implantar una app móvil de reservas. Agendada reunión presencial para la semana que viene.',
-        assignedToEmail: 'vendedor@agency.com',
-        assignedToName: 'Alfonso Sales',
-        archived: false,
-        createdAt: new Date().toISOString()
-      }
-    ];
-  });
+  const [coldLeads, setColdLeads] = useState<ColdCallingLead[]>([]);
 
   const [currentComercial, setCurrentComercial] = useState<ComercialAccount | null>(() => {
     const saved = sessionStorage.getItem('agency_current_comercial');
@@ -512,7 +400,7 @@ export default function App() {
           ]);
           if (fetchedCold) setColdLeads(fetchedCold);
           if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
-          if (fetchedComercialAccs && fetchedComercialAccs.length > 0) {
+          if (fetchedComercialAccs) {
             setComercialesList(fetchedComercialAccs);
           }
         } catch (crmErr) {
@@ -536,7 +424,7 @@ export default function App() {
 
           try {
             const fetchedProjects = await db.getProjects();
-            if (fetchedProjects && fetchedProjects.length > 0) {
+            if (fetchedProjects) {
               setProjects(fetchedProjects);
             }
           } catch (projErr) {
