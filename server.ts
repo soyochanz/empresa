@@ -4,10 +4,24 @@ import Stripe from "stripe";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 
+import fs from "fs";
+
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+// Request logging middleware for debugging API calls
+app.use((req, res, next) => {
+  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.url} - Headers: ${JSON.stringify(req.headers)}\n`;
+  console.log(logMsg.trim());
+  try {
+    fs.appendFileSync(path.join(process.cwd(), "server.log"), logMsg);
+  } catch (err) {
+    // ignore logging errors
+  }
+  next();
+});
 
 app.use(express.json());
 
