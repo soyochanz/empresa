@@ -305,6 +305,137 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Stripe callback check state & effect
+  const [stripeSuccessData, setStripeSuccessData] = useState<{
+    show: boolean;
+    clientName: string;
+    amount: string;
+    interval: string;
+    status: 'success' | 'cancel' | 'error';
+    error?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const checkStripeCallback = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const stripeStatus = urlParams.get('stripe_status');
+      const clientId = urlParams.get('client_id');
+      const sessionId = urlParams.get('stripe_session_id');
+      const amount = urlParams.get('amount') || '';
+      const interval = urlParams.get('interval') || 'month';
+
+      if (!stripeStatus) return;
+
+      // Clear search query parameters immediately so they don't persist on refresh
+      const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, cleanUrl);
+
+      // Fetch the latest contacts list to make sure we operate on up-to-date data
+      let latestContacts: ClientContact[] = [];
+      try {
+        latestContacts = await db.getContacts();
+        setContacts(latestContacts || []);
+      } catch (e) {
+        console.error("Error loading latest contacts during Stripe callback:", e);
+      }
+
+      const client = latestContacts.find(c => c.id === clientId) || contacts.find(c => c.id === clientId);
+      const clientName = client ? client.name : 'Cliente';
+
+      if (stripeStatus === 'success' && sessionId && clientId) {
+        setStripeSuccessData({
+          show: true,
+          clientName,
+          amount,
+          interval,
+          status: 'success'
+        });
+
+        try {
+          // Retrieve Stripe details from backend to get customerId and subscriptionId
+          const res = await fetch(`/api/stripe/retrieve-session?sessionId=${sessionId}`);
+          if (!res.ok) throw new Error("No se pudo recuperar la sesión de Stripe");
+          
+          const sessionData = await res.json();
+          const { customerId, subscriptionId } = sessionData;
+
+          if (client) {
+            const updatedClient: ClientContact = {
+              ...client,
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: subscriptionId,
+              stripeSubscriptionStatus: 'active',
+              stripeSubscriptionPrice: amount,
+              stripeSubscriptionInterval: interval,
+            };
+
+            // Update client in database
+            await db.updateContact(updatedClient);
+            // Refresh local contacts list
+            setContacts(prev => prev.map(c => c.id === clientId ? updatedClient : c));
+
+            // Create a FinanceTransaction of type income
+            const todayStr = new Date().toISOString().split('T')[0];
+            const newTx: any = {
+              id: `tx_stripe_${sessionId}`,
+              type: 'income',
+              category: 'Mensualidad',
+              amount: Number(amount),
+              date: todayStr,
+              description: `Mensualidad Stripe Automática - ${client.name}`,
+              isRecurring: true,
+              recurrencePeriod: interval === 'year' ? 'yearly' : 'monthly',
+              status: 'paid',
+              paymentMethod: 'transfer'
+            };
+
+            await db.insertFinanceTransaction(newTx);
+            // Refresh financial lists
+            const dbTxs = await db.getFinanceTransactions();
+            if (dbTxs) setFinTransactions(dbTxs);
+
+            // Add activity log
+            const newActivity: Activity = {
+              id: `act_stripe_${Date.now()}`,
+              type: 'CRM',
+              timestamp: 'Hace un momento',
+              title: `✅ Suscripción Activa - ${client.name}`,
+              subtitle: `Mensualidad automática configurada por ${amount} € / ${interval === 'year' ? 'año' : 'mes'}`,
+              accentColor: 'secondary'
+            };
+            await db.insertActivity(newActivity);
+            setActivities(prev => [newActivity, ...prev]);
+          }
+        } catch (err: any) {
+          console.error("Error updating subscription status:", err);
+          setStripeSuccessData({
+            show: true,
+            clientName,
+            amount,
+            interval,
+            status: 'error',
+            error: err?.message || String(err)
+          });
+        }
+      } else if (stripeStatus === 'cancel') {
+        setStripeSuccessData({
+          show: true,
+          clientName,
+          amount,
+          interval,
+          status: 'cancel'
+        });
+      }
+    };
+
+    // Give some time for initial Supabase hydration to finish
+    const timer = setTimeout(() => {
+      checkStripeCallback();
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [contacts.length]);
+
   // Sync finance transactions to compute upcoming alerts
   const [finTransactions, setFinTransactions] = useState<any[]>([]);
 
@@ -1506,6 +1637,96 @@ export default function App() {
         )}
       </AnimatePresence>
       
+      {/* Stripe Callback Modal Overlay */}
+      {stripeSuccessData?.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-[#09090f] border border-white/10 p-7 rounded-3xl max-w-md w-full shadow-[0_0_50px_rgba(139,92,246,0.15)] relative text-center space-y-4"
+          >
+            <button 
+              onClick={() => setStripeSuccessData(null)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            {stripeSuccessData.status === 'success' ? (
+              <>
+                <div className="mx-auto w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+                  <Check className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-100 font-sans tracking-tight">¡Mensualidad Configurada!</h3>
+                <p className="text-xs text-slate-400 font-sans leading-relaxed">
+                  Se ha activado correctamente el cobro automático por Stripe para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong>. El cliente recibirá su cobro de manera recurrente.
+                </p>
+                <div className="bg-[#040408] p-4 rounded-2xl border border-white/5 space-y-2.5 text-left font-sans">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500 font-mono uppercase text-[9px] tracking-wider">Importe:</span>
+                    <span className="font-extrabold text-emerald-400">{stripeSuccessData.amount} €</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500 font-mono uppercase text-[9px] tracking-wider">Frecuencia:</span>
+                    <span className="font-bold text-slate-300">{stripeSuccessData.interval === 'year' ? 'Anual' : 'Mensual'}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500 font-mono uppercase text-[9px] tracking-wider">Método de pago:</span>
+                    <span className="font-medium text-slate-300">Tarjeta o Banco (Procesado por Stripe)</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500 italic">
+                  Las transacciones correspondientes se registrarán automáticamente en el historial de finanzas.
+                </p>
+                <button
+                  onClick={() => setStripeSuccessData(null)}
+                  className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-lg active:scale-95"
+                >
+                  Confirmar y Continuar
+                </button>
+              </>
+            ) : stripeSuccessData.status === 'cancel' ? (
+              <>
+                <div className="mx-auto w-16 h-16 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center border border-amber-500/30">
+                  <X className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-100 tracking-tight">Proceso Cancelado</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  La configuración de mensualidad para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong> fue cancelada antes de que el cliente ingresara sus datos.
+                </p>
+                <button
+                  onClick={() => setStripeSuccessData(null)}
+                  className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  Entendido
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="mx-auto w-16 h-16 bg-rose-500/10 text-rose-400 rounded-full flex items-center justify-center border border-rose-500/30">
+                  <X className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-100 tracking-tight font-sans">Error al Procesar</h3>
+                <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                  Ocurrió un problema de verificación o conexión de Stripe.
+                </p>
+                <div className="bg-rose-500/5 p-3 rounded-xl border border-rose-500/15 text-left">
+                  <span className="text-rose-400 font-mono text-[10px] block leading-normal break-all">
+                    {stripeSuccessData.error || "No se pudo recuperar la información del cliente."}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setStripeSuccessData(null)}
+                  className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  Aceptar
+                </button>
+              </>
+            )}
+          </motion.div>
+        </div>
+      )}
+
       {/* Global Toast Alert System */}
       <div 
         id="toast-msg" 

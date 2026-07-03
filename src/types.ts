@@ -42,6 +42,12 @@ export interface ClientContact {
   devTechStack?: string[];
   devChecklist?: string; // stringified JSON tasks: { id: string; text: string; done: boolean }[]
   devNotes?: string;
+  // Stripe integration properties
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  stripeSubscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'past_due' | 'none';
+  stripeSubscriptionPrice?: string;
+  stripeSubscriptionInterval?: string;
 }
 
 export interface CalendarEvent {

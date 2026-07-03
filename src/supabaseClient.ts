@@ -528,6 +528,13 @@ export const db = {
     let devChecklist: string | undefined = undefined;
     let devNotes: string | undefined = undefined;
     
+    // Stripe metadata properties
+    let stripeCustomerId: string | undefined = undefined;
+    let stripeSubscriptionId: string | undefined = undefined;
+    let stripeSubscriptionStatus: 'active' | 'trialing' | 'canceled' | 'past_due' | 'none' | undefined = undefined;
+    let stripeSubscriptionPrice: string | undefined = undefined;
+    let stripeSubscriptionInterval: string | undefined = undefined;
+    
     if (parts.length > 1) {
       const metadataLines = parts[1].split('\n');
       metadataLines.forEach(line => {
@@ -555,6 +562,17 @@ export const db = {
           if (key === 'devAssignedTo') devAssignedTo = val || undefined;
           if (key === 'devDeadline') devDeadline = val || undefined;
           if (key === 'devTechStack') devTechStack = val ? val.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+          
+          if (key === 'stripeCustomerId') stripeCustomerId = val || undefined;
+          if (key === 'stripeSubscriptionId') stripeSubscriptionId = val || undefined;
+          if (key === 'stripeSubscriptionStatus') {
+            const sVal = val.trim().toLowerCase();
+            if (['active', 'trialing', 'canceled', 'past_due', 'none'].includes(sVal)) {
+              stripeSubscriptionStatus = sVal as any;
+            }
+          }
+          if (key === 'stripeSubscriptionPrice') stripeSubscriptionPrice = val || undefined;
+          if (key === 'stripeSubscriptionInterval') stripeSubscriptionInterval = val || undefined;
           
           try {
             if (key === 'notes') notes = decodeURIComponent(val) || undefined;
@@ -593,6 +611,11 @@ export const db = {
       devTechStack,
       devChecklist,
       devNotes,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      stripeSubscriptionStatus,
+      stripeSubscriptionPrice,
+      stripeSubscriptionInterval,
       hostingCredentials: cleanCredentials
     };
   },
@@ -616,7 +639,12 @@ export const db = {
       contact.devDeadline ||
       contact.devTechStack ||
       contact.devChecklist ||
-      contact.devNotes
+      contact.devNotes ||
+      contact.stripeCustomerId ||
+      contact.stripeSubscriptionId ||
+      contact.stripeSubscriptionStatus ||
+      contact.stripeSubscriptionPrice ||
+      contact.stripeSubscriptionInterval
     ) {
       metadataStr = '\n\n---METADATA---';
       if (contact.color) metadataStr += `\ncolor: ${contact.color}`;
@@ -635,6 +663,11 @@ export const db = {
       if (contact.devTechStack) metadataStr += `\ndevTechStack: ${contact.devTechStack.join(',')}`;
       if (contact.devChecklist) metadataStr += `\ndevChecklist: ${encodeURIComponent(contact.devChecklist)}`;
       if (contact.devNotes) metadataStr += `\ndevNotes: ${encodeURIComponent(contact.devNotes)}`;
+      if (contact.stripeCustomerId) metadataStr += `\nstripeCustomerId: ${contact.stripeCustomerId}`;
+      if (contact.stripeSubscriptionId) metadataStr += `\nstripeSubscriptionId: ${contact.stripeSubscriptionId}`;
+      if (contact.stripeSubscriptionStatus) metadataStr += `\nstripeSubscriptionStatus: ${contact.stripeSubscriptionStatus}`;
+      if (contact.stripeSubscriptionPrice) metadataStr += `\nstripeSubscriptionPrice: ${contact.stripeSubscriptionPrice}`;
+      if (contact.stripeSubscriptionInterval) metadataStr += `\nstripeSubscriptionInterval: ${contact.stripeSubscriptionInterval}`;
     }
     const cleanCredentials = (contact.hostingCredentials || '').split('\n\n---METADATA---')[0];
     

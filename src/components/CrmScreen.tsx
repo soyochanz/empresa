@@ -23,7 +23,11 @@ import {
   Archive,
   Trash2,
   Upload,
-  Edit
+  Edit,
+  CreditCard,
+  ExternalLink,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export const AESTHETIC_COLORS = [
@@ -93,6 +97,85 @@ export default function CrmScreen({
     const saved = sessionStorage.getItem('archived_contacts_ids');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Stripe Subscription States
+  const [stripeAmount, setStripeAmount] = useState('50');
+  const [stripeInterval, setStripeInterval] = useState<'month' | 'year'>('month');
+  const [stripeLoading, setStripeLoading] = useState(false);
+  const [generatedCheckoutUrl, setGeneratedCheckoutUrl] = useState('');
+  const [generatedCheckoutSessionId, setGeneratedCheckoutSessionId] = useState('');
+  const [stripeCopied, setStripeCopied] = useState(false);
+  const [stripeError, setStripeError] = useState('');
+
+  React.useEffect(() => {
+    setGeneratedCheckoutUrl('');
+    setGeneratedCheckoutSessionId('');
+    setStripeCopied(false);
+    setStripeError('');
+  }, [selectedContactId]);
+
+  const handleCreateStripeCheckout = async (contact: ClientContact) => {
+    if (!contact.email) {
+      setStripeError('El cliente no tiene un email registrado para configurar Stripe.');
+      return;
+    }
+    setStripeLoading(true);
+    setStripeError('');
+    try {
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId: contact.id,
+          clientName: contact.name,
+          clientEmail: contact.email,
+          amount: stripeAmount,
+          interval: stripeInterval,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al generar la sesión de Stripe');
+      }
+
+      setGeneratedCheckoutUrl(data.url);
+      setGeneratedCheckoutSessionId(data.sessionId);
+    } catch (err: any) {
+      console.error(err);
+      setStripeError(err?.message || 'Error de red al conectar con Stripe.');
+    } finally {
+      setStripeLoading(false);
+    }
+  };
+
+  const handleOpenStripePortal = async (stripeCustomerId: string) => {
+    setStripeLoading(true);
+    setStripeError('');
+    try {
+      const response = await fetch('/api/stripe/create-portal-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ stripeCustomerId }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al conectar con el portal de facturación');
+      }
+
+      window.open(data.url, '_blank');
+    } catch (err: any) {
+      console.error(err);
+      setStripeError(err?.message || 'No se pudo abrir el portal de facturación.');
+    } finally {
+      setStripeLoading(false);
+    }
+  };
 
   // Drag and drop states for Kanban layout
   const [draggedContactId, setDraggedContactId] = useState<string | null>(null);
@@ -836,6 +919,150 @@ export default function CrmScreen({
                     );
                   })()}
                 </div>
+              </div>
+
+              {/* Stripe Recurring Payments Auto-billing Engine */}
+              <div className="bg-[#030305] p-4 rounded-2xl border border-white/5 space-y-3.5 text-left w-full shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+                <div className="flex items-center gap-2 border-b border-white/5 pb-2.5">
+                  <CreditCard className="w-4 h-4 text-violet-400" />
+                  <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Mensualidad Stripe</span>
+                </div>
+
+                {selectedContact.stripeSubscriptionStatus === 'active' ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400">Estado:</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-[0_0_10px_rgba(16,185,129,0.05)]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Activo
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950/45 p-3 rounded-xl border border-white/5 space-y-1.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 text-[10px]">Cuota mensual:</span>
+                        <span className="font-extrabold text-slate-200">{selectedContact.stripeSubscriptionPrice || '0'} €</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-500 text-[10px]">Intervalo:</span>
+                        <span className="font-medium text-slate-300">
+                          {selectedContact.stripeSubscriptionInterval === 'year' ? 'Anual' : 'Mensual'}
+                        </span>
+                      </div>
+                      {selectedContact.stripeCustomerId && (
+                        <div className="flex justify-between text-[10px] text-slate-500">
+                          <span>ID Cliente:</span>
+                          <span className="font-mono text-[9px] truncate max-w-[120px]" title={selectedContact.stripeCustomerId}>
+                            {selectedContact.stripeCustomerId}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={stripeLoading}
+                      onClick={() => handleOpenStripePortal(selectedContact.stripeCustomerId!)}
+                      className="w-full py-2 bg-violet-600/10 hover:bg-violet-600/20 border border-violet-500/20 text-violet-300 hover:text-white font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      {stripeLoading ? (
+                        <span className="w-3.5 h-3.5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      )}
+                      <span>Portal de Facturación</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400">Estado:</span>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest bg-slate-855 text-slate-400 border border-slate-700">
+                        Sin Suscribir
+                      </span>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      Configura un plan recurrente para cobrar automáticamente desde la tarjeta/cuenta del cliente.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">Importe (€)</label>
+                        <input
+                          type="number"
+                          value={stripeAmount}
+                          onChange={(e) => setStripeAmount(e.target.value)}
+                          className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
+                          placeholder="50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">Frecuencia</label>
+                        <select
+                          value={stripeInterval}
+                          onChange={(e) => setStripeInterval(e.target.value as any)}
+                          className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2 py-1.5 text-xs text-slate-200 focus:outline-none transition"
+                        >
+                          <option value="month">Mensual</option>
+                          <option value="year">Anual</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {stripeError && (
+                      <p className="text-[9px] text-rose-450 leading-tight bg-rose-500/5 p-2 rounded-lg border border-rose-500/10 text-rose-400">
+                        {stripeError}
+                      </p>
+                    )}
+
+                    {!generatedCheckoutUrl ? (
+                      <button
+                        type="button"
+                        disabled={stripeLoading || !selectedContact.email}
+                        onClick={() => handleCreateStripeCheckout(selectedContact)}
+                        className="w-full py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-[0_2px_12px_rgba(139,92,246,0.15)]"
+                      >
+                        {stripeLoading ? (
+                          <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <CreditCard className="w-3.5 h-3.5" />
+                        )}
+                        <span>{stripeLoading ? 'Generando...' : 'Generar Enlace de Suscripción'}</span>
+                      </button>
+                    ) : (
+                      <div className="space-y-2 bg-[#040408] p-2.5 rounded-xl border border-white/5">
+                        <span className="block text-[9px] font-mono text-emerald-400 font-bold uppercase tracking-wide">¡Enlace de Pago Listo!</span>
+                        <span className="block text-[9px] text-slate-400 leading-snug">Envía este enlace seguro al cliente para domiciliar su cobro automático:</span>
+                        
+                        <div className="flex gap-1.5 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(generatedCheckoutUrl);
+                              setStripeCopied(true);
+                              setTimeout(() => setStripeCopied(false), 2000);
+                            }}
+                            className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 border border-white/5 text-[10px] rounded-lg text-slate-300 font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          >
+                            {stripeCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                            <span>{stripeCopied ? 'Copiado' : 'Copiar'}</span>
+                          </button>
+                          
+                          <a
+                            href={generatedCheckoutUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex-1 py-1.5 px-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/20 text-[10px] rounded-lg text-violet-300 font-semibold flex items-center justify-center gap-1 transition-all text-center"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>Abrir</span>
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons Icons Row - REMOVED Chat button as requested */}
