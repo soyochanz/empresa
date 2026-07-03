@@ -416,14 +416,26 @@ export interface ConnectionStatus {
 export async function checkSupabaseConnection(): Promise<ConnectionStatus> {
   try {
     // Try to query contacts table
-    const { error } = await supabase.from('contacts').select('id').limit(1);
+    const { error: contactsError } = await supabase.from('contacts').select('id').limit(1);
     
-    if (error) {
+    if (contactsError) {
       // PostgREST code 42P01 means 'relation does not exist' i.e. table is missing
-      if (error.code === '42P01') {
-        return { connected: true, tablesExist: false, error: 'Required tables are missing. Please execute the SQL creation script.' };
+      if (contactsError.code === '42P01') {
+        return { connected: true, tablesExist: false, error: 'La tabla "contacts" no existe en Supabase. Por favor, ejecuta el script SQL en el editor de SQL de Supabase.' };
       }
-      return { connected: false, tablesExist: false, error: error.message };
+      return { connected: false, tablesExist: false, error: contactsError.message };
+    }
+
+    // Try to query cold_calling_leads table
+    const { error: coldError } = await supabase.from('cold_calling_leads').select('id').limit(1);
+    if (coldError && coldError.code === '42P01') {
+      return { connected: true, tablesExist: false, error: 'La tabla "cold_calling_leads" no existe en Supabase. Por favor, vuelve a ejecutar el script SQL actualizado en tu editor de SQL de Supabase.' };
+    }
+
+    // Try to query comercial_leads table
+    const { error: comercialError } = await supabase.from('comercial_leads').select('id').limit(1);
+    if (comercialError && comercialError.code === '42P01') {
+      return { connected: true, tablesExist: false, error: 'La tabla "comercial_leads" no existe en Supabase. Por favor, vuelve a ejecutar el script SQL en Supabase.' };
     }
     
     return { connected: true, tablesExist: true };

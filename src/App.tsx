@@ -163,11 +163,32 @@ export default function App() {
   const [usersList, setUsersList] = useState<PanelUser[]>(REGISTERED_USERS);
 
   // Comerciales accounts and logged-in state
-  const [comercialesList, setComercialesList] = useState<ComercialAccount[]>([]);
+  const [comercialesList, setComercialesList] = useState<ComercialAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem('crm_comerciales_accounts');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
-  const [leadsList, setLeadsList] = useState<ComercialLead[]>([]);
+  const [leadsList, setLeadsList] = useState<ComercialLead[]>(() => {
+    try {
+      const saved = localStorage.getItem('crm_comercial_leads');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
-  const [coldLeads, setColdLeads] = useState<ColdCallingLead[]>([]);
+  const [coldLeads, setColdLeads] = useState<ColdCallingLead[]>(() => {
+    try {
+      const saved = localStorage.getItem('crm_cold_leads');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [currentComercial, setCurrentComercial] = useState<ComercialAccount | null>(() => {
     const saved = sessionStorage.getItem('agency_current_comercial');
@@ -181,6 +202,30 @@ export default function App() {
       sessionStorage.removeItem('agency_current_comercial');
     }
   }, [currentComercial]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('crm_comerciales_accounts', JSON.stringify(comercialesList));
+    } catch (e) {
+      console.error('Failed to save comercialesList to localStorage:', e);
+    }
+  }, [comercialesList]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('crm_comercial_leads', JSON.stringify(leadsList));
+    } catch (e) {
+      console.error('Failed to save leadsList to localStorage:', e);
+    }
+  }, [leadsList]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('crm_cold_leads', JSON.stringify(coldLeads));
+    } catch (e) {
+      console.error('Failed to save coldLeads to localStorage:', e);
+    }
+  }, [coldLeads]);
 
   // Notifications states
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
@@ -391,21 +436,30 @@ export default function App() {
       }
 
       if (status.connected && status.tablesExist) {
-        // Sync CRM / Commercial calling lists from Supabase
+        // Sync CRM / Commercial calling lists from Supabase individually to prevent single table failure from stopping other tables
         try {
-          const [fetchedCold, fetchedComercialLeads, fetchedComercialAccs] = await Promise.all([
-            db.getColdLeads(),
-            db.getComercialLeads(),
-            db.getComercialesAccounts()
-          ]);
+          const fetchedCold = await db.getColdLeads().catch(err => {
+            console.warn('Could not load cold_calling_leads from Supabase:', err);
+            return null;
+          });
           if (fetchedCold) setColdLeads(fetchedCold);
+        } catch (err) {}
+
+        try {
+          const fetchedComercialLeads = await db.getComercialLeads().catch(err => {
+            console.warn('Could not load comercial_leads from Supabase:', err);
+            return null;
+          });
           if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
-          if (fetchedComercialAccs) {
-            setComercialesList(fetchedComercialAccs);
-          }
-        } catch (crmErr) {
-          console.warn('Could not load shared CRM tables from Supabase (tables may not exist yet):', crmErr);
-        }
+        } catch (err) {}
+
+        try {
+          const fetchedComercialAccs = await db.getComercialesAccounts().catch(err => {
+            console.warn('Could not load comerciales_accounts from Supabase:', err);
+            return null;
+          });
+          if (fetchedComercialAccs) setComercialesList(fetchedComercialAccs);
+        } catch (err) {}
 
         const activeUid = userIdToSync || currentUser?.id;
         if (activeUid) {
