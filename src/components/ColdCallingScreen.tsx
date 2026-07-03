@@ -295,6 +295,102 @@ export default function ColdCallingScreen({
     setSelectedLeadForCall(updatedLead);
   };
 
+  // Generic states for Inline Log Operations in Lead List & Grid
+  const [inlineEditingLeadId, setInlineEditingLeadId] = useState<string | null>(null);
+  const [inlineEditingLogId, setInlineEditingLogId] = useState<string | null>(null);
+  const [inlineEditingLogNotes, setInlineEditingLogNotes] = useState<string>('');
+  const [inlineEditingLogResult, setInlineEditingLogResult] = useState<string>('');
+  const [inlineEditingLogDate, setInlineEditingLogDate] = useState<string>('');
+
+  const [inlineAddingLeadId, setInlineAddingLeadId] = useState<string | null>(null);
+  const [inlineAddingLogNotes, setInlineAddingLogNotes] = useState<string>('');
+  const [inlineAddingLogResult, setInlineAddingLogResult] = useState<string>('Llamada realizada');
+  const [inlineAddingLogDate, setInlineAddingLogDate] = useState<string>('');
+
+  const updateLeadCallsLog = (lead: ColdCallingLead, updatedLogs: any[]) => {
+    const updatedLead: ColdCallingLead = {
+      ...lead,
+      callsLog: updatedLogs,
+      callsCount: updatedLogs.length,
+      callDate: updatedLogs.length > 0 ? new Date().toISOString().split('T')[0] : undefined
+    };
+
+    onUpdateColdLead(updatedLead);
+
+    // If this is also the active lead in the resolver modal, sync it
+    if (selectedLeadForCall && selectedLeadForCall.id === lead.id) {
+      setSelectedLeadForCall(updatedLead);
+    }
+  };
+
+  const handleAddInlineLogGeneric = (lead: ColdCallingLead) => {
+    if (!inlineAddingLogNotes.trim()) {
+      alert('Por favor escribe las notas para la llamada.');
+      return;
+    }
+
+    const dateStr = inlineAddingLogDate || new Date().toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const newLogItem = {
+      id: 'log_' + Math.random().toString(36).substring(2, 9),
+      date: dateStr,
+      notes: inlineAddingLogNotes.trim(),
+      result: inlineAddingLogResult.trim()
+    };
+
+    const updatedLogs = [newLogItem, ...(lead.callsLog || [])];
+    updateLeadCallsLog(lead, updatedLogs);
+
+    // Reset inline adding state
+    setInlineAddingLeadId(null);
+    setInlineAddingLogNotes('');
+    setInlineAddingLogResult('Llamada realizada');
+    setInlineAddingLogDate('');
+  };
+
+  const handleSaveEditLogGeneric = (lead: ColdCallingLead) => {
+    if (!inlineEditingLogId) return;
+
+    const updatedLogs = (lead.callsLog || []).map((log: any, idx: number) => {
+      const logId = log.id || `log_${idx}`;
+      if (logId === inlineEditingLogId) {
+        return {
+          ...log,
+          notes: inlineEditingLogNotes.trim(),
+          result: inlineEditingLogResult.trim(),
+          date: inlineEditingLogDate.trim()
+        };
+      }
+      return log;
+    });
+
+    updateLeadCallsLog(lead, updatedLogs);
+
+    // Reset inline editing state
+    setInlineEditingLeadId(null);
+    setInlineEditingLogId(null);
+    setInlineEditingLogNotes('');
+    setInlineEditingLogResult('');
+    setInlineEditingLogDate('');
+  };
+
+  const handleDeleteLogItemGeneric = (lead: ColdCallingLead, logIdToDelete: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este registro de llamada?')) return;
+
+    const updatedLogs = (lead.callsLog || []).filter((log: any, idx: number) => {
+      const logId = log.id || `log_${idx}`;
+      return logId !== logIdToDelete;
+    });
+
+    updateLeadCallsLog(lead, updatedLogs);
+  };
+
   // Filtering leads based on permissions and filters
   const visibleLeads = coldLeads.filter(lead => {
     // Show only self assigned filter if enabled
@@ -912,30 +1008,188 @@ export default function ColdCallingScreen({
                           <span className="font-mono text-[10px] font-bold text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
                             📞 Historial de Llamadas de {lead.businessName}
                           </span>
-                          <span className="text-[10px] bg-violet-500/10 text-violet-400 px-2.5 py-0.5 rounded-full font-mono font-bold">
-                            {lead.callsLog?.length || 0} llamadas en total
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (inlineAddingLeadId === lead.id) {
+                                  setInlineAddingLeadId(null);
+                                } else {
+                                  setInlineAddingLeadId(lead.id);
+                                  setInlineAddingLogNotes('');
+                                  setInlineAddingLogResult('Llamada realizada');
+                                  setInlineAddingLogDate(new Date().toLocaleDateString('es-ES', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }));
+                                }
+                              }}
+                              className="text-[9px] bg-violet-600 hover:bg-violet-500 text-white font-bold px-2 py-0.5 rounded transition cursor-pointer select-none"
+                            >
+                              {inlineAddingLeadId === lead.id ? '✕ Cancelar' : '+ Registrar Llamada'}
+                            </button>
+                            <span className="text-[10px] bg-violet-500/10 text-violet-400 px-2.5 py-0.5 rounded-full font-mono font-bold">
+                              {lead.callsLog?.length || 0} llamadas en total
+                            </span>
+                          </div>
                         </div>
+
+                        {inlineAddingLeadId === lead.id && (
+                          <div className="bg-violet-950/20 border border-violet-500/30 rounded-xl p-3 space-y-2 text-left max-w-md">
+                            <span className="text-[9px] font-mono font-bold text-violet-300 uppercase tracking-wider">
+                              Registrar Llamada Manual
+                            </span>
+                            
+                            <div className="space-y-1">
+                              <label className="text-[8px] text-slate-450 font-bold uppercase font-mono">Fecha / Hora</label>
+                              <input
+                                type="text"
+                                value={inlineAddingLogDate}
+                                onChange={e => setInlineAddingLogDate(e.target.value)}
+                                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                placeholder="Ej. DD/MM/AAAA HH:MM"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[8px] text-slate-450 font-bold uppercase font-mono">Notas de la llamada</label>
+                              <textarea
+                                rows={2}
+                                value={inlineAddingLogNotes}
+                                onChange={e => setInlineAddingLogNotes(e.target.value)}
+                                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500 resize-none"
+                                placeholder="Escribe comentarios de esta llamada..."
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[8px] text-slate-450 font-bold uppercase font-mono">Resultado</label>
+                              <input
+                                type="text"
+                                value={inlineAddingLogResult}
+                                onChange={e => setInlineAddingLogResult(e.target.value)}
+                                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                placeholder="Ej. Contactado: Sí | Responde: Sí"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleAddInlineLogGeneric(lead)}
+                              className="w-full text-center py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-lg text-[10px] transition cursor-pointer mt-1"
+                            >
+                              Guardar en Historial
+                            </button>
+                          </div>
+                        )}
+
                         {(!lead.callsLog || lead.callsLog.length === 0) ? (
                           <p className="text-[11px] text-slate-500 italic text-center py-2">No hay llamadas registradas anteriormente en el historial.</p>
                         ) : (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[220px] overflow-y-auto pr-1 text-left scrollbar-thin scrollbar-thumb-white/5">
-                            {lead.callsLog.map((log: any, idx: number) => (
-                              <div key={log.id || idx} className="bg-slate-900/80 p-3 rounded-xl border border-white/5 space-y-2">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[10px] text-violet-400 font-mono font-bold">{log.date}</span>
-                                  <span className="text-[9px] bg-white/5 text-slate-400 font-mono px-1.5 py-0.5 rounded">
-                                    #{lead.callsLog.length - idx}
-                                  </span>
+                            {lead.callsLog.map((log: any, idx: number) => {
+                              const logId = log.id || `log_${idx}`;
+                              const isEditing = inlineEditingLeadId === lead.id && inlineEditingLogId === logId;
+                              return (
+                                <div key={logId} className="bg-slate-900/80 p-3 rounded-xl border border-white/5 space-y-2 relative group">
+                                  {isEditing ? (
+                                    <div className="space-y-2 text-left">
+                                      <div className="space-y-1">
+                                        <label className="text-[8px] text-slate-400 font-bold uppercase font-mono">Fecha / Hora</label>
+                                        <input
+                                          type="text"
+                                          value={inlineEditingLogDate}
+                                          onChange={e => setInlineEditingLogDate(e.target.value)}
+                                          className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                        />
+                                      </div>
+
+                                      <div className="space-y-1">
+                                        <label className="text-[8px] text-slate-400 font-bold uppercase font-mono">Notas de la llamada</label>
+                                        <textarea
+                                          rows={2}
+                                          value={inlineEditingLogNotes}
+                                          onChange={e => setInlineEditingLogNotes(e.target.value)}
+                                          className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500 resize-none"
+                                        />
+                                      </div>
+
+                                      <div className="space-y-1">
+                                        <label className="text-[8px] text-slate-400 font-bold uppercase font-mono">Resultado</label>
+                                        <input
+                                          type="text"
+                                          value={inlineEditingLogResult}
+                                          onChange={e => setInlineEditingLogResult(e.target.value)}
+                                          className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                        />
+                                      </div>
+
+                                      <div className="flex gap-2 justify-end pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setInlineEditingLeadId(null);
+                                            setInlineEditingLogId(null);
+                                          }}
+                                          className="text-[9px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded hover:bg-slate-700 cursor-pointer"
+                                        >
+                                          Cancelar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveEditLogGeneric(lead)}
+                                          className="text-[9px] bg-emerald-600 text-white px-2 py-0.5 rounded font-bold hover:bg-emerald-500 cursor-pointer"
+                                        >
+                                          Guardar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-[10px] text-violet-400 font-mono font-bold">{log.date}</span>
+                                        <div className="flex items-center gap-1.5 opacity-65 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setInlineEditingLeadId(lead.id);
+                                              setInlineEditingLogId(logId);
+                                              setInlineEditingLogNotes(log.notes);
+                                              setInlineEditingLogResult(log.result || '');
+                                              setInlineEditingLogDate(log.date);
+                                            }}
+                                            className="text-violet-400 hover:text-violet-300 font-bold p-1 rounded hover:bg-violet-500/10 transition cursor-pointer flex items-center justify-center"
+                                            title="Editar registro"
+                                          >
+                                            <Edit3 className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteLogItemGeneric(lead, logId)}
+                                            className="text-rose-400 hover:text-rose-300 font-bold p-1 rounded hover:bg-rose-500/10 transition cursor-pointer flex items-center justify-center"
+                                            title="Borrar registro"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                          <span className="text-[8px] bg-white/5 text-slate-400 font-mono px-1.5 py-0.5 rounded">
+                                            #{lead.callsLog.length - idx}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <p className="text-[11px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
+                                        {log.notes}
+                                      </p>
+                                      <div className="text-[9px] bg-white/[0.02] border border-white/5 p-1.5 rounded-lg text-slate-450 font-mono leading-tight">
+                                        {log.result}
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
-                                <p className="text-[11px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
-                                  {log.notes}
-                                </p>
-                                <div className="text-[9px] bg-white/[0.02] border border-white/5 p-1.5 rounded-lg text-slate-400 font-mono leading-tight">
-                                  {log.result}
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -1156,30 +1410,188 @@ export default function ColdCallingScreen({
                           <span className="font-mono text-[9px] font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
                             📞 Historial de Llamadas
                           </span>
-                          <span className="text-[9px] bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded-full font-mono font-bold">
-                            {lead.callsLog?.length || 0} llamadas
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (inlineAddingLeadId === lead.id) {
+                                  setInlineAddingLeadId(null);
+                                } else {
+                                  setInlineAddingLeadId(lead.id);
+                                  setInlineAddingLogNotes('');
+                                  setInlineAddingLogResult('Llamada realizada');
+                                  setInlineAddingLogDate(new Date().toLocaleDateString('es-ES', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }));
+                                }
+                              }}
+                              className="text-[8px] bg-violet-600 hover:bg-violet-500 text-white font-bold px-1.5 py-0.5 rounded transition cursor-pointer select-none"
+                            >
+                              {inlineAddingLeadId === lead.id ? '✕ Cancelar' : '+ Registrar'}
+                            </button>
+                            <span className="text-[9px] bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded-full font-mono font-bold">
+                              {lead.callsLog?.length || 0} llamadas
+                            </span>
+                          </div>
                         </div>
+
+                        {inlineAddingLeadId === lead.id && (
+                          <div className="bg-violet-950/20 border border-violet-500/30 rounded-xl p-3 space-y-2 text-left">
+                            <span className="text-[9px] font-mono font-bold text-violet-300 uppercase tracking-wider">
+                              Registrar Llamada Manual
+                            </span>
+                            
+                            <div className="space-y-1">
+                              <label className="text-[8px] text-slate-450 font-bold uppercase font-mono">Fecha / Hora</label>
+                              <input
+                                type="text"
+                                value={inlineAddingLogDate}
+                                onChange={e => setInlineAddingLogDate(e.target.value)}
+                                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                placeholder="Ej. DD/MM/AAAA HH:MM"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[8px] text-slate-450 font-bold uppercase font-mono">Notas de la llamada</label>
+                              <textarea
+                                rows={2}
+                                value={inlineAddingLogNotes}
+                                onChange={e => setInlineAddingLogNotes(e.target.value)}
+                                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500 resize-none"
+                                placeholder="Escribe comentarios de esta llamada..."
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[8px] text-slate-450 font-bold uppercase font-mono">Resultado</label>
+                              <input
+                                type="text"
+                                value={inlineAddingLogResult}
+                                onChange={e => setInlineAddingLogResult(e.target.value)}
+                                className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                placeholder="Ej. Contactado: Sí | Responde: Sí"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleAddInlineLogGeneric(lead)}
+                              className="w-full text-center py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-lg text-[10px] transition cursor-pointer mt-1"
+                            >
+                              Guardar en Historial
+                            </button>
+                          </div>
+                        )}
+
                         {(!lead.callsLog || lead.callsLog.length === 0) ? (
                           <p className="text-[10px] text-slate-500 italic text-center py-1">No hay llamadas registradas.</p>
                         ) : (
                           <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 text-left scrollbar-thin scrollbar-thumb-white/5">
-                            {lead.callsLog.map((log: any, idx: number) => (
-                              <div key={log.id || idx} className="bg-slate-900/80 p-2.5 rounded-xl border border-white/5 space-y-1">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[9px] text-violet-400 font-mono font-bold">{log.date}</span>
-                                  <span className="text-[8px] bg-white/5 text-slate-450 font-mono px-1 py-0.5 rounded">
-                                    #{lead.callsLog.length - idx}
-                                  </span>
+                            {lead.callsLog.map((log: any, idx: number) => {
+                              const logId = log.id || `log_${idx}`;
+                              const isEditing = inlineEditingLeadId === lead.id && inlineEditingLogId === logId;
+                              return (
+                                <div key={logId} className="bg-slate-900/80 p-2.5 rounded-xl border border-white/5 space-y-1 relative group">
+                                  {isEditing ? (
+                                    <div className="space-y-2 text-left">
+                                      <div className="space-y-1">
+                                        <label className="text-[8px] text-slate-400 font-bold uppercase font-mono">Fecha / Hora</label>
+                                        <input
+                                          type="text"
+                                          value={inlineEditingLogDate}
+                                          onChange={e => setInlineEditingLogDate(e.target.value)}
+                                          className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                        />
+                                      </div>
+
+                                      <div className="space-y-1">
+                                        <label className="text-[8px] text-slate-400 font-bold uppercase font-mono">Notas de la llamada</label>
+                                        <textarea
+                                          rows={2}
+                                          value={inlineEditingLogNotes}
+                                          onChange={e => setInlineEditingLogNotes(e.target.value)}
+                                          className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500 resize-none"
+                                        />
+                                      </div>
+
+                                      <div className="space-y-1">
+                                        <label className="text-[8px] text-slate-400 font-bold uppercase font-mono">Resultado</label>
+                                        <input
+                                          type="text"
+                                          value={inlineEditingLogResult}
+                                          onChange={e => setInlineEditingLogResult(e.target.value)}
+                                          className="w-full bg-slate-950 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                        />
+                                      </div>
+
+                                      <div className="flex gap-2 justify-end pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setInlineEditingLeadId(null);
+                                            setInlineEditingLogId(null);
+                                          }}
+                                          className="text-[9px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded hover:bg-slate-700 cursor-pointer"
+                                        >
+                                          Cancelar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveEditLogGeneric(lead)}
+                                          className="text-[9px] bg-emerald-600 text-white px-2 py-0.5 rounded font-bold hover:bg-emerald-500 cursor-pointer"
+                                        >
+                                          Guardar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-[9px] text-violet-400 font-mono font-bold">{log.date}</span>
+                                        <div className="flex items-center gap-1.5 opacity-65 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setInlineEditingLeadId(lead.id);
+                                              setInlineEditingLogId(logId);
+                                              setInlineEditingLogNotes(log.notes);
+                                              setInlineEditingLogResult(log.result || '');
+                                              setInlineEditingLogDate(log.date);
+                                            }}
+                                            className="text-violet-400 hover:text-violet-350 font-bold p-1 rounded hover:bg-violet-500/10 transition cursor-pointer flex items-center justify-center"
+                                            title="Editar registro"
+                                          >
+                                            <Edit3 className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteLogItemGeneric(lead, logId)}
+                                            className="text-rose-450 hover:text-rose-350 font-bold p-1 rounded hover:bg-rose-500/10 transition cursor-pointer flex items-center justify-center"
+                                            title="Borrar registro"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                          <span className="text-[8px] bg-white/5 text-slate-450 font-mono px-1 py-0.5 rounded">
+                                            #{lead.callsLog.length - idx}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <p className="text-[10px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
+                                        {log.notes}
+                                      </p>
+                                      <div className="text-[8px] bg-white/[0.02] border border-white/5 p-1 rounded text-slate-500 font-mono leading-tight">
+                                        {log.result}
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
-                                <p className="text-[10px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
-                                  {log.notes}
-                                </p>
-                                <div className="text-[8px] bg-white/[0.02] border border-white/5 p-1 rounded text-slate-500 font-mono leading-tight">
-                                  {log.result}
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
