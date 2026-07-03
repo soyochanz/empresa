@@ -73,6 +73,7 @@ export default function CrmScreen({
   onAddEvent
 }: CrmScreenProps) {
   const [selectedContactId, setSelectedContactId] = useState<string>('c2'); // default to Marcus Chen
+  const selectedContact = contacts.find(c => c.id === selectedContactId) || contacts[0];
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -106,22 +107,35 @@ export default function CrmScreen({
   const [generatedCheckoutSessionId, setGeneratedCheckoutSessionId] = useState('');
   const [stripeCopied, setStripeCopied] = useState(false);
   const [stripeError, setStripeError] = useState('');
+  const [stripeEmailInput, setStripeEmailInput] = useState('');
 
   React.useEffect(() => {
     setGeneratedCheckoutUrl('');
     setGeneratedCheckoutSessionId('');
     setStripeCopied(false);
     setStripeError('');
-  }, [selectedContactId]);
+    setStripeEmailInput(selectedContact?.email || '');
+  }, [selectedContactId, selectedContact]);
 
   const handleCreateStripeCheckout = async (contact: ClientContact) => {
-    if (!contact.email) {
-      setStripeError('El cliente no tiene un email registrado para configurar Stripe.');
+    const targetEmail = stripeEmailInput.trim();
+    if (!targetEmail) {
+      setStripeError('El cliente debe tener un email registrado para configurar Stripe.');
       return;
     }
     setStripeLoading(true);
     setStripeError('');
     try {
+      // If the email is missing or has changed, update the contact in Supabase/db
+      if (contact.email !== targetEmail) {
+        if (onUpdateContact) {
+          onUpdateContact({
+            ...contact,
+            email: targetEmail
+          });
+        }
+      }
+
       const response = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: {
@@ -130,7 +144,7 @@ export default function CrmScreen({
         body: JSON.stringify({
           clientId: contact.id,
           clientName: contact.name,
-          clientEmail: contact.email,
+          clientEmail: targetEmail,
           amount: stripeAmount,
           interval: stripeInterval,
         }),
@@ -389,8 +403,6 @@ export default function CrmScreen({
   const toggleCredsVisibility = (id: string) => {
     setShowCredsId(prev => prev === id ? null : id);
   };
-
-  const selectedContact = contacts.find(c => c.id === selectedContactId) || contacts[0];
 
   const handleOpenScheduleMeeting = (contact: ClientContact) => {
     setScheduleDate(new Date().toISOString().split('T')[0]);
@@ -986,6 +998,20 @@ export default function CrmScreen({
                       Configura un plan recurrente para cobrar automáticamente desde la tarjeta/cuenta del cliente.
                     </p>
 
+                    <div>
+                      <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1 flex justify-between">
+                        <span>Email del Cliente</span>
+                        {!selectedContact.email && <span className="text-amber-400 font-bold font-sans text-[7.5px] uppercase">Falta en perfil</span>}
+                      </label>
+                      <input
+                        type="email"
+                        value={stripeEmailInput}
+                        onChange={(e) => setStripeEmailInput(e.target.value)}
+                        className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition font-sans"
+                        placeholder="ejemplo@correo.com"
+                      />
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">Importe (€)</label>
@@ -1019,7 +1045,7 @@ export default function CrmScreen({
                     {!generatedCheckoutUrl ? (
                       <button
                         type="button"
-                        disabled={stripeLoading || !selectedContact.email}
+                        disabled={stripeLoading || !stripeEmailInput.trim()}
                         onClick={() => handleCreateStripeCheckout(selectedContact)}
                         className="w-full py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-[0_2px_12px_rgba(139,92,246,0.15)]"
                       >
