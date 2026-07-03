@@ -157,6 +157,13 @@ export interface ComercialLead {
   isDone?: boolean;
 }
 
+export interface CallLogItem {
+  id: string;
+  date: string;
+  notes: string;
+  result: string;
+}
+
 export interface ColdCallingLead {
   id: string;
   businessName: string;            // NOMBRE DE NEGOCIO
@@ -183,6 +190,10 @@ export interface ColdCallingLead {
   archived?: boolean;              // archived flag
   isDone?: boolean;                // Done (tick) flag for comercial organization
   createdAt: string;
+
+  // New fields for tracking calls history and count
+  callsCount?: number;             // Veces que se le ha llamado
+  callsLog?: CallLogItem[];        // Historial de llamadas
 }
 
 

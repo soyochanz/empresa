@@ -194,6 +194,8 @@ export default function ColdCallingScreen({
   const [callCallbackDate, setCallCallbackDate] = useState('');
   const [callCallbackTime, setCallCallbackTime] = useState('');
   const [callNotes, setCallNotes] = useState('');
+  const [callCallsCount, setCallCallsCount] = useState<number>(0);
+  const [expandedLeadLogs, setExpandedLeadLogs] = useState<Record<string, boolean>>({});
 
   // Filtering leads based on permissions and filters
   const visibleLeads = coldLeads.filter(lead => {
@@ -304,7 +306,8 @@ export default function ColdCallingScreen({
     setCallScheduled(lead.callbackScheduled);
     setCallCallbackDate(lead.callbackDate || '');
     setCallCallbackTime(lead.callbackTime || '');
-    setCallNotes(lead.notes);
+    setCallNotes(''); // Clear call notes for the new call being registered
+    setCallCallsCount((lead.callsCount || 0) + 1); // Pre-increment as they are registering a new call!
   };
 
   // Submit Logger Update
@@ -317,6 +320,22 @@ export default function ColdCallingScreen({
       return;
     }
 
+    const currentNotes = callNotes.trim() || 'Llamada realizada.';
+    const newLogItem = {
+      id: 'log_' + Math.random().toString(36).substring(2, 9),
+      date: new Date().toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      notes: currentNotes,
+      result: `Contactado: ${callContacted} | ¿Dueño?: ${callIsOwner} | Responde: ${callAnswered} | Agendada: ${callScheduled}`
+    };
+
+    const existingLogs = selectedLeadForCall.callsLog || [];
+
     const updatedLead: ColdCallingLead = {
       ...selectedLeadForCall,
       contacted: callContacted,
@@ -327,8 +346,10 @@ export default function ColdCallingScreen({
       callbackScheduled: callScheduled,
       callbackDate: callScheduled === 'Llamar más tarde' ? callCallbackDate : undefined,
       callbackTime: callScheduled === 'Llamar más tarde' ? callCallbackTime : undefined,
-      notes: callNotes.trim(),
-      callDate: new Date().toISOString().split('T')[0] // Set call date to today
+      notes: currentNotes, // Set the current call notes as main notes
+      callDate: new Date().toISOString().split('T')[0], // Set call date to today
+      callsCount: callCallsCount,
+      callsLog: [newLogItem, ...existingLogs] // Prepend the newest call
     };
 
     onUpdateColdLead(updatedLead);
@@ -654,9 +675,20 @@ export default function ColdCallingScreen({
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono flex-wrap">
                         <span>ID Pág: {lead.id}</span>
                         {lead.callDate && <span>• Última: {lead.callDate}</span>}
+                        <button
+                          onClick={() => setExpandedLeadLogs(prev => ({ ...prev, [lead.id]: !prev[lead.id] }))}
+                          className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition cursor-pointer select-none font-bold ${
+                            expandedLeadLogs[lead.id]
+                              ? 'bg-violet-500/25 text-violet-300 border border-violet-500/30'
+                              : 'bg-violet-500/10 hover:bg-violet-500/20 text-violet-400'
+                          }`}
+                          title="Click para ver historial de llamadas"
+                        >
+                          📞 {lead.callsCount || 0} {lead.callsCount === 1 ? 'llamada' : 'llamadas'}
+                        </button>
                       </div>
                     </div>
 
@@ -770,6 +802,42 @@ export default function ColdCallingScreen({
                       )}
                     </div>
 
+                    {/* EXPANDABLE CALL HISTORY TIMELINE BOX */}
+                    {expandedLeadLogs[lead.id] && (
+                      <div className="col-span-1 lg:col-span-12 mt-2 p-4 bg-slate-950/65 border border-white/5 rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                          <span className="font-mono text-[10px] font-bold text-violet-400 uppercase tracking-widest flex items-center gap-1.5">
+                            📞 Historial de Llamadas de {lead.businessName}
+                          </span>
+                          <span className="text-[10px] bg-violet-500/10 text-violet-400 px-2.5 py-0.5 rounded-full font-mono font-bold">
+                            {lead.callsLog?.length || 0} llamadas en total
+                          </span>
+                        </div>
+                        {(!lead.callsLog || lead.callsLog.length === 0) ? (
+                          <p className="text-[11px] text-slate-500 italic text-center py-2">No hay llamadas registradas anteriormente en el historial.</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[220px] overflow-y-auto pr-1 text-left scrollbar-thin scrollbar-thumb-white/5">
+                            {lead.callsLog.map((log: any, idx: number) => (
+                              <div key={log.id || idx} className="bg-slate-900/80 p-3 rounded-xl border border-white/5 space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[10px] text-violet-400 font-mono font-bold">{log.date}</span>
+                                  <span className="text-[9px] bg-white/5 text-slate-400 font-mono px-1.5 py-0.5 rounded">
+                                    #{lead.callsLog.length - idx}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
+                                  {log.notes}
+                                </p>
+                                <div className="text-[9px] bg-white/[0.02] border border-white/5 p-1.5 rounded-lg text-slate-400 font-mono leading-tight">
+                                  {log.result}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                   </div>
                 );
               })}
@@ -835,25 +903,38 @@ export default function ColdCallingScreen({
                       </div>
 
                       {/* Business & Contact Name */}
-                      <div className="flex items-center gap-2 mt-1 mb-1">
+                      <div className="flex items-center justify-between gap-2 mt-1 mb-1">
+                        <div className="flex items-center gap-2 truncate">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateColdLead({
+                                ...lead,
+                                isDone: !lead.isDone
+                              });
+                            }}
+                            className={`w-4.5 h-4.5 rounded-md flex items-center justify-center border transition-all flex-shrink-0 ${
+                              lead.isDone 
+                                ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400' 
+                                : 'border-white/10 text-transparent hover:border-white/30 hover:bg-white/[0.02]'
+                            }`}
+                            title={lead.isDone ? "Marcar como pendiente" : "Marcar como hecho (llamado)"}
+                          >
+                            <Check className="w-3 h-3 stroke-[3px]" />
+                          </button>
+                          <h3 className={`text-sm font-bold text-white line-clamp-1 ${lead.isDone ? 'line-through text-slate-500' : ''}`} title={lead.businessName}>{lead.businessName}</h3>
+                        </div>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onUpdateColdLead({
-                              ...lead,
-                              isDone: !lead.isDone
-                            });
-                          }}
-                          className={`w-4.5 h-4.5 rounded-md flex items-center justify-center border transition-all flex-shrink-0 ${
-                            lead.isDone 
-                              ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400' 
-                              : 'border-white/10 text-transparent hover:border-white/30 hover:bg-white/[0.02]'
+                          onClick={() => setExpandedLeadLogs(prev => ({ ...prev, [lead.id]: !prev[lead.id] }))}
+                          className={`inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded transition cursor-pointer select-none font-bold flex-shrink-0 ${
+                            expandedLeadLogs[lead.id]
+                              ? 'bg-violet-500/25 text-violet-300 border border-violet-500/30 font-extrabold'
+                              : 'bg-violet-500/10 hover:bg-violet-500/20 text-violet-400'
                           }`}
-                          title={lead.isDone ? "Marcar como pendiente" : "Marcar como hecho (llamado)"}
+                          title="Click para ver historial de llamadas"
                         >
-                          <Check className="w-3 h-3 stroke-[3px]" />
+                          📞 {lead.callsCount || 0}
                         </button>
-                        <h3 className={`text-sm font-bold text-white line-clamp-1 ${lead.isDone ? 'line-through text-slate-500' : ''}`}>{lead.businessName}</h3>
                       </div>
                       <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-sans">
                         <span className="text-slate-500 text-xs font-mono">👨‍💼</span>
@@ -964,6 +1045,42 @@ export default function ColdCallingScreen({
                         </div>
                       )}
                     </div>
+
+                    {/* EXPANDABLE GRID CALL HISTORY TIMELINE BOX */}
+                    {expandedLeadLogs[lead.id] && (
+                      <div className="mt-4 p-3 bg-slate-950/65 border border-white/5 rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                          <span className="font-mono text-[9px] font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
+                            📞 Historial de Llamadas
+                          </span>
+                          <span className="text-[9px] bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded-full font-mono font-bold">
+                            {lead.callsLog?.length || 0} llamadas
+                          </span>
+                        </div>
+                        {(!lead.callsLog || lead.callsLog.length === 0) ? (
+                          <p className="text-[10px] text-slate-500 italic text-center py-1">No hay llamadas registradas.</p>
+                        ) : (
+                          <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 text-left scrollbar-thin scrollbar-thumb-white/5">
+                            {lead.callsLog.map((log: any, idx: number) => (
+                              <div key={log.id || idx} className="bg-slate-900/80 p-2.5 rounded-xl border border-white/5 space-y-1">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-[9px] text-violet-400 font-mono font-bold">{log.date}</span>
+                                  <span className="text-[8px] bg-white/5 text-slate-450 font-mono px-1 py-0.5 rounded">
+                                    #{lead.callsLog.length - idx}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
+                                  {log.notes}
+                                </p>
+                                <div className="text-[8px] bg-white/[0.02] border border-white/5 p-1 rounded text-slate-500 font-mono leading-tight">
+                                  {log.result}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                   </div>
                 );
@@ -1381,7 +1498,7 @@ export default function ColdCallingScreen({
       {/* MODAL 2: FORMULARIO DE TRABAJO INDIVIDUAL (CALL QUESTIONNAIRE FOR SUCCESS METRICS) */}
       {selectedLeadForCall && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-white/10 rounded-2.5xl max-w-xl w-full p-6 text-left relative overflow-hidden animate-scale-in">
+          <div className="bg-slate-900 border border-white/10 rounded-2.5xl max-w-4xl w-full p-6 text-left relative overflow-hidden animate-scale-in">
             
             <div className="flex justify-between items-center border-b border-white/5 pb-3">
               <div className="text-left">
@@ -1400,209 +1517,285 @@ export default function ColdCallingScreen({
               </button>
             </div>
 
-            <form onSubmit={handleSaveCallLog} className="space-y-4 mt-4 font-sans">
+            <form onSubmit={handleSaveCallLog} className="mt-4 font-sans space-y-4">
               
-              {/* Questionnaire Form Grid */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
                 
-                {/* Contactado (Sí/No) */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
-                    ¿CONTACTADO? (SI/NO)
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {['Sí', 'No'].map(v => {
-                      const active = callContacted === v;
-                      return (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setCallContacted(v as any)}
-                          className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                            active 
-                              ? 'bg-violet-600/25 border-violet-500 text-violet-300 font-extrabold' 
-                              : 'bg-slate-950 border-white/5 text-slate-400'
-                          }`}
-                        >
-                          {v === 'Sí' ? '✔️ Sí' : '❌ No'}
-                        </button>
-                      );
-                    })}
+                {/* LEFT COLUMN: FORM (7 cols) */}
+                <div className="md:col-span-7 space-y-4">
+                  
+                  {/* Questionnaire Form Grid */}
+                  <div className="grid grid-cols-2 gap-4">
+                    
+                    {/* Contactado (Sí/No) */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                        ¿CONTACTADO? (SI/NO)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Sí', 'No'].map(v => {
+                          const active = callContacted === v;
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => setCallContacted(v as any)}
+                              className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                active 
+                                  ? 'bg-violet-600/25 border-violet-500 text-violet-300 font-extrabold' 
+                                  : 'bg-slate-950 border-white/5 text-slate-400'
+                              }`}
+                            >
+                              {v === 'Sí' ? '✔️ Sí' : '❌ No'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Responde (Sí/No) */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                        ¿RESPONDE AL TELÉFONO?
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Sí', 'No'].map(v => {
+                          const active = callAnswered === v;
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => setCallAnswered(v as any)}
+                              className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                active 
+                                  ? 'bg-sky-500/20 border-sky-500 text-sky-300 font-extrabold' 
+                                  : 'bg-slate-950 border-white/5 text-slate-400'
+                              }`}
+                            >
+                              {v === 'Sí' ? '✔️ Sí' : '❌ No'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ¿Era el dueño? (Sí/No) */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                        ¿HABLAMOS CON EL DUEÑO / DECISOR?
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Sí', 'No'].map(v => {
+                          const active = callIsOwner === v;
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => setCallIsOwner(v as any)}
+                              className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                active 
+                                  ? 'bg-rose-500/15 border-rose-500 text-rose-350' 
+                                  : 'bg-slate-950 border-white/5 text-slate-400'
+                              }`}
+                            >
+                              {v === 'Sí' ? '👑 Sí, el dueño' : '❌ No'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Temperatura */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-mono text-rose-455 uppercase tracking-widest font-bold">
+                        TEMPERATURA (VENTAS)
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {['Frío', 'Templado', 'Caliente'].map(val => {
+                          const active = callTemperature === val;
+                          let styles = '';
+                          if (val === 'Caliente') styles = active ? 'bg-rose-500/25 border-rose-500 text-rose-300' : 'bg-slate-950 border-white/5 text-slate-400';
+                          else if (val === 'Templado') styles = active ? 'bg-amber-500/25 border-amber-500 text-amber-300' : 'bg-slate-950 border-white/5 text-slate-400';
+                          else styles = active ? 'bg-sky-500/20 border-sky-500 text-sky-300' : 'bg-slate-950 border-white/5 text-slate-400';
+                          
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setCallTemperature(val as any)}
+                              className={`py-1.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${styles}`}
+                            >
+                              {val === 'Caliente' ? '🔥' : val === 'Templado' ? '⚡' : '❄️'} {val}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                   </div>
-                </div>
 
-                {/* Responde (Sí/No) */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
-                    ¿RESPONDE AL TELÉFONO?
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {['Sí', 'No'].map(v => {
-                      const active = callAnswered === v;
-                      return (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setCallAnswered(v as any)}
-                          className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                            active 
-                              ? 'bg-sky-500/20 border-sky-500 text-sky-300 font-extrabold' 
-                              : 'bg-slate-950 border-white/5 text-slate-400'
-                          }`}
-                        >
-                          {v === 'Sí' ? '✔️ Sí' : '❌ No'}
-                        </button>
-                      );
-                    })}
+                  {/* AGENDADA (SI / NO / LLAMAR MAS TARDE) */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold text-amber-450">
+                      ¿CITA AGENDADA / POSTERGACIÓN?
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { val: 'Sí', label: '📅 Sí, Cita Agendada' },
+                        { val: 'No', label: '❌ No' },
+                        { val: 'Llamar más tarde', label: '⏳ Llamar más tarde' }
+                      ].map(item => {
+                        const active = callScheduled === item.val;
+                        return (
+                          <button
+                            key={item.val}
+                            type="button"
+                            onClick={() => setCallScheduled(item.val as any)}
+                            className={`py-2 px-1.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center leading-tight ${
+                              active 
+                                ? 'bg-amber-500/20 border-amber-500 text-amber-300' 
+                                : 'bg-slate-950 border-white/5 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
 
-                {/* ¿Era el dueño? (Sí/No) */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
-                    ¿HABLAMOS CON EL DUEÑO / DECISOR?
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {['Sí', 'No'].map(v => {
-                      const active = callIsOwner === v;
-                      return (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setCallIsOwner(v as any)}
-                          className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                            active 
-                              ? 'bg-rose-500/15 border-rose-500 text-rose-350' 
-                              : 'bg-slate-950 border-white/5 text-slate-400'
-                          }`}
-                        >
-                          {v === 'Sí' ? '👑 Sí, el dueño' : '❌ No'}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                  {/* LLAMAR MAS TARDE FIELDS */}
+                  {callScheduled === 'Llamar más tarde' && (
+                    <div className="p-4 bg-amber-500/5 rounded-2.5xl border border-amber-500/20 space-y-3 animation-fade-in text-left">
+                      <div className="flex items-center gap-1 text-light">
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        <span className="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider">
+                          Calendario de Llamada de Retorno
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-slate-400 font-bold font-mono">FECHA (CALENDARIO)</label>
+                          <input
+                            type="date"
+                            required
+                            value={callCallbackDate}
+                            onChange={e => setCallCallbackDate(e.target.value)}
+                            className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase text-slate-400 font-bold font-mono">HORA RELLAMADA</label>
+                          <input
+                            type="time"
+                            value={callCallbackTime}
+                            onChange={e => setCallCallbackTime(e.target.value)}
+                            className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-                {/* Temperatura */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-mono text-rose-455 uppercase tracking-widest font-bold">
-                    TEMPERATURA (VENTAS)
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {['Frío', 'Templado', 'Caliente'].map(val => {
-                      const active = callTemperature === val;
-                      let styles = '';
-                      if (val === 'Caliente') styles = active ? 'bg-rose-500/25 border-rose-500 text-rose-300' : 'bg-slate-950 border-white/5 text-slate-400';
-                      else if (val === 'Templado') styles = active ? 'bg-amber-500/25 border-amber-500 text-amber-300' : 'bg-slate-950 border-white/5 text-slate-400';
-                      else styles = active ? 'bg-sky-500/20 border-sky-500 text-sky-300' : 'bg-slate-950 border-white/5 text-slate-400';
-                      
-                      return (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => setCallTemperature(val as any)}
-                          className={`py-1.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${styles}`}
-                        >
-                          {val === 'Caliente' ? '🔥' : val === 'Templado' ? '⚡' : '❄️'} {val}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-              </div>
-
-              {/* AGENDADA (SI / NO / LLAMAR MAS TARDE) */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold text-amber-450">
-                  ¿CITA AGENDADA / POSTERGACIÓN?
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { val: 'Sí', label: '📅 Sí, Cita Agendada' },
-                    { val: 'No', label: '❌ No' },
-                    { val: 'Llamar más tarde', label: '⏳ Llamar más tarde (Poner fecha)' }
-                  ].map(item => {
-                    const active = callScheduled === item.val;
-                    return (
+                  {/* VECES LLAMADO COUNTER BOX */}
+                  <div className="bg-slate-950/40 p-3 rounded-xl border border-white/5 flex items-center justify-between">
+                    <div>
+                      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                        VECES QUE SE LE HA LLAMADO
+                      </label>
+                      <p className="text-[9px] text-slate-500">Auto-incrementado para este nuevo registro.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
                       <button
-                        key={item.val}
                         type="button"
-                        onClick={() => setCallScheduled(item.val as any)}
-                        className={`py-2 px-1.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center leading-tight ${
-                          active 
-                            ? 'bg-amber-500/20 border-amber-500 text-amber-300' 
-                            : 'bg-slate-950 border-white/5 text-slate-400 hover:text-slate-200'
-                        }`}
+                        onClick={() => setCallCallsCount(prev => Math.max(0, prev - 1))}
+                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-750 border border-white/5 text-white flex items-center justify-center font-extrabold text-sm cursor-pointer select-none"
                       >
-                        {item.label}
+                        -
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
+                      <span className="font-mono text-violet-400 text-sm font-bold bg-[#050510] border border-violet-500/20 px-3.5 py-1 rounded-lg">
+                        {callCallsCount}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCallCallsCount(prev => prev + 1)}
+                        className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-750 border border-white/5 text-white flex items-center justify-center font-extrabold text-sm cursor-pointer select-none"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
 
-              {/* LLAMAR MAS TARDE FIELDS */}
-              {callScheduled === 'Llamar más tarde' && (
-                <div className="p-4 bg-amber-500/5 rounded-2.5xl border border-amber-500/20 space-y-3 animation-fade-in text-left">
-                  <div className="flex items-center gap-1 text-light">
-                    <Clock className="w-4 h-4 text-amber-400" />
-                    <span className="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider">
-                      Calendario de Llamada de Retorno
+                  {/* PERSONA CONTACTADA (FREE TEXT INPUT WRITER) */}
+                  <div className="space-y-1.5 p-3 rounded-xl bg-violet-600/5 border border-violet-500/10 text-left">
+                    <label className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-bold flex items-center gap-1.5">
+                      <span>👨‍💼 PERSONA CON QUIEN HABLÉ / DUEÑO O CONTACTO</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. Francisco Sanz (Gerente/Dueño) o María (Secretaria)"
+                      value={callContactPerson}
+                      onChange={e => setCallContactPerson(e.target.value)}
+                      className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-violet-500 placeholder:text-slate-600 transition-all font-sans"
+                    />
+                  </div>
+
+                  {/* NOTES */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                      NOTAS DE SEGUIMIENTO (QUÉ COMENTÓ EL CLIENTE)
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      placeholder="Escribe aquí las objeciones, respuestas del dueño, dossier enviado, o detalles a tener en cuenta para la rellamada..."
+                      value={callNotes}
+                      onChange={e => setCallNotes(e.target.value)}
+                      className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none placeholder:text-slate-600"
+                    />
+                  </div>
+
+                </div>
+
+                {/* RIGHT COLUMN: CALL HISTORY TIMELINE BOX (5 cols) */}
+                <div className="md:col-span-5 bg-slate-950/40 border border-white/5 p-4 rounded-2.5xl flex flex-col max-h-[580px] overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2.5 mb-3">
+                    <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      📅 Historial de Registros
+                    </span>
+                    <span className="text-[10px] bg-violet-500/15 text-violet-400 px-2 py-0.5 rounded-full font-mono font-bold">
+                      {selectedLeadForCall.callsCount || 0} previas
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase text-slate-400 font-bold font-mono">FECHA (CALENDARIO)</label>
-                      <input
-                        type="date"
-                        required
-                        value={callCallbackDate}
-                        onChange={e => setCallCallbackDate(e.target.value)}
-                        className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] uppercase text-slate-400 font-bold font-mono">HORA RELLAMADA</label>
-                      <input
-                        type="time"
-                        value={callCallbackTime}
-                        onChange={e => setCallCallbackTime(e.target.value)}
-                        className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
-                      />
-                    </div>
+
+                  <div className="overflow-y-auto flex-1 space-y-3 pr-1 text-xs scrollbar-thin scrollbar-thumb-white/5 max-h-[480px]">
+                    {(!selectedLeadForCall.callsLog || selectedLeadForCall.callsLog.length === 0) ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center text-slate-500 py-16">
+                        <span className="text-2xl mb-2">📭</span>
+                        <p className="text-[11px] font-sans">No hay llamadas registradas anteriormente.</p>
+                        <p className="text-[9px] text-slate-600 mt-1">Este nuevo registro se guardará en el historial al enviar.</p>
+                      </div>
+                    ) : (
+                      selectedLeadForCall.callsLog.map((log: any, idx: number) => (
+                        <div key={log.id || idx} className="bg-[#050510]/80 border border-white/5 rounded-xl p-3 space-y-2 text-left">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-violet-400 font-mono font-bold">{log.date}</span>
+                            <span className="text-[8px] bg-white/5 text-slate-400 font-mono px-1.5 py-0.5 rounded">
+                              #{(selectedLeadForCall.callsLog?.length || 0) - idx}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
+                            {log.notes}
+                          </p>
+                          <div className="text-[9px] bg-white/[0.02] border border-white/5 p-1.5 rounded-lg text-slate-400 font-mono leading-tight">
+                            {log.result}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
-              )}
 
-              {/* PERSONA CONTACTADA (FREE TEXT INPUT WRITER) */}
-              <div className="space-y-1.5 p-3 rounded-xl bg-violet-600/5 border border-violet-500/10 text-left col-span-2">
-                <label className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-bold flex items-center gap-1.5">
-                  <span>👨‍💼 PERSONA CON QUIEN HABLÉ / DUEÑO O CONTACTO</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej. Francisco Sanz (Gerente/Dueño) o María (Secretaria)"
-                  value={callContactPerson}
-                  onChange={e => setCallContactPerson(e.target.value)}
-                  className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-violet-500 placeholder:text-slate-600 transition-all font-sans"
-                />
-                <p className="text-[9px] text-slate-500">Puedes escribir el nombre exacto de la persona con la que has hablado para modificarlo de forma muy visual en el listado.</p>
-              </div>
-
-              {/* NOTES */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
-                  NOTAS DE SEGUIMIENTO (QUÉ COMENTÓ EL CLIENTE)
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Escribe aquí las objeciones, respuestas del dueño, dossier enviado, o detalles a tener en cuenta para la rellamada..."
-                  value={callNotes}
-                  onChange={e => setCallNotes(e.target.value)}
-                  className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none placeholder:text-slate-600"
-                />
               </div>
 
               {/* ACTION COMMANDS */}
@@ -1610,7 +1803,7 @@ export default function ColdCallingScreen({
                 <button
                   type="button"
                   onClick={() => setSelectedLeadForCall(null)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-205 rounded-xl text-xs font-semibold cursor-pointer"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
                 >
                   Cerrar
                 </button>

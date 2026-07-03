@@ -847,14 +847,45 @@ export const db = {
   },
 
   async insertFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
-    const payload = { ...invoice, user_id: userId || null };
+    const payload = {
+      id: invoice.id,
+      user_id: userId || null,
+      clientId: invoice.clientId || null,
+      clientName: invoice.clientName,
+      clientEmail: invoice.clientEmail,
+      date: invoice.date,
+      dueDate: invoice.dueDate,
+      status: invoice.status,
+      items: invoice.items,
+      subtotal: invoice.subtotal,
+      taxPercentage: invoice.taxPercentage,
+      taxAmount: invoice.taxAmount,
+      total: invoice.total,
+      notes: invoice.notes || null,
+      alias: invoice.alias || null,
+      color: invoice.color || null
+    };
     const { error } = await supabase.from('finance_invoices').insert(payload);
     if (error) throw error;
   },
 
   async updateFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
-    // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
-    const { user_id, id, ...payload } = invoice as any;
+    const payload = {
+      clientId: invoice.clientId || null,
+      clientName: invoice.clientName,
+      clientEmail: invoice.clientEmail,
+      date: invoice.date,
+      dueDate: invoice.dueDate,
+      status: invoice.status,
+      items: invoice.items,
+      subtotal: invoice.subtotal,
+      taxPercentage: invoice.taxPercentage,
+      taxAmount: invoice.taxAmount,
+      total: invoice.total,
+      notes: invoice.notes || null,
+      alias: invoice.alias || null,
+      color: invoice.color || null
+    };
     const { error } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id);
     if (error) throw error;
   },
@@ -1127,7 +1158,16 @@ export const db = {
   },
 
   async insertActivity(activity: Activity, userId?: string): Promise<void> {
-    const payload = { ...activity, user_id: userId || null };
+    const payload = {
+      id: activity.id,
+      user_id: userId || null,
+      type: activity.type,
+      timestamp: activity.timestamp,
+      title: activity.title,
+      subtitle: activity.subtitle,
+      detail: activity.detail || null,
+      accentColor: activity.accentColor
+    };
     const { error } = await supabase.from('activities').insert(payload);
     if (error) throw error;
   },
@@ -1262,23 +1302,100 @@ export const db = {
   },
 
   // --- COLD LEADS ---
+  serializeColdLeadMetadata(lead: ColdCallingLead): any {
+    if (!lead) return lead;
+    const callsCount = lead.callsCount || 0;
+    const callsLog = lead.callsLog || [];
+    const metadataObj = { callsCount, callsLog };
+    const metadataStr = `\n\n---METADATA---\n${JSON.stringify(metadataObj)}`;
+    const cleanNotes = (lead.notes || '').split('\n\n---METADATA---')[0];
+    return {
+      ...lead,
+      notes: cleanNotes + metadataStr
+    };
+  },
+
+  parseColdLeadMetadata(lead: any): ColdCallingLead {
+    if (!lead) return lead;
+    const notesStr = lead.notes || '';
+    const parts = notesStr.split('\n\n---METADATA---\n');
+    const cleanNotes = parts[0];
+    let callsCount = 0;
+    let callsLog: any[] = [];
+    if (parts.length > 1) {
+      try {
+        const metadataObj = JSON.parse(parts[1]);
+        callsCount = metadataObj.callsCount || 0;
+        callsLog = metadataObj.callsLog || [];
+      } catch (e) {
+        // Ignore
+      }
+    }
+    return {
+      ...lead,
+      notes: cleanNotes,
+      callsCount,
+      callsLog,
+      createdAt: lead.created_at || lead.createdAt || new Date().toISOString()
+    };
+  },
+
   async getColdLeads(): Promise<ColdCallingLead[]> {
     const { data, error } = await supabase.from('cold_calling_leads').select('*').order('created_at', { ascending: false });
     if (error) {
       console.warn('cold_calling_leads table read error:', error.message);
       throw error;
     }
-    return (data || []) as ColdCallingLead[];
+    const raw = data || [];
+    return raw.map((row: any) => this.parseColdLeadMetadata(row));
   },
 
   async insertColdLead(lead: ColdCallingLead, userId?: string): Promise<void> {
-    const payload = { ...lead, user_id: userId || null };
+    const serialized = this.serializeColdLeadMetadata(lead);
+    const payload = {
+      id: serialized.id,
+      user_id: userId || null,
+      businessName: serialized.businessName,
+      contactPerson: serialized.contactPerson || null,
+      phone: serialized.phone,
+      callDate: serialized.callDate || null,
+      contacted: serialized.contacted || null,
+      isOwner: serialized.isOwner || null,
+      answered: serialized.answered || null,
+      temperature: serialized.temperature || null,
+      callbackScheduled: serialized.callbackScheduled || null,
+      callbackDate: serialized.callbackDate || null,
+      callbackTime: serialized.callbackTime || null,
+      notes: serialized.notes || null,
+      assignedToEmail: serialized.assignedToEmail || null,
+      assignedToName: serialized.assignedToName || null,
+      archived: serialized.archived ?? false,
+      isDone: serialized.isDone ?? false
+    };
     const { error } = await supabase.from('cold_calling_leads').insert(payload);
     if (error) throw error;
   },
 
   async updateColdLead(lead: ColdCallingLead, userId?: string): Promise<void> {
-    const { user_id, id, ...payload } = lead as any;
+    const serialized = this.serializeColdLeadMetadata(lead);
+    const payload = {
+      businessName: serialized.businessName,
+      contactPerson: serialized.contactPerson || null,
+      phone: serialized.phone,
+      callDate: serialized.callDate || null,
+      contacted: serialized.contacted || null,
+      isOwner: serialized.isOwner || null,
+      answered: serialized.answered || null,
+      temperature: serialized.temperature || null,
+      callbackScheduled: serialized.callbackScheduled || null,
+      callbackDate: serialized.callbackDate || null,
+      callbackTime: serialized.callbackTime || null,
+      notes: serialized.notes || null,
+      assignedToEmail: serialized.assignedToEmail || null,
+      assignedToName: serialized.assignedToName || null,
+      archived: serialized.archived ?? false,
+      isDone: serialized.isDone ?? false
+    };
     const { error } = await supabase.from('cold_calling_leads').update(payload).eq('id', lead.id);
     if (error) throw error;
   },
@@ -1295,17 +1412,46 @@ export const db = {
       console.warn('comercial_leads table read error:', error.message);
       throw error;
     }
-    return (data || []) as ComercialLead[];
+    return (data || []).map((row: any) => ({
+      ...row,
+      createdAt: row.created_at || new Date().toISOString()
+    })) as ComercialLead[];
   },
 
   async insertComercialLead(lead: ComercialLead, userId?: string): Promise<void> {
-    const payload = { ...lead, user_id: userId || null };
+    const payload = {
+      id: lead.id,
+      user_id: userId || null,
+      comercialId: lead.comercialId || null,
+      comercialName: lead.comercialName || null,
+      name: lead.name,
+      company: lead.company || null,
+      email: lead.email || null,
+      phone: lead.phone || null,
+      status: lead.status || null,
+      value: lead.value || null,
+      notes: lead.notes || null,
+      temperature: lead.temperature || null,
+      isDone: lead.isDone ?? false
+    };
     const { error } = await supabase.from('comercial_leads').insert(payload);
     if (error) throw error;
   },
 
   async updateComercialLead(lead: ComercialLead, userId?: string): Promise<void> {
-    const { user_id, id, ...payload } = lead as any;
+    const payload = {
+      comercialId: lead.comercialId || null,
+      comercialName: lead.comercialName || null,
+      name: lead.name,
+      company: lead.company || null,
+      email: lead.email || null,
+      phone: lead.phone || null,
+      status: lead.status || null,
+      value: lead.value || null,
+      notes: lead.notes || null,
+      temperature: lead.temperature || null,
+      isDone: lead.isDone ?? false
+    };
     const { error } = await supabase.from('comercial_leads').update(payload).eq('id', lead.id);
     if (error) throw error;
   },
@@ -1322,11 +1468,21 @@ export const db = {
       console.warn('comerciales_accounts table read error:', error.message);
       throw error;
     }
-    return (data || []) as ComercialAccount[];
+    return (data || []).map((row: any) => ({
+      ...row,
+      createdAt: row.created_at || new Date().toISOString()
+    })) as ComercialAccount[];
   },
 
   async insertComercialAccount(account: ComercialAccount, userId?: string): Promise<void> {
-    const payload = { ...account, user_id: userId || null };
+    const payload = {
+      id: account.id,
+      user_id: userId || null,
+      name: account.name,
+      email: account.email,
+      password: account.password || null,
+      phone: account.phone || null
+    };
     const { error } = await supabase.from('comerciales_accounts').insert(payload);
     if (error) throw error;
   },
