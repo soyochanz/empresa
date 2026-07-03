@@ -23,7 +23,11 @@ import {
   SlidersHorizontal,
   PlusCircle, 
   Briefcase,
-  Download
+  Download,
+  CreditCard,
+  Copy,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 
 interface FinanceScreenProps {
@@ -115,8 +119,90 @@ const getInvoiceCardStyles = (color: string | undefined) => {
 };
 
 export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenProps) {
-  // Navigation tabs: 'transactions' | 'recurring' | 'invoices'
-  const [activeTab, setActiveTab] = useState<'transactions' | 'recurring' | 'invoices'>('transactions');
+  // Navigation tabs: 'transactions' | 'recurring' | 'invoices' | 'stripe'
+  const [activeTab, setActiveTab] = useState<'transactions' | 'recurring' | 'invoices' | 'stripe'>('transactions');
+
+  // Stripe Integration Screen States
+  const [stripeClientId, setStripeClientId] = useState('');
+  const [stripeGenAmount, setStripeGenAmount] = useState('50');
+  const [stripeGenInterval, setStripeGenInterval] = useState<'month' | 'year' | 'once'>('month');
+  const [stripeGenLoading, setStripeGenLoading] = useState(false);
+  const [stripeGenUrl, setStripeGenUrl] = useState('');
+  const [stripeGenCopied, setStripeGenCopied] = useState(false);
+  const [stripeGenError, setStripeGenError] = useState('');
+  const [stripePortalLoading, setStripePortalLoading] = useState<string | null>(null);
+
+  const handleCreateFinanceStripeCheckout = async () => {
+    if (!stripeClientId) {
+      setStripeGenError('Por favor selecciona un cliente.');
+      return;
+    }
+    const client = contacts.find(c => c.id === stripeClientId);
+    if (!client) {
+      setStripeGenError('El cliente seleccionado no existe.');
+      return;
+    }
+    if (!client.email) {
+      setStripeGenError('El cliente seleccionado debe tener un email registrado para configurar Stripe.');
+      return;
+    }
+    setStripeGenLoading(true);
+    setStripeGenError('');
+    setStripeGenUrl('');
+    setStripeGenCopied(false);
+    try {
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          clientName: client.name,
+          clientEmail: client.email,
+          amount: stripeGenAmount,
+          interval: stripeGenInterval,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al generar la sesión de Stripe');
+      }
+
+      setStripeGenUrl(data.url);
+    } catch (err: any) {
+      console.error(err);
+      setStripeGenError(err?.message || 'Error de red al conectar con Stripe.');
+    } finally {
+      setStripeGenLoading(false);
+    }
+  };
+
+  const handleOpenFinanceStripePortal = async (stripeCustomerId: string, contactId: string) => {
+    setStripePortalLoading(contactId);
+    try {
+      const response = await fetch('/api/stripe/create-portal-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ stripeCustomerId }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al conectar con el portal de facturación');
+      }
+
+      window.open(data.url, '_blank');
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || 'No se pudo abrir el portal de facturación.');
+    } finally {
+      setStripePortalLoading(null);
+    }
+  };
 
   const [syncStatus, setSyncStatus] = useState<'syncing' | 'synced' | 'error' | 'offline'>('syncing');
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -221,6 +307,34 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
   const [bankNameAddress, setBankNameAddress] = useState('Revolut Bank UAB, 2 Dublin Landings, North Dock, Dublin 1, D01 V4A3, Ireland');
   const [bankCorrespondentBic, setBankCorrespondentBic] = useState('CHASDEFX');
 
+  // Check for preselected client from CRM screen to auto-create invoice
+  useEffect(() => {
+    const preselectedStr = sessionStorage.getItem('preselected_client_for_invoice');
+    if (preselectedStr) {
+      try {
+        const client = JSON.parse(preselectedStr);
+        if (client && client.id) {
+          setInvClientId(client.id);
+          setInvClientName(client.name || '');
+          setInvClientEmail(client.email || '');
+          setInvDate(new Date().toISOString().split('T')[0]);
+          const d = new Date();
+          d.setDate(d.getDate() + 15);
+          setInvDueDate(d.toISOString().split('T')[0]);
+          setInvStatus('sent'); // default to sent (pending)
+          setInvItems([{ id: 'temp1', description: 'Servicios de consultoría / desarrollo', quantity: 1, unitPrice: 0, total: 0 }]);
+          setIsEditingInv(false);
+          setEditingInvId(null);
+          setIsInvModalOpen(true);
+        }
+      } catch (err) {
+        console.error('Error parsing preselected client for invoice:', err);
+      } finally {
+        sessionStorage.removeItem('preselected_client_for_invoice');
+      }
+    }
+  }, [contacts]);
+
   // Reset pagination on search/filter changes
   useEffect(() => {
     setTxCurrentPage(1);
@@ -298,6 +412,21 @@ export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenPro
     .reduce((sum, t) => sum + t.amount, 0);
 
   const pendingBalance = pendingIncomes - pendingExpenses;
+
+  // Stripe-specific calculations for automation
+  const activeSubs = contacts.filter(c => c.stripeSubscriptionStatus === 'active');
+  const mrr = activeSubs.reduce((sum, c) => {
+    const price = parseFloat(c.stripeSubscriptionPrice || '0');
+    if (isNaN(price)) return sum;
+    if (c.stripeSubscriptionInterval === 'year') {
+      return sum + (price / 12);
+    }
+    return sum + price;
+  }, 0);
+  const stripeVolume = transactions
+    .filter(t => t.id && (t.id.startsWith('tx_stripe_') || t.id.startsWith('tx_auto_stripe_')))
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+  const stripeTransactions = transactions.filter(t => t.id && (t.id.startsWith('tx_stripe_') || t.id.startsWith('tx_auto_stripe_')));
 
   // Filter transaction categories
   const categories = ['All', ...Array.from(new Set(transactions.map(t => t.category)))];
@@ -1797,11 +1926,28 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
               {invoices.length}
             </span>
           </button>
+          <button
+            onClick={() => setActiveTab('stripe')}
+            className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
+              activeTab === 'stripe' 
+                ? 'bg-[#00f2fe]/10 border border-[#00f2fe]/20 text-[#00f2fe] shadow-sm shadow-[#00f2fe]/5' 
+                : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
+            }`}
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            <span>Pasarela Stripe</span>
+          </button>
         </div>
 
         {/* Dynamic Context Helpers */}
         <span className="text-[11px] font-mono text-slate-500 text-left sm:text-right">
-          {activeTab === 'transactions' ? `Mostrando ${filteredTxs.length} registros` : activeTab === 'recurring' ? `${recurringExpenses.length} suscripciones operativas` : `Sincronizadas ${filteredInvoices.length} facturas`}
+          {activeTab === 'transactions' 
+            ? `Mostrando ${filteredTxs.length} registros` 
+            : activeTab === 'recurring' 
+              ? `${recurringExpenses.length} suscripciones operativas` 
+              : activeTab === 'invoices' 
+                ? `Sincronizadas ${filteredInvoices.length} facturas`
+                : `Pasarela Stripe Integrada & Activa`}
         </span>
       </div>
 
@@ -1939,6 +2085,12 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                                   <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-purple-400 bg-purple-500/10 border border-purple-500/25 px-1.5 py-0.5 rounded-md">
                                     <Repeat className="w-2.5 h-2.5" />
                                     <span>{t.type === 'income' ? 'Ingreso' : 'Gasto'} recurrente ({t.recurrencePeriod})</span>
+                                  </span>
+                                )}
+                                {t.id && (t.id.startsWith('tx_stripe_') || t.id.startsWith('tx_auto_stripe_')) && (
+                                  <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded-md">
+                                    <CreditCard className="w-2.5 h-2.5" />
+                                    <span>Procesado por Stripe</span>
                                   </span>
                                 )}
                                 {t.paymentMethod && (
@@ -2403,6 +2555,299 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                 );
               })
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content 4: Pasarela Stripe Integration */}
+      {activeTab === 'stripe' && (
+        <div className="space-y-6 text-left">
+          {/* Stripe Metric Banner */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="bg-gradient-to-br from-violet-600/10 to-purple-600/5 backdrop-blur-md border border-violet-500/20 p-5 rounded-3xl relative overflow-hidden">
+              <div className="absolute top-5 right-5 bg-violet-500/10 rounded-2xl p-3 border border-violet-500/20">
+                <Repeat className="w-5 h-5 text-violet-400 animate-pulse" />
+              </div>
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Suscripciones Activas</span>
+              <h3 className="text-3xl font-black text-white mt-2 font-mono">
+                {activeSubs.length}
+              </h3>
+              <p className="text-[10px] text-violet-300 font-mono mt-3">
+                Cobros recurrentes autogestionados
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-cyan-600/10 to-teal-600/5 backdrop-blur-md border border-cyan-500/20 p-5 rounded-3xl relative overflow-hidden">
+              <div className="absolute top-5 right-5 bg-cyan-500/10 rounded-2xl p-3 border border-cyan-500/20">
+                <TrendingUp className="w-5 h-5 text-cyan-400" />
+              </div>
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">MRR Estimado (Stripe)</span>
+              <h3 className="text-3xl font-black text-white mt-2 font-mono">
+                {mrr.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-cyan-400 text-lg ml-1 font-sans">€</span>
+              </h3>
+              <p className="text-[10px] text-cyan-300 font-mono mt-3">
+                Ingresos recurrentes mensuales
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-emerald-600/10 to-green-600/5 backdrop-blur-md border border-emerald-500/20 p-5 rounded-3xl relative overflow-hidden">
+              <div className="absolute top-5 right-5 bg-emerald-500/10 rounded-2xl p-3 border border-emerald-500/20">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              </div>
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Volumen Cobrado</span>
+              <h3 className="text-3xl font-black text-white mt-2 font-mono">
+                {stripeVolume.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-emerald-400 text-lg ml-1 font-sans">€</span>
+              </h3>
+              <p className="text-[10px] text-emerald-300 font-mono mt-3">
+                Liquidaciones registradas automáticamente
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Panel: Generator */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-6 rounded-3xl space-y-4">
+                <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+                  <CreditCard className="w-5 h-5 text-violet-400" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Generador Rápido de Cobros</h3>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <div>
+                    <label className="block text-[9px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">Cliente Contacto</label>
+                    <select
+                      value={stripeClientId}
+                      onChange={(e) => {
+                        setStripeClientId(e.target.value);
+                        setStripeGenUrl('');
+                        setStripeGenError('');
+                      }}
+                      className="w-full bg-[#07070b]/90 border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition"
+                    >
+                      <option value="">-- Selecciona un cliente --</option>
+                      {contacts
+                        .filter(c => c.email)
+                        .map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.email})
+                          </option>
+                        ))
+                      }
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">Importe (€)</label>
+                      <input
+                        type="number"
+                        value={stripeGenAmount}
+                        onChange={(e) => {
+                          setStripeGenAmount(e.target.value);
+                          setStripeGenUrl('');
+                        }}
+                        className="w-full bg-[#07070b]/90 border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition"
+                        placeholder="50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-mono text-slate-400 uppercase tracking-wider mb-1.5">Frecuencia</label>
+                      <select
+                        value={stripeGenInterval}
+                        onChange={(e) => {
+                          setStripeGenInterval(e.target.value as any);
+                          setStripeGenUrl('');
+                        }}
+                        className="w-full bg-[#07070b]/90 border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition"
+                      >
+                        <option value="month">Mensual (Suscripción)</option>
+                        <option value="year">Anual (Suscripción)</option>
+                        <option value="once">Pago Único (Normal)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {stripeGenError && (
+                    <p className="text-[10px] text-rose-400 bg-rose-500/5 p-3 rounded-xl border border-rose-500/10 leading-relaxed text-left">
+                      {stripeGenError}
+                    </p>
+                  )}
+
+                  {!stripeGenUrl ? (
+                    <button
+                      type="button"
+                      disabled={stripeGenLoading || !stripeClientId}
+                      onClick={handleCreateFinanceStripeCheckout}
+                      className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_2px_12px_rgba(139,92,246,0.15)] mt-2"
+                    >
+                      {stripeGenLoading ? (
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <CreditCard className="w-4 h-4" />
+                      )}
+                      <span>
+                        {stripeGenLoading 
+                          ? 'Generando Enlace...' 
+                          : stripeGenInterval === 'once' 
+                            ? 'Generar Enlace de Pago Único' 
+                            : 'Generar Enlace de Suscripción'}
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="space-y-3 bg-[#040408]/60 p-4 rounded-xl border border-white/5 mt-2">
+                      <span className="block text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wide">¡Enlace de Pago Listo!</span>
+                      <p className="text-[10px] text-slate-400 leading-relaxed text-left">
+                        {stripeGenInterval === 'once' 
+                          ? 'Envía este enlace de pago único para que el cliente liquide el cobro de forma inmediata:' 
+                          : 'Envía este enlace seguro de suscripción para domiciliar el cobro recurrente del cliente:'}
+                      </p>
+                      
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(stripeGenUrl);
+                            setStripeGenCopied(true);
+                            setTimeout(() => setStripeGenCopied(false), 2000);
+                          }}
+                          className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 border border-white/5 text-xs rounded-lg text-slate-350 font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          {stripeGenCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                          <span>{stripeGenCopied ? '¡Copiado!' : 'Copiar Enlace'}</span>
+                        </button>
+                        
+                        <a
+                          href={stripeGenUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 py-2 px-3 bg-violet-600/25 hover:bg-violet-600/35 border border-violet-500/25 text-xs rounded-lg text-violet-300 font-bold flex items-center justify-center gap-1.5 transition-all text-center"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Abrir Enlace</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Panel: Active Subscriptions list */}
+            <div className="lg:col-span-7 space-y-6">
+              <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-6 rounded-3xl space-y-4">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Repeat className="w-5 h-5 text-violet-400" />
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Suscripciones Activas</h3>
+                  </div>
+                  <span className="text-[10px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-2 py-0.5 rounded-full font-mono font-bold">
+                    {activeSubs.length} Clientes
+                  </span>
+                </div>
+
+                <div className="space-y-3 max-h-[295px] overflow-y-auto pr-1">
+                  {activeSubs.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500 text-xs font-light">
+                      No hay clientes con suscripciones activas registradas en Stripe.
+                    </div>
+                  ) : (
+                    activeSubs.map(c => (
+                      <div key={c.id} className="flex items-center justify-between p-3.5 bg-[#07070b]/40 rounded-2xl border border-white/5 hover:border-violet-500/20 transition group">
+                        <div className="space-y-1 text-left min-w-0 max-w-[70%]">
+                          <h4 className="text-xs font-bold text-white group-hover:text-violet-400 transition truncate">{c.name}</h4>
+                          <p className="text-[10px] text-slate-400 font-mono truncate">{c.email}</p>
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <span className="text-[8px] font-mono text-emerald-450 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-md uppercase tracking-wider font-extrabold flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-emerald-400 shadow-[0_0_4px_rgb(52,211,153)]" />
+                              Activo
+                            </span>
+                            <span className="text-[8px] font-mono text-slate-500 truncate">
+                              ID: {c.stripeCustomerId}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0 space-y-1.5">
+                          <span className="block text-xs font-black font-mono text-white leading-none">
+                            {c.stripeSubscriptionPrice} € <span className="text-[9px] text-slate-500 font-light">/ {c.stripeSubscriptionInterval === 'year' ? 'año' : 'mes'}</span>
+                          </span>
+                          {c.stripeCustomerId && (
+                            <button
+                              type="button"
+                              disabled={stripePortalLoading === c.id}
+                              onClick={() => handleOpenFinanceStripePortal(c.stripeCustomerId!, c.id)}
+                              className="inline-flex items-center gap-1 py-1 px-2.5 bg-white/5 hover:bg-white/10 text-[9px] rounded-lg text-slate-350 font-bold border border-white/5 transition cursor-pointer"
+                            >
+                              {stripePortalLoading === c.id ? (
+                                <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              )}
+                              <span>Portal</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Section: Payment Logs */}
+          <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-6 rounded-3xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Registro Histórico de Pagos Stripe</h3>
+              </div>
+              <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full font-mono font-bold">
+                {stripeTransactions.length} Cobros Sincronizados
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-white/5 text-[9px] font-mono uppercase tracking-widest text-slate-500">
+                    <th className="p-3 text-left font-bold">ID Transacción</th>
+                    <th className="p-3 text-left font-bold">Concepto / Cliente</th>
+                    <th className="p-3 text-left font-bold">Fecha de Pago</th>
+                    <th className="p-3 text-left font-bold">Importe</th>
+                    <th className="p-3 text-right font-bold">Estado de Sincronización</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {stripeTransactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-12 text-center text-slate-500 text-xs font-light">
+                        Aún no se han procesado cobros automáticos a través de la pasarela Stripe.
+                      </td>
+                    </tr>
+                  ) : (
+                    stripeTransactions.map(t => (
+                      <tr key={t.id} className="hover:bg-white/[0.01] transition-colors">
+                        <td className="p-3 font-mono text-[9px] text-slate-400 select-all">{t.id}</td>
+                        <td className="p-3 text-left">
+                          <span className="font-bold text-white">{t.description}</span>
+                          <span className="block text-[9px] text-slate-500 font-mono mt-0.5">{t.category}</span>
+                        </td>
+                        <td className="p-3 text-slate-350">{t.date}</td>
+                        <td className="p-3 font-mono font-bold text-emerald-450">{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
+                        <td className="p-3 text-right">
+                          <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg select-none">
+                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                            <span>Liquidado en Cuenta</span>
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

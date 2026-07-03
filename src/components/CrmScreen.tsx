@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { ClientContact, CalendarEvent, Screen } from '../types';
+import React, { useState, useEffect } from 'react';
+import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction } from '../types';
+import { db } from '../supabaseClient';
 import { REGISTERED_USERS, PanelUser } from '../mockData';
 import { 
   Plus, 
@@ -101,7 +102,7 @@ export default function CrmScreen({
 
   // Stripe Subscription States
   const [stripeAmount, setStripeAmount] = useState('50');
-  const [stripeInterval, setStripeInterval] = useState<'month' | 'year'>('month');
+  const [stripeInterval, setStripeInterval] = useState<'month' | 'year' | 'once'>('month');
   const [stripeLoading, setStripeLoading] = useState(false);
   const [generatedCheckoutUrl, setGeneratedCheckoutUrl] = useState('');
   const [generatedCheckoutSessionId, setGeneratedCheckoutSessionId] = useState('');
@@ -116,6 +117,544 @@ export default function CrmScreen({
     setStripeError('');
     setStripeEmailInput(selectedContact?.email || '');
   }, [selectedContactId, selectedContact]);
+
+  // Connected Accounting & Invoice state definitions
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
+  const [loadingFinancials, setLoadingFinancials] = useState(false);
+  const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer'>('transfer');
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [paymentDesc, setPaymentDesc] = useState('');
+  const [paymentInvoiceId, setPaymentInvoiceId] = useState('general');
+
+  const fetchFinancials = async () => {
+    setLoadingFinancials(true);
+    try {
+      const [invList, txList] = await Promise.all([
+        db.getFinanceInvoices(),
+        db.getFinanceTransactions()
+      ]);
+      setInvoices(invList || []);
+      setTransactions(txList || []);
+    } catch (err) {
+      console.error('Error fetching financials in CRM screen:', err);
+    } finally {
+      setLoadingFinancials(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFinancials();
+  }, []);
+
+  // Update payment descriptions when the client selection changes
+  useEffect(() => {
+    if (selectedContact) {
+      setPaymentDesc(`Cobro Cliente: ${selectedContact.name}${selectedContact.company ? ` - ${selectedContact.company}` : ''}`);
+    }
+  }, [selectedContactId, selectedContact]);
+
+  const handleMarkInvoicePaid = async (inv: Invoice) => {
+    try {
+      const updated: Invoice = { ...inv, status: 'paid' };
+      
+      // Update local invoice state
+      setInvoices(prev => prev.map(i => i.id === inv.id ? updated : i));
+      
+      // Save updated invoice to DB
+      await db.updateFinanceInvoice(updated);
+
+      // Register matching paid income transaction if it does not exist
+      const alreadyRegistered = transactions.some(t => t.invoiceId === inv.id && t.status === 'paid');
+      if (!alreadyRegistered) {
+        const autoTx: FinanceTransaction = {
+          id: 'tx_auto_' + Date.now(),
+          type: 'income',
+          category: 'Facturado',
+          amount: inv.total,
+          date: new Date().toISOString().split('T')[0],
+          description: `Pago Factura Autogenerado: ${inv.id} - ${inv.clientName}`,
+          isRecurring: false,
+          status: 'paid',
+          paymentMethod: 'transfer',
+          invoiceId: inv.id
+        };
+        // Update local transaction state
+        setTransactions(prev => [autoTx, ...prev]);
+        // Insert into DB
+        await db.insertFinanceTransaction(autoTx);
+      }
+      
+      // Reload financials
+      await fetchFinancials();
+
+      // Show toast
+      const toast = document.getElementById('toast-msg');
+      if (toast) {
+        toast.innerText = `Éxito: Factura ${inv.id} marcada como PAGADA con éxito e ingresada en cuentas.`;
+        toast.classList.remove('opacity-0');
+        setTimeout(() => toast.classList.add('opacity-0'), 3500);
+      }
+    } catch (err) {
+      console.error('Error marking invoice as paid:', err);
+      alert('Hubo un error al marcar la factura como pagada.');
+    }
+  };
+
+  const handleRegisterPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = Number(paymentAmount);
+    if (!amt || amt <= 0) {
+      alert('Por favor ingrese un importe válido mayor que cero.');
+      return;
+    }
+
+    try {
+      // 1. Create the payment transaction
+      const txId = 'tx_crm_' + Date.now();
+      let finalInvoiceId: string | undefined = undefined;
+
+      if (paymentInvoiceId && paymentInvoiceId !== 'general') {
+        finalInvoiceId = paymentInvoiceId;
+      }
+
+      const newTx: FinanceTransaction = {
+        id: txId,
+        type: 'income',
+        category: 'Facturado',
+        amount: amt,
+        date: paymentDate,
+        description: paymentDesc.trim() || `Cobro Cliente: ${selectedContact.name} - ${selectedContact.company || ''}`,
+        isRecurring: false,
+        status: 'paid',
+        paymentMethod: paymentMethod,
+        invoiceId: finalInvoiceId
+      };
+
+      // Insert transaction into DB
+      await db.insertFinanceTransaction(newTx);
+
+      // 2. If a specific invoice is targeted, mark it as paid!
+      if (finalInvoiceId) {
+        const targetInvoice = invoices.find(i => i.id === finalInvoiceId);
+        if (targetInvoice) {
+          const updatedInv: Invoice = { ...targetInvoice, status: 'paid' };
+          await db.updateFinanceInvoice(updatedInv);
+        }
+      } else {
+        // 3. Automated payment allocation (Auto-Matching pending invoices!)
+        // Find pending invoices of this client and automatically apply this payment to cover them
+        const clientPendingInvoices = invoices
+          .filter(inv => {
+            const matchesId = inv.clientId === selectedContact.id;
+            const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
+            return (matchesId || matchesEmail) && inv.status !== 'paid';
+          })
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        let remainingPayment = amt;
+        for (const pendingInv of clientPendingInvoices) {
+          if (remainingPayment >= pendingInv.total) {
+            // This payment fully covers this pending invoice!
+            const updatedInv: Invoice = { ...pendingInv, status: 'paid' };
+            await db.updateFinanceInvoice(updatedInv);
+            remainingPayment -= pendingInv.total;
+          } else if (remainingPayment > 0) {
+            // Partial coverage is marked as paid as well under the simplified flow
+            const updatedInv: Invoice = { ...pendingInv, status: 'paid' };
+            await db.updateFinanceInvoice(updatedInv);
+            break;
+          }
+        }
+      }
+
+      // Reload financials
+      await fetchFinancials();
+
+      // Reset form states
+      setPaymentAmount('');
+      setPaymentInvoiceId('general');
+      setShowAddPaymentModal(false);
+
+      // Show toast
+      const toast = document.getElementById('toast-msg');
+      if (toast) {
+        toast.innerText = `Éxito: Pago de ${amt} € registrado correctamente y vinculado.`;
+        toast.classList.remove('opacity-0');
+        setTimeout(() => toast.classList.add('opacity-0'), 3500);
+      }
+    } catch (err) {
+      console.error('Error registering payment:', err);
+      alert('Hubo un error al registrar el pago.');
+    }
+  };
+
+  const handleDownloadInvoiceHtml = (inv: Invoice) => {
+    const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.html`;
+    
+    const htmlContent = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Factura ${inv.id} - ${inv.clientName}</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #334155;
+      margin: 0;
+      padding: 40px;
+      line-height: 1.6;
+      background-color: #f8fafc;
+    }
+    .invoice-card {
+      max-width: 800px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 50px;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.02);
+    }
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 40px;
+    }
+    .company-title {
+      font-size: 24px;
+      font-weight: 850;
+      color: #0f172a;
+      letter-spacing: -0.025em;
+      margin: 0;
+    }
+    .company-sub {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 5px;
+      line-height: 1.5;
+    }
+    .invoice-title-block {
+      text-align: right;
+    }
+    .invoice-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #3b82f6;
+    }
+    .invoice-number {
+      font-size: 20px;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 2px 0;
+    }
+    .invoice-dates {
+      font-size: 11px;
+      color: #64748b;
+      font-family: monospace;
+    }
+    .stakeholders {
+      display: table;
+      width: 100%;
+      margin-bottom: 40px;
+    }
+    .stakeholder-column {
+      display: table-cell;
+      width: 50%;
+      vertical-align: top;
+    }
+    .stakeholder-box {
+      margin-right: 15px;
+      padding: 20px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+    }
+    .stakeholder-box.recipient {
+      margin-right: 0;
+      margin-left: 15px;
+    }
+    .box-title {
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #64748b;
+      margin: 0 0 6px 0;
+      font-weight: bold;
+    }
+    .box-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 4px 0;
+    }
+    .box-detail {
+      font-size: 11px;
+      color: #475569;
+      margin: 0;
+      line-height: 1.5;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 30px;
+    }
+    .items-table th {
+      background: #f1f5f9;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #475569;
+      padding: 12px;
+      text-align: left;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .items-table td {
+      padding: 14px 12px;
+      font-size: 12px;
+      color: #334155;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .items-table td.qty {
+      text-align: center;
+    }
+    .items-table td.price, .items-table td.total {
+      text-align: right;
+      font-family: monospace;
+    }
+    .totals-block {
+      float: right;
+      width: 300px;
+      margin-bottom: 40px;
+    }
+    .totals-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .totals-table td {
+      padding: 6px 0;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .totals-table td.value {
+      text-align: right;
+      font-family: monospace;
+    }
+    .totals-table tr.grand-total td {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0f172a;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .totals-table tr.grand-total td.value {
+      color: #0f172a;
+    }
+    .clear {
+      clear: both;
+    }
+    .bank-box {
+      background: #fffbeb;
+      border: 1px dashed #f59e0b;
+      border-radius: 12px;
+      padding: 20px;
+      font-size: 11px;
+      color: #5c3e03;
+      margin-bottom: 30px;
+    }
+    .bank-title {
+      font-weight: 700;
+      font-size: 12px;
+      margin: 0 0 12px 0;
+      color: #b45309;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .bank-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 20px;
+    }
+    .bank-item-title {
+      color: #92400e;
+      font-weight: 600;
+    }
+    .bank-item-val {
+      font-family: monospace;
+      font-size: 11px;
+      color: #78350f;
+    }
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      border-top: 1px solid #f1f5f9;
+      padding-top: 20px;
+      margin-top: 20px;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      border-radius: 9999px;
+      margin-top: 10px;
+    }
+    .status-paid {
+      background-color: #dcfce7;
+      color: #15803d;
+    }
+    .status-pending {
+      background-color: #fef9c3;
+      color: #a16207;
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice-card">
+    <table class="header-table">
+      <tr>
+        <td>
+          <h1 class="company-title">Ignacio Martin Gonzalez</h1>
+          <div class="company-sub">
+            Desarrollo de Software & Consultoría Tecnológica<br>
+            NIF/CIF: ES45339281Z<br>
+            Ibiza, España
+          </div>
+        </td>
+        <td class="invoice-title-block">
+          <div class="invoice-label">FACTURA</div>
+          <div class="invoice-number">${inv.id}</div>
+          <div class="invoice-dates">
+            Fecha: ${inv.date}<br>
+            Vence: ${inv.dueDate}
+          </div>
+          <div class="status-badge ${inv.status === 'paid' ? 'status-paid' : 'status-pending'}">
+            ${inv.status === 'paid' ? 'PAGADA' : 'PENDIENTE'}
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="stakeholders">
+      <div class="stakeholder-column">
+        <div class="stakeholder-box">
+          <div class="box-title">EMISOR</div>
+          <div class="box-name">Ignacio Martin Gonzalez</div>
+          <div class="box-detail">
+            NIF: ES45339281Z<br>
+            Email: mgnacho96@gmail.com<br>
+            Dirección: Ibiza, Islas Baleares, España
+          </div>
+        </div>
+      </div>
+      <div class="stakeholder-column">
+        <div class="stakeholder-box recipient">
+          <div class="box-title">CLIENTE</div>
+          <div class="box-name">${inv.clientName}</div>
+          <div class="box-detail">
+            Email: ${inv.clientEmail}<br>
+            ID: ${inv.clientId || 'N/A'}<br>
+            Dirección: España / Internacional
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Concepto / Descripción</th>
+          <th style="text-align: center; width: 80px;">Cant.</th>
+          <th style="text-align: right; width: 120px;">Precio Unit.</th>
+          <th style="text-align: right; width: 120px;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${(inv.items || []).map(item => `
+          <tr>
+            <td>${item.description}</td>
+            <td class="qty">${item.quantity}</td>
+            <td class="price">${Number(item.unitPrice).toFixed(2)} €</td>
+            <td class="total">${Number(item.total).toFixed(2)} €</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="totals-block">
+      <table class="totals-table">
+        <tr>
+          <td>Subtotal:</td>
+          <td class="value">${Number(inv.subtotal).toFixed(2)} €</td>
+        </tr>
+        <tr>
+          <td>I.V.A. (${inv.taxPercentage}%):</td>
+          <td class="value">${Number(inv.taxAmount).toFixed(2)} €</td>
+        </tr>
+        <tr class="grand-total">
+          <td>Total Factura:</td>
+          <td class="value">${Number(inv.total).toFixed(2)} €</td>
+        </tr>
+      </table>
+    </div>
+    
+    <div class="clear"></div>
+
+    <div class="bank-box">
+      <div class="bank-title">Datos de Pago de Facturación</div>
+      <div class="bank-grid">
+        <div>
+          <span class="bank-item-title">Beneficiario:</span><br>
+          <span class="bank-item-val">Ignacio Martin Gonzalez</span>
+        </div>
+        <div>
+          <span class="bank-item-title">IBAN / Cuenta:</span><br>
+          <span class="bank-item-val">IE84 REVO 9903 6065 8046 06</span>
+        </div>
+        <div>
+          <span class="bank-item-title">Banco:</span><br>
+          <span class="bank-item-val">Revolut Bank UAB</span>
+        </div>
+        <div>
+          <span class="bank-item-title">Código SWIFT/BIC:</span><br>
+          <span class="bank-item-val">REVOIE23</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      ¡Gracias por tu confianza y colaboración!<br>
+      Esta factura se rige bajo los términos acordados. Ante cualquier duda, escríbeme a mgnacho96@gmail.com
+    </div>
+  </div>
+</body>
+</html>`;
+
+    // Trigger file download
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    // Show toast message
+    const toast = document.getElementById('toast-msg');
+    if (toast) {
+      toast.innerText = `Descargada factura ${inv.id} correctamente.`;
+      toast.classList.remove('opacity-0');
+      setTimeout(() => toast.classList.add('opacity-0'), 3500);
+    }
+  };
 
   const handleCreateStripeCheckout = async (contact: ClientContact) => {
     const targetEmail = stripeEmailInput.trim();
@@ -1032,6 +1571,7 @@ export default function CrmScreen({
                         >
                           <option value="month">Mensual</option>
                           <option value="year">Anual</option>
+                          <option value="once">Pago Único</option>
                         </select>
                       </div>
                     </div>
@@ -1054,12 +1594,16 @@ export default function CrmScreen({
                         ) : (
                           <CreditCard className="w-3.5 h-3.5" />
                         )}
-                        <span>{stripeLoading ? 'Generando...' : 'Generar Enlace de Suscripción'}</span>
+                        <span>{stripeLoading ? 'Generando...' : (stripeInterval === 'once' ? 'Generar Enlace de Pago Único' : 'Generar Enlace de Suscripción')}</span>
                       </button>
                     ) : (
                       <div className="space-y-2 bg-[#040408] p-2.5 rounded-xl border border-white/5">
                         <span className="block text-[9px] font-mono text-emerald-400 font-bold uppercase tracking-wide">¡Enlace de Pago Listo!</span>
-                        <span className="block text-[9px] text-slate-400 leading-snug">Envía este enlace seguro al cliente para domiciliar su cobro automático:</span>
+                        <span className="block text-[9px] text-slate-400 leading-snug">
+                          {stripeInterval === 'once' 
+                            ? 'Envía este enlace seguro al cliente para cobrar de forma segura e inmediata:' 
+                            : 'Envía este enlace seguro al cliente para domiciliar su cobro automático:'}
+                        </span>
                         
                         <div className="flex gap-1.5 mt-1">
                           <button
@@ -1152,6 +1696,167 @@ export default function CrmScreen({
                   </div>
                 </div>
               </div>
+
+              {/* Módulo de Contabilidad y Facturas de Cliente */}
+              {(() => {
+                const clientInvoices = invoices.filter(inv => {
+                  const matchesId = inv.clientId === selectedContact.id;
+                  const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
+                  const matchesName = inv.clientName?.toLowerCase().includes(selectedContact.name?.toLowerCase() || '');
+                  return matchesId || matchesEmail || matchesName;
+                });
+
+                const totalInvoiced = clientInvoices.reduce((sum, inv) => sum + inv.total, 0);
+                const totalPaid = clientInvoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.total, 0);
+                const totalPending = clientInvoices.filter(inv => inv.status !== 'paid').reduce((sum, inv) => sum + inv.total, 0);
+
+                const clientTransactions = transactions.filter(t => {
+                  const invoiceMatches = clientInvoices.some(inv => inv.id === t.invoiceId);
+                  if (invoiceMatches) return true;
+                  const containsName = t.description.toLowerCase().includes(selectedContact.name.toLowerCase());
+                  const containsCompany = selectedContact.company ? t.description.toLowerCase().includes(selectedContact.company.toLowerCase()) : false;
+                  return containsName || containsCompany;
+                });
+
+                return (
+                  <div className="space-y-3.5 border-b border-white/5 pb-5">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-extrabold flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>Contabilidad y Facturas</span>
+                      </h4>
+                      <button
+                        onClick={() => {
+                          sessionStorage.setItem('preselected_client_for_invoice', JSON.stringify({
+                            id: selectedContact.id,
+                            name: selectedContact.name,
+                            email: selectedContact.email
+                          }));
+                          if (onNavigate) {
+                            onNavigate('finanzas', 'push');
+                          }
+                        }}
+                        className="text-[9px] font-mono text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 hover:border-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded transition-all cursor-pointer"
+                      >
+                        + Nueva Factura
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-3 rounded-xl border border-white/5 shadow-inner">
+                      <div className="text-center p-1.5 rounded-lg bg-white/2">
+                        <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-wider">Facturado</span>
+                        <span className="text-xs font-mono font-extrabold text-slate-200 block mt-0.5">
+                          {totalInvoiced.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                      <div className="text-center p-1.5 rounded-lg bg-emerald-500/5 border border-emerald-500/5">
+                        <span className="block text-[8px] font-mono text-emerald-500 uppercase tracking-wider">Cobrado</span>
+                        <span className="text-xs font-mono font-extrabold text-emerald-400 block mt-0.5">
+                          {totalPaid.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                      <div className="text-center p-1.5 rounded-lg bg-amber-500/5 border border-amber-500/5">
+                        <span className="block text-[8px] font-mono text-amber-500 uppercase tracking-wider">Pendiente</span>
+                        <span className="text-xs font-mono font-extrabold text-amber-400 block mt-0.5">
+                          {totalPending.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wide block">Facturas emitidas ({clientInvoices.length})</span>
+                      {clientInvoices.length === 0 ? (
+                        <div className="bg-[#030305] p-3.5 rounded-xl border border-white/5 text-center">
+                          <p className="text-[10px] text-slate-500 font-sans">No hay facturas emitidas para este cliente.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                          {clientInvoices.map(inv => (
+                            <div key={inv.id} className="bg-[#030305] p-2.5 rounded-xl border border-white/5 flex justify-between items-center hover:border-white/10 transition-colors">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-mono font-bold text-slate-200">{inv.id}</span>
+                                  <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-semibold ${
+                                    inv.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                  }`}>
+                                    {inv.status === 'paid' ? 'COBRADA' : 'PENDIENTE'}
+                                  </span>
+                                </div>
+                                <div className="text-[9px] font-mono text-slate-500">
+                                  Emisión: {inv.date} | Vence: {inv.dueDate}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-mono font-bold text-slate-100 pr-1">{inv.total.toFixed(2)} €</span>
+                                
+                                {inv.status !== 'paid' && (
+                                  <button
+                                    onClick={() => handleMarkInvoicePaid(inv)}
+                                    title="Marcar como cobrada"
+                                    className="p-1 hover:bg-emerald-500/20 text-emerald-400 rounded-lg border border-emerald-500/20 transition-all cursor-pointer"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={() => handleDownloadInvoiceHtml(inv)}
+                                  title="Imprimir / Descargar Factura"
+                                  className="p-1 hover:bg-slate-800 text-slate-300 rounded-lg border border-white/5 transition-all cursor-pointer"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2 pt-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wide block">Historial de Cobros ({clientTransactions.length})</span>
+                        <button
+                          onClick={() => {
+                            setPaymentAmount('');
+                            setPaymentMethod('transfer');
+                            setPaymentDate(new Date().toISOString().split('T')[0]);
+                            setPaymentDesc(`Cobro Cliente: ${selectedContact.name}`);
+                            setShowAddPaymentModal(true);
+                          }}
+                          className="text-[8px] font-mono text-emerald-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Plus className="w-2.5 h-2.5" /> Registrar Cobro
+                        </button>
+                      </div>
+
+                      {clientTransactions.length === 0 ? (
+                        <div className="bg-[#030305] p-3.5 rounded-xl border border-white/5 text-center">
+                          <p className="text-[10px] text-slate-500 font-sans">No hay cobros registrados para este cliente.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                          {clientTransactions.map(tx => (
+                            <div key={tx.id} className="bg-slate-950/30 p-2 rounded-lg border border-white/5 flex justify-between items-center hover:bg-slate-950/50 transition-colors">
+                              <div className="space-y-0.5 max-w-[70%]">
+                                <p className="text-[10px] text-slate-300 truncate font-medium">{tx.description}</p>
+                                <div className="flex items-center gap-2 text-[8px] font-mono text-slate-500">
+                                  <span>{tx.date}</span>
+                                  <span className="uppercase">{tx.paymentMethod || 'transfer'}</span>
+                                  {tx.invoiceId && (
+                                    <span className="text-emerald-500/80 font-semibold">Factura: {tx.invoiceId}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-mono font-extrabold text-emerald-400">+{tx.amount.toFixed(2)} €</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Comercial & Call Notes Section */}
               <div className="space-y-2 border-b border-white/5 pb-4">
@@ -1895,6 +2600,154 @@ export default function CrmScreen({
                   className="px-5.5 py-2 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.3)]"
                 >
                   Agendar Cita Presencial
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Connected payment modal backdrop & form */}
+      {showAddPaymentModal && selectedContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-md bg-[#0a0a14] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 max-h-[90vh] flex flex-col">
+            {/* Header banner cover */}
+            <div className="bg-gradient-to-tr from-emerald-600/20 via-emerald-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-emerald-400" />
+                <span>Registrar Cobro / Transacción</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1 font-sans">
+                Registra un cobro de forma manual. Si el cliente tiene facturas pendientes, se aplicará y marcará la correspondiente como cobrada automáticamente.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowAddPaymentModal(false)}
+                className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg bg-slate-955/60 border border-white/5 cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body / Form */}
+            <form onSubmit={handleRegisterPayment} className="p-6 overflow-y-auto space-y-4 text-left">
+              {/* Client Info */}
+              <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-1">
+                <span className="block text-[8px] font-mono text-slate-500 uppercase">CLIENTE DE CARGO</span>
+                <span className="text-xs font-semibold text-slate-200">{selectedContact.name}</span>
+                {selectedContact.company && (
+                  <span className="text-[10px] text-slate-400 block font-sans">{selectedContact.company}</span>
+                )}
+              </div>
+
+              {/* Amount and Date */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Importe Recibido (€)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="150.00"
+                    className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Fecha del Pago</label>
+                  <input
+                    type="date"
+                    required
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Payment Method */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Método de Pago</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('transfer')}
+                    className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+                      paymentMethod === 'transfer'
+                        ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
+                        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
+                    }`}
+                  >
+                    Transferencia Bancaria
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('cash')}
+                    className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+                      paymentMethod === 'cash'
+                        ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
+                        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
+                    }`}
+                  >
+                    Efectivo
+                  </button>
+                </div>
+              </div>
+
+              {/* Invoice to Settle */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Asociar a Factura</label>
+                <select
+                  value={paymentInvoiceId}
+                  onChange={(e) => setPaymentInvoiceId(e.target.value)}
+                  className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                >
+                  <option value="general">Automático / Saldo General (Auto-completar facturas)</option>
+                  {invoices
+                    .filter(inv => {
+                      const matchesId = inv.clientId === selectedContact.id;
+                      const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
+                      const matchesName = inv.clientName?.toLowerCase().includes(selectedContact.name?.toLowerCase() || '');
+                      return (matchesId || matchesEmail || matchesName) && inv.status !== 'paid';
+                    })
+                    .map(inv => (
+                      <option key={inv.id} value={inv.id}>
+                        {inv.id} - Total: {inv.total.toFixed(2)} € ({inv.date})
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+
+              {/* Payment Description */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Concepto / Notas de Pago</label>
+                <input
+                  type="text"
+                  required
+                  value={paymentDesc}
+                  onChange={(e) => setPaymentDesc(e.target.value)}
+                  placeholder="Cobro de servicios de consultoría"
+                  className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPaymentModal(false)}
+                  className="flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs text-slate-400 font-semibold cursor-pointer transition-all text-center"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Confirmar Cobro</span>
                 </button>
               </div>
             </form>

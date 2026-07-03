@@ -358,15 +358,16 @@ export default function App() {
           
           const sessionData = await res.json();
           const { customerId, subscriptionId } = sessionData;
+          const isSubscription = interval !== 'once';
 
           if (client) {
             const updatedClient: ClientContact = {
               ...client,
-              stripeCustomerId: customerId,
-              stripeSubscriptionId: subscriptionId,
-              stripeSubscriptionStatus: 'active',
-              stripeSubscriptionPrice: amount,
-              stripeSubscriptionInterval: interval,
+              stripeCustomerId: customerId || client.stripeCustomerId,
+              stripeSubscriptionId: isSubscription ? subscriptionId : client.stripeSubscriptionId,
+              stripeSubscriptionStatus: isSubscription ? 'active' : (client.stripeSubscriptionStatus || 'none'),
+              stripeSubscriptionPrice: isSubscription ? amount : client.stripeSubscriptionPrice,
+              stripeSubscriptionInterval: isSubscription ? interval : client.stripeSubscriptionInterval,
             };
 
             // Update client in database
@@ -379,12 +380,14 @@ export default function App() {
             const newTx: any = {
               id: `tx_stripe_${sessionId}`,
               type: 'income',
-              category: 'Mensualidad',
+              category: isSubscription ? 'Mensualidad' : 'Desarrollo',
               amount: Number(amount),
               date: todayStr,
-              description: `Mensualidad Stripe Automática - ${client.name}`,
-              isRecurring: true,
-              recurrencePeriod: interval === 'year' ? 'yearly' : 'monthly',
+              description: isSubscription 
+                ? `Mensualidad Stripe Automática - ${client.name}` 
+                : `Pago Único Stripe - ${client.name}`,
+              isRecurring: isSubscription,
+              recurrencePeriod: isSubscription ? (interval === 'year' ? 'yearly' : 'monthly') : undefined,
               status: 'paid',
               paymentMethod: 'transfer'
             };
@@ -399,8 +402,10 @@ export default function App() {
               id: `act_stripe_${Date.now()}`,
               type: 'CRM',
               timestamp: 'Hace un momento',
-              title: `✅ Suscripción Activa - ${client.name}`,
-              subtitle: `Mensualidad automática configurada por ${amount} € / ${interval === 'year' ? 'año' : 'mes'}`,
+              title: isSubscription ? `✅ Suscripción Activa - ${client.name}` : `✅ Pago Stripe Recibido - ${client.name}`,
+              subtitle: isSubscription 
+                ? `Mensualidad automática configurada por ${amount} € / ${interval === 'year' ? 'año' : 'mes'}`
+                : `Pago único procesado con éxito por un importe de ${amount} €`,
               accentColor: 'secondary'
             };
             await db.insertActivity(newActivity);
@@ -1657,9 +1662,15 @@ export default function App() {
                 <div className="mx-auto w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
                   <Check className="w-8 h-8" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-100 font-sans tracking-tight">¡Mensualidad Configurada!</h3>
+                <h3 className="text-xl font-bold text-slate-100 font-sans tracking-tight">
+                  {stripeSuccessData.interval === 'once' ? '¡Pago Recibido con Éxito!' : '¡Mensualidad Configurada!'}
+                </h3>
                 <p className="text-xs text-slate-400 font-sans leading-relaxed">
-                  Se ha activado correctamente el cobro automático por Stripe para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong>. El cliente recibirá su cobro de manera recurrente.
+                  {stripeSuccessData.interval === 'once' ? (
+                    <>Se ha registrado y cobrado correctamente el pago único por Stripe para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong>.</>
+                  ) : (
+                    <>Se ha activado correctamente el cobro automático por Stripe para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong>. El cliente recibirá su cobro de manera recurrente.</>
+                  )}
                 </p>
                 <div className="bg-[#040408] p-4 rounded-2xl border border-white/5 space-y-2.5 text-left font-sans">
                   <div className="flex justify-between text-xs">
@@ -1668,7 +1679,9 @@ export default function App() {
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500 font-mono uppercase text-[9px] tracking-wider">Frecuencia:</span>
-                    <span className="font-bold text-slate-300">{stripeSuccessData.interval === 'year' ? 'Anual' : 'Mensual'}</span>
+                    <span className="font-bold text-slate-300">
+                      {stripeSuccessData.interval === 'once' ? 'Pago Único' : stripeSuccessData.interval === 'year' ? 'Anual' : 'Mensual'}
+                    </span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500 font-mono uppercase text-[9px] tracking-wider">Método de pago:</span>
@@ -1692,7 +1705,7 @@ export default function App() {
                 </div>
                 <h3 className="text-xl font-bold text-slate-100 tracking-tight">Proceso Cancelado</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  La configuración de mensualidad para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong> fue cancelada antes de que el cliente ingresara sus datos.
+                  La configuración de pago para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong> fue cancelada antes de que el cliente ingresara sus datos.
                 </p>
                 <button
                   onClick={() => setStripeSuccessData(null)}

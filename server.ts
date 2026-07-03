@@ -50,7 +50,7 @@ app.get("/api/stripe/config", (req, res) => {
   });
 });
 
-// Create subscription checkout session
+// Create subscription or single payment checkout session
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
     const { clientId, clientName, clientEmail, amount, interval } = req.body;
@@ -61,27 +61,35 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
 
     const stripe = getStripe();
     const appUrl = process.env.APP_URL || "http://localhost:3000";
+    const isSubscription = interval !== "once";
 
-    // Create a checkout session in subscription mode
+    const lineItem: any = {
+      price_data: {
+        currency: "eur",
+        product_data: {
+          name: isSubscription 
+            ? `Mensualidad Automática - ${clientName || "Cliente"}` 
+            : `Pago Único - ${clientName || "Cliente"}`,
+          description: isSubscription 
+            ? `Suscripción recurrente de pago para el cliente ${clientName || clientEmail}` 
+            : `Pago único de servicio para el cliente ${clientName || clientEmail}`,
+        },
+        unit_amount: Math.round(Number(amount) * 100), // convert to cents
+      },
+      quantity: 1,
+    };
+
+    if (isSubscription) {
+      lineItem.price_data.recurring = {
+        interval: interval === "year" ? "year" : "month",
+      };
+    }
+
+    // Create a checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "eur",
-            product_data: {
-              name: `Mensualidad Automática - ${clientName || "Cliente"}`,
-              description: `Suscripción recurrente de pago para el cliente ${clientName || clientEmail}`,
-            },
-            unit_amount: Math.round(Number(amount) * 100), // convert to cents
-            recurring: {
-              interval: interval === "year" ? "year" : "month",
-            },
-          },
-          quantity: 1,
-        },
-      ],
-      mode: "subscription",
+      line_items: [lineItem],
+      mode: isSubscription ? "subscription" : "payment",
       customer_email: clientEmail,
       success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${amount}&interval=${interval || "month"}`,
       cancel_url: `${appUrl}?stripe_status=cancel&client_id=${clientId}`,
