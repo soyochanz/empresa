@@ -19,9 +19,7 @@ function getStripe(): Stripe {
     throw new Error("STRIPE_SECRET_KEY is missing. Please set it in your environment variables via settings.");
   }
   if (!stripeInstance) {
-    stripeInstance = new Stripe(key, {
-      apiVersion: "2025-02-11" as any,
-    });
+    stripeInstance = new Stripe(key);
   }
   return stripeInstance;
 }
