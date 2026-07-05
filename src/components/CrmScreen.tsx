@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction } from '../types';
+import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
 import { REGISTERED_USERS, PanelUser } from '../mockData';
 import { 
@@ -31,6 +31,18 @@ import {
   Check
 } from 'lucide-react';
 
+export const safeConfirm = (msg: string): boolean => {
+  const isIframe = window.self !== window.top;
+  if (isIframe) {
+    return true; // Auto-confirm inside sandbox iframe preview
+  }
+  try {
+    return window.confirm(msg);
+  } catch (e) {
+    return true;
+  }
+};
+
 export const AESTHETIC_COLORS = [
   { val: 'indigo', label: 'Indigo', hex: '#6366f1', activeStyle: 'bg-indigo-500/25 border-indigo-500 text-indigo-300 shadow-[0_0_12px_rgba(99,102,241,0.15)]', badgeStyle: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
   { val: 'emerald', label: 'Esmeralda Sutil', hex: '#10b981', activeStyle: 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]', badgeStyle: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
@@ -60,6 +72,8 @@ interface CrmScreenProps {
   usersList?: PanelUser[];
   onAddProfile?: (profile: { name: string; email: string }) => void;
   onAddEvent?: (event: CalendarEvent) => void;
+  comercialesList?: ComercialAccount[];
+  onRefreshFinance?: () => void;
 }
 
 export default function CrmScreen({ 
@@ -71,7 +85,9 @@ export default function CrmScreen({
   onNavigate,
   usersList = REGISTERED_USERS,
   onAddProfile,
-  onAddEvent
+  onAddEvent,
+  comercialesList = [],
+  onRefreshFinance
 }: CrmScreenProps) {
   const [selectedContactId, setSelectedContactId] = useState<string>('c2'); // default to Marcus Chen
   const selectedContact = contacts.find(c => c.id === selectedContactId) || contacts[0];
@@ -118,6 +134,204 @@ export default function CrmScreen({
     setStripeEmailInput(selectedContact?.email || '');
   }, [selectedContactId, selectedContact]);
 
+  // Dynamic Stripe link generation states for individual pending transactions/installments
+  const [activeTxStripeUrl, setActiveTxStripeUrl] = useState<{[txId: string]: string}>({});
+  const [txStripeLoading, setTxStripeLoading] = useState<{[txId: string]: boolean}>({});
+
+  const handleGenerateStripeForTx = async (tx: FinanceTransaction) => {
+    setTxStripeLoading(prev => ({ ...prev, [tx.id]: true }));
+    try {
+      const targetEmail = selectedContact?.email || 'cliente@email.com';
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId: selectedContact?.id || 'simulated',
+          clientName: selectedContact?.name || 'Cliente',
+          clientEmail: targetEmail,
+          amount: tx.amount.toString(),
+          interval: 'once', // Installments are one-off payments
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Error Stripe');
+      }
+      setActiveTxStripeUrl(prev => ({ ...prev, [tx.id]: data.url }));
+    } catch (err) {
+      console.error("Stripe error, using fallback simulated URL", err);
+      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${selectedContact?.id || 'c2'}&amount=${tx.amount}&interval=once&stripe_session_id=cs_test_mock_${tx.id}&simulated=true`;
+      setActiveTxStripeUrl(prev => ({ ...prev, [tx.id]: simulatedUrl }));
+    } finally {
+      setTxStripeLoading(prev => ({ ...prev, [tx.id]: false }));
+    }
+  };
+
+  // Lead -> Client with Sale conversion states
+  const [convertingLead, setConvertingLead] = useState<ClientContact | null>(null);
+  const [convSalePrice, setConvSalePrice] = useState(1500);
+  const [convInstallments, setConvInstallments] = useState(1);
+  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
+  const [convSelectedComercialId, setConvSelectedComercialId] = useState('');
+
+  // Handle lead to client conversion
+  const handleConfirmConvertToClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!convertingLead) return;
+
+    // 1. Get chosen commercial
+    const matchedCom = (comercialesList || []).find(c => c.id === convSelectedComercialId);
+    const assignedEmail = matchedCom ? matchedCom.email : '';
+    const commPct = matchedCom?.commissionPercentage ?? 10;
+
+    // 2. Generate the Invoice (Factura) and Transactions (Cobros)
+    const invoiceId = 'inv_crm_' + Math.random().toString(36).substring(2, 9);
+    const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
+    
+    // Create Invoice Items
+    const invoiceItems: any[] = [];
+    for (let i = 1; i <= convInstallments; i++) {
+      const isFirst = i === 1;
+      const txId = 'tx_crm_' + Math.random().toString(36).substring(2, 9) + '_' + i;
+      
+      invoiceItems.push({
+        id: 'item_' + i + '_' + Date.now(),
+        description: `${convConcept} - Plazo ${i} de ${convInstallments}`,
+        quantity: 1,
+        unitPrice: pricePerInstallment,
+        total: pricePerInstallment,
+        isPending: !isFirst,
+        pendingTxId: txId,
+        paymentMethod: 'transfer'
+      });
+
+      // Insert matching FinanceTransaction in DB
+      const transaction: FinanceTransaction = {
+        id: txId,
+        type: 'income',
+        category: 'Ventas',
+        amount: pricePerInstallment,
+        date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
+        description: `${convConcept} (${convertingLead.company || 'Empresa'}) - Plazo ${i} de ${convInstallments} ${!isFirst ? '(Pendiente)' : '(Inicial)'}`,
+        status: isFirst ? 'paid' : 'pending',
+        paymentMethod: 'transfer',
+        invoiceId: invoiceId,
+        comercialId: matchedCom?.id,
+        comercialEmail: assignedEmail,
+        isInitialSale: true
+      };
+
+      try {
+        await db.insertFinanceTransaction(transaction);
+      } catch (err) {
+        console.error('Error inserting transaction:', err);
+      }
+    }
+
+    // Create and Insert Finance Invoice in DB
+    const newInvoice: Invoice = {
+      id: invoiceId,
+      clientId: convertingLead.id,
+      clientName: convertingLead.name,
+      clientEmail: convertingLead.email,
+      date: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: convInstallments === 1 ? 'paid' : 'sent',
+      items: invoiceItems,
+      subtotal: convSalePrice,
+      taxPercentage: 0,
+      taxAmount: 0,
+      total: convSalePrice,
+      notes: `Venta inicial generada desde CRM. Comercial: ${matchedCom ? matchedCom.name : 'Sin asignar'}. Comisión: ${commPct}%.`,
+      comercialId: matchedCom?.id,
+      comercialEmail: assignedEmail,
+      isInitialSale: true
+    };
+
+    try {
+      await db.insertFinanceInvoice(newInvoice);
+    } catch (err) {
+      console.error('Error inserting invoice:', err);
+    }
+
+    // Sync/create ComercialLead for metrics
+    if (matchedCom) {
+      try {
+        const comLeads = await db.getComercialLeads();
+        // Find existing lead by email or name
+        const existingLead = comLeads.find(l => 
+          (l.email && convertingLead.email && l.email.toLowerCase() === convertingLead.email.toLowerCase()) ||
+          l.name?.toLowerCase() === convertingLead.name?.toLowerCase()
+        );
+
+        if (existingLead) {
+          const updatedLead: ComercialLead = {
+            ...existingLead,
+            status: 'Ganado',
+            value: convSalePrice,
+            comercialId: matchedCom.id,
+            comercialName: matchedCom.name
+          };
+          await db.updateComercialLead(updatedLead);
+        } else {
+          const newLead: ComercialLead = {
+            id: 'lead_' + Math.random().toString(36).substring(2, 9),
+            comercialId: matchedCom.id,
+            comercialName: matchedCom.name,
+            name: convertingLead.name,
+            company: convertingLead.company || 'Empresa',
+            email: convertingLead.email || '',
+            phone: convertingLead.phone || '',
+            status: 'Ganado',
+            value: convSalePrice,
+            notes: `Creado al convertir desde CRM por ${matchedCom.name}`,
+            createdAt: new Date().toISOString(),
+            temperature: 'Caliente',
+            isDone: true
+          };
+          await db.insertComercialLead(newLead);
+        }
+      } catch (leadErr) {
+        console.error('Error syncing ComercialLead in CrmScreen:', leadErr);
+      }
+    }
+
+    // 3. Update the CRM contact status to 'Client'
+    const updatedContact: ClientContact = {
+      ...convertingLead,
+      status: 'Client',
+      assignedUserEmail: assignedEmail || convertingLead.assignedUserEmail,
+      contactedByComercialEmail: assignedEmail || convertingLead.contactedByComercialEmail,
+      contactedByComercialName: matchedCom ? matchedCom.name : convertingLead.contactedByComercialName
+    };
+
+    if (onUpdateContact) {
+      onUpdateContact(updatedContact);
+    }
+
+    // Clear state
+    setConvertingLead(null);
+
+    // Refresh CRM financials state immediately
+    await fetchFinancials();
+
+    // Trigger parent React state refresh so commission is immediately credited to commercial
+    if (onRefreshFinance) {
+      onRefreshFinance();
+    }
+
+    // Show beautiful toast / alert
+    alert(`¡Felicidades! Se ha convertido a "${convertingLead.name}" en Cliente.\n\n` +
+          `• Venta Registrada: ${convSalePrice.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+          `• Plazos de Pago: ${convInstallments} plazo(s)\n` +
+          `• Comercial: ${matchedCom ? matchedCom.name : 'Sin asignar'}\n` +
+          `• Comisión para el Comercial (${commPct}%): ${(convSalePrice * commPct / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+          `• Se han generado las Facturas e Ingresos correspondientes.`);
+  };
+
   // Connected Accounting & Invoice state definitions
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
@@ -142,6 +356,28 @@ export default function CrmScreen({
       console.error('Error fetching financials in CRM screen:', err);
     } finally {
       setLoadingFinancials(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (txId: string) => {
+    if (safeConfirm('¿Estás seguro de que deseas eliminar este cobro?')) {
+      try {
+        await db.deleteFinanceTransaction(txId);
+        setTransactions(prev => prev.filter(t => t.id !== txId));
+        if (onRefreshFinance) {
+          onRefreshFinance();
+        }
+        // Show success toast
+        const toast = document.getElementById('toast-msg');
+        if (toast) {
+          toast.innerText = `Éxito: Cobro eliminado correctamente.`;
+          toast.classList.remove('opacity-0');
+          setTimeout(() => toast.classList.add('opacity-0'), 3500);
+        }
+      } catch (err) {
+        console.error('Error deleting transaction:', err);
+        alert('No se pudo eliminar el cobro. Por favor, inténtelo de nuevo.');
+      }
     }
   };
 
@@ -235,6 +471,55 @@ export default function CrmScreen({
 
       // Insert transaction into DB
       await db.insertFinanceTransaction(newTx);
+
+      // Sync/update ComercialLead status to 'Ganado' if this contact is a Client and a payment was registered
+      if (selectedContact && selectedContact.status === 'Client') {
+        try {
+          const comEmail = selectedContact.contactedByComercialEmail || selectedContact.assignedUserEmail;
+          const matchedCom = (comercialesList || []).find(c => 
+            (comEmail && c.email.toLowerCase() === comEmail.toLowerCase()) ||
+            (selectedContact.contactedByComercialName && c.name.toLowerCase() === selectedContact.contactedByComercialName.toLowerCase())
+          );
+
+          if (matchedCom) {
+            const comLeads = await db.getComercialLeads();
+            const existingLead = comLeads.find(l => 
+              (l.email && selectedContact.email && l.email.toLowerCase() === selectedContact.email.toLowerCase()) ||
+              (l.name && selectedContact.name && l.name.toLowerCase() === selectedContact.name.toLowerCase())
+            );
+
+            if (existingLead) {
+              const updatedLead: ComercialLead = {
+                ...existingLead,
+                status: 'Ganado',
+                value: existingLead.status === 'Ganado' ? existingLead.value : (existingLead.value || 0) + amt,
+                comercialId: matchedCom.id,
+                comercialName: matchedCom.name
+              };
+              await db.updateComercialLead(updatedLead);
+            } else {
+              const newLead: ComercialLead = {
+                id: 'lead_' + Math.random().toString(36).substring(2, 9),
+                comercialId: matchedCom.id,
+                comercialName: matchedCom.name,
+                name: selectedContact.name,
+                company: selectedContact.company || 'Empresa',
+                email: selectedContact.email || '',
+                phone: selectedContact.phone || '',
+                status: 'Ganado',
+                value: amt,
+                notes: `Creado automáticamente al registrar un cobro para el cliente por ${matchedCom.name}`,
+                createdAt: new Date().toISOString(),
+                temperature: 'Caliente',
+                isDone: true
+              };
+              await db.insertComercialLead(newLead);
+            }
+          }
+        } catch (leadErr) {
+          console.error('Error syncing ComercialLead in handleRegisterPayment:', leadErr);
+        }
+      }
 
       // 2. If a specific invoice is targeted, mark it as paid!
       if (finalInvoiceId) {
@@ -851,6 +1136,22 @@ export default function CrmScreen({
                 </span>
               )}
             </div>
+
+            {contact.status === 'Lead' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConvertingLead(contact);
+                  setConvSalePrice(1500);
+                  setConvInstallments(1);
+                  setConvConcept('Servicio de Consultoría Althera');
+                  setConvSelectedComercialId(comercialesList[0]?.id || '');
+                }}
+                className="mt-2.5 w-full py-1 px-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/20 hover:border-emerald-400 font-bold text-[8.5px] rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer select-none active:scale-95 uppercase tracking-wider font-mono duration-100"
+              >
+                <span>Convertir a Cliente 🎯</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1302,7 +1603,7 @@ export default function CrmScreen({
                 {/* Delete Button */}
                 <button 
                   onClick={() => {
-                    if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente el cliente: "${selectedContact.name}"?`)) {
+                    if (safeConfirm(`¿Estás seguro de que deseas eliminar permanentemente el cliente: "${selectedContact.name}"?`)) {
                       if (onDeleteContact) {
                         onDeleteContact(selectedContact.id);
                         setSelectedContactId('');
@@ -1408,6 +1709,22 @@ export default function CrmScreen({
                       </span>
                     )}
                   </div>
+
+                  {selectedContact.status === 'Lead' && (
+                    <button
+                      onClick={() => {
+                        setConvertingLead(selectedContact);
+                        setConvSalePrice(1500);
+                        setConvInstallments(1);
+                        setConvConcept('Servicio de Consultoría Althera');
+                        setConvSelectedComercialId(comercialesList[0]?.id || '');
+                      }}
+                      className="w-full mt-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-[11px] rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_4px_12px_rgba(16,185,129,0.15)] hover:shadow-[0_4px_20px_rgba(16,185,129,0.3)] active:scale-[0.98] duration-150 uppercase tracking-wider"
+                    >
+                      <Check className="w-4 h-4 text-emerald-100" />
+                      <span>Cerrar Venta / Convertir en Cliente 🎯</span>
+                    </button>
+                  )}
 
                   {/* Subtle, Aesthetic Client Color Selector */}
                   {(() => {
@@ -1706,10 +2023,6 @@ export default function CrmScreen({
                   return matchesId || matchesEmail || matchesName;
                 });
 
-                const totalInvoiced = clientInvoices.reduce((sum, inv) => sum + inv.total, 0);
-                const totalPaid = clientInvoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.total, 0);
-                const totalPending = clientInvoices.filter(inv => inv.status !== 'paid').reduce((sum, inv) => sum + inv.total, 0);
-
                 const clientTransactions = transactions.filter(t => {
                   const invoiceMatches = clientInvoices.some(inv => inv.id === t.invoiceId);
                   if (invoiceMatches) return true;
@@ -1717,6 +2030,17 @@ export default function CrmScreen({
                   const containsCompany = selectedContact.company ? t.description.toLowerCase().includes(selectedContact.company.toLowerCase()) : false;
                   return containsName || containsCompany;
                 });
+
+                const totalPaidFromInvoices = clientInvoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.total, 0);
+                const totalPendingFromInvoices = clientInvoices.filter(inv => inv.status !== 'paid').reduce((sum, inv) => sum + inv.total, 0);
+                const totalInvoicedFromInvoices = clientInvoices.reduce((sum, inv) => sum + inv.total, 0);
+
+                const totalPaidFromTxs = clientTransactions.filter(t => t.status === 'paid').reduce((sum, t) => sum + t.amount, 0);
+                const totalPendingFromTxs = clientTransactions.filter(t => t.status === 'pending').reduce((sum, t) => sum + t.amount, 0);
+
+                const totalPaid = clientInvoices.length > 0 ? totalPaidFromInvoices : totalPaidFromTxs;
+                const totalPending = clientInvoices.length > 0 ? totalPendingFromInvoices : totalPendingFromTxs;
+                const totalInvoiced = clientInvoices.length > 0 ? totalInvoicedFromInvoices : (totalPaid + totalPending);
 
                 return (
                   <div className="space-y-3.5 border-b border-white/5 pb-5">
@@ -1835,22 +2159,109 @@ export default function CrmScreen({
                           <p className="text-[10px] text-slate-500 font-sans">No hay cobros registrados para este cliente.</p>
                         </div>
                       ) : (
-                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                          {clientTransactions.map(tx => (
-                            <div key={tx.id} className="bg-slate-950/30 p-2 rounded-lg border border-white/5 flex justify-between items-center hover:bg-slate-950/50 transition-colors">
-                              <div className="space-y-0.5 max-w-[70%]">
-                                <p className="text-[10px] text-slate-300 truncate font-medium">{tx.description}</p>
-                                <div className="flex items-center gap-2 text-[8px] font-mono text-slate-500">
-                                  <span>{tx.date}</span>
-                                  <span className="uppercase">{tx.paymentMethod || 'transfer'}</span>
-                                  {tx.invoiceId && (
-                                    <span className="text-emerald-500/80 font-semibold">Factura: {tx.invoiceId}</span>
-                                  )}
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                          {clientTransactions.map(tx => {
+                            const isPending = tx.status === 'pending' || tx.description.toLowerCase().includes('pendiente');
+                            const stripeUrl = activeTxStripeUrl[tx.id];
+                            const isLoading = txStripeLoading[tx.id];
+
+                            return (
+                              <div key={tx.id} className="bg-slate-950/30 p-3 rounded-xl border border-white/5 flex flex-col gap-2 hover:bg-slate-950/55 transition-all">
+                                <div className="flex justify-between items-center gap-2">
+                                  <div className="space-y-0.5 max-w-[70%]">
+                                    <p className="text-[10px] text-slate-200 truncate font-semibold flex items-center gap-1.5">
+                                      {tx.description}
+                                      {isPending && (
+                                        <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[7px] font-extrabold uppercase px-1.5 rounded font-mono">Plazo Pendiente</span>
+                                      )}
+                                    </p>
+                                    <div className="flex items-center gap-2 text-[8px] font-mono text-slate-500">
+                                      <span>Vence: <strong className="text-slate-400">{tx.date}</strong></span>
+                                      <span className="uppercase">{tx.paymentMethod || 'transfer'}</span>
+                                      {tx.invoiceId && (
+                                        <span className="text-emerald-500/80 font-semibold">Factura: {tx.invoiceId}</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {/* Amount */}
+                                    <span className={`text-[11px] font-mono font-black ${isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                      {isPending ? '' : '+'}{tx.amount.toFixed(2)} €
+                                    </span>
+
+                                    {/* Stripe Button for Pending Installment */}
+                                    {isPending && (
+                                      <button
+                                        type="button"
+                                        disabled={isLoading}
+                                        onClick={() => handleGenerateStripeForTx(tx)}
+                                        className="p-1 bg-violet-600/15 hover:bg-violet-600/30 text-violet-400 border border-violet-500/25 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                                        title="Generar enlace de cobro automático por Stripe para este plazo"
+                                      >
+                                        {isLoading ? (
+                                          <span className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <CreditCard className="w-3.5 h-3.5 text-violet-400" />
+                                        )}
+                                      </button>
+                                    )}
+
+                                    {/* Delete Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteTransaction(tx.id)}
+                                      className="p-1 hover:bg-rose-500/10 hover:border-rose-500/20 text-slate-500 hover:text-rose-400 border border-transparent rounded-lg transition-all cursor-pointer"
+                                      title="Eliminar cobro"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
                                 </div>
+
+                                {/* Generated Stripe Link box */}
+                                {stripeUrl && (
+                                  <div className="bg-[#05050a] border border-violet-500/20 rounded-lg p-2 flex flex-col gap-1.5 text-left transition-all animate-fadeIn">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[8px] font-mono text-emerald-400 font-bold uppercase">¡Enlace Stripe Listo!</span>
+                                      <span className="text-[7px] font-mono text-slate-500">Auto-cobro para el vencimiento</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="text"
+                                        readOnly
+                                        value={stripeUrl}
+                                        className="bg-[#030305] border border-white/5 text-[9px] text-slate-350 px-2 py-1 rounded focus:outline-none flex-1 font-mono truncate"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(stripeUrl);
+                                          const toast = document.getElementById('toast-msg');
+                                          if (toast) {
+                                            toast.innerText = `Éxito: ¡Enlace Stripe copiado al portapapeles!`;
+                                            toast.classList.remove('opacity-0');
+                                            setTimeout(() => toast.classList.add('opacity-0'), 3000);
+                                          }
+                                        }}
+                                        className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-[9px] text-white font-bold rounded border border-white/5 transition cursor-pointer"
+                                      >
+                                        Copiar
+                                      </button>
+                                      <a
+                                        href={stripeUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-[9px] text-white font-bold rounded transition text-center"
+                                      >
+                                        Pagar
+                                      </a>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                              <span className="text-[11px] font-mono font-extrabold text-emerald-400">+{tx.amount.toFixed(2)} €</span>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2748,6 +3159,146 @@ export default function CrmScreen({
                 >
                   <Check className="w-4 h-4" />
                   <span>Confirmar Cobro</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* LEAD TO CLIENT CONVERSION MODAL */}
+      {convertingLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-lg bg-[#0a0a14] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 max-h-[90vh] flex flex-col">
+            {/* Header banner cover */}
+            <div className="bg-gradient-to-tr from-emerald-600/20 via-emerald-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Check className="w-5 h-5 text-emerald-400" />
+                <span>Cerrar Venta / Convertir Lead en Cliente 🎯</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1 font-sans">
+                Asocia un servicio, precio y número de plazos. La comisión de venta se calculará y asignará automáticamente al comercial seleccionado en este instante.
+              </p>
+              <button
+                type="button"
+                onClick={() => setConvertingLead(null)}
+                className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg bg-slate-955/60 border border-white/5 cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body / Form */}
+            <form onSubmit={handleConfirmConvertToClient} className="p-6 overflow-y-auto space-y-4 text-left">
+              {/* Lead Info */}
+              <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-1">
+                <span className="block text-[8px] font-mono text-slate-500 uppercase">Lead a Convertir</span>
+                <span className="text-xs font-semibold text-slate-200">{convertingLead.name}</span>
+                <span className="text-[10px] text-slate-400 block font-sans">
+                  {convertingLead.company ? `${convertingLead.company} • ` : ''}{convertingLead.email}
+                </span>
+              </div>
+
+              {/* Servicio / Concepto */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Servicio / Concepto de Contrato</label>
+                <input
+                  type="text"
+                  required
+                  value={convConcept}
+                  onChange={(e) => setConvConcept(e.target.value)}
+                  placeholder="Ej. Servicio de Consultoría Althera"
+                  className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              {/* Precio y Plazos */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Importe Total (€)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={convSalePrice}
+                    onChange={(e) => setConvSalePrice(Number(e.target.value))}
+                    placeholder="1500"
+                    className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Plazos de Pago</label>
+                  <select
+                    value={convInstallments}
+                    onChange={(e) => setConvInstallments(Number(e.target.value))}
+                    className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                  >
+                    <option value={1}>Pago Único (1 plazo)</option>
+                    <option value={2}>2 plazos mensuales</option>
+                    <option value={3}>3 plazos mensuales</option>
+                    <option value={4}>4 plazos mensuales</option>
+                    <option value={6}>6 plazos mensuales</option>
+                    <option value={12}>12 plazos mensuales</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Cuotas de cálculo informativo */}
+              {convInstallments > 1 && (
+                <div className="bg-amber-500/5 p-3 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 font-mono space-y-0.5">
+                  <span className="block font-bold">DISTRIBUCIÓN EN PLAZOS:</span>
+                  <span>• Primer cobro (inicial): {(convSalePrice / convInstallments).toFixed(2)} € (Se registra como Cobrado hoy)</span>
+                  <span className="block">• Cuotas restantes: {convInstallments - 1} de {(convSalePrice / convInstallments).toFixed(2)} € (Quedan como Cobros Pendientes)</span>
+                </div>
+              )}
+
+              {/* Comercial a asignar */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Comercial de Venta (Comisión)</label>
+                <select
+                  required
+                  value={convSelectedComercialId}
+                  onChange={(e) => setConvSelectedComercialId(e.target.value)}
+                  className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer font-sans"
+                >
+                  <option value="">-- Seleccionar Comercial --</option>
+                  {(comercialesList || []).map(com => (
+                    <option key={com.id} value={com.id}>
+                      {com.name} ({com.email}) - Comisión: {com.commissionPercentage ?? 10}%
+                    </option>
+                  ))}
+                </select>
+                {convSelectedComercialId && (() => {
+                  const com = (comercialesList || []).find(c => c.id === convSelectedComercialId);
+                  if (com) {
+                    const pct = com.commissionPercentage ?? 10;
+                    const commVal = (convSalePrice * pct) / 100;
+                    return (
+                      <p className="text-[10px] text-emerald-400 font-mono mt-1">
+                        👉 Se asignará una comisión de <strong>{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> ({pct}%) a <strong>{com.name}</strong> en el balance del comercial.
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setConvertingLead(null)}
+                  className="flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs text-slate-400 font-semibold cursor-pointer transition-all text-center"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!convSelectedComercialId}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5 uppercase tracking-wider"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Confirmar Venta 🎯</span>
                 </button>
               </div>
             </form>

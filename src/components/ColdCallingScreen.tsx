@@ -31,7 +31,7 @@ import {
   ChevronRight,
   Video
 } from 'lucide-react';
-import { ColdCallingLead, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction } from '../types';
+import { ColdCallingLead, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
 
 const HOURLY_SLOTS = [
@@ -53,6 +53,7 @@ interface ColdCallingScreenProps {
   events?: CalendarEvent[];
   onUpdateEvent?: (event: CalendarEvent) => void;
   onDeleteEvent?: (id: string) => void;
+  onRefreshFinance?: () => void;
 }
 
 export default function ColdCallingScreen({
@@ -69,7 +70,8 @@ export default function ColdCallingScreen({
   onAddEvent,
   events = [],
   onUpdateEvent,
-  onDeleteEvent
+  onDeleteEvent,
+  onRefreshFinance
 }: ColdCallingScreenProps) {
   
   // Combine comerciales and admins (usersList) for assignment
@@ -271,6 +273,52 @@ export default function ColdCallingScreen({
       await db.insertFinanceInvoice(newInvoice);
     } catch (err) {
       console.error('Error inserting invoice:', err);
+    }
+
+    // Sync/create ComercialLead for metrics
+    if (matchedCom) {
+      try {
+        const comLeads = await db.getComercialLeads();
+        // Find existing lead by email or name
+        const existingLead = comLeads.find(l => 
+          (l.email && convEmail && l.email.toLowerCase() === convEmail.trim().toLowerCase()) ||
+          l.name?.toLowerCase() === convName.trim().toLowerCase()
+        );
+
+        if (existingLead) {
+          const updatedLead: ComercialLead = {
+            ...existingLead,
+            status: 'Ganado',
+            value: convSalePrice,
+            comercialId: matchedCom.id,
+            comercialName: matchedCom.name
+          };
+          await db.updateComercialLead(updatedLead);
+        } else {
+          const newLead: ComercialLead = {
+            id: 'lead_' + Math.random().toString(36).substring(2, 9),
+            comercialId: matchedCom.id,
+            comercialName: matchedCom.name,
+            name: convName.trim(),
+            company: convCompany.trim() || 'Empresa',
+            email: convEmail.trim() || '',
+            phone: convPhone.trim() || '',
+            status: 'Ganado',
+            value: convSalePrice,
+            notes: `Creado al convertir desde Cold Calling por ${matchedCom.name}`,
+            createdAt: new Date().toISOString(),
+            temperature: 'Caliente',
+            isDone: true
+          };
+          await db.insertComercialLead(newLead);
+        }
+      } catch (leadErr) {
+        console.error('Error syncing ComercialLead in ColdCallingScreen:', leadErr);
+      }
+    }
+
+    if (onRefreshFinance) {
+      onRefreshFinance();
     }
 
     alert(`¡Felicidades! Se ha convertido a "${convCompany}" en Cliente.\n\n` +
@@ -993,18 +1041,20 @@ export default function ColdCallingScreen({
               )}
 
               {/* Solo mis asignados toggle */}
-              <button
-                onClick={() => setShowOnlySelf(!showOnlySelf)}
-                className={`p-2 rounded-xl border font-bold transition-all flex items-center justify-center gap-1 bg-slate-950 cursor-pointer ${
-                  showOnlySelf 
-                    ? 'border-violet-500 text-violet-400 bg-violet-600/5 shadow-[0_0_8px_rgba(139,92,246,0.15)]' 
-                    : 'border-white/5 text-slate-400 hover:text-white'
-                }`}
-                title="Mostrar solo los asignados a ti"
-              >
-                <Users className="w-3.5 h-3.5 text-violet-400" />
-                <span className="text-[10px] uppercase font-mono tracking-wider">Solo Míos</span>
-              </button>
+              {!currentComercial && (
+                <button
+                  onClick={() => setShowOnlySelf(!showOnlySelf)}
+                  className={`p-2 rounded-xl border font-bold transition-all flex items-center justify-center gap-1 bg-slate-950 cursor-pointer ${
+                    showOnlySelf 
+                      ? 'border-violet-500 text-violet-400 bg-violet-600/5 shadow-[0_0_8px_rgba(139,92,246,0.15)]' 
+                      : 'border-white/5 text-slate-400 hover:text-white'
+                  }`}
+                  title="Mostrar solo los asignados a ti"
+                >
+                  <Users className="w-3.5 h-3.5 text-violet-400" />
+                  <span className="text-[10px] uppercase font-mono tracking-wider">Solo Míos</span>
+                </button>
+              )}
 
               {/* Archived toggle */}
               <button

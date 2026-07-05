@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   User, 
   Mail, 
@@ -29,13 +29,14 @@ import {
   Sparkles,
   FileText
 } from 'lucide-react';
-import { ComercialAccount, ComercialLead, ColdCallingLead } from '../types';
+import { ComercialAccount, ComercialLead, ColdCallingLead, ClientContact } from '../types';
 
 interface ComercialesAdminScreenProps {
   comercialesList: ComercialAccount[];
   leadsList: ComercialLead[];
   coldLeads?: ColdCallingLead[];
   finTransactions?: any[];
+  contacts?: ClientContact[];
   onAddComercial: (comercial: ComercialAccount) => void;
   onUpdateComercial: (account: ComercialAccount) => void;
   onDeleteComercial: (id: string) => void;
@@ -48,6 +49,7 @@ export default function ComercialesAdminScreen({
   leadsList,
   coldLeads = [],
   finTransactions = [],
+  contacts = [],
   onAddComercial,
   onUpdateComercial,
   onDeleteComercial
@@ -127,34 +129,113 @@ export default function ComercialesAdminScreen({
     }, 3000);
   };
 
+  // Dynamic calculation: If a lead belongs to a client contact with status === 'Client', we count it as 'Ganado'. Also append converted client contacts.
+  const mappedLeadsList = useMemo(() => {
+    // 1. Map existing leads, force to 'Ganado' if matching contact is 'Client'
+    const updated = leadsList.map(lead => {
+      const matchingContact = contacts.find(c => 
+        (lead.email && c.email && lead.email.toLowerCase() === c.email.toLowerCase()) ||
+        (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase())
+      );
+      
+      if (matchingContact && matchingContact.status === 'Client') {
+        const clientTxs = finTransactions.filter(tx => {
+          if (tx.type !== 'income') return false;
+          const descLower = tx.description?.toLowerCase() || '';
+          const nameLower = matchingContact.name?.toLowerCase() || '';
+          const companyLower = matchingContact.company?.toLowerCase() || '';
+          return (nameLower && descLower.includes(nameLower)) || (companyLower && descLower.includes(companyLower));
+        });
+        const totalPaid = clientTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+        return {
+          ...lead,
+          status: 'Ganado' as const,
+          value: lead.value || totalPaid || 1500
+        };
+      }
+      return lead;
+    });
+
+    // 2. Find client contacts associated with ANY commercial that are NOT already in leadsList
+    const newLeadsFromClients: ComercialLead[] = [];
+    contacts.forEach(c => {
+      if (c.status === 'Client') {
+        // Find which commercial this client belongs to
+        const comEmail = c.contactedByComercialEmail || c.assignedUserEmail;
+        const comName = c.contactedByComercialName;
+        
+        const matchedCom = (comercialesList || []).find(com => 
+          (comEmail && com.email.toLowerCase() === comEmail.toLowerCase()) ||
+          (comName && com.name.toLowerCase() === comName.toLowerCase())
+        );
+
+        if (matchedCom) {
+          // Check if already represented in updated leads list
+          const alreadyExists = updated.some(l => 
+            (l.email && c.email && l.email.toLowerCase() === c.email.toLowerCase()) ||
+            (l.name && c.name && l.name.toLowerCase() === c.name.toLowerCase())
+          );
+
+          if (!alreadyExists) {
+            const clientTxs = finTransactions.filter(tx => {
+              if (tx.type !== 'income') return false;
+              const descLower = tx.description?.toLowerCase() || '';
+              const nameLower = c.name?.toLowerCase() || '';
+              const companyLower = c.company?.toLowerCase() || '';
+              return (nameLower && descLower.includes(nameLower)) || (companyLower && descLower.includes(companyLower));
+            });
+            const totalPaid = clientTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+
+            newLeadsFromClients.push({
+              id: 'lead_client_sync_' + c.id,
+              comercialId: matchedCom.id,
+              comercialName: matchedCom.name,
+              name: c.name,
+              company: c.company || 'Empresa',
+              email: c.email || '',
+              phone: c.phone || '',
+              status: 'Ganado',
+              value: totalPaid || c.estimatedValue || 1500,
+              notes: 'Importado de Cartera de Clientes CRM',
+              createdAt: c.createdAt || new Date().toISOString(),
+              temperature: 'Caliente'
+            });
+          }
+        }
+      }
+    });
+
+    return [...updated, ...newLeadsFromClients];
+  }, [leadsList, contacts, finTransactions, comercialesList]);
+
   // --- COMPUTE GLOBAL METRICS ---
-  const totalCRMLeads = leadsList.length;
-  const wonLeads = leadsList.filter(l => l.status === 'Ganado');
+  const totalCRMLeads = mappedLeadsList.length;
+  const wonLeads = mappedLeadsList.filter(l => l.status === 'Ganado');
   const totalVolumeWon = wonLeads.reduce((sum, l) => sum + (l.value || 0), 0);
   
-  const activeLeads = leadsList.filter(l => ['Pendiente', 'Contactado', 'Negociación'].includes(l.status));
+  const activeLeads = mappedLeadsList.filter(l => ['Pendiente', 'Contactado', 'Negociación'].includes(l.status));
   const activeValue = activeLeads.reduce((sum, l) => sum + (l.value || 0), 0);
 
-  const lostLeads = leadsList.filter(l => l.status === 'Perdido');
+  const lostLeads = mappedLeadsList.filter(l => l.status === 'Perdido');
   const globalConversionRate = totalCRMLeads > 0 
     ? Math.round((wonLeads.length / totalCRMLeads) * 100) 
     : 0;
 
   // Status Distribution
   const statusCounts = {
-    Pendiente: leadsList.filter(l => l.status === 'Pendiente').length,
-    Contactado: leadsList.filter(l => l.status === 'Contactado').length,
-    Negociación: leadsList.filter(l => l.status === 'Negociación').length,
+    Pendiente: mappedLeadsList.filter(l => l.status === 'Pendiente').length,
+    Contactado: mappedLeadsList.filter(l => l.status === 'Contactado').length,
+    Negociación: mappedLeadsList.filter(l => l.status === 'Negociación').length,
     Ganado: wonLeads.length,
     Perdido: lostLeads.length
   };
 
   // Temperature Distribution
   const tempCounts = {
-    Caliente: leadsList.filter(l => l.temperature === 'Caliente').length,
-    Templado: leadsList.filter(l => l.temperature === 'Templado').length,
-    Frío: leadsList.filter(l => l.temperature === 'Frío').length,
-    SinAsignar: leadsList.filter(l => !l.temperature).length
+    Caliente: mappedLeadsList.filter(l => l.temperature === 'Caliente').length,
+    Templado: mappedLeadsList.filter(l => l.temperature === 'Templado').length,
+    Frío: mappedLeadsList.filter(l => l.temperature === 'Frío').length,
+    SinAsignar: mappedLeadsList.filter(l => !l.temperature).length
   };
 
   // Cold Calling Stats
@@ -166,7 +247,7 @@ export default function ComercialesAdminScreen({
 
   // Leaderboard of representatives
   const leaderBoard = comercialesList.map(c => {
-    const comLeads = leadsList.filter(l => l.comercialId === c.id);
+    const comLeads = mappedLeadsList.filter(l => l.comercialId === c.id);
     const comWon = comLeads.filter(l => l.status === 'Ganado');
     const comWonVol = comWon.reduce((sum, l) => sum + (l.value || 0), 0);
     const comConv = comLeads.length > 0 ? Math.round((comWon.length / comLeads.length) * 100) : 0;
@@ -190,7 +271,7 @@ export default function ComercialesAdminScreen({
   const currentComercial = comercialesList.find(c => c.id === selectedComercialId);
   
   const individualLeads = currentComercial 
-    ? leadsList.filter(l => l.comercialId === currentComercial.id) 
+    ? mappedLeadsList.filter(l => l.comercialId === currentComercial.id) 
     : [];
   
   const indWon = individualLeads.filter(l => l.status === 'Ganado');

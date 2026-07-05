@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead } from './types';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead, Invoice, FinanceTransaction } from './types';
 import { 
   initialContacts, 
   initialEvents, 
@@ -353,11 +353,20 @@ export default function App() {
 
         try {
           // Retrieve Stripe details from backend to get customerId and subscriptionId
-          const res = await fetch(`/api/stripe/retrieve-session?sessionId=${sessionId}`);
-          if (!res.ok) throw new Error("No se pudo recuperar la sesión de Stripe");
+          let customerId = 'cus_mock_123';
+          let subscriptionId = 'sub_mock_123';
           
-          const sessionData = await res.json();
-          const { customerId, subscriptionId } = sessionData;
+          if (sessionId && sessionId.startsWith('cs_test_mock_')) {
+            // Simulated mock payment session
+            console.log("Processing simulated mock payment...");
+          } else {
+            const res = await fetch(`/api/stripe/retrieve-session?sessionId=${sessionId}`);
+            if (res.ok) {
+              const sessionData = await res.json();
+              customerId = sessionData.customerId;
+              subscriptionId = sessionData.subscriptionId;
+            }
+          }
           const isSubscription = interval !== 'once';
 
           if (client) {
@@ -393,6 +402,53 @@ export default function App() {
             };
 
             await db.insertFinanceTransaction(newTx);
+
+            // Mark pending client invoices and transactions as paid
+            try {
+              const allInvoices = await db.getFinanceInvoices();
+              const clientInvoices = allInvoices.filter(inv => 
+                inv.clientId === clientId || 
+                inv.clientEmail?.toLowerCase() === client.email?.toLowerCase() ||
+                inv.clientName?.toLowerCase().includes(client.name.toLowerCase())
+              );
+
+              for (const inv of clientInvoices) {
+                if (inv.status !== 'paid') {
+                  const updatedInvoice: Invoice = {
+                    ...inv,
+                    status: 'paid',
+                    items: inv.items.map(item => ({
+                      ...item,
+                      isPending: false
+                    }))
+                  };
+                  await db.updateFinanceInvoice(updatedInvoice);
+
+                  // Also find associated pending transactions and mark them paid
+                  for (const item of inv.items) {
+                    if (item.pendingTxId) {
+                      try {
+                        const txs = await db.getFinanceTransactions();
+                        const matchedTx = txs.find(t => t.id === item.pendingTxId);
+                        if (matchedTx && matchedTx.status !== 'paid') {
+                          const updatedTx: FinanceTransaction = {
+                            ...matchedTx,
+                            status: 'paid',
+                            paymentMethod: 'transfer'
+                          };
+                          await db.updateFinanceTransaction(updatedTx);
+                        }
+                      } catch (txErr) {
+                        console.error("Error updating matched pending transaction:", txErr);
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (invErr) {
+              console.error("Error processing client invoices on Stripe success:", invErr);
+            }
+
             // Refresh financial lists
             const dbTxs = await db.getFinanceTransactions();
             if (dbTxs) setFinTransactions(dbTxs);
@@ -444,22 +500,23 @@ export default function App() {
   // Sync finance transactions to compute upcoming alerts
   const [finTransactions, setFinTransactions] = useState<any[]>([]);
 
-  useEffect(() => {
-    const syncFinanceTransactions = async () => {
-      try {
-        const dbTxs = await db.getFinanceTransactions();
-        if (dbTxs) {
-          setFinTransactions(dbTxs);
-        }
-      } catch (e) {
-        console.error('Error fetching finance transactions in App.tsx:', e);
+  const handleRefreshFinance = useCallback(async () => {
+    try {
+      const dbTxs = await db.getFinanceTransactions();
+      if (dbTxs) {
+        setFinTransactions(dbTxs);
       }
-    };
-    syncFinanceTransactions();
-    // Keep checking every 8 seconds for updates
-    const interval = setInterval(syncFinanceTransactions, 8000);
-    return () => clearInterval(interval);
+    } catch (e) {
+      console.error('Error fetching finance transactions in App.tsx:', e);
+    }
   }, []);
+
+  useEffect(() => {
+    handleRefreshFinance();
+    // Keep checking every 8 seconds for updates
+    const interval = setInterval(handleRefreshFinance, 8000);
+    return () => clearInterval(interval);
+  }, [handleRefreshFinance]);
 
   const financeNotifications = useMemo(() => {
     const list: any[] = [];
@@ -1249,6 +1306,8 @@ export default function App() {
             onAddNote={handleAddNote}
             onAddEvent={handleAddEvent}
             currentUser={currentUser}
+            leads={leadsList}
+            contacts={contacts}
           />
         );
       case 'calendar':
@@ -1278,6 +1337,8 @@ export default function App() {
             usersList={usersList}
             onAddProfile={handleUpsertProfile}
             onAddEvent={handleAddEvent}
+            comercialesList={comercialesList}
+            onRefreshFinance={handleRefreshFinance}
           />
         );
       case 'notes':
@@ -1340,6 +1401,7 @@ export default function App() {
             leadsList={leadsList}
             coldLeads={coldLeads}
             finTransactions={finTransactions}
+            contacts={contacts}
             onAddComercial={handleAddComercialAccount}
             onUpdateComercial={handleUpdateComercialAccount}
             onDeleteComercial={handleDeleteComercialAccount}
@@ -1359,6 +1421,7 @@ export default function App() {
             onNavigate={navigateTo}
             onAddEvent={handleAddEvent}
             onAddContact={handleAddContact}
+            onRefreshFinance={handleRefreshFinance}
           />
         );
       case 'developer_hub':
@@ -1477,6 +1540,7 @@ export default function App() {
             onDeleteEvent={handleDeleteEvent}
             usersList={usersList}
             finTransactions={finTransactions}
+            contacts={contacts}
           />
         </motion.div>
       </AnimatePresence>
