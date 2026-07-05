@@ -27,6 +27,7 @@ interface CitasScreenProps {
   onDeleteEvent: (id: string) => void;
   usersList?: any[];
   onAddProfile?: (profile: { name: string; email: string }) => void;
+  comercialesList?: any[];
 }
 
 const PRESET_COLORS = [
@@ -45,7 +46,8 @@ export default function CitasScreen({
   onUpdateEvent, 
   onDeleteEvent,
   usersList = [],
-  onAddProfile
+  onAddProfile,
+  comercialesList
 }: CitasScreenProps) {
   // Filters & State
   const [searchTerm, setSearchTerm] = useState('');

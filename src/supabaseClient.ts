@@ -729,6 +729,9 @@ export const db = {
     firstAmount?: number;
     nextAmount?: number;
     invoiceId?: string;
+    comercialId?: string;
+    comercialEmail?: string;
+    isInitialSale?: boolean;
   }): string {
     let res = description || '';
     if (metadata.paymentMethod) {
@@ -743,6 +746,15 @@ export const db = {
     if (metadata.invoiceId) {
       res += ` [INV:${metadata.invoiceId}]`;
     }
+    if (metadata.comercialId) {
+      res += ` [COMID:${metadata.comercialId}]`;
+    }
+    if (metadata.comercialEmail) {
+      res += ` [COMEMAIL:${metadata.comercialEmail}]`;
+    }
+    if (metadata.isInitialSale !== undefined) {
+      res += ` [ISINITIAL:${metadata.isInitialSale ? 'true' : 'false'}]`;
+    }
     return res;
   },
 
@@ -752,17 +764,26 @@ export const db = {
     firstAmount?: number;
     nextAmount?: number;
     invoiceId?: string;
+    comercialId?: string;
+    comercialEmail?: string;
+    isInitialSale?: boolean;
   } {
     let cleanDesc = rawDesc || '';
     let paymentMethod: 'cash' | 'transfer' | undefined = undefined;
     let firstAmount: number | undefined = undefined;
     let nextAmount: number | undefined = undefined;
     let invoiceId: string | undefined = undefined;
+    let comercialId: string | undefined = undefined;
+    let comercialEmail: string | undefined = undefined;
+    let isInitialSale: boolean | undefined = undefined;
 
     const pmRegex = /\s*\[PM:(cash|transfer)\]/g;
     const faRegex = /\s*\[FA:([\d.]+)\]/g;
     const naRegex = /\s*\[NA:([\d.]+)\]/g;
     const invRegex = /\s*\[INV:([^\]]+)\]/g;
+    const comidRegex = /\s*\[COMID:([^\]]+)\]/g;
+    const comemailRegex = /\s*\[COMEMAIL:([^\]]+)\]/g;
+    const isinitRegex = /\s*\[ISINITIAL:(true|false)\]/g;
 
     let match;
     while ((match = pmRegex.exec(cleanDesc)) !== null) {
@@ -785,12 +806,30 @@ export const db = {
     }
     cleanDesc = cleanDesc.replace(invRegex, '');
 
+    while ((match = comidRegex.exec(cleanDesc)) !== null) {
+      comercialId = match[1];
+    }
+    cleanDesc = cleanDesc.replace(comidRegex, '');
+
+    while ((match = comemailRegex.exec(cleanDesc)) !== null) {
+      comercialEmail = match[1];
+    }
+    cleanDesc = cleanDesc.replace(comemailRegex, '');
+
+    while ((match = isinitRegex.exec(cleanDesc)) !== null) {
+      isInitialSale = match[1] === 'true';
+    }
+    cleanDesc = cleanDesc.replace(isinitRegex, '');
+
     return {
       description: cleanDesc.trim(),
       paymentMethod,
       firstAmount,
       nextAmount,
-      invoiceId
+      invoiceId,
+      comercialId,
+      comercialEmail,
+      isInitialSale
     };
   },
 
@@ -817,20 +856,26 @@ export const db = {
         paymentMethod: decoded.paymentMethod,
         firstAmount: decoded.firstAmount,
         nextAmount: decoded.nextAmount,
-        invoiceId: decoded.invoiceId
+        invoiceId: decoded.invoiceId,
+        comercialId: decoded.comercialId,
+        comercialEmail: decoded.comercialEmail,
+        isInitialSale: decoded.isInitialSale
       };
     });
   },
 
   async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
     const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
-    const { paymentMethod, firstAmount, nextAmount, invoiceId } = transaction;
+    const { paymentMethod, firstAmount, nextAmount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
 
     const encodedDesc = this._encodeDescription(description, {
       paymentMethod,
       firstAmount,
       nextAmount,
-      invoiceId
+      invoiceId,
+      comercialId,
+      comercialEmail,
+      isInitialSale
     });
 
     const payload = {
@@ -852,13 +897,16 @@ export const db = {
 
   async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
     const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
-    const { paymentMethod, firstAmount, nextAmount, invoiceId } = transaction;
+    const { paymentMethod, firstAmount, nextAmount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
 
     const encodedDesc = this._encodeDescription(description, {
       paymentMethod,
       firstAmount,
       nextAmount,
-      invoiceId
+      invoiceId,
+      comercialId,
+      comercialEmail,
+      isInitialSale
     });
 
     const payload = {
@@ -1513,22 +1561,56 @@ export const db = {
       console.warn('comerciales_accounts table read error:', error.message);
       throw error;
     }
-    return (data || []).map((row: any) => ({
-      ...row,
-      createdAt: row.created_at || new Date().toISOString()
-    })) as ComercialAccount[];
+    return (data || []).map((row: any) => {
+      let phone = row.phone || '';
+      let commissionPercentage = 10; // Default commission percentage is 10%
+      const commRegex = /\s*\[COMM:([\d.]+)\]/g;
+      const match = commRegex.exec(phone);
+      if (match) {
+        commissionPercentage = parseFloat(match[1]);
+      }
+      phone = phone.replace(commRegex, '').trim();
+
+      return {
+        ...row,
+        phone: phone || undefined,
+        commissionPercentage,
+        createdAt: row.created_at || new Date().toISOString()
+      };
+    }) as ComercialAccount[];
   },
 
   async insertComercialAccount(account: ComercialAccount, userId?: string): Promise<void> {
+    let phone = account.phone || '';
+    if (account.commissionPercentage !== undefined) {
+      phone += ` [COMM:${account.commissionPercentage}]`;
+    }
+
     const payload = {
       id: account.id,
       user_id: userId || null,
       name: account.name,
       email: account.email,
       password: account.password || null,
-      phone: account.phone || null
+      phone: phone || null
     };
     const { error } = await supabase.from('comerciales_accounts').insert(payload);
+    if (error) throw error;
+  },
+
+  async updateComercialAccount(account: ComercialAccount, userId?: string): Promise<void> {
+    let phone = account.phone || '';
+    if (account.commissionPercentage !== undefined) {
+      phone += ` [COMM:${account.commissionPercentage}]`;
+    }
+
+    const payload = {
+      name: account.name,
+      email: account.email,
+      password: account.password || null,
+      phone: phone || null
+    };
+    const { error } = await supabase.from('comerciales_accounts').update(payload).eq('id', account.id);
     if (error) throw error;
   },
 

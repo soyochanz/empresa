@@ -57,7 +57,7 @@ export interface CalendarEvent {
   time: string; // HH:MM
   duration?: string;
   type: 'Meeting' | 'Review' | 'Deadline' | 'Kickoff' | 'Other';
-  description: string;
+  description?: string;
   linkedContactId?: string;
   linkedContactName?: string;
   linkedContactIds?: string[];
@@ -70,6 +70,10 @@ export interface CalendarEvent {
   parentEventId?: string;
   color?: string;
   alias?: string;
+  comercialId?: string;
+  isAllComerciales?: boolean;
+  notes?: string;
+  isPrivate?: boolean;
 }
 
 export interface Note {
@@ -107,6 +111,9 @@ export interface FinanceTransaction {
   paymentMethod?: 'cash' | 'transfer'; // New: payment method 'cash' or 'transfer'
   firstAmount?: number; // Cost of the first occurrence
   nextAmount?: number;  // Cost of the subsequent occurrences
+  comercialId?: string; // New: associated commercial ID
+  comercialEmail?: string; // New: associated commercial email
+  isInitialSale?: boolean; // New: is initial acquisition sale
 }
 
 export interface InvoiceItem {
@@ -136,6 +143,9 @@ export interface Invoice {
   notes?: string;
   alias?: string;
   color?: string;
+  comercialId?: string; // New: associated commercial ID
+  comercialEmail?: string; // New: associated commercial email
+  isInitialSale?: boolean; // New: is initial acquisition sale
 }
 
 export interface ComercialAccount {
@@ -145,6 +155,7 @@ export interface ComercialAccount {
   password?: string;
   createdAt: string;
   phone?: string;
+  commissionPercentage?: number; // New: customizable commission percentage
 }
 
 export interface ComercialLead {

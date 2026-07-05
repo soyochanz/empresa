@@ -1,20 +1,66 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, Phone, Plus, Trash2, ArrowLeft, ShieldAlert, Check } from 'lucide-react';
-import { ComercialAccount, ComercialLead } from '../types';
+import { 
+  User, 
+  Mail, 
+  Lock, 
+  Phone, 
+  Plus, 
+  Trash2, 
+  ShieldAlert, 
+  Check, 
+  TrendingUp, 
+  DollarSign, 
+  Award, 
+  Activity, 
+  CheckCircle, 
+  BarChart3, 
+  Target, 
+  Briefcase, 
+  Percent, 
+  ChevronRight, 
+  Calendar, 
+  Users, 
+  PieChart, 
+  ArrowRight,
+  XCircle,
+  AlertCircle,
+  PhoneCall,
+  Layers,
+  Sparkles,
+  FileText
+} from 'lucide-react';
+import { ComercialAccount, ComercialLead, ColdCallingLead } from '../types';
 
 interface ComercialesAdminScreenProps {
   comercialesList: ComercialAccount[];
   leadsList: ComercialLead[];
+  coldLeads?: ColdCallingLead[];
+  finTransactions?: any[];
   onAddComercial: (comercial: ComercialAccount) => void;
+  onUpdateComercial: (account: ComercialAccount) => void;
   onDeleteComercial: (id: string) => void;
 }
+
+type TabType = 'general' | 'individual' | 'gestion';
 
 export default function ComercialesAdminScreen({
   comercialesList,
   leadsList,
+  coldLeads = [],
+  finTransactions = [],
   onAddComercial,
+  onUpdateComercial,
   onDeleteComercial
 }: ComercialesAdminScreenProps) {
+  // Tab control
+  const [activeTab, setActiveTab] = useState<TabType>('general');
+  
+  // Selection state for individual salesperson view
+  const [selectedComercialId, setSelectedComercialId] = useState<string>(
+    comercialesList[0]?.id || ''
+  );
+
+  // Form states for adding new commercial
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,6 +68,14 @@ export default function ComercialesAdminScreen({
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Auto-select first commercial if list changes and none selected
+  React.useEffect(() => {
+    if (comercialesList.length > 0 && (!selectedComercialId || !comercialesList.some(c => c.id === selectedComercialId))) {
+      setSelectedComercialId(comercialesList[0].id);
+    }
+  }, [comercialesList, selectedComercialId]);
+
+  // Form submit handler
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -29,7 +83,6 @@ export default function ComercialesAdminScreen({
 
     const emailTrim = email.trim().toLowerCase();
     
-    // Validations
     if (!name.trim()) {
       setErrorMsg('El nombre es requerido.');
       return;
@@ -64,227 +117,923 @@ export default function ComercialesAdminScreen({
     setPassword('');
     setPhone('');
 
+    // If it's the first commercial created, select it
+    if (comercialesList.length === 0) {
+      setSelectedComercialId(newComercial.id);
+    }
+
     setTimeout(() => {
       setSuccess(false);
     }, 3000);
   };
 
-  // Compute metrics per commercial
-  const getLeadsSummary = (comercialId: string) => {
-    const comLeads = leadsList.filter(l => l.comercialId === comercialId);
-    const wonLeads = comLeads.filter(l => l.status === 'Ganado');
-    const totalValue = wonLeads.reduce((sum, lead) => sum + (lead.value || 0), 0);
-    return {
-      totalLeads: comLeads.length,
-      conversionRate: comLeads.length ? Math.round((wonLeads.length / comLeads.length) * 100) : 0,
-      wonVolume: totalValue
-    };
+  // --- COMPUTE GLOBAL METRICS ---
+  const totalCRMLeads = leadsList.length;
+  const wonLeads = leadsList.filter(l => l.status === 'Ganado');
+  const totalVolumeWon = wonLeads.reduce((sum, l) => sum + (l.value || 0), 0);
+  
+  const activeLeads = leadsList.filter(l => ['Pendiente', 'Contactado', 'Negociación'].includes(l.status));
+  const activeValue = activeLeads.reduce((sum, l) => sum + (l.value || 0), 0);
+
+  const lostLeads = leadsList.filter(l => l.status === 'Perdido');
+  const globalConversionRate = totalCRMLeads > 0 
+    ? Math.round((wonLeads.length / totalCRMLeads) * 100) 
+    : 0;
+
+  // Status Distribution
+  const statusCounts = {
+    Pendiente: leadsList.filter(l => l.status === 'Pendiente').length,
+    Contactado: leadsList.filter(l => l.status === 'Contactado').length,
+    Negociación: leadsList.filter(l => l.status === 'Negociación').length,
+    Ganado: wonLeads.length,
+    Perdido: lostLeads.length
   };
+
+  // Temperature Distribution
+  const tempCounts = {
+    Caliente: leadsList.filter(l => l.temperature === 'Caliente').length,
+    Templado: leadsList.filter(l => l.temperature === 'Templado').length,
+    Frío: leadsList.filter(l => l.temperature === 'Frío').length,
+    SinAsignar: leadsList.filter(l => !l.temperature).length
+  };
+
+  // Cold Calling Stats
+  const totalColdLeads = coldLeads.length;
+  const coldLeadsAssigned = coldLeads.filter(l => l.assignedToEmail !== 'unassigned').length;
+  const totalCallsLogged = coldLeads.reduce((sum, l) => sum + (l.callsCount || 0), 0);
+  const coldContacted = coldLeads.filter(l => l.contacted === 'Sí').length;
+  const coldContactRate = totalColdLeads > 0 ? Math.round((coldContacted / totalColdLeads) * 100) : 0;
+
+  // Leaderboard of representatives
+  const leaderBoard = comercialesList.map(c => {
+    const comLeads = leadsList.filter(l => l.comercialId === c.id);
+    const comWon = comLeads.filter(l => l.status === 'Ganado');
+    const comWonVol = comWon.reduce((sum, l) => sum + (l.value || 0), 0);
+    const comConv = comLeads.length > 0 ? Math.round((comWon.length / comLeads.length) * 100) : 0;
+    
+    // Cold calling assignments
+    const comColdLeads = coldLeads.filter(l => l.assignedToEmail?.toLowerCase() === c.email.toLowerCase());
+    const comCallsCount = comColdLeads.reduce((sum, l) => sum + (l.callsCount || 0), 0);
+
+    return {
+      comercial: c,
+      totalLeads: comLeads.length,
+      wonLeads: comWon.length,
+      wonVolume: comWonVol,
+      conversionRate: comConv,
+      coldLeadsCount: comColdLeads.length,
+      callsCount: comCallsCount
+    };
+  }).sort((a, b) => b.wonVolume - a.wonVolume);
+
+  // --- COMPUTE INDIVIDUAL METRICS FOR SELECTED COMERCIAL ---
+  const currentComercial = comercialesList.find(c => c.id === selectedComercialId);
+  
+  const individualLeads = currentComercial 
+    ? leadsList.filter(l => l.comercialId === currentComercial.id) 
+    : [];
+  
+  const indWon = individualLeads.filter(l => l.status === 'Ganado');
+  const indLost = individualLeads.filter(l => l.status === 'Perdido');
+  const indActive = individualLeads.filter(l => ['Pendiente', 'Contactado', 'Negociación'].includes(l.status));
+  
+  const indWonVolume = indWon.reduce((sum, l) => sum + (l.value || 0), 0);
+  const indActiveVolume = indActive.reduce((sum, l) => sum + (l.value || 0), 0);
+
+  // Computed commission & benefits
+  const indCommissionPercentage = currentComercial?.commissionPercentage ?? 10;
+  const indInitialTxs = currentComercial ? finTransactions.filter(tx => 
+    tx.isInitialSale === true && 
+    (tx.comercialId === currentComercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === currentComercial.email.toLowerCase()))
+  ) : [];
+  const indInitialSalesVolume = indInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+  const indBenefitsEarned = indInitialSalesVolume * (indCommissionPercentage / 100);
+  
+  const indConversionRate = individualLeads.length > 0 
+    ? Math.round((indWon.length / individualLeads.length) * 100) 
+    : 0;
+
+  const indAverageDeal = indWon.length > 0 
+    ? Math.round(indWonVolume / indWon.length) 
+    : individualLeads.length > 0 
+      ? Math.round(individualLeads.reduce((sum, l) => sum + (l.value || 0), 0) / individualLeads.length)
+      : 0;
+
+  // Individual status distribution
+  const indStatusCounts = {
+    Pendiente: individualLeads.filter(l => l.status === 'Pendiente').length,
+    Contactado: individualLeads.filter(l => l.status === 'Contactado').length,
+    Negociación: individualLeads.filter(l => l.status === 'Negociación').length,
+    Ganado: indWon.length,
+    Perdido: indLost.length
+  };
+
+  // Individual temperature distribution
+  const indTempCounts = {
+    Caliente: individualLeads.filter(l => l.temperature === 'Caliente').length,
+    Templado: individualLeads.filter(l => l.temperature === 'Templado').length,
+    Frío: individualLeads.filter(l => l.temperature === 'Frío').length,
+  };
+
+  // Individual Cold Calling Stats
+  const indColdLeads = currentComercial 
+    ? coldLeads.filter(l => l.assignedToEmail?.toLowerCase() === currentComercial.email.toLowerCase())
+    : [];
+  const indColdCallsLogged = indColdLeads.reduce((sum, l) => sum + (l.callsCount || 0), 0);
+  const indColdContacted = indColdLeads.filter(l => l.contacted === 'Sí').length;
+  const indColdCallback = indColdLeads.filter(l => l.callbackScheduled === 'Sí').length;
 
   return (
     <div className="p-8 space-y-8 flex-1 overflow-y-auto bg-transparent text-slate-100 relative min-h-screen">
       
-      {/* Glow */}
-      <div className="absolute top-0 right-1/4 w-[25%] h-[25%] bg-amber-500/5 rounded-full blur-[110px] pointer-events-none" />
+      {/* Glow ambient background elements */}
+      <div className="absolute top-0 right-1/4 w-[35%] h-[35%] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-10 left-10 w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[110px] pointer-events-none" />
 
       {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-white/5 pb-4 gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-white/5 pb-5 gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white font-sans uppercase">
-            Gestión de Comerciales
+          <h2 className="text-2xl font-bold tracking-tight text-white font-sans uppercase flex items-center gap-2.5">
+            <Layers className="text-amber-500 w-6 h-6" />
+            <span>Métricas & Rendimiento Comercial</span>
           </h2>
           <p className="text-slate-400 text-xs mt-1.5 leading-relaxed font-light">
-            Crea, administra y supervisa las carteras de clientes y conversión de tu equipo de representantes de ventas.
+            Supervisa el embudo de ventas global, analiza el rendimiento individual de tus vendedores y gestiona los accesos del equipo.
           </p>
         </div>
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2 flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-[9px] text-amber-500 font-mono uppercase font-bold tracking-wider leading-none">Total Representantes</p>
-            <p className="text-lg font-bold text-white mt-1 leading-none">{comercialesList.length}</p>
-          </div>
+        
+        {/* Navigation Tabs */}
+        <div className="flex bg-slate-950/80 p-1 rounded-xl border border-white/10 select-none">
+          <button
+            onClick={() => setActiveTab('general')}
+            className={`px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all cursor-pointer ${
+              activeTab === 'general'
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            Métricas Generales
+          </button>
+          <button
+            onClick={() => setActiveTab('individual')}
+            className={`px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all cursor-pointer ${
+              activeTab === 'individual'
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            Métricas Individuales
+          </button>
+          <button
+            onClick={() => setActiveTab('gestion')}
+            className={`px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all cursor-pointer ${
+              activeTab === 'gestion'
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            Gestión de Cuentas
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* Left Side: Create form */}
-        <div className="lg:col-span-4 bg-white/[0.03] border border-white/10 rounded-2xl p-6 relative overflow-hidden backdrop-blur-xl">
-          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
-          <h3 className="font-bold text-sm text-white mb-4 flex items-center gap-2">
-            <User className="text-amber-500 w-4 h-4" />
-            <span>Crear Nueva Cuenta</span>
-          </h3>
-
-          {errorMsg && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-xs mb-4 text-left">
-              {errorMsg}
+      {/* TAB 1: GENERAL METRICS */}
+      {activeTab === 'general' && (
+        <div className="space-y-8 animate-fade-in">
+          {/* TOP KPI Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            
+            <div className="bg-slate-950/40 border border-white/5 hover:border-white/10 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md transition-all">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Volumen Ganado Total</span>
+                  <p className="text-2xl font-mono font-extrabold text-amber-400">
+                    {totalVolumeWon.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-3 font-mono flex items-center gap-1">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                <span>De {wonLeads.length} leads marcados como Ganados</span>
+              </p>
             </div>
-          )}
 
-          {success && (
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300 text-xs mb-4 text-left flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-400" />
-              <span>¡Cuenta de comercial creada correctamente!</span>
+            <div className="bg-slate-950/40 border border-white/5 hover:border-white/10 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md transition-all">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Leads en Embudo (CRM)</span>
+                  <p className="text-2xl font-mono font-extrabold text-white">
+                    {totalCRMLeads}
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                  <Target className="w-5 h-5" />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-3 font-mono flex items-center justify-between">
+                <span>Activos en curso: <strong className="text-blue-400">{activeLeads.length}</strong></span>
+                <span>({activeValue.toLocaleString('es-ES')} €)</span>
+              </p>
             </div>
-          )}
 
-          <form onSubmit={handleCreate} className="space-y-4 text-left">
-            {/* Name */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Nombre Completo</label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej. José Manuel"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
-                />
+            <div className="bg-slate-950/40 border border-white/5 hover:border-white/10 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md transition-all">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Tasa Conversión Global</span>
+                  <p className="text-2xl font-mono font-extrabold text-emerald-400">
+                    {globalConversionRate}%
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  <Percent className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="w-full bg-slate-900 h-1.5 rounded-full mt-3.5 overflow-hidden">
+                <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${globalConversionRate}%` }} />
               </div>
             </div>
 
-            {/* Email */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Correo Electrónico</label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
-                <input
-                  type="email"
-                  required
-                  placeholder="comercial@althera.io"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
-                />
+            <div className="bg-slate-950/40 border border-white/5 hover:border-white/10 rounded-2xl p-5 relative overflow-hidden backdrop-blur-md transition-all">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 rounded-full blur-2xl pointer-events-none" />
+              <div className="flex justify-between items-start">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Actividad Puerta Fría</span>
+                  <p className="text-2xl font-mono font-extrabold text-violet-400">
+                    {totalCallsLogged}
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400">
+                  <PhoneCall className="w-5 h-5" />
+                </div>
               </div>
+              <p className="text-[10px] text-slate-400 mt-3 font-mono flex items-center justify-between">
+                <span>Leads asignados: <strong className="text-violet-400">{coldLeadsAssigned}</strong></span>
+                <span>Contacto: <strong>{coldContactRate}%</strong></span>
+              </p>
             </div>
 
-            {/* Password */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Contraseña de Acceso</label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Contraseña inicial del comercial"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
-                />
+          </div>
+
+          {/* Leaderboard & Pipeline Breakdown Columns */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            {/* Sales leaderboard */}
+            <div className="lg:col-span-7 bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-xl relative">
+              <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-amber-500/15 to-transparent" />
+              
+              <div className="flex justify-between items-center mb-5">
+                <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                  <Award className="text-amber-500 w-4.5 h-4.5" />
+                  <span>Ranking de Comerciales</span>
+                </h3>
+                <span className="text-[9px] font-mono text-slate-500 uppercase">Ordenado por volumen ganado</span>
               </div>
+
+              {leaderBoard.length === 0 ? (
+                <div className="text-center py-12 text-slate-500 text-xs">
+                  No hay comerciales registrados para construir el ranking.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {leaderBoard.map((item, index) => (
+                    <div 
+                      key={item.comercial.id} 
+                      onClick={() => {
+                        setSelectedComercialId(item.comercial.id);
+                        setActiveTab('individual');
+                      }}
+                      className="bg-[#04040a] border border-white/5 hover:border-amber-500/30 p-3 rounded-xl flex items-center justify-between transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Position Badge */}
+                        <div className={`w-6 h-6 rounded-lg font-mono text-xs font-bold flex items-center justify-center ${
+                          index === 0 ? 'bg-amber-500 text-slate-950' :
+                          index === 1 ? 'bg-slate-300 text-slate-950' :
+                          index === 2 ? 'bg-amber-800 text-amber-100' :
+                          'bg-slate-900 text-slate-400 border border-white/5'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-xs group-hover:text-amber-300 transition-colors">{item.comercial.name}</span>
+                            {index === 0 && (
+                              <Sparkles className="w-3 h-3 text-amber-400 animate-pulse" />
+                            )}
+                          </div>
+                          <span className="text-[9px] font-mono text-slate-500 block">{item.comercial.email}</span>
+                        </div>
+                      </div>
+
+                      {/* Summary Metrics inline */}
+                      <div className="flex items-center gap-8 text-right">
+                        <div className="hidden sm:block">
+                          <span className="block text-[8px] font-mono text-slate-500 uppercase">Eficiencia</span>
+                          <span className="text-[11px] font-mono font-bold text-emerald-400">{item.conversionRate}% Conv.</span>
+                        </div>
+                        <div className="hidden sm:block">
+                          <span className="block text-[8px] font-mono text-slate-500 uppercase">Embudo (Leads)</span>
+                          <span className="text-[11px] font-mono font-bold text-slate-300">{item.totalLeads} gestionados</span>
+                        </div>
+                        <div>
+                          <span className="block text-[8px] font-mono text-slate-500 uppercase">Volumen Cerrado</span>
+                          <span className="text-xs font-mono font-extrabold text-amber-400">
+                            {item.wonVolume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Phone */}
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Teléfono (Opcional)</label>
-              <div className="relative">
-                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="+34 600 000 000"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
-                />
+            {/* Visual metrics panel: Status & Temperature charts */}
+            <div className="lg:col-span-5 bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-xl space-y-6">
+              
+              {/* Funnel Distribution Bar */}
+              <div>
+                <h3 className="font-bold text-xs text-white mb-3.5 flex items-center gap-2">
+                  <BarChart3 className="text-blue-400 w-4 h-4" />
+                  <span>Distribución del Embudo (Estados)</span>
+                </h3>
+                
+                <div className="space-y-3 font-sans">
+                  {Object.entries(statusCounts).map(([status, count]) => {
+                    const pct = totalCRMLeads > 0 ? Math.round((count / totalCRMLeads) * 100) : 0;
+                    let colorClass = 'bg-slate-500';
+                    let textClass = 'text-slate-400';
+                    if (status === 'Ganado') { colorClass = 'bg-emerald-500'; textClass = 'text-emerald-400'; }
+                    if (status === 'Perdido') { colorClass = 'bg-rose-500'; textClass = 'text-rose-400'; }
+                    if (status === 'Negociación') { colorClass = 'bg-amber-500'; textClass = 'text-amber-400'; }
+                    if (status === 'Contactado') { colorClass = 'bg-blue-500'; textClass = 'text-blue-400'; }
+
+                    return (
+                      <div key={status} className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-mono">
+                          <span className={`font-bold ${textClass}`}>{status}</span>
+                          <span className="text-slate-400">{count} leads ({pct}%)</span>
+                        </div>
+                        <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* Temperature block */}
+              <div className="pt-4 border-t border-white/5">
+                <h3 className="font-bold text-xs text-white mb-3 flex items-center gap-2">
+                  <Activity className="text-amber-400 w-4 h-4" />
+                  <span>Interés / Temperatura del Lead</span>
+                </h3>
+                
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-xl text-center">
+                    <span className="block text-[8px] font-mono text-rose-400 font-bold uppercase">Caliente</span>
+                    <span className="text-sm font-mono font-extrabold text-white block mt-0.5">{tempCounts.Caliente}</span>
+                    <span className="text-[8px] text-slate-500 font-mono block">Seguimiento prioritario</span>
+                  </div>
+                  <div className="bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-xl text-center">
+                    <span className="block text-[8px] font-mono text-amber-400 font-bold uppercase">Templado</span>
+                    <span className="text-sm font-mono font-extrabold text-white block mt-0.5">{tempCounts.Templado}</span>
+                    <span className="text-[8px] text-slate-500 font-mono block">En negociación</span>
+                  </div>
+                  <div className="bg-blue-500/10 border border-blue-500/20 p-2.5 rounded-xl text-center">
+                    <span className="block text-[8px] font-mono text-blue-400 font-bold uppercase">Frío</span>
+                    <span className="text-sm font-mono font-extrabold text-white block mt-0.5">{tempCounts.Frío}</span>
+                    <span className="text-[8px] text-slate-500 font-mono block">Prospección inicial</span>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
-            <button
-              type="submit"
-              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3.5 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/5 mt-6"
-            >
-              <Plus className="w-4 h-4 text-slate-950" />
-              <span>Registrar Comercial</span>
-            </button>
-          </form>
+          </div>
         </div>
+      )}
 
-        {/* Right Side: List of commercials */}
-        <div className="lg:col-span-8 space-y-4">
-          <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-            <h3 className="font-bold text-sm text-white mb-4 text-left">Representantes Autorizados</h3>
-
-            {comercialesList.length === 0 ? (
-              <div className="text-center py-14 bg-black/20 border border-white/5 rounded-2xl p-6">
-                <ShieldAlert className="w-10 h-10 text-amber-500/40 mx-auto mb-3" />
-                <p className="text-slate-400 text-xs font-semibold">No hay comerciales registrados.</p>
-                <p className="text-[10px] text-slate-500 max-w-sm mx-auto mt-1 leading-normal">
-                  Utiliza el panel lateral izquierdo para registrar una cuenta con email y contraseña para tus agentes comerciales.
-                </p>
+      {/* TAB 2: INDIVIDUAL SALESPERSON DETAILED METRICS */}
+      {activeTab === 'individual' && (
+        <div className="space-y-6 animate-fade-in">
+          
+          {/* Salesperson Selector */}
+          <div className="bg-slate-950/50 p-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-amber-500/10 rounded-xl border border-amber-500/20 text-amber-400">
+                <Users className="w-5 h-5" />
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-350">
-                  <thead>
-                    <tr className="border-b border-white/5 text-slate-400 uppercase font-mono font-bold tracking-wider text-[10px]">
-                      <th className="pb-3.5 pl-2">Comercial</th>
-                      <th className="pb-3.5">Contacto / Teléfono</th>
-                      <th className="pb-3.5 text-center">Leads Totales</th>
-                      <th className="pb-3.5 text-center">Tasa Conversión</th>
-                      <th className="pb-3.5 text-right">Volumen Cerrado</th>
-                      <th className="pb-3.5 pr-2 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 font-sans">
-                    {comercialesList.map(c => {
-                      const summary = getLeadsSummary(c.id);
-                      return (
-                        <tr key={c.id} className="hover:bg-white/[0.02] transition-colors group">
-                          <td className="py-4 pl-2">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center font-bold text-amber-400 text-[11px]">
-                                {c.name.slice(0, 2).toUpperCase()}
-                              </div>
-                              <div>
-                                <p className="font-bold text-white text-xs">{c.name}</p>
-                                <p className="text-[9px] font-mono text-slate-500 mt-0.5 uppercase tracking-wide">
-                                  Contraseña: <strong className="text-slate-450">{c.password}</strong>
-                                </p>
-                              </div>
+              <div>
+                <span className="block text-[9px] font-mono text-slate-500 uppercase font-bold">Seleccionar Representante para Análisis</span>
+                <p className="text-xs text-slate-400 mt-0.5 font-light">Explora las tasas de conversión, volumen de ventas y leads de un comercial específico.</p>
+              </div>
+            </div>
+
+            <select
+              value={selectedComercialId}
+              onChange={(e) => setSelectedComercialId(e.target.value)}
+              className="bg-[#05050a] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-amber-500 outline-none cursor-pointer max-w-xs font-mono font-bold"
+            >
+              {comercialesList.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.email})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {comercialesList.length === 0 ? (
+            <div className="text-center py-20 bg-white/[0.01] border border-white/5 rounded-2xl">
+              <ShieldAlert className="w-12 h-12 text-amber-500/40 mx-auto mb-3" />
+              <p className="text-slate-400 text-xs font-semibold">No hay comerciales disponibles para inspeccionar.</p>
+              <p className="text-[10px] text-slate-500 max-w-sm mx-auto mt-1 leading-normal">
+                Ve a la pestaña "Gestión de Cuentas" para añadir representantes de ventas.
+              </p>
+            </div>
+          ) : !currentComercial ? (
+            <div className="text-center py-20 text-slate-500 text-xs">
+              Por favor selecciona un comercial válido.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              
+              {/* Profile Card & KPI Block */}
+              <div className="lg:col-span-4 space-y-6">
+                
+                {/* Visual Avatar Card */}
+                <div className="bg-gradient-to-tr from-slate-950/60 via-slate-950/30 to-[#10101f]/30 border border-white/5 rounded-2xl p-6 relative overflow-hidden backdrop-blur-xl text-center">
+                  <div className="absolute top-0 right-0 w-28 h-28 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center font-black text-amber-400 text-xl mx-auto shadow-lg">
+                    {currentComercial.name.slice(0, 2).toUpperCase()}
+                  </div>
+
+                  <h3 className="font-bold text-base text-white mt-4">{currentComercial.name}</h3>
+                  <p className="text-[10px] font-mono text-slate-400 mt-1">{currentComercial.email}</p>
+                  
+                  {currentComercial.phone && (
+                    <p className="text-[10px] text-slate-500 font-mono mt-1">{currentComercial.phone}</p>
+                  )}
+
+                  <div className="mt-4 pt-4 border-t border-white/5 text-left space-y-2.5">
+                    <div className="flex justify-between items-center text-[10px] font-mono">
+                      <span className="text-slate-500">Miembro desde:</span>
+                      <span className="text-slate-300">
+                        {currentComercial.createdAt ? new Date(currentComercial.createdAt).toLocaleDateString('es-ES') : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] font-mono">
+                      <span className="text-slate-500">ID de Sistema:</span>
+                      <span className="text-slate-400 font-mono">{currentComercial.id}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Performance stats column */}
+                <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-5 space-y-4">
+                  <h4 className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-extrabold">KPIs Clave de Venta</h4>
+                  
+                  <div className="space-y-3.5">
+                    <div className="bg-[#030307] p-3 rounded-xl border border-white/5 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono text-slate-500 uppercase block">Volumen Cerrado (Ganado)</span>
+                        <span className="text-base font-mono font-black text-amber-400 mt-0.5 block">
+                          {indWonVolume.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">
+                        {indWon.length} Cerrados
+                      </span>
+                    </div>
+
+                    <div className="bg-[#030307] p-3 rounded-xl border border-white/5 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono text-slate-500 uppercase block">Tasa de Conversión</span>
+                        <span className="text-base font-mono font-black text-emerald-400 mt-0.5 block">
+                          {indConversionRate}%
+                        </span>
+                      </div>
+                      <div className="w-12 bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${indConversionRate}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="bg-[#030307] p-3 rounded-xl border border-white/5 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono text-slate-500 uppercase block">Ticket Promedio Estimado</span>
+                        <span className="text-base font-mono font-black text-slate-200 mt-0.5 block">
+                          {indAverageDeal.toLocaleString('es-ES')} €
+                        </span>
+                      </div>
+                      <span className="p-1 rounded-lg bg-white/5 border border-white/5 text-slate-400">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+
+                    <div className="bg-[#030307] p-3 rounded-xl border border-white/5 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono text-slate-500 uppercase block">Pipeline Activo en Trámite</span>
+                        <span className="text-base font-mono font-black text-blue-400 mt-0.5 block">
+                          {indActiveVolume.toLocaleString('es-ES')} €
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-bold">
+                        {indActive.length} Leads
+                      </span>
+                    </div>
+
+                    <div className="bg-amber-500/5 p-3 rounded-xl border border-amber-500/10 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono text-amber-500/70 uppercase block">Porcentaje de Comisión</span>
+                        <span className="text-base font-mono font-black text-amber-400 mt-0.5 block">
+                          {indCommissionPercentage}%
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-bold">
+                        Ajustable
+                      </span>
+                    </div>
+
+                    <div className="bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono text-emerald-400/70 uppercase block">Beneficios Ganados (Comisión)</span>
+                        <span className="text-base font-mono font-black text-emerald-400 mt-0.5 block">
+                          {indBenefitsEarned.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">
+                        De {indInitialSalesVolume.toLocaleString('es-ES')} €
+                      </span>
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* CRM Funnel, Temperatures, Cold calling and CRM leads lists */}
+              <div className="lg:col-span-8 space-y-6">
+                
+                {/* Visual statistics pipeline & Cold calling grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
+                  {/* Funnel distribution bar chart */}
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-3.5">
+                    <h4 className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-extrabold flex items-center gap-2">
+                      <PieChart className="w-4 h-4 text-emerald-400" />
+                      <span>Embudo de Ventas Individual</span>
+                    </h4>
+
+                    <div className="space-y-3 font-sans">
+                      {Object.entries(indStatusCounts).map(([status, count]) => {
+                        const pct = individualLeads.length > 0 ? Math.round((count / individualLeads.length) * 100) : 0;
+                        let colorClass = 'bg-slate-500';
+                        let textClass = 'text-slate-400';
+                        if (status === 'Ganado') { colorClass = 'bg-emerald-500'; textClass = 'text-emerald-400'; }
+                        if (status === 'Perdido') { colorClass = 'bg-rose-500'; textClass = 'text-rose-400'; }
+                        if (status === 'Negociación') { colorClass = 'bg-amber-500'; textClass = 'text-amber-400'; }
+                        if (status === 'Contactado') { colorClass = 'bg-blue-500'; textClass = 'text-blue-400'; }
+
+                        return (
+                          <div key={status} className="space-y-1">
+                            <div className="flex justify-between text-[10px] font-mono">
+                              <span className={`font-bold ${textClass}`}>{status}</span>
+                              <span className="text-slate-400">{count} leads ({pct}%)</span>
                             </div>
-                          </td>
-                          <td className="py-4">
-                            <p className="font-medium text-slate-300">{c.email}</p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">{c.phone || 'Sin número'}</p>
-                          </td>
-                          <td className="py-4 text-center">
-                            <span className="font-mono font-bold text-slate-200">{summary.totalLeads}</span>
-                          </td>
-                          <td className="py-4 text-center">
-                            <span className="font-mono font-bold text-emerald-400">{summary.conversionRate}%</span>
-                          </td>
-                          <td className="py-4 text-right">
-                            <span className="font-mono font-bold text-amber-400">
-                              {summary.wonVolume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-                            </span>
-                          </td>
-                          <td className="py-4 text-right pr-2">
-                            <button
-                              onClick={() => {
-                                if (confirm(`¿Estás seguro de que deseas revocar el acceso y eliminar la cuenta de ${c.name}?`)) {
-                                  onDeleteComercial(c.id);
-                                }
-                              }}
-                              className="text-slate-500 hover:text-red-400 p-1.5 hover:bg-red-500/10 rounded-lg transition-all group-hover:scale-105 cursor-pointer"
-                              title="Revocar acceso"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Cold calling & Temperature */}
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-4">
+                    <h4 className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-extrabold flex items-center gap-2">
+                      <PhoneCall className="w-4 h-4 text-violet-400" />
+                      <span>Rendimiento en Puerta Fría</span>
+                    </h4>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
+                        <span className="text-[8px] font-mono text-slate-500 block uppercase font-bold">Asignados</span>
+                        <span className="text-lg font-mono font-extrabold text-white block mt-0.5">{indColdLeads.length}</span>
+                        <span className="text-[8px] text-slate-500 font-mono block">Negocios asignados</span>
+                      </div>
+                      <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
+                        <span className="text-[8px] font-mono text-slate-500 block uppercase font-bold">Llamadas Realizadas</span>
+                        <span className="text-lg font-mono font-extrabold text-white block mt-0.5">{indColdCallsLogged}</span>
+                        <span className="text-[8px] text-slate-500 font-mono block">Intentos/Seguimientos</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2.5 border-t border-white/5 space-y-2">
+                      <div className="flex justify-between items-center text-[10px] font-mono">
+                        <span className="text-slate-400">Tasa de Contacto:</span>
+                        <span className="font-bold text-slate-200">
+                          {indColdLeads.length > 0 ? Math.round((indColdContacted / indColdLeads.length) * 100) : 0}% 
+                          ({indColdContacted} exitosos)
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px] font-mono">
+                        <span className="text-slate-400">Citas/Callbacks Agendadas:</span>
+                        <span className="font-bold text-violet-400">{indColdCallback} agendadas</span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* CRM Leads Table of this specific representative */}
+                <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5">
+                  <h4 className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-extrabold mb-4 flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-amber-500" />
+                    <span>Cartera de Clientes & Oportunidades ({individualLeads.length})</span>
+                  </h4>
+
+                  {individualLeads.length === 0 ? (
+                    <div className="text-center py-10 bg-[#020205] rounded-xl border border-white/5 text-slate-500 text-xs">
+                      Este comercial no tiene leads asociados en su embudo.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs text-slate-350">
+                        <thead>
+                          <tr className="border-b border-white/5 text-slate-500 uppercase font-mono text-[9px]">
+                            <th className="pb-2">Contacto / Empresa</th>
+                            <th className="pb-2 text-center">Interés</th>
+                            <th className="pb-2 text-center">Estado</th>
+                            <th className="pb-2 text-right">Valor Estimado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {individualLeads.map(l => (
+                            <tr key={l.id} className="hover:bg-white/[0.01] transition-colors">
+                              <td className="py-2.5">
+                                <p className="font-bold text-white text-xs">{l.name}</p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">{l.company || 'Sin Empresa'}</p>
+                              </td>
+                              <td className="py-2.5 text-center">
+                                <span className={`text-[9px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                                  l.temperature === 'Caliente' ? 'bg-rose-500/10 text-rose-400' :
+                                  l.temperature === 'Templado' ? 'bg-amber-500/10 text-amber-400' :
+                                  'bg-blue-500/10 text-blue-400'
+                                }`}>
+                                  {l.temperature || 'Frío'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 text-center">
+                                <span className={`text-[9px] font-mono px-2 py-0.5 rounded font-semibold ${
+                                  l.status === 'Ganado' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' :
+                                  l.status === 'Perdido' ? 'bg-rose-500/15 text-rose-400 border border-rose-500/20' :
+                                  l.status === 'Negociación' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' :
+                                  'bg-slate-800 text-slate-400 border border-slate-700'
+                                }`}>
+                                  {l.status}
+                                </span>
+                              </td>
+                              <td className="py-2.5 text-right font-mono font-bold text-white">
+                                {l.value ? `${l.value.toLocaleString('es-ES')} €` : '0.00 €'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* TAB 3: MANAGEMENT (AUTHORIZED ACCOUNTS TABLE + CREATION FORM) */}
+      {activeTab === 'gestion' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fade-in">
+          
+          {/* Left Side: Create account form */}
+          <div className="lg:col-span-4 bg-white/[0.02] border border-white/5 rounded-2xl p-6 relative overflow-hidden backdrop-blur-xl">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
+            <h3 className="font-bold text-sm text-white mb-4 flex items-center gap-2">
+              <User className="text-amber-500 w-4 h-4" />
+              <span>Registrar Representante</span>
+            </h3>
+
+            {errorMsg && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-xs mb-4 text-left">
+                {errorMsg}
               </div>
             )}
-          </div>
-        </div>
 
-      </div>
+            {success && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-300 text-xs mb-4 text-left flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span>¡Comercial registrado con éxito!</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreate} className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Nombre Completo</label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej. Carlos Fuentes"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Correo Electrónico</label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+                  <input
+                    type="email"
+                    required
+                    placeholder="comercial@agency.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Contraseña de Acceso</label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contraseña del comercial"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Teléfono (Opcional)</label>
+                <div className="relative">
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="+34 600 000 000"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full bg-[#050505] border border-white/5 focus:border-amber-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-650 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg mt-6"
+              >
+                <Plus className="w-4 h-4 text-slate-950" />
+                <span>Registrar Comercial</span>
+              </button>
+            </form>
+          </div>
+
+          {/* Right Side: List of commercials with revoke button */}
+          <div className="lg:col-span-8 space-y-4">
+            <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-6 backdrop-blur-xl">
+              <h3 className="font-bold text-sm text-white mb-4 text-left">Representantes Autorizados</h3>
+
+              {comercialesList.length === 0 ? (
+                <div className="text-center py-14 bg-black/20 border border-white/5 rounded-2xl p-6">
+                  <ShieldAlert className="w-10 h-10 text-amber-500/40 mx-auto mb-3" />
+                  <p className="text-slate-400 text-xs font-semibold">No hay comerciales registrados.</p>
+                  <p className="text-[10px] text-slate-500 max-w-sm mx-auto mt-1 leading-normal">
+                    Utiliza el panel lateral izquierdo para registrar una cuenta con email y contraseña.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-350">
+                    <thead>
+                      <tr className="border-b border-white/5 text-slate-400 uppercase font-mono font-bold tracking-wider text-[10px]">
+                        <th className="pb-3 pl-2">Comercial</th>
+                        <th className="pb-3">Contacto / Teléfono</th>
+                        <th className="pb-3 text-center">Leads</th>
+                        <th className="pb-3 text-right">Volumen</th>
+                        <th className="pb-3 text-center">% Comisión</th>
+                        <th className="pb-3 text-right">Beneficios</th>
+                        <th className="pb-3 pr-2 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 font-sans">
+                      {comercialesList.map(c => {
+                        const summary = leaderBoard.find(item => item.comercial.id === c.id) || { totalLeads: 0, wonVolume: 0 };
+                        
+                        // Calculate commissions & benefits
+                        const initialTxsForC = finTransactions.filter(tx => 
+                          tx.isInitialSale === true && 
+                          (tx.comercialId === c.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === c.email.toLowerCase()))
+                        );
+                        const initialSalesVol = initialTxsForC.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                        const commissionPct = c.commissionPercentage ?? 10;
+                        const benefitsEarned = initialSalesVol * (commissionPct / 100);
+
+                        return (
+                          <tr key={c.id} className="hover:bg-white/[0.01] transition-colors group">
+                            <td className="py-4 pl-2">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center font-bold text-amber-400 text-[11px]">
+                                  {c.name.slice(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-white text-xs">{c.name}</p>
+                                  <p className="text-[9px] font-mono text-slate-500 mt-0.5 uppercase tracking-wide">
+                                    Contraseña: <strong className="text-slate-400">{c.password}</strong>
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4">
+                              <p className="font-medium text-slate-300">{c.email}</p>
+                              <p className="text-[10px] text-slate-500 mt-0.5">{c.phone || 'Sin número'}</p>
+                            </td>
+                            <td className="py-4 text-center">
+                              <span className="font-mono font-bold text-slate-200">{summary.totalLeads}</span>
+                            </td>
+                            <td className="py-4 text-right">
+                              <span className="font-mono font-bold text-amber-400">
+                                {summary.wonVolume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
+                              </span>
+                            </td>
+                            <td className="py-4 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={commissionPct}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    onUpdateComercial({ ...c, commissionPercentage: val });
+                                  }}
+                                  className="w-14 bg-[#05050a] border border-white/10 rounded-lg px-2 py-1 text-center font-mono text-xs font-bold text-amber-400 focus:border-amber-500 outline-none"
+                                />
+                                <span className="text-slate-500 font-mono text-xs">%</span>
+                              </div>
+                            </td>
+                            <td className="py-4 text-right">
+                              <div>
+                                <span className="font-mono font-bold text-emerald-400">
+                                  {benefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
+                                </span>
+                                <span className="block text-[8px] font-mono text-slate-500">De {initialSalesVol.toLocaleString('es-ES')} €</span>
+                              </div>
+                            </td>
+                            <td className="py-4 text-right pr-2">
+                              <button
+                                onClick={() => {
+                                  if (confirm(`¿Estás seguro de que deseas revocar el acceso y eliminar la cuenta de ${c.name}?`)) {
+                                    onDeleteComercial(c.id);
+                                  }
+                                }}
+                                className="text-slate-500 hover:text-red-400 p-1.5 hover:bg-red-500/10 rounded-lg transition-all group-hover:scale-105 cursor-pointer"
+                                title="Revocar acceso"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 }

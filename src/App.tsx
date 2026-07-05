@@ -1053,6 +1053,20 @@ export default function App() {
     }
   };
 
+  const handleUpdateComercialAccount = async (updated: ComercialAccount) => {
+    setComercialesList(prev => prev.map(c => c.id === updated.id ? updated : c));
+    if (currentComercial && currentComercial.id === updated.id) {
+      setCurrentComercial(updated);
+    }
+    if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+      try {
+        await db.updateComercialAccount(updated, currentUser?.id || undefined);
+      } catch (err) {
+        console.error('Supabase failed to update comercial account:', err);
+      }
+    }
+  };
+
   const handleDeleteComercialAccount = async (id: string) => {
     setComercialesList(prev => prev.filter(c => c.id !== id));
     setLeadsList(prev => prev.filter(l => l.comercialId !== id));
@@ -1249,6 +1263,7 @@ export default function App() {
             onNavigate={navigateTo}
             usersList={usersList}
             onAddProfile={handleUpsertProfile}
+            comercialesList={comercialesList}
           />
         );
       case 'crm':
@@ -1291,6 +1306,7 @@ export default function App() {
           <FinanceScreen 
             contacts={contacts}
             onNavigate={navigateTo}
+            comercialesList={comercialesList}
           />
         );
       case 'contactos':
@@ -1307,6 +1323,7 @@ export default function App() {
             onDeleteEvent={handleDeleteEvent}
             usersList={usersList}
             onAddProfile={handleUpsertProfile}
+            comercialesList={comercialesList}
           />
         );
       case 'contratos':
@@ -1321,7 +1338,10 @@ export default function App() {
           <ComercialesAdminScreen
             comercialesList={comercialesList}
             leadsList={leadsList}
+            coldLeads={coldLeads}
+            finTransactions={finTransactions}
             onAddComercial={handleAddComercialAccount}
+            onUpdateComercial={handleUpdateComercialAccount}
             onDeleteComercial={handleDeleteComercialAccount}
           />
         );
@@ -1451,6 +1471,12 @@ export default function App() {
             onAddColdLead={handleAddColdLead}
             onUpdateColdLead={handleUpdateColdLead}
             onDeleteColdLead={handleDeleteColdLead}
+            events={events}
+            onAddEvent={handleAddEvent}
+            onUpdateEvent={handleUpdateEvent}
+            onDeleteEvent={handleDeleteEvent}
+            usersList={usersList}
+            finTransactions={finTransactions}
           />
         </motion.div>
       </AnimatePresence>

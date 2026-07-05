@@ -18,9 +18,11 @@ import {
   TrendingDown,
   CheckCircle,
   FileSpreadsheet,
-  Phone
+  Phone,
+  Video,
+  ExternalLink
 } from 'lucide-react';
-import { ComercialAccount, ComercialLead, ColdCallingLead } from '../types';
+import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent } from '../types';
 import ColdCallingScreen from './ColdCallingScreen';
 
 interface ComercialesPanelScreenProps {
@@ -37,6 +39,13 @@ interface ComercialesPanelScreenProps {
   onAddColdLead: (lead: ColdCallingLead) => void;
   onUpdateColdLead: (lead: ColdCallingLead) => void;
   onDeleteColdLead: (id: string) => void;
+
+  events: CalendarEvent[];
+  onAddEvent: (event: CalendarEvent) => void;
+  onUpdateEvent: (event: CalendarEvent) => void;
+  onDeleteEvent: (id: string) => void;
+  usersList: any[];
+  finTransactions?: any[];
 }
 
 export default function ComercialesPanelScreen({
@@ -52,7 +61,14 @@ export default function ComercialesPanelScreen({
   comercialesList,
   onAddColdLead,
   onUpdateColdLead,
-  onDeleteColdLead
+  onDeleteColdLead,
+  
+  events,
+  onAddEvent,
+  onUpdateEvent,
+  onDeleteEvent,
+  usersList,
+  finTransactions = []
 }: ComercialesPanelScreenProps) {
   // Local state
   const [activeView, setActiveView] = useState<'pipeline' | 'cold_calling'>('pipeline');
@@ -60,6 +76,57 @@ export default function ComercialesPanelScreen({
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showAddModal, setShowAddModal] = useState(false);
   const [leadTemperature, setLeadTemperature] = useState<'Frío' | 'Templado' | 'Caliente'>('Frío');
+
+  // Quick Call Logging states on Dashboard
+  const [activeLoggerLeadId, setActiveLoggerLeadId] = useState<string | null>(null);
+  const [quickLogNotes, setQuickLogNotes] = useState('');
+  const [quickLogResult, setQuickLogResult] = useState('Responde');
+  const [quickLogTemp, setQuickLogTemp] = useState<'Frío' | 'Templado' | 'Caliente'>('Templado');
+  const [quickLogScheduled, setQuickLogScheduled] = useState<string>('Llamada hecha');
+  const [quickLogCallbackDate, setQuickLogCallbackDate] = useState('');
+  const [quickLogCallbackTime, setQuickLogCallbackTime] = useState('10:00');
+
+  const handleSaveQuickCallLog = (lead: ColdCallingLead) => {
+    if (quickLogScheduled === 'Llamar más tarde' && !quickLogCallbackDate) {
+      alert('Por favor indica una fecha para posponer la llamada.');
+      return;
+    }
+
+    const currentNotes = quickLogNotes.trim() || 'Llamada realizada (Dashboard rápido).';
+    const newLogItem = {
+      id: 'log_' + Math.random().toString(36).substring(2, 9),
+      date: new Date().toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      notes: currentNotes,
+      result: `Resultado: ${quickLogResult} | Agendada: ${quickLogScheduled}`
+    };
+
+    const updatedLogs = [newLogItem, ...(lead.callsLog || [])];
+
+    const updatedLead: ColdCallingLead = {
+      ...lead,
+      contacted: quickLogResult === 'No responde' ? 'No' : 'Sí',
+      answered: quickLogResult === 'No responde' ? 'No' : 'Sí',
+      temperature: quickLogTemp,
+      callbackScheduled: quickLogScheduled === 'Llamar más tarde' ? 'Llamar más tarde' : 'No',
+      callbackDate: quickLogScheduled === 'Llamar más tarde' ? quickLogCallbackDate : undefined,
+      callbackTime: quickLogScheduled === 'Llamar más tarde' ? quickLogCallbackTime : undefined,
+      notes: currentNotes,
+      callDate: new Date().toISOString().split('T')[0],
+      callsCount: updatedLogs.length,
+      callsLog: updatedLogs
+    };
+
+    onUpdateColdLead(updatedLead);
+    setActiveLoggerLeadId(null);
+    setQuickLogNotes('');
+    setQuickLogResult('Responde');
+  };
 
   // Form state
   const [leadName, setLeadName] = useState('');
@@ -81,6 +148,15 @@ export default function ComercialesPanelScreen({
   // Pipeline value
   const totalPipeline = myLeads.reduce((sum, l) => sum + (l.status !== 'Perdido' ? Number(l.value || 0) : 0), 0);
   const wonRevenue = wonLeads.reduce((sum, l) => sum + Number(l.value || 0), 0);
+
+  // Commission & Benefits calculations for this commercial
+  const myCommissionPercentage = comercial.commissionPercentage ?? 10;
+  const myInitialTxs = finTransactions.filter(tx => 
+    tx.isInitialSale === true && 
+    (tx.comercialId === comercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === comercial.email.toLowerCase()))
+  );
+  const myInitialSalesVolume = myInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+  const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
 
   // Status distributions for chart
   const statusCounts = {
@@ -261,12 +337,17 @@ export default function ComercialesPanelScreen({
               onUpdateColdLead={onUpdateColdLead}
               onDeleteColdLead={onDeleteColdLead}
               currentComercial={comercial}
+              events={events}
+              onAddEvent={onAddEvent}
+              onUpdateEvent={onUpdateEvent}
+              onDeleteEvent={onDeleteEvent}
+              usersList={usersList}
             />
           </div>
         ) : (
           <>
             {/* METRICS ROW */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
           
           {/* Total Leads */}
           <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-violet-500/20 transition duration-200">
@@ -323,241 +404,359 @@ export default function ComercialesPanelScreen({
             </div>
           </div>
 
-        </div>
-
-        {/* ANALYTICS CHARTS SECTION */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Status Distribution Custom SVG premium chart */}
-          <div className="lg:col-span-7 bg-white/[0.02] border border-white/5 p-6 rounded-2.5xl text-left">
-            <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest mb-4">Pipeline Distribution Analytics</h3>
-            
-            <div className="space-y-4">
-              {Object.entries(statusCounts).map(([status, count]) => {
-                const percentage = totalLeads ? Math.round((count / totalLeads) * 100) : 0;
-                
-                // Colors
-                let barColor = 'bg-slate-500';
-                if (status === 'Contactado') barColor = 'bg-blue-500';
-                if (status === 'Negociación') barColor = 'bg-amber-500';
-                if (status === 'Ganado') barColor = 'bg-emerald-500';
-                if (status === 'Perdido') barColor = 'bg-rose-500';
-
-                return (
-                  <div key={status} className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${barColor}`} />
-                        <span className="font-semibold text-slate-300">{status}</span>
-                      </div>
-                      <span className="font-mono text-slate-400">
-                        {count} {count === 1 ? 'lead' : 'leads'} ({percentage}%)
-                      </span>
-                    </div>
-                    <div className="h-2 w-full bg-white/[0.03] rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full ${barColor} rounded-full transition-all duration-700`}
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Quick insights card */}
-          <div className="lg:col-span-5 bg-white/[0.02] border border-white/5 p-6 rounded-2.5xl text-left flex flex-col justify-between">
-            <div className="space-y-4">
-              <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest">Información de Rendimiento</h3>
-              
-              <div className="space-y-4 pt-1">
-                <div className="flex items-start gap-4">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <CheckCircle className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-white">Éxito Comercial</h4>
-                    <p className="text-[11px] text-slate-400 leading-normal mt-0.5">
-                      Has cerrado con éxito {wonLeads.length} leads comerciales, generando valor por {wonRevenue.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4">
-                  <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-white">Negociación Activa</h4>
-                    <p className="text-[11px] text-slate-400 leading-normal mt-0.5">
-                      Tienes {statusCounts.Negociación} prospectos en fase de negociación crítica. Mantén el contacto recurrente para optimizar su tasa de conversión.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-white/5 flex justify-between items-center text-[10px] font-mono text-slate-500">
-              <span>Rendimiento Actualizado</span>
-              <span>Althera CRM Ventas v1.2</span>
-            </div>
-          </div>
-
-        </div>
-
-        {/* LEADS SYSTEM DATA TABLE */}
-        <div className="bg-white/[0.03] border border-white/10 rounded-2.5xl p-6 text-left space-y-5">
-          
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-bold text-white">Cartera de Leads del Comercial</h3>
-              <p className="text-xs text-slate-500 mt-1">Busca, filtra, edita estados e ingresa notas de seguimiento de tus leads.</p>
-            </div>
-
-            {/* Controls */}
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Filtro rápido..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="bg-[#050505] text-xs text-white pl-9 pr-4 py-2 rounded-xl border border-white/5 focus:border-violet-500 focus:outline-none transition-all w-44"
-                />
-              </div>
-
-              {/* Status Selector */}
-              <div className="flex items-center gap-1.5 bg-[#050505] p-1 rounded-xl border border-white/5">
-                {['todos', 'Pendiente', 'Contactado', 'Negociación', 'Ganado', 'Perdido'].map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => setStatusFilter(opt)}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all cursor-pointer ${
-                      statusFilter === opt
-                        ? 'bg-violet-600 text-white shadow-[0_0_12px_rgba(139,92,246,0.3)]'
-                        : 'text-slate-400 hover:text-white hover:bg-neutral-900'
-                    }`}
-                  >
-                    {opt === 'todos' ? 'Todos' : opt}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {filteredLeads.length === 0 ? (
-            <div className="text-center py-16 bg-black/20 border border-white/5 rounded-2.5xl p-6">
-              <Inbox className="w-10 h-10 text-slate-500/30 mx-auto mb-3" />
-              <p className="text-slate-400 text-xs font-semibold">No se encontraron leads.</p>
-              <p className="text-[10px] text-slate-500 max-w-[280px] mx-auto mt-1 leading-normal">
-                No hay resultados que coincidan con estos criterios. ¡Prueba a crear un lead con el botón superior!
+          {/* Commission & Benefits (New) */}
+          <div className="bg-amber-500/[0.02] border border-amber-500/10 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-amber-500/30 transition duration-200 shadow-lg shadow-amber-500/5 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none translate-x-12 -translate-y-12" />
+            <div className="relative z-10">
+              <p className="text-amber-500/70 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Mis Comisiones</p>
+              <h3 className="text-2xl font-bold text-amber-400 font-mono">
+                {myBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Comisión fijada: <strong className="text-amber-400">{myCommissionPercentage}%</strong>
               </p>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-350">
-                <thead>
-                  <tr className="border-b border-white/5 text-slate-440 uppercase font-mono font-bold tracking-wider text-[10px] pb-3">
-                    <th className="pb-3 pl-2">Contacto</th>
-                    <th className="pb-3">Empresa</th>
-                    <th className="pb-3">Valor (€)</th>
-                    <th className="pb-3">Estado</th>
-                    <th className="pb-3">Canal de Contacto</th>
-                    <th className="pb-3 pr-2 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 font-sans">
-                  {filteredLeads.map((lead) => (
-                    <tr key={lead.id} className="hover:bg-white/[0.02] transition-colors group">
-                      <td className="py-4 pl-2">
-                        <div className="flex items-center gap-2">
-                          <p className="font-bold text-white text-xs">{lead.name}</p>
-                          <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                            lead.temperature === 'Caliente' ? 'bg-rose-500/15 text-rose-400 border border-rose-550/20' :
-                            lead.temperature === 'Templado' ? 'bg-amber-500/15 text-amber-400 border border-amber-550/20' :
-                            'bg-sky-500/15 text-sky-400 border border-sky-550/20'
-                          }`}>
-                            {lead.temperature === 'Caliente' ? 'Caliente 🔥' : lead.temperature === 'Templado' ? 'Templado ⚡' : 'Frío ❄️'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5 max-w-[200px] truncate" title={lead.notes}>
-                          {lead.notes || 'Sin anotaciones de seguimiento.'}
-                        </p>
-                      </td>
-                      <td className="py-4 font-semibold text-slate-300">
-                        {lead.company}
-                      </td>
-                      <td className="py-4 font-mono font-bold text-amber-500">
-                        {(lead.value || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
-                      </td>
-                      <td className="py-4">
-                        <div className="flex flex-col gap-1.5">
-                          <select
-                            value={lead.status}
-                            onChange={(e) => handleUpdateStatus(lead.id, e.target.value as ComercialLead['status'])}
-                            className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg border focus:outline-none cursor-pointer ${
-                              lead.status === 'Pendiente' ? 'bg-slate-500/10 text-slate-300 border-slate-500/25' :
-                              lead.status === 'Contactado' ? 'bg-blue-500/10 text-blue-300 border-blue-500/25' :
-                              lead.status === 'Negociación' ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' :
-                              lead.status === 'Ganado' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25' :
-                              'bg-rose-500/10 text-rose-300 border-rose-500/25'
-                            }`}
-                          >
-                            <option value="Pendiente" className="bg-slate-900 text-slate-300">Pendiente</option>
-                            <option value="Contactado" className="bg-slate-900 text-blue-300">Contactado</option>
-                            <option value="Negociación" className="bg-slate-900 text-amber-300">Negociación</option>
-                            <option value="Ganado" className="bg-slate-900 text-emerald-300">Ganado</option>
-                            <option value="Perdido" className="bg-slate-900 text-rose-300">Perdido</option>
-                          </select>
-
-                          <select
-                            value={lead.temperature || 'Frío'}
-                            onChange={(e) => {
-                              onUpdateLead({
-                                ...lead,
-                                temperature: e.target.value as 'Frío' | 'Templado' | 'Caliente'
-                              });
-                            }}
-                            className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded-lg border focus:outline-none cursor-pointer ${
-                              (lead.temperature || 'Frío') === 'Caliente' ? 'bg-rose-500/10 text-rose-455 border-rose-500/25' :
-                              (lead.temperature || 'Frío') === 'Templado' ? 'bg-amber-500/10 text-amber-455 border-amber-500/25' :
-                              'bg-sky-500/10 text-sky-455 border-sky-500/25'
-                            }`}
-                          >
-                            <option value="Frío" className="bg-slate-900 text-sky-300">❄️ Frío</option>
-                            <option value="Templado" className="bg-slate-900 text-amber-300">⚡ Templado</option>
-                            <option value="Caliente" className="bg-slate-900 text-rose-300">🔥 Caliente</option>
-                          </select>
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <p className="font-semibold text-slate-300">{lead.email}</p>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{lead.phone}</p>
-                      </td>
-                      <td className="py-4 text-right pr-2">
-                        <button
-                          onClick={() => {
-                            if (confirm(`¿Estás seguro de que deseas eliminar permanentemente el lead de ${lead.name}?`)) {
-                              onDeleteLead(lead.id);
-                            }
-                          }}
-                          className="text-slate-500 hover:text-red-450 p-1.5 hover:bg-red-500/10 rounded-lg transition-all cursor-pointer"
-                          title="Eliminar Lead"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 relative z-10">
+              <TrendingUp className="w-5 h-5 text-amber-400" />
             </div>
-          )}
+          </div>
 
         </div>
+
+
+
+        {/* AGENDA & TAREAS DE HOY (TODAY'S DASHBOARD AND AGENDA) */}
+        {(() => {
+          const TODAY = new Date().toISOString().split('T')[0];
+          const myEvents = events.filter(e => e.comercialId === comercial.id || (e.assignedUserEmail && e.assignedUserEmail.toLowerCase() === comercial.email.toLowerCase()));
+          const todayEvents = myEvents.filter(e => e.date === TODAY);
+          
+          const todayCallbacks = coldLeads.filter(l => 
+            !l.archived && 
+            l.assignedToEmail.toLowerCase() === comercial.email.toLowerCase() && 
+            l.callbackScheduled === 'Llamar más tarde' && 
+            l.callbackDate === TODAY
+          );
+
+          const formattedDate = new Date().toLocaleDateString('es-ES', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          });
+
+          return (
+            <div className="bg-white/[0.03] border border-white/10 rounded-2.5xl p-6 text-left space-y-6">
+              
+              {/* Dashboard Section Header */}
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-white/5 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-violet-500 animate-pulse shadow-[0_0_12px_rgba(139,92,246,0.6)]" />
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Agenda & Tareas de Hoy</h3>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">Reuniones de calendario, citas y llamadas de Cold Calling programadas para hoy.</p>
+                </div>
+
+                <div className="px-4 py-2 bg-violet-600/10 border border-violet-500/20 rounded-xl">
+                  <span className="text-[10px] font-mono font-bold text-violet-400 uppercase tracking-widest block leading-none">Fecha de Hoy</span>
+                  <span className="text-xs font-bold text-slate-200 mt-1 inline-block capitalize">{formattedDate}</span>
+                </div>
+              </div>
+
+              {/* TWO COLUMN GRID */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                
+                {/* COLUMN 1: REUNIONES & CITAS (EVENTS) */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-xs font-bold font-mono text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-violet-400" />
+                      <span>Citas y Reuniones ({todayEvents.length})</span>
+                    </h4>
+                  </div>
+
+                  {todayEvents.length === 0 ? (
+                    <div className="text-center py-10 bg-black/20 border border-white/5 rounded-2xl p-4">
+                      <Inbox className="w-8 h-8 text-slate-600 mx-auto mb-2 opacity-40" />
+                      <p className="text-slate-450 text-xs font-semibold">No tienes reuniones agendadas para hoy.</p>
+                      <p className="text-[10px] text-slate-550 mt-1 max-w-[280px] mx-auto">Tus reuniones de Google Meet o Zoom asignadas aparecerán aquí.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {todayEvents.map(ev => {
+                        const isDone = ev.status === 'done';
+                        return (
+                          <div 
+                            key={ev.id} 
+                            className={`p-4 rounded-2xl border transition-all ${
+                              isDone 
+                                ? 'bg-emerald-950/10 border-emerald-500/20 opacity-75' 
+                                : 'bg-[#030306]/65 border-white/5 hover:border-violet-500/20 shadow-md'
+                            }`}
+                          >
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: ev.color || '#8b5cf6' }} />
+                                  <h5 className={`font-bold text-xs uppercase tracking-tight text-white ${isDone ? 'line-through text-slate-500' : ''}`}>
+                                    {ev.title}
+                                  </h5>
+                                  <span className="text-[9px] font-mono font-bold text-violet-400 bg-violet-950/30 px-2 py-0.5 rounded border border-violet-500/10">
+                                    {ev.time || 'Todo el día'}
+                                  </span>
+                                  {ev.isPrivate && (
+                                    <span className="text-[8px] font-mono font-bold bg-rose-500/10 text-rose-400 px-1.5 rounded uppercase">
+                                      Privado
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-400 leading-normal">{ev.notes || ev.description || 'Sin descripción.'}</p>
+                                {ev.linkedContactName && (
+                                  <p className="text-[10px] text-slate-500 font-medium">Asociado a: <span className="text-violet-400 font-semibold">{ev.linkedContactName}</span></p>
+                                )}
+                              </div>
+
+                              <span className={`text-[9px] px-2 py-0.5 rounded-lg font-bold font-mono uppercase shrink-0 ${
+                                isDone 
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                  : 'bg-amber-500/10 text-amber-450 border border-amber-500/20'
+                              }`}>
+                                {isDone ? 'Completado' : 'Pendiente'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-white/5">
+                              {ev.meetingUrl && !isDone && (
+                                <a 
+                                  href={ev.meetingUrl.startsWith('http') ? ev.meetingUrl : `https://${ev.meetingUrl}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold rounded-lg flex items-center gap-1.5 transition cursor-pointer"
+                                >
+                                  <Video className="w-3 h-3" />
+                                  <span>Videollamada</span>
+                                </a>
+                              )}
+
+                              <button
+                                onClick={() => {
+                                  onUpdateEvent({
+                                    ...ev,
+                                    status: isDone ? 'pending' : 'done'
+                                  });
+                                }}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                  isDone 
+                                    ? 'bg-slate-800 text-slate-350 hover:bg-slate-700' 
+                                    : 'bg-emerald-650 hover:bg-emerald-600 text-white'
+                                }`}
+                              >
+                                {isDone ? 'Marcar Pendiente' : 'Marcar Completado'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* COLUMN 2: COLD CALLING CALLBACKS (PHONE CALLS) */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-xs font-bold font-mono text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-amber-400" />
+                      <span>Llamadas de Seguimiento ({todayCallbacks.length})</span>
+                    </h4>
+                  </div>
+
+                  {todayCallbacks.length === 0 ? (
+                    <div className="text-center py-10 bg-black/20 border border-white/5 rounded-2xl p-4">
+                      <Phone className="w-8 h-8 text-slate-600 mx-auto mb-2 opacity-40" />
+                      <p className="text-slate-450 text-xs font-semibold">No tienes llamadas programadas para hoy.</p>
+                      <p className="text-[10px] text-slate-550 mt-1 max-w-[280px] mx-auto">Programa recordatorios de Cold Calling y los verás organizados aquí.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {todayCallbacks.map(lead => {
+                        const isLogging = activeLoggerLeadId === lead.id;
+                        return (
+                          <div 
+                            key={lead.id} 
+                            className={`p-4 rounded-2xl border transition-all ${
+                              isLogging 
+                                ? 'bg-violet-950/15 border-violet-500/35 ring-1 ring-violet-500/20' 
+                                : 'bg-[#030306]/65 border-white/5 hover:border-violet-500/20 shadow-md'
+                            }`}
+                          >
+                            <div className="flex justify-between items-start gap-3 text-left">
+                              <div className="space-y-1">
+                                <h5 className="font-bold text-xs uppercase tracking-tight text-white">{lead.businessName}</h5>
+                                <div className="flex items-center gap-2 flex-wrap text-[10px] text-slate-400">
+                                  <span>Dueño: <strong className="text-slate-200">{lead.contactPerson || 'Sin especificar'}</strong></span>
+                                  <span className="text-slate-600">•</span>
+                                  <span className="text-amber-400 font-bold">{lead.phone}</span>
+                                </div>
+                                {lead.callbackTime && (
+                                  <p className="text-[10px] font-mono text-amber-500 font-bold bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10 w-fit mt-1">
+                                    Hora de contacto: {lead.callbackTime}
+                                  </p>
+                                )}
+                                <p className="text-[10px] text-slate-500 italic mt-1.5 leading-normal">
+                                  Última nota: {lead.notes || 'Ninguna registrada.'}
+                                </p>
+                              </div>
+
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                lead.temperature === 'Caliente' ? 'bg-rose-500/15 text-rose-400 border border-rose-500/20' :
+                                lead.temperature === 'Templado' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' :
+                                'bg-sky-500/15 text-sky-400 border border-sky-500/20'
+                              }`}>
+                                {lead.temperature || 'Frío'}
+                              </span>
+                            </div>
+
+                            {/* INLINE QUICK CALL LOGGER FORM */}
+                            {isLogging ? (
+                              <div className="mt-4 pt-4 border-t border-white/10 space-y-3 text-left bg-[#050510]/60 p-3 rounded-xl">
+                                <p className="text-[10px] uppercase font-mono font-bold text-violet-400">Registrar resultado de llamada</p>
+                                
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <label className="text-[8px] font-mono text-slate-400 uppercase font-bold">Resultado</label>
+                                    <select
+                                      value={quickLogResult}
+                                      onChange={(e) => setQuickLogResult(e.target.value)}
+                                      className="w-full bg-slate-955 border border-white/5 rounded-lg px-2.5 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                    >
+                                      <option value="Responde">Responde / Conversación</option>
+                                      <option value="No responde">No responde / Apagado</option>
+                                      <option value="Reunión agendada">Cita / Reunión agendada</option>
+                                      <option value="Interesado pero no hoy">Interesado (Posponer)</option>
+                                    </select>
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <label className="text-[8px] font-mono text-slate-400 uppercase font-bold">Temperatura</label>
+                                    <select
+                                      value={quickLogTemp}
+                                      onChange={(e) => setQuickLogTemp(e.target.value as any)}
+                                      className="w-full bg-slate-955 border border-white/5 rounded-lg px-2.5 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                    >
+                                      <option value="Frío">❄️ Frío</option>
+                                      <option value="Templado">⚡ Templado</option>
+                                      <option value="Caliente">🔥 Caliente</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <label className="text-[8px] font-mono text-slate-400 uppercase font-bold">Nueva Acción</label>
+                                    <select
+                                      value={quickLogScheduled}
+                                      onChange={(e) => setQuickLogScheduled(e.target.value)}
+                                      className="w-full bg-slate-955 border border-white/5 rounded-lg px-2.5 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                    >
+                                      <option value="Llamada hecha">Llamada Hecha (Completar)</option>
+                                      <option value="Llamar más tarde">Volver a posponer hoy/mañana</option>
+                                    </select>
+                                  </div>
+
+                                  {quickLogScheduled === 'Llamar más tarde' && (
+                                    <div className="space-y-1">
+                                      <label className="text-[8px] font-mono text-slate-400 uppercase font-bold">Nueva Fecha</label>
+                                      <input
+                                        type="date"
+                                        value={quickLogCallbackDate}
+                                        onChange={(e) => setQuickLogCallbackDate(e.target.value)}
+                                        className="w-full bg-slate-955 border border-white/5 rounded-lg px-2 py-0.5 text-[10px] text-white focus:outline-none focus:border-violet-500"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[8px] font-mono text-slate-400 uppercase font-bold">Notas de la conversación</label>
+                                  <textarea
+                                    rows={2}
+                                    placeholder="Anota el resultado, objeciones o acuerdos..."
+                                    value={quickLogNotes}
+                                    onChange={(e) => setQuickLogNotes(e.target.value)}
+                                    className="w-full bg-slate-955 border border-white/5 focus:border-violet-500 rounded-lg px-2.5 py-1 text-[10px] text-white focus:outline-none transition resize-none"
+                                  />
+                                </div>
+
+                                <div className="flex gap-2 justify-end pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveLoggerLeadId(null);
+                                      setQuickLogNotes('');
+                                    }}
+                                    className="text-[9px] font-bold bg-slate-800 text-slate-300 px-3 py-1 rounded hover:bg-slate-700 cursor-pointer"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveQuickCallLog(lead)}
+                                    className="text-[9px] font-bold bg-violet-650 text-white px-3 py-1 rounded hover:bg-violet-600 shadow-md shadow-violet-500/10 cursor-pointer"
+                                  >
+                                    Guardar Llamada
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-white/5">
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`¿Marcar la llamada de ${lead.businessName} como completada sin anotaciones adicionales?`)) {
+                                      const updatedLead: ColdCallingLead = {
+                                        ...lead,
+                                        callbackScheduled: 'No',
+                                        answered: 'Sí',
+                                        contacted: 'Sí',
+                                        notes: 'Llamada realizada y completada desde el Dashboard de Hoy.'
+                                      };
+                                      onUpdateColdLead(updatedLead);
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold rounded-lg transition cursor-pointer"
+                                  title="Marcar hecha rápidamente"
+                                >
+                                  Marcar Hecha
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setActiveLoggerLeadId(lead.id);
+                                    setQuickLogNotes('');
+                                    setQuickLogResult('Responde');
+                                    setQuickLogTemp(lead.temperature || 'Templado');
+                                    setQuickLogScheduled('Llamada hecha');
+                                    setQuickLogCallbackDate(TODAY);
+                                  }}
+                                  className="px-3 py-1.5 bg-violet-650 hover:bg-violet-600 text-white text-[10px] font-bold rounded-lg flex items-center gap-1 transition cursor-pointer"
+                                >
+                                  <Phone className="w-3 h-3 text-white" />
+                                  <span>Registrar Llamada</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+          );
+        })()}
 
           </>
         )}

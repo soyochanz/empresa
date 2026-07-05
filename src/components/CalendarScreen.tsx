@@ -29,6 +29,7 @@ interface CalendarScreenProps {
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
   usersList?: PanelUser[];
   onAddProfile?: (profile: { name: string; email: string }) => void;
+  comercialesList?: any[];
 }
 
 export default function CalendarScreen({ 
@@ -40,7 +41,8 @@ export default function CalendarScreen({
   onUpdateEvent,
   onNavigate,
   usersList = REGISTERED_USERS,
-  onAddProfile
+  onAddProfile,
+  comercialesList
 }: CalendarScreenProps) {
   
   // High-fidelity pre-selected event (Product Sync)

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem } from '../types';
+import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
 import { db } from '../supabaseClient';
 import { 
   DollarSign, 
@@ -33,6 +33,7 @@ import {
 interface FinanceScreenProps {
   contacts: ClientContact[];
   onNavigate?: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
+  comercialesList?: ComercialAccount[];
 }
 
 const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
@@ -118,9 +119,9 @@ const getInvoiceCardStyles = (color: string | undefined) => {
   }
 };
 
-export default function FinanceScreen({ contacts, onNavigate }: FinanceScreenProps) {
-  // Navigation tabs: 'transactions' | 'recurring' | 'invoices' | 'stripe'
-  const [activeTab, setActiveTab] = useState<'transactions' | 'recurring' | 'invoices' | 'stripe'>('transactions');
+export default function FinanceScreen({ contacts, onNavigate, comercialesList = [] }: FinanceScreenProps) {
+  // Navigation tabs: 'transactions' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
+  const [activeTab, setActiveTab] = useState<'transactions' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'>('transactions');
 
   // Stripe Integration Screen States
   const [stripeClientId, setStripeClientId] = useState('');
@@ -1937,6 +1938,17 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
             <CreditCard className="w-3.5 h-3.5" />
             <span>Pasarela Stripe</span>
           </button>
+          <button
+            onClick={() => setActiveTab('comerciales')}
+            className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
+              activeTab === 'comerciales' 
+                ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-sm shadow-amber-500/5' 
+                : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>Comerciales</span>
+          </button>
         </div>
 
         {/* Dynamic Context Helpers */}
@@ -1947,7 +1959,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
               ? `${recurringExpenses.length} suscripciones operativas` 
               : activeTab === 'invoices' 
                 ? `Sincronizadas ${filteredInvoices.length} facturas`
-                : `Pasarela Stripe Integrada & Activa`}
+                : activeTab === 'stripe'
+                  ? `Pasarela Stripe Integrada & Activa`
+                  : `${comercialesList.length} representantes comerciales`}
         </span>
       </div>
 
@@ -2849,6 +2863,217 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Tab Content 5: Comerciales Performance & Finance Tracking */}
+      {activeTab === 'comerciales' && (
+        <div className="space-y-6 text-left">
+          {/* Key Metrics across commercials */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            {/* Total Sales Volume */}
+            {(() => {
+              const totalVentasComerciales = comercialesList.reduce((sum, com) => {
+                const pct = com.commissionPercentage ?? 10;
+                const txs = transactions.filter(tx => 
+                  tx.isInitialSale === true && 
+                  (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
+                );
+                return sum + txs.reduce((s, t) => s + (t.amount || 0), 0);
+              }, 0);
+
+              const totalComisionesDevengadas = comercialesList.reduce((sum, com) => {
+                const pct = com.commissionPercentage ?? 10;
+                const txs = transactions.filter(tx => 
+                  tx.isInitialSale === true && 
+                  (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
+                );
+                const volume = txs.reduce((s, t) => s + (t.amount || 0), 0);
+                return sum + (volume * (pct / 100));
+              }, 0);
+
+              const avgComm = comercialesList.length 
+                ? Math.round(comercialesList.reduce((sum, c) => sum + (c.commissionPercentage ?? 10), 0) / comercialesList.length)
+                : 10;
+
+              return (
+                <>
+                  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden">
+                    <div className="absolute top-5 right-5 bg-blue-500/10 rounded-2xl p-3 border border-blue-500/10">
+                      <TrendingUp className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Volumen Ventas Iniciales</span>
+                    <h3 className="text-3xl font-black text-white mt-2 font-mono">
+                      {totalVentasComerciales.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-blue-400 text-lg ml-1 font-sans">€</span>
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-mono mt-3">
+                      Suma de primeros pagos registrados
+                    </p>
+                  </div>
+
+                  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-amber-500/10 p-5 rounded-3xl relative overflow-hidden shadow-lg shadow-amber-500/5">
+                    <div className="absolute top-5 right-5 bg-amber-500/10 rounded-2xl p-3 border border-amber-500/20">
+                      <DollarSign className="w-5 h-5 text-amber-400" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Comisiones Acumuladas</span>
+                    <h3 className="text-3xl font-black text-amber-400 mt-2 font-mono">
+                      {totalComisionesDevengadas.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-amber-400 text-lg ml-1 font-sans">€</span>
+                    </h3>
+                    <p className="text-[10px] text-amber-500/70 font-mono mt-3">
+                      Devengadas del total vendido inicial
+                    </p>
+                  </div>
+
+                  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden">
+                    <div className="absolute top-5 right-5 bg-purple-500/10 rounded-2xl p-3 border border-purple-500/10">
+                      <Repeat className="w-5 h-5 text-purple-450" />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Comisión Media Pactada</span>
+                    <h3 className="text-3xl font-black text-white mt-2 font-mono">
+                      {avgComm}%
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-mono mt-3">
+                      Promedio de comerciales activos
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Table List of Salespeople with their metrics */}
+          <div className="bg-[#0b1329]/10 backdrop-blur-md border border-white/5 rounded-3xl overflow-hidden shadow-xl">
+            <div className="p-6 border-b border-white/5 text-left">
+              <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest">Liquidaciones y Comisiones por Comercial</h4>
+              <p className="text-[10px] text-slate-500 mt-1">Beneficios devengados calculados sobre la primera venta de clientes asignados que provienen de llamadas frías</p>
+            </div>
+            
+            <div className="overflow-x-auto font-sans">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/5 bg-[#0b1329]/40 text-[9px] font-mono text-slate-500 uppercase tracking-widest">
+                    <th className="p-4 font-bold">Comercial / Email</th>
+                    <th className="p-4 font-bold">% Comisión</th>
+                    <th className="p-4 font-bold">Clientes Cerrados</th>
+                    <th className="p-4 font-bold">Ventas Vinculadas</th>
+                    <th className="p-4 font-bold text-right">Beneficio Devengado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {comercialesList.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-16 text-center text-slate-500 text-xs font-light">
+                        No hay comerciales autorizados registrados.
+                      </td>
+                    </tr>
+                  ) : (
+                    comercialesList.map(com => {
+                      const pct = com.commissionPercentage ?? 10;
+                      const txs = transactions.filter(tx => 
+                        tx.isInitialSale === true && 
+                        (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
+                      );
+                      const volume = txs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                      const benefits = volume * (pct / 100);
+                      
+                      const clientsCount = contacts.filter(c => 
+                        c.status === 'Client' && 
+                        (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
+                      ).length;
+
+                      return (
+                        <tr key={com.id} className="text-xs hover:bg-white/[0.01] transition-colors">
+                          <td className="p-4 text-left">
+                            <div>
+                              <span className="font-bold text-white block">{com.name}</span>
+                              <span className="text-[10px] font-mono text-slate-500 block mt-0.5">{com.email}</span>
+                            </div>
+                          </td>
+                          <td className="p-4 text-left font-mono text-amber-400 font-bold">
+                            {pct}%
+                          </td>
+                          <td className="p-4 text-left font-mono">
+                            <span className="px-2 py-0.5 bg-white/5 border border-white/10 rounded-lg text-slate-300">
+                              {clientsCount} {clientsCount === 1 ? 'cliente' : 'clientes'}
+                            </span>
+                          </td>
+                          <td className="p-4 text-left font-mono text-slate-300">
+                            {volume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-4 text-right font-mono text-amber-400 font-bold text-sm">
+                            {benefits.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Audit Trail: Initial sales records */}
+          <div className="bg-[#0b1329]/10 backdrop-blur-md border border-white/5 rounded-3xl p-6 space-y-4">
+            <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest text-left">Bitácora de Ventas Iniciales (Vincular Comisiones)</h4>
+            
+            <div className="overflow-x-auto text-xs">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-white/5 text-[9px] font-mono uppercase tracking-widest text-slate-500 text-left">
+                    <th className="p-3">Concepto Venta</th>
+                    <th className="p-3">Comercial Asignado</th>
+                    <th className="p-3">Fecha</th>
+                    <th className="p-3">Importe</th>
+                    <th className="p-3 text-right">Comisión (%)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {(() => {
+                    const initialTxs = transactions.filter(t => t.isInitialSale === true);
+                    if (initialTxs.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center text-slate-500 text-xs font-light">
+                            No se han asentado ventas iniciales en la bitácora todavía. Al registrar ventas provenientes de cold calling, aparecerán aquí automáticamente.
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return initialTxs.map(t => {
+                      // Find commercial
+                      const assignedCom = comercialesList.find(com => 
+                        com.id === t.comercialId || (t.comercialEmail && com.email.toLowerCase() === t.comercialEmail.toLowerCase())
+                      );
+                      const comName = assignedCom ? assignedCom.name : (t.comercialEmail || 'N/A');
+                      const commPct = assignedCom ? (assignedCom.commissionPercentage ?? 10) : 10;
+                      const commVal = t.amount * (commPct / 100);
+
+                      return (
+                        <tr key={t.id} className="hover:bg-white/[0.01] transition-colors text-left">
+                          <td className="p-3">
+                            <span className="font-bold text-white block">{t.description}</span>
+                            <span className="text-[9px] font-mono text-slate-500 select-all">{t.id}</span>
+                          </td>
+                          <td className="p-3">
+                            <span className="text-slate-300 font-medium">{comName}</span>
+                          </td>
+                          <td className="p-3 text-slate-400 font-mono">{t.date}</td>
+                          <td className="p-3 font-mono font-bold text-emerald-400">
+                            {t.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                          </td>
+                          <td className="p-3 text-right font-mono">
+                            <span className="text-amber-400 font-bold block">{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+                            <span className="text-[9px] text-slate-500 block">Basado en {commPct}%</span>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
       )}
 

@@ -26,9 +26,17 @@ import {
   Briefcase,
   List,
   Grid,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Video
 } from 'lucide-react';
-import { ColdCallingLead, ComercialAccount, ClientContact, CalendarEvent } from '../types';
+import { ColdCallingLead, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction } from '../types';
+import { db } from '../supabaseClient';
+
+const HOURLY_SLOTS = [
+  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
+];
 
 interface ColdCallingScreenProps {
   coldLeads: ColdCallingLead[];
@@ -42,6 +50,9 @@ interface ColdCallingScreenProps {
   onNavigate?: (target: any, transition: any) => void;
   onAddContact?: (contact: ClientContact) => void;
   onAddEvent?: (event: CalendarEvent) => void;
+  events?: CalendarEvent[];
+  onUpdateEvent?: (event: CalendarEvent) => void;
+  onDeleteEvent?: (id: string) => void;
 }
 
 export default function ColdCallingScreen({
@@ -55,7 +66,10 @@ export default function ColdCallingScreen({
   currentComercial,
   onNavigate,
   onAddContact,
-  onAddEvent
+  onAddEvent,
+  events = [],
+  onUpdateEvent,
+  onDeleteEvent
 }: ColdCallingScreenProps) {
   
   // Combine comerciales and admins (usersList) for assignment
@@ -82,6 +96,29 @@ export default function ColdCallingScreen({
     return new Date().toISOString().split('T')[0];
   });
 
+  // Mini-calendar month and year view state
+  const [calendarDate, setCalendarDate] = useState<Date>(() => new Date());
+
+  // Task creation state (only for current comercial, as private tasks)
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskTime, setTaskTime] = useState('10:00');
+  const [taskDate, setTaskDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [taskNotes, setTaskNotes] = useState('');
+  const [taskColor, setTaskColor] = useState('#8B5CF6'); // Violeta por defecto
+  const [taskMeetingUrl, setTaskMeetingUrl] = useState('');
+
+  // Editing state for private tasks
+  const [editingPrivateTaskId, setEditingPrivateTaskId] = useState<string | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState('');
+  const [editTaskTime, setEditTaskTime] = useState('');
+  const [editTaskNotes, setEditTaskNotes] = useState('');
+  const [editTaskMeetingUrl, setEditTaskMeetingUrl] = useState('');
+
+  // Timeline Hour/List view switcher state
+  const [hourViewMode, setHourViewMode] = useState<'list' | 'hours'>('hours');
+  const [calendarViewMode, setCalendarViewMode] = useState<'month' | 'day'>('month');
+
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedLeadForCall, setSelectedLeadForCall] = useState<ColdCallingLead | null>(null);
@@ -96,48 +133,153 @@ export default function ColdCallingScreen({
   const [scheduleDesc, setScheduleDesc] = useState('');
   const [scheduleAssignee, setScheduleAssignee] = useState('unassigned');
 
-  // Handle converting a cold lead to a CRM Client
+  // Conversion state and form fields
+  const [convertingLead, setConvertingLead] = useState<ColdCallingLead | null>(null);
+  const [convName, setConvName] = useState('');
+  const [convCompany, setConvCompany] = useState('');
+  const [convEmail, setConvEmail] = useState('');
+  const [convPhone, setConvPhone] = useState('');
+  const [convSalePrice, setConvSalePrice] = useState(1500);
+  const [convInstallments, setConvInstallments] = useState(1);
+  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
+
+  // Trigger conversion settings modal
   const handleConvertToClient = (lead: ColdCallingLead) => {
-    if (!onAddContact) return;
-
-    const subtleColor = lead.temperature === 'Caliente' ? 'rose' : lead.temperature === 'Templado' ? 'amber' : 'indigo';
-
     const cleanName = lead.contactPerson && lead.contactPerson !== 'Sin especificar' ? lead.contactPerson : lead.businessName;
+    const defaultEmail = lead.contactPerson && lead.contactPerson !== 'Sin especificar' 
+      ? `${lead.contactPerson.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`
+      : `info@${lead.businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`;
 
+    setConvertingLead(lead);
+    setConvName(cleanName);
+    setConvCompany(lead.businessName);
+    setConvEmail(defaultEmail);
+    setConvPhone(lead.phone);
+    setConvSalePrice(1500);
+    setConvInstallments(1);
+    setConvConcept('Servicio de Consultoría Althera');
+  };
+
+  const handleConfirmConvertToClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!convertingLead || !onAddContact) return;
+
+    const subtleColor = convertingLead.temperature === 'Caliente' ? 'rose' : convertingLead.temperature === 'Templado' ? 'amber' : 'indigo';
+
+    // 1. Create the new client contact
     const newContact: ClientContact = {
       id: 'c_' + Date.now(),
-      name: cleanName,
-      company: lead.businessName,
+      name: convName.trim(),
+      company: convCompany.trim(),
       status: 'Client',
       lastContacted: 'Justo ahora (Convertido de prospecto)',
-      email: lead.contactPerson && lead.contactPerson !== 'Sin especificar' 
-        ? `${lead.contactPerson.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`
-        : `info@${lead.businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`,
-      phone: lead.phone,
+      email: convEmail.trim(),
+      phone: convPhone.trim(),
       addedDate: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }),
-      initials: (lead.contactPerson && lead.contactPerson !== 'Sin especificar' ? lead.contactPerson : lead.businessName)
+      initials: convName.trim()
         .split(' ')
         .map(n => n[0])
         .join('')
         .slice(0, 2)
         .toUpperCase() || 'CLI',
       color: subtleColor,
-      assignedUserEmail: lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : undefined,
-      contactedByComercialEmail: lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : undefined,
-      contactedByComercialName: lead.assignedToName && lead.assignedToName !== 'Sin asignar' ? lead.assignedToName : undefined,
-      originalLeadNotes: lead.notes || undefined,
-      notes: lead.notes ? `[Historial de llamada] ${lead.notes}` : undefined
+      assignedUserEmail: convertingLead.assignedToEmail !== 'unassigned' ? convertingLead.assignedToEmail : undefined,
+      contactedByComercialEmail: convertingLead.assignedToEmail !== 'unassigned' ? convertingLead.assignedToEmail : undefined,
+      contactedByComercialName: convertingLead.assignedToName && convertingLead.assignedToName !== 'Sin asignar' ? convertingLead.assignedToName : undefined,
+      originalLeadNotes: convertingLead.notes || undefined,
+      notes: convertingLead.notes ? `[Historial de llamada] ${convertingLead.notes}` : undefined
     };
 
     onAddContact(newContact);
 
+    // 2. Archive the cold lead
     onUpdateColdLead({
-      ...lead,
+      ...convertingLead,
       archived: true
     });
 
-    alert(`¡Felicidades! Se ha convertido el prospecto "${lead.businessName}" en Cliente y se ha añadido exitosamente en Clientes.`);
+    // 3. Find associated commercial account to resolve commission percentage
+    const assignedEmail = convertingLead.assignedToEmail || '';
+    const matchedCom = comercialesList.find(c => c.email.toLowerCase() === assignedEmail.toLowerCase());
+    const commPct = matchedCom?.commissionPercentage ?? 10; // defaults to 10% if not set
+
+    // 4. Generate the Invoice (Factura) and Transactions (Cobros)
+    const invoiceId = 'inv_cc_' + Math.random().toString(36).substring(2, 9);
+    const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
     
+    // Create Invoice Items
+    const invoiceItems: InvoiceItem[] = [];
+    for (let i = 1; i <= convInstallments; i++) {
+      const isFirst = i === 1;
+      const txId = 'tx_cc_' + Math.random().toString(36).substring(2, 9) + '_' + i;
+      
+      invoiceItems.push({
+        id: 'item_' + i + '_' + Date.now(),
+        description: `${convConcept} - Plazo ${i} de ${convInstallments}`,
+        quantity: 1,
+        unitPrice: pricePerInstallment,
+        total: pricePerInstallment,
+        isPending: !isFirst,
+        pendingTxId: txId,
+        paymentMethod: 'transfer'
+      });
+
+      // Insert matching FinanceTransaction in DB
+      const transaction: FinanceTransaction = {
+        id: txId,
+        type: 'income',
+        category: 'Ventas',
+        amount: pricePerInstallment,
+        date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
+        description: `${convConcept} (${convCompany}) - Plazo ${i} de ${convInstallments} ${!isFirst ? '(Pendiente)' : '(Inicial)'}`,
+        status: isFirst ? 'paid' : 'pending',
+        paymentMethod: 'transfer',
+        invoiceId: invoiceId,
+        comercialId: matchedCom?.id,
+        comercialEmail: assignedEmail,
+        isInitialSale: true
+      };
+
+      try {
+        await db.insertFinanceTransaction(transaction);
+      } catch (err) {
+        console.error('Error inserting transaction:', err);
+      }
+    }
+
+    // Create and Insert Finance Invoice in DB
+    const newInvoice: Invoice = {
+      id: invoiceId,
+      clientId: newContact.id,
+      clientName: convName.trim(),
+      clientEmail: convEmail.trim(),
+      date: new Date().toISOString().split('T')[0],
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: convInstallments === 1 ? 'paid' : 'sent',
+      items: invoiceItems,
+      subtotal: convSalePrice,
+      taxPercentage: 0,
+      taxAmount: 0,
+      total: convSalePrice,
+      notes: `Venta inicial generada automáticamente desde Cold Calling. Comercial: ${convertingLead.assignedToName || 'Sin asignar'}. Comisión: ${commPct}%.`,
+      comercialId: matchedCom?.id,
+      comercialEmail: assignedEmail,
+      isInitialSale: true
+    };
+
+    try {
+      await db.insertFinanceInvoice(newInvoice);
+    } catch (err) {
+      console.error('Error inserting invoice:', err);
+    }
+
+    alert(`¡Felicidades! Se ha convertido a "${convCompany}" en Cliente.\n\n` +
+          `• Venta Registrada: ${convSalePrice.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+          `• Plazos de Pago: ${convInstallments} plazo(s)\n` +
+          `• Comisión para el Comercial (${commPct}%): ${(convSalePrice * commPct / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+          `• Se ha generado la Factura e Ingresos en Finanzas Globales.`);
+
+    setConvertingLead(null);
     if (onNavigate) {
       onNavigate('crm', 'push');
     }
@@ -393,8 +535,14 @@ export default function ColdCallingScreen({
 
   // Filtering leads based on permissions and filters
   const visibleLeads = coldLeads.filter(lead => {
-    // Show only self assigned filter if enabled
     const myEmail = (currentUser?.email || currentComercial?.email || '').toLowerCase();
+    
+    // Strict requirement: a commercial can ONLY see their own cold calling leads!
+    if (currentComercial && lead.assignedToEmail.toLowerCase() !== myEmail) {
+      return false;
+    }
+
+    // Show only self assigned filter if enabled for admins
     if (showOnlySelf && lead.assignedToEmail.toLowerCase() !== myEmail) {
       return false;
     }
@@ -427,6 +575,9 @@ export default function ColdCallingScreen({
     if (l.archived) return false;
     
     const myEmail = (currentUser?.email || currentComercial?.email || '').toLowerCase();
+    if (currentComercial && l.assignedToEmail.toLowerCase() !== myEmail) {
+      return false;
+    }
     if (showOnlySelf && l.assignedToEmail.toLowerCase() !== myEmail) {
       return false;
     }
@@ -569,6 +720,82 @@ export default function ColdCallingScreen({
     if (!isAdmin && lead.assignedToEmail.toLowerCase() !== comercialEmail.toLowerCase()) return false;
     return lead.callbackScheduled === 'Llamar más tarde' && lead.callbackDate === selectedTaskDate;
   });
+
+  // Centralized query for commercial-specific and general calendar events
+  const myEvents = React.useMemo(() => {
+    if (!events) return [];
+    if (isAdmin) return events; // Admin sees all
+    
+    return events.filter(ev => {
+      const isMyPrivate = ev.comercialId === currentComercial?.id;
+      const isAssignedToMe = ev.assignedUserEmail?.toLowerCase() === comercialEmail.toLowerCase();
+      const isForAllComerciales = ev.isAllComerciales || ev.assignedUserEmail === 'todos-comerciales';
+      
+      return isMyPrivate || isAssignedToMe || isForAllComerciales;
+    });
+  }, [events, currentComercial, comercialEmail, isAdmin]);
+
+  // Calendar events matching the selected date
+  const dayEvents = React.useMemo(() => {
+    return myEvents.filter(ev => ev.date === selectedTaskDate);
+  }, [myEvents, selectedTaskDate]);
+
+  // Add a private task/event (commercials can only add private ones)
+  const handleCreatePrivateTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle.trim() || !onAddEvent) return;
+
+    const newEvent: CalendarEvent = {
+      id: 'evt_' + Math.random().toString(36).substring(2, 11),
+      title: taskTitle.trim(),
+      date: taskDate,
+      time: taskTime,
+      type: 'Meeting',
+      color: taskColor,
+      notes: taskNotes.trim() || 'Tarea privada de seguimiento.',
+      comercialId: currentComercial?.id || undefined,
+      isPrivate: true,
+      meetingUrl: taskMeetingUrl.trim() || undefined,
+      assignedUserEmail: currentComercial?.email || undefined,
+      status: 'pending'
+    };
+
+    onAddEvent(newEvent);
+    
+    // Reset Form
+    setTaskTitle('');
+    setTaskNotes('');
+    setTaskMeetingUrl('');
+    setShowAddTaskModal(false);
+    alert('¡Éxito! Tu tarea privada ha sido agendada.');
+  };
+
+  // Update a private task/event
+  const handleUpdatePrivateTaskSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPrivateTaskId || !onUpdateEvent) return;
+
+    const existingEvent = events.find(ev => ev.id === editingPrivateTaskId);
+    if (existingEvent) {
+      onUpdateEvent({
+        ...existingEvent,
+        title: editTaskTitle.trim(),
+        time: editTaskTime,
+        notes: editTaskNotes.trim(),
+        meetingUrl: editTaskMeetingUrl.trim() || undefined
+      });
+      setEditingPrivateTaskId(null);
+      alert('¡Tarea actualizada con éxito!');
+    }
+  };
+
+  // Delete a private task/event
+  const handleDeletePrivateTask = (id: string) => {
+    if (!onDeleteEvent) return;
+    if (confirm('¿Estás seguro de que deseas eliminar esta tarea privada de tu calendario?')) {
+      onDeleteEvent(id);
+    }
+  };
 
   return (
     <div className={`p-6 md:p-8 space-y-6 text-left h-full overflow-y-auto font-sans relative`}>
@@ -1606,121 +1833,789 @@ export default function ColdCallingScreen({
         </div>
       )}
 
-      {/* TAB 2: DASHBOARD DE TAREAS SEGÚN DÍA EN CALENDARIO */}
+                {/* TAB 2: DASHBOARD DE TAREAS Y CALENDARIO PERSONAL */}
       {activeTab === 'tasks' && (
-        <div className="space-y-6 relative z-10">
+        <div className="space-y-6 relative z-10 text-slate-300">
           
-          <div className="bg-[#030306]/85 border border-white/5 p-6 rounded-2.5xl text-left">
-            <h3 className="text-sm font-semibold text-white">Selector de Calendario de Tareas</h3>
-            <p className="text-xs text-slate-400 mt-1">Escoge una fecha para listar de forma predictiva las citas pospuestas y tareas de Cold Calling programadas para dicho día.</p>
-            
-            {/* Calendar Picker wrapper */}
-            <div className="mt-4 flex flex-col sm:flex-row items-center gap-3 bg-slate-950 p-4 rounded-2xl border border-white/5 max-w-md">
-              <span className="text-xs text-slate-400 font-mono uppercase">Fecha Seleccionada:</span>
-              <input
-                type="date"
-                value={selectedTaskDate}
-                onChange={e => setSelectedTaskDate(e.target.value)}
-                className="bg-[#050510] text-sm text-white select-none border border-white/10 px-3 py-1.5 rounded-xl focus:border-violet-500 focus:outline-none transition-all w-full cursor-pointer"
-              />
+          {/* Quick Header */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-violet-400" />
+                <span>Calendario & Agenda de {currentComercial?.name || 'Comercial'}</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Visualiza tus compromisos asignados por administradores, llamadas programadas y añade tus propias tareas privadas.
+              </p>
             </div>
 
-            {/* Quick date navigators */}
-            <div className="flex gap-2 mt-3.5">
-              {[
-                { label: 'Ayer', val: () => {
-                  const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0];
-                }},
-                { label: 'Hoy (Actual)', val: () => new Date().toISOString().split('T')[0] },
-                { label: 'Mañana', val: () => {
-                  const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0];
-                }}
-              ].map(item => {
-                const calculatedDate = item.val();
-                const isActive = calculatedDate === selectedTaskDate;
-                return (
+            <button
+              onClick={() => {
+                setTaskDate(selectedTaskDate);
+                setTaskTitle('');
+                setTaskNotes('');
+                setTaskMeetingUrl('');
+                setShowAddTaskModal(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition select-none cursor-pointer shadow-lg shadow-violet-600/10"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Añadir Tarea Privada</span>
+            </button>
+          </div>
+
+          {/* VIEW SELECTOR SEGMENTED CONTROL */}
+          <div className="flex justify-between items-center bg-[#030306]/85 border border-white/5 p-4 rounded-2.5xl flex-wrap gap-4 relative z-10">
+            <div className="flex bg-slate-950 p-1 rounded-xl border border-white/5 select-none shrink-0">
+              <button
+                type="button"
+                onClick={() => setCalendarViewMode('month')}
+                className={`text-[10px] font-bold uppercase tracking-wider px-4 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  calendarViewMode === 'month'
+                    ? 'bg-violet-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Vista Mensual</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCalendarViewMode('day')}
+                className={`text-[10px] font-bold uppercase tracking-wider px-4 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                  calendarViewMode === 'day'
+                    ? 'bg-violet-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Vista del Día (Agenda)</span>
+              </button>
+            </div>
+
+            <div className="text-right">
+              <span className="text-[9px] font-mono text-slate-500 uppercase font-bold">Fecha seleccionada</span>
+              <p className="text-xs font-bold text-violet-400 uppercase font-mono mt-0.5">
+                {new Date(selectedTaskDate + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </p>
+            </div>
+          </div>
+
+          {/* MAIN GRID DASHBOARD */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            {/* LEFT SIDE: INTERACTIVE MONTHLY MINI-CALENDAR */}
+            <div className={`lg:col-span-12 w-full ${calendarViewMode === 'month' ? 'block' : 'hidden'} bg-black/60 backdrop-blur-md border border-white/5 p-6 rounded-2.5xl space-y-4 animate-fade-in`}>
+              <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                <h3 className="text-xs font-bold font-mono text-white uppercase tracking-wider">
+                  {calendarDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+                </h3>
+                <div className="flex items-center gap-1">
                   <button
-                    key={item.label}
-                    onClick={() => setSelectedTaskDate(calculatedDate)}
-                    className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold uppercase transition-all cursor-pointer ${
-                      isActive 
-                        ? 'bg-violet-600 border-violet-500 text-white shadow-md' 
-                        : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200'
+                    onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+                    className="p-1 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition"
+                    title="Mes Anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCalendarDate(new Date())}
+                    className="px-2 py-0.5 text-[9px] font-mono text-violet-400 hover:text-white hover:bg-white/5 rounded border border-violet-500/10 transition"
+                    title="Ir a Hoy"
+                  >
+                    Hoy
+                  </button>
+                  <button
+                    onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+                    className="p-1 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition"
+                    title="Mes Siguiente"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Weekly Headers */}
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-mono font-bold text-slate-500 uppercase">
+                {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((day, i) => (
+                  <div key={i}>{day}</div>
+                ))}
+              </div>
+
+              {/* Days Grid */}
+              <div className="grid grid-cols-7 gap-1 text-center">
+                {(() => {
+                  const yr = calendarDate.getFullYear();
+                  const mn = calendarDate.getMonth();
+
+                  const daysInMonth = new Date(yr, mn + 1, 0).getDate();
+                  const firstDayIndex = new Date(yr, mn, 1).getDay(); // Sunday = 0
+                  const prevMonthDays = new Date(yr, mn, 0).getDate();
+
+                  const cells = [];
+                  // Prev month padding
+                  for (let i = firstDayIndex - 1; i >= 0; i--) {
+                    const dayNum = prevMonthDays - i;
+                    const prevM = mn === 0 ? 12 : mn;
+                    const prevY = mn === 0 ? yr - 1 : yr;
+                    const dStr = `${prevY}-${String(prevM).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                    cells.push({ day: dayNum, isCurrentMonth: false, dateStr: dStr });
+                  }
+                  // Current month days
+                  for (let i = 1; i <= daysInMonth; i++) {
+                    const dStr = `${yr}-${String(mn + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    cells.push({ day: i, isCurrentMonth: true, dateStr: dStr });
+                  }
+                  // Next month padding to make 42 cells
+                  const nextNeeded = 42 - cells.length;
+                  for (let i = 1; i <= nextNeeded; i++) {
+                    const nextM = mn === 11 ? 1 : mn + 2;
+                    const nextY = mn === 11 ? yr + 1 : yr;
+                    const dStr = `${nextY}-${String(nextM).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    cells.push({ day: i, isCurrentMonth: false, dateStr: dStr });
+                  }
+
+                  return cells.map((cell, idx) => {
+                    const isSelected = cell.dateStr === selectedTaskDate;
+                    const isToday = cell.dateStr === new Date().toISOString().split('T')[0];
+                    
+                    // Indicators
+                    const hasMyEvents = myEvents.some(ev => ev.date === cell.dateStr);
+                    const hasCallbacks = coldLeads.some(l => 
+                      !l.archived && 
+                      l.assignedToEmail.toLowerCase() === comercialEmail.toLowerCase() && 
+                      l.callbackScheduled === 'Llamar más tarde' && 
+                      l.callbackDate === cell.dateStr
+                    );
+
+                    const dayEvs = myEvents.filter(ev => ev.date === cell.dateStr);
+                    const dayCbs = coldLeads.filter(l => 
+                      !l.archived && 
+                      l.assignedToEmail.toLowerCase() === comercialEmail.toLowerCase() && 
+                      l.callbackScheduled === 'Llamar más tarde' && 
+                      l.callbackDate === cell.dateStr
+                    );
+                    const totalItems = dayEvs.length + dayCbs.length;
+
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTaskDate(cell.dateStr);
+                          setTaskDate(cell.dateStr);
+                          setCalendarViewMode('day');
+                        }}
+                        className={`min-h-[70px] sm:min-h-[100px] p-2 relative rounded-2xl flex flex-col items-stretch justify-between cursor-pointer transition select-none text-left border ${
+                          cell.isCurrentMonth 
+                            ? isSelected 
+                              ? 'bg-violet-650/15 border-violet-500 text-white shadow-md shadow-violet-500/5'
+                              : 'bg-black/40 hover:bg-white/[0.02] border-white/5 text-slate-100'
+                            : 'bg-black/[0.15] border-white/5 text-slate-600 hover:bg-white/[0.01]'
+                        } ${
+                          isToday && !isSelected ? 'border-amber-500/40 bg-amber-500/[0.01]' : ''
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className={`text-xs font-mono font-bold ${
+                            isToday ? 'w-5 h-5 flex items-center justify-center bg-amber-500 text-black rounded-full font-black' : isSelected ? 'text-violet-400' : ''
+                          }`}>
+                            {cell.day}
+                          </span>
+                          
+                          {totalItems > 0 && (
+                            <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 shrink-0 hidden sm:inline-block">
+                              {totalItems}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Display item names on larger screens */}
+                        <div className="hidden sm:flex flex-col gap-1 mt-1.5 overflow-hidden max-h-[50px]">
+                          {dayEvs.slice(0, 2).map(ev => (
+                            <div key={ev.id} className="text-[9px] px-1.5 py-0.5 rounded bg-violet-650/20 text-violet-300 font-sans truncate font-medium flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: ev.color || '#8B5CF6' }} />
+                              <span className="truncate">{ev.title}</span>
+                            </div>
+                          ))}
+                          {dayCbs.slice(0, 1).map(l => (
+                            <div key={l.id} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 font-sans truncate font-medium flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                              <span className="truncate">{l.businessName}</span>
+                            </div>
+                          ))}
+                          {totalItems > 3 && (
+                            <div className="text-[8px] font-mono text-slate-500 pl-1">
+                              + {totalItems - 3} más
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Tiny mobile indicators */}
+                        <div className="flex sm:hidden gap-1 justify-center mt-1">
+                          {dayEvs.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />}
+                          {dayCbs.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                        </div>
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Legends */}
+              <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono pt-3 border-t border-white/5">
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
+                  <span>Reunión/Agenda</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  <span>Llamada agendada</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 ring-2 ring-amber-500/20 animate-pulse" />
+                  <span>Hoy</span>
+                </span>
+              </div>
+            </div>
+
+            {/* RIGHT SIDE: VIEW MODE TOGGLE & TASK TIMELINE */}
+            <div className={`lg:col-span-12 w-full ${calendarViewMode === 'day' ? 'block' : 'hidden'} space-y-4 text-left animate-fade-in`}>
+              
+              {/* Toolbar */}
+              <div className="bg-[#030306]/85 border border-white/5 p-4 rounded-2.5xl flex flex-col sm:flex-row justify-between items-center gap-3">
+                <div className="text-left">
+                  <span className="text-[10px] font-mono text-slate-500 uppercase font-bold">Fecha en pantalla</span>
+                  <h4 className="text-sm font-bold text-white uppercase font-sans tracking-tight mt-0.5">
+                    {new Date(selectedTaskDate + 'T00:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </h4>
+                </div>
+
+                <div className="flex bg-slate-950 p-1 rounded-xl border border-white/5 select-none shrink-0">
+                  <button
+                    onClick={() => setHourViewMode('hours')}
+                    className={`text-[10px] font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                      hourViewMode === 'hours'
+                        ? 'bg-violet-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    {item.label}
+                    Por Horas
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* TASKS LIST MATCHING CALENDAR DAY */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-violet-400">
-                Llamadas pospuestas para el {selectedTaskDate} ({dayCallbackLeads.length})
-              </h3>
-              <span className="text-[10px] text-slate-500 uppercase">Filtros Activos</span>
-            </div>
-
-            {dayCallbackLeads.length === 0 ? (
-              <div className="text-center py-16 bg-[#030306]/40 rounded-2.5xl border border-white/5">
-                <div className="w-12 h-12 rounded-full bg-slate-900 border border-white/5 flex items-center justify-center mx-auto mb-3 text-emerald-500">
-                  <CheckCircle2 className="w-5 h-5" />
+                  <button
+                    onClick={() => setHourViewMode('list')}
+                    className={`text-[10px] font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                      hourViewMode === 'list'
+                        ? 'bg-violet-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Resumen
+                  </button>
                 </div>
-                <p className="text-slate-200 text-xs font-semibold">¡Día libre de tareas agendadas!</p>
-                <p className="text-[10px] text-slate-550 max-w-[280px] mx-auto mt-1 leading-relaxed">
-                  No hay llamadas pospuestas que expiren en esta fecha asignada. Los vendedores pueden seguir picando frío.
-                </p>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {dayCallbackLeads.map(lead => {
-                  return (
-                    <div 
-                      key={lead.id} 
-                      className="bg-gradient-to-r from-violet-600/[0.03] to-[#030306] border border-white/5 py-4 px-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-violet-500/20 transition duration-200"
-                    >
-                      <div className="flex items-start gap-3.5">
-                        <div className="w-10 h-10 rounded-xl bg-violet-600/10 border border-violet-500/20 flex items-center justify-center text-violet-400 flex-shrink-0 mt-0.5">
-                          <Clock className="w-5 h-5 text-violet-400" />
-                        </div>
-                        <div className="text-left space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-xs text-white uppercase tracking-tight">{lead.businessName}</h4>
-                            <span className="text-[8px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold px-1.5 py-0.5 rounded">
-                              {lead.callbackTime || 'Cualquier hora '} 🕒
-                            </span>
+
+              {/* LIST VIEW OPTION */}
+              {hourViewMode === 'list' && (
+                <div className="space-y-4">
+                  {/* Calendar Meetings */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-mono font-bold uppercase tracking-widest text-violet-400">Reuniones y Eventos ({dayEvents.length})</h4>
+                    {dayEvents.length === 0 ? (
+                      <p className="text-[11px] text-slate-550 bg-white/[0.01] border border-white/5 rounded-xl p-4 italic text-center">
+                        Sin reuniones agendadas para este día.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {dayEvents.map(ev => {
+                          const isCreatedByMe = ev.comercialId === currentComercial?.id;
+                          return (
+                            <div 
+                              key={ev.id} 
+                              className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 hover:border-violet-500/20 transition"
+                            >
+                              <div className="space-y-1 text-left">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: ev.color || '#8B5CF6' }} />
+                                  <h5 className="font-bold text-xs text-white uppercase">{ev.title}</h5>
+                                  <span className="text-[9px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded">
+                                    {ev.time || 'Todo el día'}
+                                  </span>
+                                  {ev.isPrivate && (
+                                    <span className="text-[8px] bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold px-1 rounded uppercase">
+                                      Privado
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-400">{ev.notes || ev.description}</p>
+                                {ev.linkedContactName && (
+                                  <p className="text-[10px] text-violet-400">Cliente asociado: {ev.linkedContactName}</p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                {ev.meetingUrl && (
+                                  <a 
+                                    href={ev.meetingUrl.startsWith('http') ? ev.meetingUrl : `https://${ev.meetingUrl}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-bold rounded-lg flex items-center gap-1.5 transition"
+                                  >
+                                    <Video className="w-3 h-3" />
+                                    <span>Unirse</span>
+                                  </a>
+                                )}
+
+                                {isCreatedByMe && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setEditingPrivateTaskId(ev.id);
+                                        setEditTaskTitle(ev.title);
+                                        setEditTaskTime(ev.time || '10:00');
+                                        setEditTaskNotes(ev.notes || '');
+                                        setEditTaskMeetingUrl(ev.meetingUrl || '');
+                                      }}
+                                      className="p-1.5 bg-white/5 border border-white/15 text-slate-400 hover:text-white rounded-lg transition"
+                                      title="Editar Tarea"
+                                    >
+                                      <Edit3 className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeletePrivateTask(ev.id)}
+                                      className="p-1.5 bg-red-500/10 border border-red-500/20 text-red-400 hover:text-white hover:bg-red-500 rounded-lg transition"
+                                      title="Eliminar Tarea"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Cold Calling Callbacks */}
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-mono font-bold uppercase tracking-widest text-amber-400">Llamadas Cold Calling Programadas ({dayCallbackLeads.length})</h4>
+                    {dayCallbackLeads.length === 0 ? (
+                      <p className="text-[11px] text-slate-550 bg-white/[0.01] border border-white/5 rounded-xl p-4 italic text-center">
+                        Sin llamadas de seguimiento agendadas.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {dayCallbackLeads.map(lead => (
+                          <div 
+                            key={lead.id} 
+                            className="bg-black/40 border border-white/5 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 hover:border-amber-500/20 transition"
+                          >
+                            <div className="space-y-1 text-left">
+                              <div className="flex items-center gap-2">
+                                <Phone className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                <h5 className="font-bold text-xs text-white uppercase">{lead.businessName}</h5>
+                                <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
+                                  {lead.callbackTime || 'Cualquier hora'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400">Persona de contacto: <span className="text-slate-300 font-semibold">{lead.contactPerson}</span></p>
+                              <p className="text-[10px] text-slate-500 italic">Notas: "{lead.notes}"</p>
+                            </div>
+
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                              <a 
+                                href={`tel:${lead.phone}`}
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-white/10 text-white text-[10px] font-mono font-bold rounded-lg flex items-center gap-1 transition"
+                              >
+                                <span>📞 {lead.phone}</span>
+                              </a>
+                              <button
+                                onClick={() => handleOpenCallLog(lead)}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-bold rounded-lg transition"
+                              >
+                                Registrar Llamada
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-400">Hablar con: <span className="font-semibold text-slate-200">{lead.contactPerson}</span> • Asignado a: <span className="text-violet-400">{lead.assignedToName || lead.assignedToEmail}</span></p>
-                          <p className="text-[10px] text-slate-500 italic">Notas previas: "{lead.notes}"</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* VERTICAL HOURLY TIMELINE VIEW */}
+              {hourViewMode === 'hours' && (
+                <div className="bg-black/60 border border-white/5 rounded-2.5xl p-5 space-y-3.5 relative">
+                  
+                  {/* Render hourly slots */}
+                  {HOURLY_SLOTS.map(slot => {
+                    const slotHourInt = parseInt(slot.split(':')[0]);
+                    
+                    // Filter events falling in this hour (e.g. 10:30 goes into 10:00)
+                    const slotEvents = dayEvents.filter(ev => {
+                      if (!ev.time) return false;
+                      const evHour = parseInt(ev.time.split(':')[0]);
+                      return evHour === slotHourInt;
+                    });
+
+                    // Filter callbacks falling in this hour
+                    const slotCallbacks = dayCallbackLeads.filter(lead => {
+                      if (!lead.callbackTime) return false;
+                      const cbHour = parseInt(lead.callbackTime.split(':')[0]);
+                      return cbHour === slotHourInt;
+                    });
+
+                    const hasContent = slotEvents.length > 0 || slotCallbacks.length > 0;
+
+                    return (
+                      <div key={slot} className="grid grid-cols-12 gap-3.5 items-start border-l border-white/5 pl-4 relative group">
+                        
+                        {/* Timeline dot indicator */}
+                        <div className="absolute left-[-5.5px] top-[7px] w-2.5 h-2.5 rounded-full bg-slate-800 group-hover:bg-violet-500 transition-colors border border-[#0d0d0d]" />
+
+                        {/* Hour */}
+                        <div className="col-span-2 text-left">
+                          <span className="text-xs font-mono font-bold text-slate-400 group-hover:text-violet-400 transition">
+                            {slot}
+                          </span>
                         </div>
-                      </div>
 
-                      <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                        <a 
-                          href={`tel:${lead.phone}`}
-                          className="px-3.5 py-2 bg-slate-950 border border-white/5 text-xs text-slate-200 font-mono font-bold rounded-xl hover:text-white hover:bg-slate-900 transition flex items-center gap-2"
-                        >
-                          <Phone className="w-3.5 h-3.5 text-violet-400" />
-                          <span>Llamar: {lead.phone}</span>
-                        </a>
+                        {/* Contents or empty slot fast addition */}
+                        <div className="col-span-10 space-y-2">
+                          {hasContent ? (
+                            <>
+                              {/* Events cards */}
+                              {slotEvents.map(ev => {
+                                const isCreatedByMe = ev.comercialId === currentComercial?.id;
+                                return (
+                                  <div 
+                                    key={ev.id} 
+                                    className="bg-neutral-900/90 border-l-4 border-l-violet-500 p-3 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md hover:border-violet-500/40 transition"
+                                    style={{ borderLeftColor: ev.color || '#8B5CF6' }}
+                                  >
+                                    <div className="text-left space-y-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <h5 className="font-bold text-[11px] text-white uppercase tracking-tight">{ev.title}</h5>
+                                        <span className="text-[8px] bg-white/5 font-mono text-slate-350 px-1 py-0.2 rounded">
+                                          {ev.time}
+                                        </span>
+                                        {ev.isPrivate && (
+                                          <span className="text-[8px] bg-rose-500/10 text-rose-450 font-extrabold uppercase px-1 rounded">
+                                            Privado
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] text-slate-400 leading-tight">{ev.notes || ev.description}</p>
+                                      {ev.linkedContactName && (
+                                        <span className="text-[9px] font-semibold text-violet-400 block">👥 {ev.linkedContactName}</span>
+                                      )}
+                                    </div>
 
-                        <button
-                          onClick={() => handleOpenCallLog(lead)}
-                          className="px-3.5 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-xl select-none transition flex items-center gap-1.5 cursor-pointer shadow-[0_0_10px_rgba(139,92,246,0.3)]"
-                        >
-                          <ClipboardList className="w-3.5 h-3.5" />
-                          <span>Resolver / Registrar</span>
-                        </button>
+                                    <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end shrink-0">
+                                      {ev.meetingUrl && (
+                                        <a 
+                                          href={ev.meetingUrl.startsWith('http') ? ev.meetingUrl : `https://${ev.meetingUrl}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="px-2.5 py-1.5 bg-violet-650 hover:bg-violet-550 text-white text-[9px] font-bold rounded-lg flex items-center gap-1 transition"
+                                        >
+                                          <Video className="w-3 h-3 text-white" />
+                                          <span>Unirse</span>
+                                        </a>
+                                      )}
+
+                                      {isCreatedByMe && (
+                                        <>
+                                          <button
+                                            onClick={() => {
+                                              setEditingPrivateTaskId(ev.id);
+                                              setEditTaskTitle(ev.title);
+                                              setEditTaskTime(ev.time || '10:00');
+                                              setEditTaskNotes(ev.notes || '');
+                                              setEditTaskMeetingUrl(ev.meetingUrl || '');
+                                            }}
+                                            className="p-1 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-md border border-white/5 transition"
+                                            title="Editar Tarea"
+                                          >
+                                            <Edit3 className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            onClick={() => handleDeletePrivateTask(ev.id)}
+                                            className="p-1 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white rounded-md border border-red-500/20 transition"
+                                            title="Eliminar Tarea"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {/* Callbacks cards */}
+                              {slotCallbacks.map(lead => (
+                                <div 
+                                  key={lead.id} 
+                                  className="bg-[#0e0c03] border-l-4 border-l-amber-500 p-3 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md hover:border-amber-500/40 transition"
+                                >
+                                  <div className="text-left space-y-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <Phone className="w-3 h-3 text-amber-400 shrink-0" />
+                                      <h5 className="font-bold text-[11px] text-white uppercase tracking-tight">{lead.businessName}</h5>
+                                      <span className="text-[8px] bg-amber-500/10 font-mono text-amber-400 px-1 py-0.2 rounded">
+                                        {lead.callbackTime}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 leading-tight">Persona de contacto: <span className="font-semibold text-slate-200">{lead.contactPerson}</span></p>
+                                    <p className="text-[9px] text-slate-500 italic leading-none">Notas: "{lead.notes}"</p>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end shrink-0">
+                                    <a 
+                                      href={`tel:${lead.phone}`}
+                                      className="px-2.5 py-1.5 bg-black border border-white/5 text-white text-[9px] font-mono font-bold rounded-lg flex items-center transition"
+                                    >
+                                      <span>📞 {lead.phone}</span>
+                                    </a>
+                                    <button
+                                      onClick={() => handleOpenCallLog(lead)}
+                                      className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-450 text-slate-950 text-[9px] font-bold rounded-lg transition"
+                                    >
+                                      Llamar
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setTaskTime(slot);
+                                setTaskDate(selectedTaskDate);
+                                setTaskTitle('');
+                                setTaskNotes('');
+                                setTaskMeetingUrl('');
+                                setShowAddTaskModal(true);
+                              }}
+                              className="w-full text-left py-2 px-3 bg-white/[0.01] hover:bg-violet-600/[0.04] border border-dashed border-white/5 hover:border-violet-500/20 text-[10px] text-slate-600 hover:text-violet-400 transition-all rounded-xl cursor-pointer"
+                            >
+                              + Agendar tarea a las {slot}
+                            </button>
+                          )}
+                        </div>
+
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+
+            </div>
           </div>
+
+          {/* ADD PRIVATE TASK MODAL WINDOW */}
+          {showAddTaskModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+              <div className="absolute inset-0" onClick={() => setShowAddTaskModal(false)} />
+              <div className="relative bg-[#0d0d0d] border border-violet-500/30 rounded-3xl p-6 shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-200 text-slate-300">
+                
+                <div className="flex justify-between items-center mb-5 border-b border-violet-500/15 pb-3">
+                  <h3 className="text-sm font-bold text-white font-sans flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-violet-400" />
+                    <span>Añadir Tarea / Compromiso Privado</span>
+                  </h3>
+                  <button onClick={() => setShowAddTaskModal(false)} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/5">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreatePrivateTask} className="space-y-4 text-left">
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Título de la Tarea</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Ej. Llamar al Gerente de Alimentos de VIP"
+                      value={taskTitle}
+                      onChange={(e) => setTaskTitle(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Fecha</label>
+                      <input 
+                        type="date"
+                        required
+                        value={taskDate}
+                        onChange={(e) => setTaskDate(e.target.value)}
+                        className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Hora de Inicio</label>
+                      <input 
+                        type="time"
+                        required
+                        value={taskTime}
+                        onChange={(e) => setTaskTime(e.target.value)}
+                        className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Enlace de Videollamada (Opcional)</label>
+                    <input 
+                      type="text"
+                      placeholder="Ej. google.com/meet/abc-defg-hij"
+                      value={taskMeetingUrl}
+                      onChange={(e) => setTaskMeetingUrl(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold block mb-1.5">Color del Indicador</label>
+                    <div className="flex gap-2">
+                      {[
+                        { hex: '#8B5CF6', name: 'Violeta' },
+                        { hex: '#10B981', name: 'Esmeralda' },
+                        { hex: '#F59E0B', name: 'Ámbar' },
+                        { hex: '#EF4444', name: 'Coral' },
+                        { hex: '#3B82F6', name: 'Zafiro' }
+                      ].map(c => (
+                        <button
+                          key={c.hex}
+                          type="button"
+                          onClick={() => setTaskColor(c.hex)}
+                          className={`w-6 h-6 rounded-full border transition-all ${
+                            taskColor === c.hex ? 'ring-2 ring-violet-500 scale-110 border-white' : 'border-neutral-800 hover:scale-105'
+                          }`}
+                          style={{ backgroundColor: c.hex }}
+                          title={c.name}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Notas / Detalles</label>
+                    <textarea 
+                      rows={2}
+                      placeholder="Agrega descripciones breves sobre esta tarea..."
+                      value={taskNotes}
+                      onChange={(e) => setTaskNotes(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2 text-xs text-slate-100 focus:outline-none focus:border-violet-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddTaskModal(false)}
+                      className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-850 text-slate-300 font-bold rounded-xl text-xs border border-white/5 transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition"
+                    >
+                      Agendar Tarea
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* EDIT PRIVATE TASK MODAL WINDOW */}
+          {editingPrivateTaskId && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+              <div className="absolute inset-0" onClick={() => setEditingPrivateTaskId(null)} />
+              <div className="relative bg-[#0d0d0d] border border-violet-500/30 rounded-3xl p-6 shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-200 text-slate-300">
+                
+                <div className="flex justify-between items-center mb-5 border-b border-violet-500/15 pb-3">
+                  <h3 className="text-sm font-bold text-white font-sans flex items-center gap-2">
+                    <Edit3 className="w-4 h-4 text-violet-400" />
+                    <span>Editar Tarea Privada</span>
+                  </h3>
+                  <button onClick={() => setEditingPrivateTaskId(null)} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/5">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleUpdatePrivateTaskSubmit} className="space-y-4 text-left">
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Título de la Tarea</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Ej. Revisión de propuesta comercial"
+                      value={editTaskTitle}
+                      onChange={(e) => setEditTaskTitle(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Hora de Inicio</label>
+                    <input 
+                      type="time"
+                      required
+                      value={editTaskTime}
+                      onChange={(e) => setEditTaskTime(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Enlace de Videollamada</label>
+                    <input 
+                      type="text"
+                      placeholder="Ej. google.com/meet/abc-defg-hij"
+                      value={editTaskMeetingUrl}
+                      onChange={(e) => setEditTaskMeetingUrl(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">Notas / Detalles</label>
+                    <textarea 
+                      rows={2}
+                      placeholder="Agrega descripciones breves sobre esta tarea..."
+                      value={editTaskNotes}
+                      onChange={(e) => setEditTaskNotes(e.target.value)}
+                      className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2 text-xs text-slate-100 focus:outline-none focus:border-violet-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditingPrivateTaskId(null)}
+                      className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-850 text-slate-300 font-bold rounded-xl text-xs border border-white/5 transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition"
+                    >
+                      Guardar Cambios
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
         </div>
       )}
@@ -2617,6 +3512,190 @@ export default function ColdCallingScreen({
                 Eliminar Registro
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONVERT TO CLIENT MODAL & FINANCIAL PLANNER */}
+      {convertingLead && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0b1329]/95 border border-white/10 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 my-8 text-left relative overflow-hidden">
+            {/* Background elements */}
+            <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-white font-sans tracking-wide">
+                  Convertir en Cliente y Liquidar Venta
+                </h3>
+                <p className="text-[11px] text-slate-400 font-sans mt-0.5">
+                  Establece los parámetros del contrato para registrar la venta en Finanzas y calcular comisiones.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleConfirmConvertToClient} className="space-y-4">
+              {/* Client Info Grid */}
+              <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
+                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Información del Cliente</span>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Persona de Contacto</label>
+                    <input
+                      type="text"
+                      required
+                      value={convName}
+                      onChange={(e) => setConvName(e.target.value)}
+                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Nombre Comercial / Empresa</label>
+                    <input
+                      type="text"
+                      required
+                      value={convCompany}
+                      onChange={(e) => setConvCompany(e.target.value)}
+                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Email del Cliente</label>
+                    <input
+                      type="email"
+                      required
+                      value={convEmail}
+                      onChange={(e) => setConvEmail(e.target.value)}
+                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Teléfono</label>
+                    <input
+                      type="text"
+                      required
+                      value={convPhone}
+                      onChange={(e) => setConvPhone(e.target.value)}
+                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Terms Panel */}
+              <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
+                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Condiciones Económicas de la Venta</span>
+
+                <div>
+                  <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Concepto de Facturación</label>
+                  <input
+                    type="text"
+                    required
+                    value={convConcept}
+                    onChange={(e) => setConvConcept(e.target.value)}
+                    className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Importe del Contrato (EUR)</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={convSalePrice}
+                        onChange={(e) => setConvSalePrice(Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl pl-3 pr-7 py-2 text-xs text-white font-mono"
+                      />
+                      <span className="absolute right-3 top-2.5 text-slate-500 text-xs font-mono">€</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Fraccionar en Plazos (Mensual)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="12"
+                      required
+                      value={convInstallments}
+                      onChange={(e) => setConvInstallments(Number(e.target.value))}
+                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Calculated Results Preview */}
+              {(() => {
+                const assignedEmail = convertingLead.assignedToEmail || '';
+                const matchedCom = comercialesList.find(c => c.email.toLowerCase() === assignedEmail.toLowerCase());
+                const commPct = matchedCom?.commissionPercentage ?? 10;
+                const totalComm = (convSalePrice * commPct) / 100;
+                const installmentAmount = Math.round((convSalePrice / convInstallments) * 100) / 100;
+
+                return (
+                  <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl space-y-3 font-sans">
+                    <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest block">Plan de Cobros y Liquidaciones</span>
+                    
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <span className="text-slate-400 text-[10px]">Primer Cobro (Hoy):</span>
+                        <p className="font-mono text-white font-bold mt-0.5">{installmentAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[10px]">Cuotas Pendientes:</span>
+                        <p className="font-mono text-slate-300 mt-0.5">
+                          {convInstallments > 1 
+                            ? `${convInstallments - 1} de ${installmentAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} / mes`
+                            : 'Ninguna (Pago Único)'
+                          }
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-white/5 pt-2 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400">Comercial Asignado:</span>
+                        <p className="font-semibold text-slate-200">{convertingLead.assignedToName || 'N/A'} ({assignedEmail || 'Sin email'})</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400">Comisión Devengada ({commPct}%):</span>
+                        <p className="font-mono font-bold text-amber-400 text-sm mt-0.5">
+                          {totalComm.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConvertingLead(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(16,185,129,0.3)] flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Confirmar y Activar Cliente
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
