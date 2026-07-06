@@ -20,7 +20,12 @@ import {
   FileSpreadsheet,
   Phone,
   Video,
-  ExternalLink
+  ExternalLink,
+  Settings,
+  Landmark,
+  CreditCard,
+  Coins,
+  History
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact } from '../types';
 import ColdCallingScreen from './ColdCallingScreen';
@@ -54,6 +59,7 @@ interface ComercialesPanelScreenProps {
   onAddLead: (lead: ComercialLead) => void;
   onUpdateLead: (lead: ComercialLead) => void;
   onDeleteLead: (id: string) => void;
+  onUpdateComercial?: (updated: ComercialAccount) => void;
   onLogout: () => void;
   
   // Cold Calling integrations
@@ -78,6 +84,7 @@ export default function ComercialesPanelScreen({
   onAddLead,
   onUpdateLead,
   onDeleteLead,
+  onUpdateComercial,
   onLogout,
   
   // Cold Calling integrations
@@ -96,7 +103,20 @@ export default function ComercialesPanelScreen({
   contacts = []
 }: ComercialesPanelScreenProps) {
   // Local state
-  const [activeView, setActiveView] = useState<'pipeline' | 'cold_calling'>('pipeline');
+  const [activeView, setActiveView] = useState<'pipeline' | 'cold_calling' | 'settings'>('pipeline');
+  const [iban, setIban] = useState(comercial.iban || '');
+  const [bic, setBic] = useState(comercial.bic || '');
+  const [bankName, setBankName] = useState(comercial.bankName || '');
+  const [settingsSuccess, setSettingsSuccess] = useState(false);
+
+  React.useEffect(() => {
+    if (comercial) {
+      setIban(comercial.iban || '');
+      setBic(comercial.bic || '');
+      setBankName(comercial.bankName || '');
+    }
+  }, [comercial]);
+  
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -351,11 +371,23 @@ export default function ComercialesPanelScreen({
   });
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#030308] text-slate-100 flex flex-col font-sans relative overflow-x-hidden">
       
-      {/* Decorative localized glows */}
-      <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/10 blur-[130px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/5 blur-[130px] pointer-events-none" />
+      {/* Elegant glassmorphism and modern gradient overlays */}
+      <div className="absolute top-[-20%] left-[-10%] w-[700px] h-[700px] rounded-full bg-violet-600/5 blur-[150px] pointer-events-none" />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-blue-600/5 blur-[160px] pointer-events-none" />
+      <div className="absolute top-[40%] left-[30%] w-[600px] h-[600px] rounded-full bg-indigo-500/[0.03] blur-[140px] pointer-events-none" />
+
+      {/* Official Althera Large Transparent Watermark Background */}
+      <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none select-none z-0">
+        <img 
+          src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
+          alt="Althera Watermark Logo" 
+          className="w-[680px] h-[680px] object-contain max-w-[90vw] animate-pulse"
+          style={{ animationDuration: '12s' }}
+          referrerPolicy="no-referrer"
+        />
+      </div>
 
       {/* HEADER BAR */}
       <header className="relative z-10 border-b border-white/5 bg-[#050505]/80 backdrop-blur-md px-8 py-5 flex items-center justify-between">
@@ -407,20 +439,10 @@ export default function ComercialesPanelScreen({
             <h2 className="text-2xl font-bold tracking-tight text-white">¡Hola de nuevo, {comercial.name}!</h2>
             <p className="text-xs text-slate-400 mt-1">Este es tu panel centralizado de carteras de clientes rápidos. Sigue tus objetivos de conversión.</p>
           </div>
-          
-          {activeView === 'pipeline' && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1.5 px-4.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold transition duration-200 text-xs shadow-lg shadow-amber-500/5 cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4 text-slate-950" />
-              <span>Registrar Lead</span>
-            </button>
-          )}
         </div>
 
-        {/* VIEW MODE TABS FOR COMERCIAL (CRM vs COLD CALLING) */}
-        <div className="flex gap-1.5 p-1 bg-[#050510]/80 backdrop-blur-md rounded-2xl border border-white/5 max-w-sm">
+        {/* VIEW MODE TABS FOR COMERCIAL (CRM vs COLD CALLING vs SETTINGS) */}
+        <div className="flex gap-1.5 p-1 bg-[#050510]/80 backdrop-blur-md rounded-2xl border border-white/5 max-w-md">
           <button
             onClick={() => setActiveView('pipeline')}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
@@ -449,6 +471,18 @@ export default function ComercialesPanelScreen({
               </span>
             )}
           </button>
+
+          <button
+            onClick={() => setActiveView('settings')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeView === 'settings'
+                ? 'bg-violet-650/20 text-violet-400 border border-violet-500/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>Ajustes de Cobro</span>
+          </button>
         </div>
 
         {activeView === 'cold_calling' ? (
@@ -466,6 +500,197 @@ export default function ComercialesPanelScreen({
               onDeleteEvent={onDeleteEvent}
               usersList={usersList}
             />
+          </div>
+        ) : activeView === 'settings' ? (
+          <div className="space-y-6 animate-fade-in font-sans">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              
+              {/* LEFT COLUMN: BANK SETTINGS FORM */}
+              <div className="lg:col-span-5 bg-slate-950/40 border border-white/5 rounded-2xl p-6 space-y-6">
+                <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+                  <div className="p-2.5 bg-violet-500/10 rounded-xl border border-violet-500/20 text-violet-400">
+                    <Landmark className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white text-sm">Datos de Facturación y Banco</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Configura tu cuenta bancaria de destino para liquidaciones con Stripe.</p>
+                  </div>
+                </div>
+
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (onUpdateComercial) {
+                    onUpdateComercial({
+                      ...comercial,
+                      iban: iban.trim(),
+                      bic: bic.trim(),
+                      bankName: bankName.trim()
+                    });
+                    setSettingsSuccess(true);
+                    setTimeout(() => setSettingsSuccess(false), 3000);
+                  }
+                }} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Código IBAN (Cuenta Bancaria)</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ES21 0000 0000 0000 0000 0000"
+                      value={iban}
+                      onChange={(e) => setIban(e.target.value)}
+                      className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all font-mono"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Código BIC / SWIFT</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej. ESBRES2X"
+                        value={bic}
+                        onChange={(e) => setBic(e.target.value)}
+                        className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Nombre del Banco</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej. Santander, BBVA"
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {settingsSuccess && (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-400 font-medium">
+                      ✓ Datos bancarios guardados con éxito.
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-lg shadow-violet-500/15"
+                  >
+                    Guardar Configuración
+                  </button>
+                </form>
+
+                {/* STRIPE INFO CARD */}
+                <div className="bg-[#050510]/50 border border-violet-500/10 rounded-xl p-4 space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                    <span className="text-[10px] uppercase font-mono font-bold text-indigo-400 tracking-wider">Stripe Direct Payouts</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    Tus comisiones acumuladas se liquidan de forma directa a esta cuenta bancaria. Stripe verifica la titularidad del IBAN. El tiempo estimado de transferencia es de 1-3 días laborables.
+                  </p>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: PENDING COMISION & PAYOUTS HISTORY */}
+              <div className="lg:col-span-7 space-y-6 text-left">
+                
+                {/* ACCRUED COMISIONES BOX */}
+                <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Total Acumulado</span>
+                    <span className="text-xl font-mono font-black text-amber-400 block">
+                      {myBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                    </span>
+                    <span className="text-[8px] font-mono text-slate-500 block">Comisión {myCommissionPercentage}% escalonada</span>
+                  </div>
+
+                  <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/5 md:pl-6">
+                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Total Liquidado</span>
+                    <span className="text-xl font-mono font-black text-emerald-400 block">
+                      {((comercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0)).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                    </span>
+                    <span className="text-[8px] font-mono text-slate-500 block">Historial de transferencias Stripe</span>
+                  </div>
+
+                  <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/5 md:pl-6 bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
+                    <span className="text-[9px] font-mono text-amber-400 uppercase tracking-widest block font-bold">Pendiente de Liquidar</span>
+                    <span className="text-xl font-mono font-black text-white block">
+                      {Math.max(0, myBenefitsEarned - (comercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0)).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                    </span>
+                    <span className="text-[8px] font-mono text-amber-500/60 block">Listo para enviar a cuenta</span>
+                  </div>
+                </div>
+
+                {/* TRANSACTION HISTORY TABLE */}
+                <div className="bg-[#020205]/40 rounded-2xl border border-white/5 p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <History className="w-4 h-4 text-amber-400" />
+                      <h4 className="font-bold text-white text-xs uppercase font-mono tracking-wider">Historial de Liquidaciones</h4>
+                    </div>
+                    <span className="text-[8px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-bold border border-amber-500/10 uppercase">
+                      {(comercial.payouts || []).length} transferencias
+                    </span>
+                  </div>
+
+                  {(!comercial.payouts || comercial.payouts.length === 0) ? (
+                    <div className="text-center py-12 border border-dashed border-white/5 rounded-xl">
+                      <CreditCard className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                      <p className="text-[10px] text-slate-400 font-mono font-bold uppercase">No hay transferencias registradas</p>
+                      <p className="text-[9px] text-slate-500 max-w-xs mx-auto mt-1 leading-normal font-sans">
+                        Cuando el administrador liquide tus comisiones acumuladas, aparecerá el registro detallado aquí.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-white/5">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-white/[0.02] text-[9px] uppercase font-mono text-slate-400 border-b border-white/5 font-extrabold">
+                            <th className="p-3">Fecha y Hora</th>
+                            <th className="p-3 text-right">Importe Liquidado</th>
+                            <th className="p-3">Destino</th>
+                            <th className="p-3">Referencia Stripe / Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 font-mono text-[11px]">
+                          {[...comercial.payouts].sort((a,b) => b.date.localeCompare(a.date)).map((p) => (
+                            <tr key={p.id} className="hover:bg-white/[0.01] transition-colors">
+                              <td className="p-3 text-slate-300">
+                                {new Date(p.date).toLocaleString('es-ES')}
+                              </td>
+                              <td className="p-3 font-bold text-emerald-400 text-right font-sans">
+                                {p.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                              </td>
+                              <td className="p-3 font-sans">
+                                <div className="flex flex-col">
+                                  <span className="text-white text-[11px] font-bold">{p.bankName || 'Cuenta Bancaria'}</span>
+                                  <span className="text-[9px] font-mono text-slate-400">{p.bankAccount}</span>
+                                </div>
+                              </td>
+                              <td className="p-3 font-sans">
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-[9px] font-mono bg-violet-500/10 text-violet-400 px-1.5 py-0.5 rounded border border-violet-500/10 w-fit">
+                                    {p.stripeTransferId}
+                                  </span>
+                                  <span className="text-[8px] font-mono text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                                    ● Completado (Stripe)
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                </div>
+
+              </div>
+
+            </div>
           </div>
         ) : (
           <>
@@ -1039,149 +1264,6 @@ export default function ComercialesPanelScreen({
           <span>© {new Date().getFullYear()} Althera Software.</span>
         </div>
       </footer>
-
-      {/* CREATE LEAD MODAL */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#090f23] border border-white/10 rounded-3xl p-6 max-w-md w-full relative text-left shadow-2xl">
-            <h3 className="font-bold text-white text-base mb-1">Registrar Nuevo Prospecto (Lead)</h3>
-            <p className="text-xs text-slate-400 mb-6">Completa los datos de tu cliente para incorporarlo a tu cartera.</p>
-
-            <form onSubmit={handleCreateLead} className="space-y-4">
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Nombre del Cliente</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Laura Gómez"
-                    value={leadName}
-                    onChange={(e) => setLeadName(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Empresa / Entidad</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Nova Soluciones"
-                    value={leadCompany}
-                    onChange={(e) => setLeadCompany(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Email de Contacto</label>
-                  <input
-                    type="email"
-                    placeholder="laura@nova.com"
-                    value={leadEmail}
-                    onChange={(e) => setLeadEmail(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Teléfono Móvil</label>
-                  <input
-                    type="text"
-                    placeholder="+34 600 000 000"
-                    value={leadPhone}
-                    onChange={(e) => setLeadPhone(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Valor Estimado (€)</label>
-                  <input
-                    type="number"
-                    placeholder="Ej. 1200"
-                    value={leadValue}
-                    onChange={(e) => setLeadValue(e.target.value)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Estado Inicial</label>
-                  <select
-                    value={leadStatus}
-                    onChange={(e) => setLeadStatus(e.target.value as any)}
-                    className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition-all cursor-pointer"
-                  >
-                    <option value="Pendiente">Pendiente</option>
-                    <option value="Contactado">Contactado</option>
-                    <option value="Negociación">Negociación</option>
-                    <option value="Ganado">Ganado</option>
-                    <option value="Perdido">Perdido</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-mono text-slate-405 font-extrabold text-violet-400">Temperatura del Prospecto</label>
-                <div className="grid grid-cols-3 gap-2 bg-[#050505] p-2 border border-white/10 rounded-xl">
-                  {[
-                    { val: 'Frío', label: '❄️ Frío', activeStyle: 'bg-sky-500/20 border-sky-550 text-sky-400 shadow-[0_0_10px_rgba(14,165,233,0.15)]' },
-                    { val: 'Templado', label: '⚡ Templado', activeStyle: 'bg-amber-500/20 border-amber-550 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.15)]' },
-                    { val: 'Caliente', label: '🔥 Caliente', activeStyle: 'bg-rose-500/20 border-rose-550 text-rose-450 shadow-[0_0_10px_rgba(244,63,94,0.15)]' }
-                  ].map(item => {
-                    const isSelected = leadTemperature === item.val;
-                    return (
-                      <button
-                        key={item.val}
-                        type="button"
-                        onClick={() => setLeadTemperature(item.val as any)}
-                        className={`py-2 px-1.5 rounded-xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 cursor-pointer active:scale-95 ${
-                          isSelected 
-                            ? item.activeStyle
-                            : 'bg-transparent border-transparent text-slate-400 hover:text-slate-300'
-                        }`}
-                      >
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Notas o Comentarios</label>
-                <textarea
-                  rows={3}
-                  placeholder="Detalles sobre las necesidades del cliente..."
-                  value={leadNotes}
-                  onChange={(e) => setLeadNotes(e.target.value)}
-                  className="w-full bg-[#050505] border border-white/5 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/5">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-transparent hover:bg-white/5 text-slate-400 hover:text-white rounded-xl text-xs transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4.5 py-2 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.35)] font-sans border border-violet-500/20"
-                >
-                  Confirmar Registro
-                </button>
-              </div>
-
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Welcome Dossier & Printable PDF */}
       <DossierModal isOpen={showDossierModal} onClose={() => setShowDossierModal(false)} />

@@ -1523,6 +1523,7 @@ export default function App() {
             onAddLead={handleAddComercialLead}
             onUpdateLead={handleUpdateComercialLead}
             onDeleteLead={handleDeleteComercialLead}
+            onUpdateComercial={handleUpdateComercialAccount}
             onLogout={() => {
               setCurrentComercial(null);
               navigateTo('landing', 'push_back');

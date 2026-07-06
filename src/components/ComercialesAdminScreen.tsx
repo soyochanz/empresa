@@ -27,7 +27,11 @@ import {
   PhoneCall,
   Layers,
   Sparkles,
-  FileText
+  FileText,
+  History,
+  CreditCard,
+  Coins,
+  Clock
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, ClientContact } from '../types';
 import DossierModal from './DossierModal';
@@ -794,6 +798,151 @@ export default function ComercialesAdminScreen({
                     </div>
                   </div>
 
+                </div>
+
+                {/* STRIPE PAYOUT CARD FOR ADMIN */}
+                <div className="bg-[#0b0c1e] border-2 border-indigo-500/20 rounded-2xl p-5 space-y-4 shadow-xl">
+                  <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+                    <CreditCard className="w-4 h-4 text-indigo-400" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">Liquidación Stripe Direct</h4>
+                      <p className="text-[9px] text-slate-400">Procesa pagos de comisiones pendientes</p>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const indPaidCommissions = (currentComercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
+                    const indPendingCommission = Math.max(0, indBenefitsEarned - indPaidCommissions);
+
+                    return (
+                      <>
+                        <div className="space-y-2.5">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-400 font-sans">Comisiones ganadas:</span>
+                            <span className="font-mono text-slate-200 font-bold">{indBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-400 font-sans">Ya liquidadas:</span>
+                            <span className="font-mono text-emerald-400 font-bold">{indPaidCommissions.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs pt-2 border-t border-white/5">
+                            <span className="text-white font-sans font-bold">Pendiente actual:</span>
+                            <span className="font-mono text-amber-400 text-sm font-black">{indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+                          </div>
+                        </div>
+
+                        {/* DESTINATION BANK ACC INFO */}
+                        <div className="bg-slate-950/50 p-3.5 rounded-xl border border-white/5 space-y-1.5 text-left">
+                          <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Cuenta de Destino</span>
+                          {currentComercial.iban ? (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 text-xs text-white font-bold font-sans">
+                                <span className="text-[11px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/15">
+                                  {currentComercial.bankName}
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-mono text-slate-300 font-semibold tracking-wider">
+                                {currentComercial.iban}
+                              </p>
+                              {currentComercial.bic && (
+                                <p className="text-[9px] font-mono text-slate-500">
+                                  BIC/SWIFT: {currentComercial.bic}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-amber-400 bg-amber-500/5 p-2 rounded-lg border border-amber-500/10 leading-normal font-sans">
+                              ⚠️ El comercial no ha configurado sus datos bancarios todavía. Solicítale que los rellene para poder liquidar.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* LIQUIDATE BUTTON */}
+                        <button
+                          onClick={() => {
+                            if (indPendingCommission <= 0) {
+                              alert('No hay comisiones pendientes de liquidar para este comercial.');
+                              return;
+                            }
+                            if (!currentComercial.iban) {
+                              alert('No se puede procesar el pago porque el comercial no ha registrado sus datos bancarios.');
+                              return;
+                            }
+                            if (confirm(`¿Confirmas que deseas transferir ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name} utilizando Stripe Direct?`)) {
+                              const newPayout = {
+                                id: `pay_${Date.now()}`,
+                                comercialId: currentComercial.id,
+                                amount: indPendingCommission,
+                                date: new Date().toISOString(),
+                                status: 'completed' as const,
+                                bankAccount: currentComercial.iban,
+                                bankName: currentComercial.bankName,
+                                stripeTransferId: `tr_${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+                              };
+
+                              onUpdateComercial({
+                                ...currentComercial,
+                                payouts: [...(currentComercial.payouts || []), newPayout]
+                              });
+                              
+                              alert(`¡Liquidación realizada con éxito!\nSe ha enviado la transferencia de ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name}.\nSu saldo pendiente ahora es 0 €.`);
+                            }
+                          }}
+                          disabled={indPendingCommission <= 0 || !currentComercial.iban}
+                          className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md font-sans ${
+                            indPendingCommission <= 0 || !currentComercial.iban
+                              ? 'bg-slate-900 text-slate-600 border border-white/5 cursor-not-allowed shadow-none'
+                              : 'bg-[#635bff] hover:bg-[#5b52eb] text-white cursor-pointer active:scale-95 shadow-[#635bff]/25'
+                          }`}
+                        >
+                          <Coins className="w-4 h-4" />
+                          <span>Liquidar {indPendingCommission.toLocaleString('es-ES', { maximumFractionDigits: 0 })} € con Stripe</span>
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+
+                {/* HISTORIAL DE LIQUIDACIONES DE ESTE COMERCIAL */}
+                <div className="bg-[#020205]/40 border border-white/5 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <History className="w-4 h-4 text-amber-400" />
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">Historial del Comercial</h4>
+                    </div>
+                    <span className="text-[9px] font-mono bg-white/5 text-slate-400 px-2 py-0.5 rounded font-bold">
+                      {(currentComercial.payouts || []).length} transferencias
+                    </span>
+                  </div>
+
+                  {(!currentComercial.payouts || currentComercial.payouts.length === 0) ? (
+                    <p className="text-[10px] text-slate-500 italic font-sans py-2">
+                      No hay registros de liquidaciones Stripe previas para este comercial.
+                    </p>
+                  ) : (
+                    <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                      {[...currentComercial.payouts].sort((a,b) => b.date.localeCompare(a.date)).map((p) => (
+                        <div key={p.id} className="bg-[#040409] p-3 rounded-xl border border-white/5 flex flex-col gap-1.5 text-left">
+                          <div className="flex justify-between items-center font-sans">
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {new Date(p.date).toLocaleString('es-ES')}
+                            </span>
+                            <span className="text-[11px] font-mono font-black text-emerald-400">
+                              {p.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-end text-[9px] font-mono">
+                            <div className="text-slate-500 font-sans">
+                              <span className="text-slate-400 font-semibold">{p.bankName}</span> • {p.bankAccount}
+                            </div>
+                            <span className="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded font-bold text-[8px] uppercase">
+                              ✓ Stripe {p.stripeTransferId}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
               </div>

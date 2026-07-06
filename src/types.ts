@@ -148,6 +148,17 @@ export interface Invoice {
   isInitialSale?: boolean; // New: is initial acquisition sale
 }
 
+export interface PayoutTransaction {
+  id: string;
+  comercialId: string;
+  amount: number;
+  date: string;
+  status: 'completed' | 'failed';
+  bankAccount: string;
+  bankName?: string;
+  stripeTransferId?: string;
+}
+
 export interface ComercialAccount {
   id: string;
   name: string;
@@ -156,6 +167,10 @@ export interface ComercialAccount {
   createdAt: string;
   phone?: string;
   commissionPercentage?: number; // New: customizable commission percentage
+  iban?: string;
+  bic?: string;
+  bankName?: string;
+  payouts?: PayoutTransaction[];
 }
 
 export interface ComercialLead {
