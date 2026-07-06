@@ -42,6 +42,18 @@ const safeConfirm = (msg: string): boolean => {
   }
 };
 
+const getTieredCommission = (closures: number): number => {
+  if (closures <= 0) return 10;
+  if (closures >= 1 && closures <= 3) return 10;
+  if (closures >= 4 && closures <= 6) return 11;
+  if (closures >= 7 && closures <= 9) return 12;
+  if (closures >= 10 && closures <= 12) return 13.5;
+  if (closures >= 13 && closures <= 14) return 15;
+  if (closures >= 15 && closures <= 16) return 16;
+  if (closures === 17) return 17;
+  return 18; // 18 o más
+};
+
 interface FinanceScreenProps {
   contacts: ClientContact[];
   onNavigate?: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
@@ -159,7 +171,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
           clientName: matchedContact?.name || 'Cliente Recurrente',
           clientEmail: matchedContact?.email || 'cliente@recurrente.com',
           amount: item.amount.toString(),
-          interval: item.recurrencePeriod === 'weekly' || item.recurrencePeriod === 'semanal' ? 'week' : 'month',
+          interval: (item.recurrencePeriod as any) === 'weekly' || (item.recurrencePeriod as any) === 'semanal' ? 'week' : 'month',
         }),
       });
 
@@ -175,7 +187,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
         (c.company && descLower.includes(c.company.toLowerCase()))
       ) || contacts[0];
 
-      const period = item.recurrencePeriod === 'weekly' || item.recurrencePeriod === 'semanal' ? 'week' : 'month';
+      const period = (item.recurrencePeriod as any) === 'weekly' || (item.recurrencePeriod as any) === 'semanal' ? 'week' : 'month';
       const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${matchedContact?.id || 'c2'}&amount=${item.amount}&interval=${period}&stripe_session_id=cs_test_mock_${item.id}&simulated=true`;
       setActiveRecStripeUrl(prev => ({ ...prev, [item.id]: simulatedUrl }));
     } finally {
@@ -2992,7 +3004,6 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
             {/* Total Sales Volume */}
             {(() => {
               const totalVentasComerciales = comercialesList.reduce((sum, com) => {
-                const pct = com.commissionPercentage ?? 10;
                 const txs = transactions.filter(tx => 
                   tx.isInitialSale === true && 
                   (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
@@ -3001,17 +3012,35 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
               }, 0);
 
               const totalComisionesDevengadas = comercialesList.reduce((sum, com) => {
-                const pct = com.commissionPercentage ?? 10;
                 const txs = transactions.filter(tx => 
                   tx.isInitialSale === true && 
                   (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
                 );
                 const volume = txs.reduce((s, t) => s + (t.amount || 0), 0);
+                
+                const clientsCount = contacts.filter(c => 
+                  c.status === 'Client' && 
+                  (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
+                ).length;
+                const closures = Math.max(clientsCount, txs.length);
+                const pct = getTieredCommission(closures);
+                
                 return sum + (volume * (pct / 100));
               }, 0);
 
               const avgComm = comercialesList.length 
-                ? Math.round(comercialesList.reduce((sum, c) => sum + (c.commissionPercentage ?? 10), 0) / comercialesList.length)
+                ? Math.round(comercialesList.reduce((sum, com) => {
+                    const txs = transactions.filter(tx => 
+                      tx.isInitialSale === true && 
+                      (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
+                    );
+                    const clientsCount = contacts.filter(c => 
+                      c.status === 'Client' && 
+                      (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
+                    ).length;
+                    const closures = Math.max(clientsCount, txs.length);
+                    return sum + getTieredCommission(closures);
+                  }, 0) / comercialesList.length)
                 : 10;
 
               return (
@@ -3086,18 +3115,20 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                     </tr>
                   ) : (
                     comercialesList.map(com => {
-                      const pct = com.commissionPercentage ?? 10;
                       const txs = transactions.filter(tx => 
                         tx.isInitialSale === true && 
                         (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
                       );
                       const volume = txs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-                      const benefits = volume * (pct / 100);
                       
                       const clientsCount = contacts.filter(c => 
                         c.status === 'Client' && 
                         (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
                       ).length;
+                      
+                      const closures = Math.max(clientsCount, txs.length);
+                      const pct = getTieredCommission(closures);
+                      const benefits = volume * (pct / 100);
 
                       return (
                         <tr key={com.id} className="text-xs hover:bg-white/[0.01] transition-colors">
@@ -3107,8 +3138,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                               <span className="text-[10px] font-mono text-slate-500 block mt-0.5">{com.email}</span>
                             </div>
                           </td>
-                          <td className="p-4 text-left font-mono text-amber-400 font-bold">
-                            {pct}%
+                          <td className="p-4 text-left font-mono">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-amber-400">{pct}%</span>
+                              <span className="text-[7px] font-mono px-1 py-0.5 rounded bg-amber-500/10 text-amber-400 font-bold uppercase tracking-wider">Escalonada</span>
+                            </div>
                           </td>
                           <td className="p-4 text-left font-mono">
                             <span className="px-2 py-0.5 bg-white/5 border border-white/10 rounded-lg text-slate-300">
@@ -3163,7 +3197,21 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                         com.id === t.comercialId || (t.comercialEmail && com.email.toLowerCase() === t.comercialEmail.toLowerCase())
                       );
                       const comName = assignedCom ? assignedCom.name : (t.comercialEmail || 'N/A');
-                      const commPct = assignedCom ? (assignedCom.commissionPercentage ?? 10) : 10;
+                      
+                      let commPct = 10;
+                      if (assignedCom) {
+                        const comTxs = transactions.filter(tx => 
+                          tx.isInitialSale === true && 
+                          (tx.comercialId === assignedCom.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === assignedCom.email.toLowerCase()))
+                        );
+                        const clientsCount = contacts.filter(c => 
+                          c.status === 'Client' && 
+                          (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === assignedCom.email.toLowerCase())
+                        ).length;
+                        const closures = Math.max(clientsCount, comTxs.length);
+                        commPct = getTieredCommission(closures);
+                      }
+                      
                       const commVal = t.amount * (commPct / 100);
 
                       return (

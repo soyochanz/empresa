@@ -654,6 +654,15 @@ export default function App() {
           if (fetchedComercialAccs) setComercialesList(fetchedComercialAccs);
         } catch (err) {}
 
+        try {
+          const fetchedProjects = await db.getProjects();
+          if (fetchedProjects) {
+            setProjects(fetchedProjects);
+          }
+        } catch (projErr) {
+          console.warn('Could not sync projects table from Supabase:', projErr);
+        }
+
         const activeUid = userIdToSync || currentUser?.id;
         if (activeUid) {
           const [fetchedContacts, fetchedEvents, fetchedNotes, fetchedActivities] = await Promise.all([
@@ -668,15 +677,6 @@ export default function App() {
           setEvents(fetchedEvents || []);
           setNotes(fetchedNotes || []);
           setActivities(fetchedActivities || []);
-
-          try {
-            const fetchedProjects = await db.getProjects();
-            if (fetchedProjects) {
-              setProjects(fetchedProjects);
-            }
-          } catch (projErr) {
-            console.warn('Could not sync projects table from Supabase:', projErr);
-          }
 
           await fetchAndSetProfiles();
         }

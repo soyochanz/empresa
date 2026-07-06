@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact } from '../types';
 import ColdCallingScreen from './ColdCallingScreen';
+import DossierModal from './DossierModal';
 
 const safeConfirm = (msg: string): boolean => {
   const isIframe = window.self !== window.top;
@@ -33,6 +34,18 @@ const safeConfirm = (msg: string): boolean => {
   } catch (e) {
     return true;
   }
+};
+
+export const getTieredCommission = (closures: number): number => {
+  if (closures <= 0) return 10;
+  if (closures >= 1 && closures <= 3) return 10;
+  if (closures >= 4 && closures <= 6) return 11;
+  if (closures >= 7 && closures <= 9) return 12;
+  if (closures >= 10 && closures <= 12) return 13.5;
+  if (closures >= 13 && closures <= 14) return 15;
+  if (closures >= 15 && closures <= 16) return 16;
+  if (closures === 17) return 17;
+  return 18; // 18 o más
 };
 
 interface ComercialesPanelScreenProps {
@@ -87,6 +100,7 @@ export default function ComercialesPanelScreen({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showDossierModal, setShowDossierModal] = useState(false);
   const [leadTemperature, setLeadTemperature] = useState<'Frío' | 'Templado' | 'Caliente'>('Frío');
 
   // Quick Call Logging states on Dashboard
@@ -152,29 +166,42 @@ export default function ComercialesPanelScreen({
   // Dynamic calculation: If a lead belongs to a client contact with status === 'Client', we count it as 'Ganado'. Also append converted client contacts.
   const mappedLeadsList = useMemo(() => {
     // 1. Map existing leads, force to 'Ganado' if matching contact is 'Client'
-    const updated = leadsList.map(lead => {
-      const matchingContact = contacts.find(c => 
-        (lead.email && c.email && lead.email.toLowerCase() === c.email.toLowerCase()) ||
-        (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase())
-      );
-      
-      if (matchingContact && matchingContact.status === 'Client') {
-        const clientTxs = finTransactions.filter(tx => {
-          if (tx.type !== 'income') return false;
-          const descLower = tx.description?.toLowerCase() || '';
-          const nameLower = matchingContact.name?.toLowerCase() || '';
-          const companyLower = matchingContact.company?.toLowerCase() || '';
-          return (nameLower && descLower.includes(nameLower)) || (companyLower && descLower.includes(companyLower));
-        });
-        const totalPaid = clientTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-        return {
-          ...lead,
-          status: 'Ganado' as const,
-          value: lead.value || totalPaid || 1500
-        };
-      }
-      return lead;
-    });
+    const updated = leadsList
+      .map(lead => {
+        const matchingContact = contacts.find(c => 
+          (lead.email && c.email && lead.email.toLowerCase() === c.email.toLowerCase()) ||
+          (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase())
+        );
+        
+        if (matchingContact && matchingContact.status === 'Client') {
+          const clientTxs = finTransactions.filter(tx => {
+            if (tx.type !== 'income') return false;
+            const descLower = tx.description?.toLowerCase() || '';
+            const nameLower = matchingContact.name?.toLowerCase() || '';
+            const companyLower = matchingContact.company?.toLowerCase() || '';
+            return (nameLower && descLower.includes(nameLower)) || (companyLower && descLower.includes(companyLower));
+          });
+          const totalPaid = clientTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+          return {
+            ...lead,
+            status: 'Ganado' as const,
+            value: lead.value || totalPaid || 1500
+          };
+        }
+        return lead;
+      })
+      .filter(lead => {
+        // If a lead has status 'Ganado', we only keep it if a matching 'Client' actually exists in the contacts list.
+        // This ensures deleting a client or removing their client status instantly removes them from commercial stats.
+        if (lead.status === 'Ganado') {
+          return contacts.some(c => 
+            c.status === 'Client' && 
+            ((lead.email && c.email && lead.email.toLowerCase() === c.email.toLowerCase()) ||
+             (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase()))
+          );
+        }
+        return true;
+      });
 
     // 2. Find client contacts associated with the current commercial that are NOT already in leadsList
     const newLeadsFromClients: ComercialLead[] = [];
@@ -212,9 +239,9 @@ export default function ComercialesPanelScreen({
               email: c.email || '',
               phone: c.phone || '',
               status: 'Ganado',
-              value: totalPaid || c.estimatedValue || 1500,
+              value: totalPaid || (c as any).estimatedValue || 1500,
               notes: 'Importado de Cartera de Clientes CRM',
-              createdAt: c.createdAt || new Date().toISOString(),
+              createdAt: (c as any).createdAt || new Date().toISOString(),
               temperature: 'Caliente'
             });
           }
@@ -237,12 +264,13 @@ export default function ComercialesPanelScreen({
   const totalPipeline = myLeads.reduce((sum, l) => sum + (l.status !== 'Perdido' ? Number(l.value || 0) : 0), 0);
   const wonRevenue = wonLeads.reduce((sum, l) => sum + Number(l.value || 0), 0);
 
-  // Commission & Benefits calculations for this commercial
-  const myCommissionPercentage = comercial.commissionPercentage ?? 10;
+  // Commission & Benefits calculations for this commercial - Now automatically tiered/escalonated!
   const myInitialTxs = finTransactions.filter(tx => 
     tx.isInitialSale === true && 
     (tx.comercialId === comercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === comercial.email.toLowerCase()))
   );
+  const closuresCount = Math.max(wonLeads.length, myInitialTxs.length);
+  const myCommissionPercentage = getTieredCommission(closuresCount);
   const myInitialSalesVolume = myInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
 
@@ -353,6 +381,13 @@ export default function ComercialesPanelScreen({
             <span className="text-[10px] font-mono text-slate-500 uppercase font-bold leading-none">Perfil de Ventas</span>
             <span className="text-xs font-semibold text-slate-300 mt-1">{comercial.email}</span>
           </div>
+          <button
+            onClick={() => setShowDossierModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-xl text-xs font-bold transition duration-250 cursor-pointer shadow-lg shadow-amber-500/10"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>Ver Dossier & PDF</span>
+          </button>
           <button
             onClick={onLogout}
             className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/25 text-red-400 border border-red-500/25 rounded-xl text-xs font-semibold hover:text-white transition duration-250 cursor-pointer"
@@ -1147,6 +1182,9 @@ export default function ComercialesPanelScreen({
           </div>
         </div>
       )}
+
+      {/* Welcome Dossier & Printable PDF */}
+      <DossierModal isOpen={showDossierModal} onClose={() => setShowDossierModal(false)} />
 
     </div>
   );

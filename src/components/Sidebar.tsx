@@ -244,43 +244,6 @@ export default function Sidebar({
 
       {/* Support & Logout Section */}
       <div className="px-4 pt-4 border-t border-white/10 space-y-2">
-        {/* Supabase connection status check widget */}
-        <button
-          onClick={onOpenSupabase}
-          className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/10 hover:border-emerald-500/25 transition-all duration-200 text-left cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-2 w-2">
-              {supabaseStatus.loading ? (
-                <span className="animate-spin rounded-full h-2 w-2 border border-t-transparent border-emerald-400"></span>
-              ) : supabaseStatus.connected && supabaseStatus.tablesExist ? (
-                <>
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-duration-1000"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </>
-              ) : supabaseStatus.connected && !supabaseStatus.tablesExist ? (
-                <>
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75 animate-duration-1000"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                </>
-              ) : (
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-              )}
-            </span>
-            <span className="font-sans text-xs font-semibold text-emerald-400/90">Supabase Sync</span>
-          </div>
-          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-            supabaseStatus.loading 
-              ? 'bg-slate-500/10 text-slate-400 animate-pulse' 
-              : supabaseStatus.connected && supabaseStatus.tablesExist 
-                ? 'bg-emerald-500/10 text-emerald-400' 
-                : supabaseStatus.connected 
-                  ? 'bg-amber-500/10 text-amber-400 animate-pulse' 
-                  : 'bg-rose-500/10 text-rose-400'
-          }`}>
-            {supabaseStatus.loading ? '...' : supabaseStatus.connected && supabaseStatus.tablesExist ? 'Active' : 'Missing'}
-          </span>
-        </button>
 
         {currentUser && (
           <div className="mx-1 p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center gap-3">
@@ -326,23 +289,6 @@ export default function Sidebar({
         >
           <Settings className="w-5 h-5 text-slate-400" />
           <span className="font-sans text-sm">Configuration</span>
-        </button>
-
-        <button
-          onClick={() => {
-            const el = document.getElementById('toast-msg');
-            if (el) {
-              el.innerText = "Support Channel: WhatsApp / admin@althera.io";
-              el.classList.remove('opacity-0');
-              setTimeout(() => el.classList.add('opacity-0'), 3000);
-            } else {
-              alert("Soporte Técnico de Althera: admin@althera.io");
-            }
-          }}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 text-left"
-        >
-          <HelpCircle className="w-5 h-5 text-slate-400" />
-          <span className="font-sans text-sm">Support</span>
         </button>
 
         {/* Logout - Must resolve to push_back transition */}

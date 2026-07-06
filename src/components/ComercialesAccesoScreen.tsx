@@ -152,7 +152,7 @@ export default function ComercialesAccesoScreen({
               onClick={onBackToLanding}
               className="text-xs text-slate-400 hover:text-white font-sans tracking-wide hover:underline cursor-pointer flex items-center justify-center gap-1.5 mx-auto transition-colors"
             >
-              <span>← Volver a Althera Studio</span>
+              <span>← Volver a Althera Solutions</span>
             </button>
           </div>
 

@@ -61,48 +61,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
       }
     }
 
-    return [
-      {
-        title: "NovaAI - IA Generativa de Siguiente Generación",
-        category: "SaaS & Web App",
-        tag: "Live Website",
-        description: "Diseño minimalista premium para una plataforma internacional de inteligencia artificial. Rendimiento 100% en Lighthouse con micro-animaciones SVG, optimización máxima de SEO y pasarelas de pago automatizadas.",
-        image: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-        url: "novasaas.agencyflow.com",
-        tech: ["React 19", "Vite", "Framer Motion", "Tailwind CSS"],
-        color: "from-blue-500/20 to-indigo-500/20"
-      },
-      {
-        title: "Luxor Estate - Buscador Inmobiliario Ultra-Lux",
-        category: "Buscador & Luxury Portal",
-        tag: "Live Project",
-        description: "E-Commerce inmobiliario de alta gama con filtros reactivos fluidos, integración de mapas Vectoriales en 3D, carga ultra veloz de galerías HD y enrutamiento dinámico de agentes locales.",
-        image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
-        url: "luxor.agencyflow.com",
-        tech: ["Next.js", "Mapbox GL API", "PostgreSQL", "Tailwind"],
-        color: "from-purple-500/20 to-pink-500/20"
-      },
-      {
-        title: "VeloCity - E-Commerce de Bicicletas Eléctricas Custom",
-        category: "Interactive E-Commerce",
-        tag: "Completed",
-        description: "Tienda online de lujo con representación interactiva del catálogo de bicicletas customizadas. Permite configurar componentes en tiempo real con recuento dinámico de precios y checkout seguro via Stripe.",
-        image: "https://images.unsplash.com/photo-1485965120184-e220f721d03e?auto=format&fit=crop&w=800&q=80",
-        url: "velocity.agencyflow.com",
-        tech: ["TailwindCSS", "Stripe API", "Three.js Engine"],
-        color: "from-emerald-500/20 to-teal-500/20"
-      },
-      {
-        title: "Aether - Visualizador Analítico de Web3",
-        category: "Fintech & Data Engine",
-        tag: "Active Portal",
-        description: "Panel de control criptográfico de alta seguridad que procesa millones de transacciones por segundo. Cuenta con gráficos interactivos construidos en D3.js y sincronización persistente vía WebSockets.",
-        image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80",
-        url: "aether.agencyflow.com",
-        tech: ["D3.js Core", "WebSockets", "Supabase DB", "Tailwind"],
-        color: "from-amber-500/20 to-orange-500/20"
-      }
-    ];
+    return [];
   }, [projects]);
 
   const CAPABILITIES = [
@@ -258,7 +217,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
             </div>
             <div>
               <span className="font-extrabold text-lg text-white font-sans tracking-wide uppercase">
-                Althera <span className="font-light italic lowercase text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-rose-400">studio</span>
+                Althera <span className="font-light italic lowercase text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-rose-400">solutions</span>
               </span>
             </div>
           </motion.div>
@@ -337,7 +296,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
             }}
             className="text-slate-400 text-sm sm:text-[15px] leading-relaxed max-w-2.5xl font-sans font-light"
           >
-            Somos <span className="text-white font-semibold flex-inline items-center gap-1"><span className="text-violet-400">Althera</span> Studio</span>, una boutique de desarrollo tecnológico de alta costura. Diseñamos y programamos <span className="text-violet-300">plataformas SaaS de alto flujo</span>, <span className="text-fuchsia-300">sistemas interactivos a medida</span> y <span className="text-rose-300">paneles analíticos soberbios</span>. Centramos cada píxel en escribir código limpio estructurado en TypeScript, adaptativo en su totalidad y diseñado con un refinamiento visual absoluto.
+            Somos <span className="text-white font-semibold flex-inline items-center gap-1"><span className="text-violet-400">Althera</span> Solutions</span>, una boutique de desarrollo tecnológico de alta costura. Diseñamos y programamos <span className="text-violet-300">plataformas SaaS de alto flujo</span>, <span className="text-fuchsia-300">sistemas interactivos a medida</span> y <span className="text-rose-300">paneles analíticos soberbios</span>. Centramos cada píxel en escribir código limpio estructurado en TypeScript, adaptativo en su totalidad y diseñado con un refinamiento visual absoluto.
           </motion.p>
 
           {/* Call to action actionables */}
@@ -415,7 +374,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
           >
             <div className="space-y-1">
               <span className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-semibold block">Nuestra Galería de Código</span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Proyectos Levados a Cabo</h2>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Proyectos Llevados a Cabo</h2>
             </div>
             <p className="text-slate-400 text-xs max-w-sm leading-relaxed font-light">
               Desarrollamos soluciones digitales que aúnan estética ultra-moderna y flujos lógicos eficientes bajo estándares de ingeniería excepcionales.
@@ -424,7 +383,15 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
 
           {/* Grid list of detailed elite projects with visual browser mockups */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {displayProjects.map((proj, idx) => {
+            {displayProjects.length === 0 ? (
+              <div className="col-span-1 md:col-span-2 text-center py-16 bg-white/[0.01] border border-white/5 rounded-3xl p-8 space-y-2">
+                <span className="text-violet-400 font-mono text-[10px] uppercase tracking-wider block font-semibold">Galería en Actualización</span>
+                <p className="text-slate-400 text-xs max-w-md mx-auto leading-relaxed font-light">
+                  Estamos documentando nuestros últimos proyectos llevados a cabo. Muy pronto publicaremos fichas interactivas aquí.
+                </p>
+              </div>
+            ) : (
+              displayProjects.map((proj, idx) => {
               return (
                 <motion.div 
                   key={idx} 
@@ -511,7 +478,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
 
                 </motion.div>
               );
-            })}
+            }))}
           </div>
 
         </section>
@@ -595,7 +562,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
               </div>
               <h3 className="font-bold text-sm text-white">¡Solicitud Enviada con Éxito!</h3>
               <p className="text-xs text-slate-400 leading-relaxed max-w-sm mx-auto">
-                Nuestro personal de ingeniería analizará los requerimientos técnicos y se pondrá en contacto contigo en las próximas 12 horas. ¡Gracias por confiar en Althera Studio!
+                Nuestro personal de ingeniería analizará los requerimientos técnicos y se pondrá en contacto contigo en las próximas 12 horas. ¡Gracias por confiar en Althera Solutions!
               </p>
             </motion.div>
           ) : (
@@ -670,7 +637,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
               <div className="w-4.5 h-4.5 flex items-center justify-center bg-black rounded p-0.5 border border-violet-500/20">
                 <img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="A" className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />
               </div>
-              <span className="text-[11px] font-semibold text-slate-450">Althera Studio • Tecnología de Alta Costura</span>
+              <span className="text-[11px] font-semibold text-slate-450">Althera Solutions • Tecnología de Alta Costura</span>
             </div>
             {/* Added Acceso a Comerciales button */}
             <button 
@@ -681,7 +648,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
             </button>
           </div>
           <p className="text-[10px] text-slate-500 font-mono">
-            © {new Date().getFullYear()} Althera Studio. Reservados todos los derechos.
+            © {new Date().getFullYear()} Althera Solutions. Reservados todos los derechos.
           </p>
         </div>
       </footer>

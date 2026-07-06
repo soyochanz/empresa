@@ -312,7 +312,7 @@ export default function ContactosScreen() {
                   
                   {/* Action 1 */}
                   <a 
-                    href={`mailto:${selectedInquiry.email}?subject=Contacto recibido - Althera Studio&body=Hola ${selectedInquiry.name}, gracias por contactar con Althera Studio...`}
+                    href={`mailto:${selectedInquiry.email}?subject=Contacto recibido - Althera Solutions&body=Hola ${selectedInquiry.name}, gracias por contactar con Althera Solutions...`}
                     className="p-3 bg-white/[0.02] border border-white/5 hover:border-amber-500/20 hover:bg-amber-500/[0.02] rounded-xl text-left transition flex items-center gap-3 group select-none cursor-pointer"
                   >
                     <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/25 flex items-center justify-center border border-amber-500/10">
