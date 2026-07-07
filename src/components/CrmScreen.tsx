@@ -1139,7 +1139,7 @@ export default function CrmScreen({
           clientName: contact.name,
           clientEmail: targetEmail,
           amount: installmentAmount,
-          interval: 'once',
+          interval: 'month',
           installments: (txForCheckout.stripeInstallmentCount || instCount).toString(),
           concept: formattedConcept,
           pendingTxId: txForCheckout.id,
@@ -1166,7 +1166,7 @@ export default function CrmScreen({
       // Fallback simulated link if Stripe is not fully set up
       const installmentAmount = txForCheckout.amount.toFixed(2);
       const formattedConcept = txForCheckout.description || `${instConcept} - Plazo ${txForCheckout.stripeInstallmentIndex || 1} de ${txForCheckout.stripeInstallmentCount || instCount}`;
-      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${contact.id}&amount=${installmentAmount}&interval=once&pending_tx_id=${txForCheckout.id}&stripe_plan_id=${txForCheckout.stripePlanId || ''}&installment_index=${txForCheckout.stripeInstallmentIndex || ''}&installments=${txForCheckout.stripeInstallmentCount || instCount}&concept=${encodeURIComponent(formattedConcept)}&stripe_session_id=cs_test_mock_inst_${txForCheckout.id}_${Date.now()}&simulated=true`;
+      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${contact.id}&amount=${installmentAmount}&interval=month&pending_tx_id=${txForCheckout.id}&stripe_plan_id=${txForCheckout.stripePlanId || ''}&installment_index=${txForCheckout.stripeInstallmentIndex || ''}&installments=${txForCheckout.stripeInstallmentCount || instCount}&concept=${encodeURIComponent(formattedConcept)}&stripe_session_id=cs_test_mock_inst_${txForCheckout.id}_${Date.now()}&simulated=true`;
       
       const updatedTx = { ...txForCheckout, stripeCheckoutUrl: simulatedUrl, stripeCheckoutSessionId: `cs_test_mock_inst_${txForCheckout.id}` };
       try {
@@ -2271,11 +2271,11 @@ export default function CrmScreen({
                       ) : (
                         <CreditCard className="w-3.5 h-3.5" />
                       )}
-                      <span>{instLoading ? 'Generando...' : 'Generar Enlace de Plazos'}</span>
+                      <span>{instLoading ? 'Generando...' : 'Generar Suscripción de Plazos'}</span>
                     </button>
                   ) : (
                     <div className="space-y-2 bg-[#040408] p-2.5 rounded-xl border border-white/5">
-                      <span className="block text-[9px] font-mono text-emerald-400 font-bold uppercase tracking-wide">¡Enlace de Plazos Listo!</span>
+                      <span className="block text-[9px] font-mono text-emerald-400 font-bold uppercase tracking-wide">¡Suscripción de Plazos Lista!</span>
                       <p className="text-[9px] text-slate-400 leading-snug">
                         Comparte este enlace con el cliente para que configure los pagos automáticos. Al pagar el 1º plazo, las cuotas restantes se cobrarán de forma automática:
                       </p>

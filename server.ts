@@ -75,6 +75,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     const stripe = getStripe();
     const appUrl = getAppUrl(req);
     const isSubscription = interval !== "once";
+    const installmentCount = Number.parseInt(installments || "", 10);
+    const isFiniteInstallmentSubscription = isSubscription && Number.isFinite(installmentCount) && installmentCount > 1;
 
     const lineItem: any = {
       price_data: {
@@ -98,8 +100,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       };
     }
 
-    // Create a checkout session
-    const session = await stripe.checkout.sessions.create({
+    const sessionConfig: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ["card"],
       line_items: [lineItem],
       mode: isSubscription ? "subscription" : "payment",
@@ -116,7 +117,21 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         stripePlanId: stripePlanId || "",
         installmentIndex: installmentIndex || "",
       },
-    });
+    };
+
+    if (isFiniteInstallmentSubscription) {
+      sessionConfig.subscription_data = {
+        metadata: {
+          clientId,
+          pendingTxId: pendingTxId || "",
+          stripePlanId: stripePlanId || "",
+          installments: installments || "",
+        },
+      };
+    }
+
+    // Create a checkout session
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
     res.json({ url: session.url, sessionId: session.id });
   } catch (error: any) {
@@ -159,10 +174,28 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
 
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+    const installmentCount = Number.parseInt(session.metadata?.installments || "", 10);
+
+    if (subscriptionId && Number.isFinite(installmentCount) && installmentCount > 1) {
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      if (!subscription.cancel_at) {
+        const cancelAt = new Date((subscription.start_date || Math.floor(Date.now() / 1000)) * 1000);
+        cancelAt.setMonth(cancelAt.getMonth() + installmentCount);
+        await stripe.subscriptions.update(subscriptionId, {
+          cancel_at: Math.floor(cancelAt.getTime() / 1000),
+          metadata: {
+            ...(subscription.metadata || {}),
+            installments: String(installmentCount),
+            althera_finite_installment_plan: "true",
+          },
+        });
+      }
+    }
     
     res.json({
       customerId: session.customer,
-      subscriptionId: session.subscription,
+      subscriptionId,
       paymentStatus: session.payment_status,
       status: session.status,
     });
