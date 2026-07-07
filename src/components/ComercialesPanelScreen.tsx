@@ -655,6 +655,30 @@ export default function ComercialesPanelScreen({
                     <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
                     <span className="text-[10px] uppercase font-mono font-bold text-indigo-400 tracking-wider">Stripe Direct Payouts</span>
                   </div>
+                  {comercial.stripeConnectAccountId ? (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[10px] text-emerald-400 font-mono break-all">
+                      Stripe Connect vinculado: {comercial.stripeConnectAccountId}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleConnectStripe}
+                      disabled={stripeConnectLoading}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-wait text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-lg shadow-emerald-500/15 flex items-center justify-center gap-1.5"
+                    >
+                      {stripeConnectLoading ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CreditCard className="w-3.5 h-3.5" />
+                      )}
+                      <span>{stripeConnectLoading ? 'Abriendo Stripe...' : 'Conectar con Stripe Connect'}</span>
+                    </button>
+                  )}
+                  {stripeConnectError && (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[10px] text-rose-400 leading-normal">
+                      {stripeConnectError}
+                    </div>
+                  )}
                   <p className="text-[10px] text-slate-400 leading-normal">
                     Tus comisiones acumuladas se liquidan de forma directa a esta cuenta bancaria. Stripe verifica la titularidad del IBAN. El tiempo estimado de transferencia es de 1-3 días laborables.
                   </p>
