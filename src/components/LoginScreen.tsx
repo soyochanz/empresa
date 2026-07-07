@@ -128,15 +128,19 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
         </div>
 
         {/* Central Card */}
-        <div className="bg-[#030306]/90 backdrop-blur-3xl border border-white/5 p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] hover:border-amber-500/10 transition-all duration-300">
+        <div className="relative bg-[#0a0b18]/80 backdrop-blur-3xl border border-white/10 p-8 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.8)] overflow-hidden hover:border-amber-500/20 transition-all duration-300">
+          
+          {/* Elegant top golden ambient line */}
+          <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
+
           <div className="mb-6 text-left">
             <div className="flex justify-between items-center mb-1.5">
               <h2 className="text-xl font-bold text-white tracking-tight">
-                Welcome Back
+                Acceso al Portal
               </h2>
             </div>
-            <p className="text-slate-450 text-xs leading-relaxed font-sans font-medium">
-              Introduce tus credenciales para acceder al panel de control corporativo.
+            <p className="text-slate-400 text-xs leading-relaxed font-sans font-medium">
+              Introduce tus credenciales autorizadas para acceder al panel administrativo corporativo.
             </p>
           </div>
 
@@ -242,8 +246,11 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
                 </label>
                 <a 
                   href="#" 
-                  onClick={(e) => { e.preventDefault(); alert("Por favor contacta al administrador de Althera para recibir tus claves administrativas."); }} 
-                  className="text-amber-500/90 hover:text-amber-400 hover:underline transition-all font-medium"
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    setErrorMsg("Por favor contacta al administrador de Althera para recibir tus claves administrativas."); 
+                  }} 
+                  className="text-amber-500/90 hover:text-amber-400 hover:underline transition-all font-medium font-sans"
                 >
                   ¿Olvidada?
                 </a>

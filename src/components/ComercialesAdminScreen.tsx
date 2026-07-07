@@ -92,6 +92,34 @@ export default function ComercialesAdminScreen({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showDossierModal, setShowDossierModal] = useState(false);
 
+  // Dialog modal custom implementation to avoid sandboxed iframe native blockings
+  const [customDialog, setCustomDialog] = useState<{
+    isOpen: boolean;
+    type: 'alert' | 'confirm';
+    title: string;
+    message: string;
+    onConfirm?: () => void;
+  } | null>(null);
+
+  const triggerAlert = (title: string, message: string) => {
+    setCustomDialog({
+      isOpen: true,
+      type: 'alert',
+      title,
+      message
+    });
+  };
+
+  const triggerConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setCustomDialog({
+      isOpen: true,
+      type: 'confirm',
+      title,
+      message,
+      onConfirm
+    });
+  };
+
   // Auto-select first commercial if list changes and none selected
   React.useEffect(() => {
     if (comercialesList.length > 0 && (!selectedComercialId || !comercialesList.some(c => c.id === selectedComercialId))) {
@@ -877,32 +905,39 @@ export default function ComercialesAdminScreen({
                         <button
                           onClick={() => {
                             if (indPendingCommission <= 0) {
-                              alert('No hay comisiones pendientes de liquidar para este comercial.');
+                              triggerAlert('Operación no permitida', 'No hay comisiones pendientes de liquidar para este comercial.');
                               return;
                             }
                             if (!currentComercial.iban) {
-                              alert('No se puede procesar el pago because el comercial no ha registrado sus datos bancarios.');
+                              triggerAlert('Datos incompletos', 'No se puede procesar el pago porque el comercial no ha registrado sus datos bancarios todavía.');
                               return;
                             }
-                            if (confirm(`¿Confirmas que deseas transferir ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name} utilizando Stripe Direct?`)) {
-                              const newPayout = {
-                                id: `pay_${Date.now()}`,
-                                comercialId: currentComercial.id,
-                                amount: indPendingCommission,
-                                date: new Date().toISOString(),
-                                status: 'completed' as const,
-                                bankAccount: currentComercial.iban,
-                                bankName: currentComercial.bankName,
-                                stripeTransferId: `tr_${Math.random().toString(36).substring(2, 10).toUpperCase()}`
-                              };
+                            triggerConfirm(
+                              'Confirmar Liquidación',
+                              `¿Confirmas que deseas transferir ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name} utilizando Stripe Direct?`,
+                              () => {
+                                const newPayout = {
+                                  id: `pay_${Date.now()}`,
+                                  comercialId: currentComercial.id,
+                                  amount: indPendingCommission,
+                                  date: new Date().toISOString(),
+                                  status: 'completed' as const,
+                                  bankAccount: currentComercial.iban,
+                                  bankName: currentComercial.bankName,
+                                  stripeTransferId: `tr_${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+                                };
 
-                              onUpdateComercial({
-                                ...currentComercial,
-                                payouts: [...(currentComercial.payouts || []), newPayout]
-                              });
-                              
-                              alert(`¡Liquidación realizada con éxito!\nSe ha enviado la transferencia de ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name}.\nSu saldo pendiente ahora es 0 €.`);
-                            }
+                                onUpdateComercial({
+                                  ...currentComercial,
+                                  payouts: [...(currentComercial.payouts || []), newPayout]
+                                });
+                                
+                                triggerAlert(
+                                  'Liquidación Exitosa',
+                                  `¡Liquidación realizada con éxito!\nSe ha enviado la transferencia de ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name} a través de Stripe Direct.\nSu saldo pendiente ahora es de 0,00 €.`
+                                );
+                              }
+                            );
                           }}
                           disabled={indPendingCommission <= 0 || !currentComercial.iban}
                           className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md font-sans ${
@@ -1293,9 +1328,13 @@ export default function ComercialesAdminScreen({
                             <td className="py-4 text-right pr-2">
                               <button
                                 onClick={() => {
-                                  if (confirm(`¿Estás seguro de que deseas revocar el acceso y eliminar la cuenta de ${c.name}?`)) {
-                                    onDeleteComercial(c.id);
-                                  }
+                                  triggerConfirm(
+                                    'Revocar Acceso',
+                                    `¿Estás seguro de que deseas revocar el acceso y eliminar definitivamente la cuenta del comercial ${c.name}? Esta acción no se puede deshacer.`,
+                                    () => {
+                                      onDeleteComercial(c.id);
+                                    }
+                                  );
                                 }}
                                 className="text-slate-500 hover:text-red-400 p-1.5 hover:bg-red-500/10 rounded-lg transition-all group-hover:scale-105 cursor-pointer"
                                 title="Revocar acceso"
@@ -1318,6 +1357,49 @@ export default function ComercialesAdminScreen({
 
       {/* Onboarding Welcome Dossier & Printable PDF */}
       <DossierModal isOpen={showDossierModal} onClose={() => setShowDossierModal(false)} />
+
+      {/* Custom Alert/Confirm dialog to replace native modal window blocks */}
+      {customDialog && customDialog.isOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
+            
+            <div className="flex items-start gap-3.5 mb-4">
+              <div className="p-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">{customDialog.title}</h3>
+                <p className="text-xs text-slate-300 mt-1.5 leading-relaxed font-sans whitespace-pre-line">{customDialog.message}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6 border-t border-white/5 pt-4">
+              {customDialog.type === 'confirm' && (
+                <button
+                  type="button"
+                  onClick={() => setCustomDialog(prev => prev ? { ...prev, isOpen: false } : null)}
+                  className="px-4 py-2 hover:bg-white/5 text-slate-400 hover:text-white rounded-lg text-xs font-bold transition-all cursor-pointer border border-transparent hover:border-white/5"
+                >
+                  Cancelar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (customDialog.type === 'confirm' && customDialog.onConfirm) {
+                    customDialog.onConfirm();
+                  }
+                  setCustomDialog(null);
+                }}
+                className="px-4.5 py-2 bg-amber-500 text-slate-950 hover:bg-amber-400 font-extrabold rounded-lg text-xs transition-all shadow-md shadow-amber-500/10 hover:shadow-amber-500/20 cursor-pointer"
+              >
+                {customDialog.type === 'confirm' ? 'Confirmar' : 'Aceptar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
