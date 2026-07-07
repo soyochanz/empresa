@@ -86,6 +86,7 @@ export default function CitasScreen({
 
     const matchedContact = contacts.find(c => c.id === linkedContactId);
     const matchedUser = usersList.find(u => u.email === newAssignedUserEmail);
+    const matchedCom = comercialesList?.find(c => c.email === newAssignedUserEmail);
 
     const generatedEvent: CalendarEvent = {
       id: 'ev_' + Date.now().toString().slice(-6),
@@ -100,7 +101,7 @@ export default function CitasScreen({
       color: newColor,
       alias: newAlias.trim() || undefined,
       assignedUserEmail: newAssignedUserEmail || undefined,
-      assignedUserId: matchedUser ? matchedUser.id : undefined
+      assignedUserId: matchedUser ? matchedUser.id : (matchedCom ? matchedCom.id : undefined)
     };
 
     onAddEvent(generatedEvent);
@@ -148,13 +149,14 @@ export default function CitasScreen({
 
   const saveRowEdit = (event: CalendarEvent) => {
     const matchedUser = usersList.find(u => u.email === editAssignedUserEmail);
+    const matchedCom = comercialesList?.find(c => c.email === editAssignedUserEmail);
     onUpdateEvent({
       ...event,
       alias: editAlias.trim() || undefined,
       color: editColor,
       status: editStatus,
       assignedUserEmail: editAssignedUserEmail || undefined,
-      assignedUserId: matchedUser ? matchedUser.id : undefined
+      assignedUserId: matchedUser ? matchedUser.id : (matchedCom ? matchedCom.id : undefined)
     });
     setEditingEventId(null);
   };
@@ -466,16 +468,27 @@ export default function CitasScreen({
                             className="bg-neutral-950 border border-neutral-800 text-xs text-slate-350 rounded-xl px-1.5 py-1 focus:outline-none focus:border-amber-500 max-w-[130px] cursor-pointer"
                           >
                             <option value="">- Sin asignar -</option>
-                            {usersList.map(u => (
-                              <option key={u.id} value={u.email}>{u.name}</option>
-                            ))}
+                            <optgroup label="Administradores / Colaboradores">
+                              {usersList.map(u => (
+                                <option key={u.id || u.email} value={u.email}>{u.name}</option>
+                              ))}
+                            </optgroup>
+                            {comercialesList && comercialesList.length > 0 && (
+                              <optgroup label="Comerciales">
+                                {comercialesList.map(com => (
+                                  <option key={com.id || com.email} value={com.email}>{com.name}</option>
+                                ))}
+                              </optgroup>
+                            )}
                           </select>
                         ) : (
                           <div>
                             {item.assignedUserEmail ? (
                               <div className="inline-flex items-center gap-1.5 bg-blue-950/40 border border-blue-500/20 px-2.5 py-1 rounded-full text-xs text-slate-200">
                                 <User className="w-3 h-3 text-blue-400" />
-                                <span className="truncate max-w-[85px]">{usersList.find(u => u.email === item.assignedUserEmail)?.name || item.assignedUserEmail}</span>
+                                <span className="truncate max-w-[85px]" title={usersList.find(u => u.email === item.assignedUserEmail)?.name || comercialesList?.find(c => c.email === item.assignedUserEmail)?.name || item.assignedUserEmail}>
+                                  {usersList.find(u => u.email === item.assignedUserEmail)?.name || comercialesList?.find(c => c.email === item.assignedUserEmail)?.name || item.assignedUserEmail}
+                                </span>
                               </div>
                             ) : (
                               <span className="text-slate-600 text-[11px] italic font-light">- Sin asignar -</span>
@@ -692,9 +705,18 @@ export default function CitasScreen({
                     className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer"
                   >
                     <option value="">- Sin asignar -</option>
-                    {usersList.map(u => (
-                      <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
-                    ))}
+                    <optgroup label="Administradores / Colaboradores">
+                      {usersList.map(u => (
+                        <option key={u.id || u.email} value={u.email}>{u.name} ({u.email})</option>
+                      ))}
+                    </optgroup>
+                    {comercialesList && comercialesList.length > 0 && (
+                      <optgroup label="Comerciales">
+                        {comercialesList.map(com => (
+                          <option key={com.id || com.email} value={com.email}>{com.name} ({com.email})</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 )}
               </div>

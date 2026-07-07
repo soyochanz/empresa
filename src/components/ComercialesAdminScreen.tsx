@@ -32,7 +32,8 @@ import {
   CreditCard,
   Coins,
   Clock,
-  Globe
+  Globe,
+  RefreshCw
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen } from '../types';
 import DossierModal from './DossierModal';
@@ -193,7 +194,7 @@ export default function ComercialesAdminScreen({
     // 2. Find client contacts associated with ANY commercial that are NOT already in leadsList
     const newLeadsFromClients: ComercialLead[] = [];
     contacts.forEach(c => {
-      if (c.status === 'Client') {
+      if (c.status === 'Client' || c.status === 'Lead') {
         // Find which commercial this client belongs to
         const comEmail = c.contactedByComercialEmail || c.assignedUserEmail;
         const comName = c.contactedByComercialName;
@@ -228,11 +229,11 @@ export default function ComercialesAdminScreen({
               company: c.company || 'Empresa',
               email: c.email || '',
               phone: c.phone || '',
-              status: 'Ganado',
+              status: c.status === 'Client' ? 'Ganado' : 'Pendiente',
               value: totalPaid || (c as any).estimatedValue || 1500,
-              notes: 'Importado de Cartera de Clientes CRM',
+              notes: c.status === 'Client' ? 'Importado de Cartera de Clientes CRM' : 'Importado de Prospectos (Leads) CRM',
               createdAt: (c as any).createdAt || new Date().toISOString(),
-              temperature: 'Caliente'
+              temperature: c.temperature || 'Caliente'
             });
           }
         }
@@ -320,7 +321,8 @@ export default function ComercialesAdminScreen({
     tx.isInitialSale === true && 
     (tx.comercialId === currentComercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === currentComercial.email.toLowerCase()))
   ) : [];
-  const indInitialSalesVolume = indInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+  const indInitialTxsPaid = indInitialTxs.filter(tx => tx.status === 'paid');
+  const indInitialSalesVolume = indInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const indClosuresCount = Math.max(indWon.length, indInitialTxs.length);
   const indCommissionPercentage = currentComercial ? getTieredCommission(indClosuresCount) : 10;
   const indBenefitsEarned = indInitialSalesVolume * (indCommissionPercentage / 100);
@@ -805,7 +807,7 @@ export default function ComercialesAdminScreen({
                         </span>
                       </div>
                       <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">
-                        De {indInitialSalesVolume.toLocaleString('es-ES')} €
+                        De {indInitialSalesVolume.toLocaleString('es-ES')} € cobrados
                       </span>
                     </div>
                   </div>
@@ -844,8 +846,30 @@ export default function ComercialesAdminScreen({
                         </div>
 
                         {/* DESTINATION BANK ACC INFO */}
-                        <div className="bg-slate-950/50 p-3.5 rounded-xl border border-white/5 space-y-1.5 text-left">
-                          <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Cuenta de Destino</span>
+                        <div className="bg-slate-950/50 p-3.5 rounded-xl border border-white/5 space-y-2 text-left">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Cuenta de Destino</span>
+                            {currentComercial.iban && (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`¿Estás seguro de que deseas reiniciar los datos bancarios de ${currentComercial.name}? Esto vaciará su IBAN, BIC y banco para que pueda configurarlos de nuevo.`)) {
+                                    onUpdateComercial({
+                                      ...currentComercial,
+                                      iban: '',
+                                      bic: '',
+                                      bankName: ''
+                                    });
+                                    alert('Datos bancarios reiniciados correctamente. El comercial ya puede volver a introducirlos.');
+                                  }
+                                }}
+                                className="text-[9px] text-rose-400 hover:text-rose-300 flex items-center gap-1 hover:underline cursor-pointer bg-transparent border-none p-0"
+                                title="Reiniciar datos bancarios"
+                              >
+                                <RefreshCw className="w-2.5 h-2.5" />
+                                <span>Reiniciar datos</span>
+                              </button>
+                            )}
+                          </div>
                           {currentComercial.iban ? (
                             <div className="space-y-1">
                               <div className="flex items-center gap-1.5 text-xs text-white font-bold font-sans">
@@ -1232,7 +1256,8 @@ export default function ComercialesAdminScreen({
                           tx.isInitialSale === true && 
                           (tx.comercialId === c.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === c.email.toLowerCase()))
                         );
-                        const initialSalesVol = initialTxsForC.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                        const initialSalesVolTotal = initialTxsForC.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                        const initialSalesVol = initialTxsForC.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + (tx.amount || 0), 0);
                         const wonLeadsCount = (summary as any).wonLeads || 0;
                         const closuresForC = Math.max(wonLeadsCount, initialTxsForC.length);
                         const commissionPct = getTieredCommission(closuresForC);
@@ -1279,7 +1304,10 @@ export default function ComercialesAdminScreen({
                                 <span className="font-mono font-bold text-emerald-400">
                                   {benefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
                                 </span>
-                                <span className="block text-[8px] font-mono text-slate-500">De {initialSalesVol.toLocaleString('es-ES')} €</span>
+                                <span className="block text-[8px] font-mono text-slate-500">De {initialSalesVol.toLocaleString('es-ES')} € cobrado</span>
+                                {initialSalesVolTotal > initialSalesVol && (
+                                  <span className="block text-[8px] font-mono text-slate-600">({initialSalesVolTotal.toLocaleString('es-ES')} € total)</span>
+                                )}
                               </div>
                             </td>
                             <td className="py-4 text-right pr-2">

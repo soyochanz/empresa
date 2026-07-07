@@ -26,7 +26,8 @@ import {
   CreditCard,
   Coins,
   History,
-  Lock
+  Lock,
+  RefreshCw
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact } from '../types';
 import ColdCallingScreen from './ColdCallingScreen';
@@ -227,7 +228,7 @@ export default function ComercialesPanelScreen({
     // 2. Find client contacts associated with the current commercial that are NOT already in leadsList
     const newLeadsFromClients: ComercialLead[] = [];
     contacts.forEach(c => {
-      if (c.status === 'Client') {
+      if (c.status === 'Client' || c.status === 'Lead') {
         // Check if this client is associated with the commercial
         const isAssociated = 
           (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === comercial.email.toLowerCase()) ||
@@ -259,11 +260,11 @@ export default function ComercialesPanelScreen({
               company: c.company || 'Empresa',
               email: c.email || '',
               phone: c.phone || '',
-              status: 'Ganado',
+              status: c.status === 'Client' ? 'Ganado' : 'Pendiente',
               value: totalPaid || (c as any).estimatedValue || 1500,
-              notes: 'Importado de Cartera de Clientes CRM',
+              notes: c.status === 'Client' ? 'Importado de Cartera de Clientes CRM' : 'Importado de Prospectos (Leads) CRM',
               createdAt: (c as any).createdAt || new Date().toISOString(),
-              temperature: 'Caliente'
+              temperature: c.temperature || 'Caliente'
             });
           }
         }
@@ -290,10 +291,13 @@ export default function ComercialesPanelScreen({
     tx.isInitialSale === true && 
     (tx.comercialId === comercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === comercial.email.toLowerCase()))
   );
+  const myInitialTxsPaid = myInitialTxs.filter(tx => tx.status === 'paid');
   const closuresCount = Math.max(wonLeads.length, myInitialTxs.length);
   const myCommissionPercentage = getTieredCommission(closuresCount);
-  const myInitialSalesVolume = myInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+  const myInitialSalesVolume = myInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+  const myTotalSalesVolume = myInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
+  const myBenefitsPotential = myTotalSalesVolume * (myCommissionPercentage / 100);
 
   // Status distributions for chart
   const statusCounts = {
@@ -574,7 +578,7 @@ export default function ComercialesPanelScreen({
                   {comercial.iban && (
                     <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-400 font-medium leading-relaxed flex items-start gap-2.5">
                       <Lock className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>Los datos bancarios solo se pueden configurar una vez para prevenir accesos no autorizados y fraudes en las liquidaciones de Stripe. Este panel está ahora <strong>BLOQUEADO</strong> de forma segura. Si necesitas actualizar tus datos, solicita un cambio formal con administración.</span>
+                      <span>Los datos bancarios están guardados de forma segura. Si necesitas modificarlos o corregir algún dato, haz clic en el botón de <strong>"Reiniciar Datos Bancarios"</strong> para vaciarlos e introducirlos de nuevo.</span>
                     </div>
                   )}
 
@@ -585,9 +589,33 @@ export default function ComercialesPanelScreen({
                   )}
 
                   {comercial.iban ? (
-                    <div className="w-full py-2.5 bg-slate-900/80 border border-white/5 text-slate-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Configuración de Cobro Bloqueada</span>
+                    <div className="space-y-3">
+                      <div className="w-full py-2.5 bg-slate-900/80 border border-white/5 text-slate-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Configuración de Cobro Guardada</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (safeConfirm('¿Estás seguro de que deseas reiniciar tus datos bancarios? Esto vaciará tu IBAN, BIC y Banco para que puedas rellenarlos de nuevo.')) {
+                            setIban('');
+                            setBic('');
+                            setBankName('');
+                            if (onUpdateComercial) {
+                              onUpdateComercial({
+                                ...comercial,
+                                iban: '',
+                                bic: '',
+                                bankName: ''
+                              });
+                            }
+                          }
+                        }}
+                        className="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 text-rose-400 hover:text-rose-300 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Reiniciar Datos Bancarios</span>
+                      </button>
                     </div>
                   ) : (
                     <button
@@ -773,13 +801,13 @@ export default function ComercialesPanelScreen({
           {/* Commission & Benefits (New) */}
           <div className="bg-amber-500/[0.02] border border-amber-500/10 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-amber-500/30 transition duration-200 shadow-lg shadow-amber-500/5 relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none translate-x-12 -translate-y-12" />
-            <div className="relative z-10">
-              <p className="text-amber-500/70 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Mis Comisiones</p>
+            <div className="relative z-10 text-left">
+              <p className="text-amber-500/70 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Mis Comisiones (Cobradas)</p>
               <h3 className="text-2xl font-bold text-amber-400 font-mono">
                 {myBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
               </h3>
               <p className="text-[10px] text-slate-400 mt-1">
-                Comisión fijada: <strong className="text-amber-400">{myCommissionPercentage}%</strong>
+                Comisión fijada: <strong className="text-amber-400">{myCommissionPercentage}%</strong> | <span className="text-slate-500">{myBenefitsPotential.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} total</span>
               </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 relative z-10">
@@ -1209,26 +1237,17 @@ export default function ComercialesPanelScreen({
                         </span>
                       </td>
 
-                      {/* Status Selector */}
+                      {/* Status Badge (Read-only for Commercial) */}
                       <td className="px-4 py-3.5 text-center">
-                        <div className="inline-block relative">
-                          <select
-                            value={l.status}
-                            onChange={(e) => handleUpdateStatus(l.id, e.target.value as any)}
-                            disabled={l.id.startsWith('lead_client_sync_')} // auto-synced from CRM active client
-                            className={`text-[10px] font-mono px-2 py-1 rounded font-bold border focus:outline-none cursor-pointer bg-slate-950/80 transition ${
-                              l.status === 'Ganado' ? 'border-emerald-500/30 text-emerald-400 bg-emerald-950/20' :
-                              l.status === 'Perdido' ? 'border-rose-500/30 text-rose-400 bg-rose-950/20' :
-                              l.status === 'Negociación' ? 'border-amber-500/30 text-amber-400 bg-amber-950/20' :
-                              'border-slate-700 text-slate-350 hover:border-slate-600'
-                            }`}
-                          >
-                            <option value="Pendiente">Pendiente</option>
-                            <option value="Contactado">Contactado</option>
-                            <option value="Negociación">Negociación</option>
-                            <option value="Ganado">Ganado</option>
-                            <option value="Perdido">Perdido</option>
-                          </select>
+                        <div className="inline-block">
+                          <span className={`text-[10px] font-mono px-2.5 py-1 rounded font-bold border ${
+                            l.status === 'Ganado' ? 'border-emerald-500/30 text-emerald-400 bg-emerald-950/20' :
+                            l.status === 'Perdido' ? 'border-rose-500/30 text-rose-400 bg-rose-950/20' :
+                            l.status === 'Negociación' ? 'border-amber-500/30 text-amber-400 bg-amber-950/20' :
+                            'border-slate-700 text-slate-350 bg-slate-900/60'
+                          }`}>
+                            {l.status}
+                          </span>
                           {l.id.startsWith('lead_client_sync_') && (
                             <span className="block text-[8px] text-emerald-400 font-mono mt-1 font-bold">✓ Sincronizado CRM</span>
                           )}
@@ -1240,26 +1259,12 @@ export default function ComercialesPanelScreen({
                         {Number(l.value || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}
                       </td>
 
-                      {/* Notes / Edit Notes Inline */}
+                      {/* Notes (Read-only for Commercial) */}
                       <td className="px-4 py-3.5 max-w-xs">
                         <div className="flex items-center gap-1.5 justify-between">
                           <p className="text-[10px] text-slate-400 truncate flex-1" title={l.notes}>
                             {l.notes || <span className="text-slate-600 italic">Sin comentarios</span>}
                           </p>
-                          <button
-                            onClick={() => {
-                              const newNotes = prompt('Editar notas del prospecto:', l.notes || '');
-                              if (newNotes !== null) {
-                                onUpdateLead({
-                                  ...l,
-                                  notes: newNotes.trim()
-                                });
-                              }
-                            }}
-                            className="text-[9px] text-violet-400 hover:text-white font-mono bg-violet-500/5 hover:bg-violet-500/20 px-1.5 py-0.5 rounded transition shrink-0"
-                          >
-                            Editar
-                          </button>
                         </div>
                       </td>
                     </tr>

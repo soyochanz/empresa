@@ -225,19 +225,19 @@ export default function Sidebar({
           <span className="font-sans text-sm">Gestión Comerciales</span>
         </button>
 
-        {/* Cold Calling y Métricas */}
+        {/* Call Calling */}
         <button
           onClick={() => onNavigate('cold_calling', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'cold_calling'
-              ? 'bg-violet-500/10 text-violet-415 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'
-              : 'text-slate-400 hover:text-white hover:bg-neutral-900 border border-transparent'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25 shadow-[0_4px_12px_rgba(245,158,11,0.1)] font-semibold'
+              : 'text-slate-400 hover:text-amber-300 hover:bg-neutral-900 border border-transparent'
           }`}
         >
           <Phone className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'cold_calling' ? 'text-violet-400' : 'text-slate-400 group-hover:text-slate-200'
+            currentScreen === 'cold_calling' ? 'text-amber-400' : 'text-slate-400 group-hover:text-amber-300'
           }`} />
-          <span className="font-sans text-sm">Futuros Clientes (Cold)</span>
+          <span className="font-sans text-sm">Call Calling</span>
         </button>
 
       </nav>

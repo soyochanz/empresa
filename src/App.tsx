@@ -723,13 +723,48 @@ export default function App() {
     return list;
   }, [finTransactions, currentUser]);
 
+  const hotLeadsNotifications = useMemo(() => {
+    const list: any[] = [];
+    if (!currentUser) return list;
+
+    // From leadsList (Commercial Leads)
+    leadsList.forEach(lead => {
+      if (lead.temperature === 'Caliente') {
+        list.push({
+          id: `alert_lead_hot_${lead.id}`,
+          type: 'Caliente',
+          title: `🔥 Lead Caliente: ${lead.name}`,
+          description: `El lead de ${lead.company || 'Sin Empresa'} asignado a ${lead.comercialName} está CALIENTE. Listo para gestión administrativa.`,
+          date: lead.createdAt ? lead.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
+          time: 'Urgente'
+        });
+      }
+    });
+
+    // From coldLeads (Call Calling Leads)
+    coldLeads.forEach(lead => {
+      if (lead.temperature === 'Caliente') {
+        list.push({
+          id: `alert_cold_hot_${lead.id}`,
+          type: 'Caliente',
+          title: `🔥 Call Calling Caliente: ${lead.businessName}`,
+          description: `Lead marcado en caliente por ${lead.assignedToName || 'un comercial'}. Contacto: ${lead.contactPerson || 'Sin registrar'} (Tel: ${lead.phone}).`,
+          date: lead.callDate || new Date().toISOString().split('T')[0],
+          time: 'Urgente'
+        });
+      }
+    });
+
+    return list;
+  }, [leadsList, coldLeads, currentUser]);
+
   // Notifications computation
   const userNotifications = useMemo(() => {
     const dbNotifications = events.filter(e => 
       currentUser && e.assignedUserEmail && e.assignedUserEmail.toLowerCase() === currentUser.email.toLowerCase()
     );
-    return [...financeNotifications, ...dbNotifications];
-  }, [events, financeNotifications, currentUser]);
+    return [...financeNotifications, ...hotLeadsNotifications, ...dbNotifications];
+  }, [events, financeNotifications, hotLeadsNotifications, currentUser]);
 
   const unreadNotifications = useMemo(() => {
     return userNotifications.filter(e => !readNotificationIds.includes(e.id));

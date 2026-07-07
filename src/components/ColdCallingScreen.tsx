@@ -137,6 +137,7 @@ export default function ColdCallingScreen({
 
   // Conversion state and form fields
   const [convertingLead, setConvertingLead] = useState<ColdCallingLead | null>(null);
+  const [convType, setConvType] = useState<'Client' | 'Lead'>('Client');
   const [convName, setConvName] = useState('');
   const [convCompany, setConvCompany] = useState('');
   const [convEmail, setConvEmail] = useState('');
@@ -153,6 +154,7 @@ export default function ColdCallingScreen({
       : `info@${lead.businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`;
 
     setConvertingLead(lead);
+    setConvType('Client');
     setConvName(cleanName);
     setConvCompany(lead.businessName);
     setConvEmail(defaultEmail);
@@ -173,7 +175,7 @@ export default function ColdCallingScreen({
       id: 'c_' + Date.now(),
       name: convName.trim(),
       company: convCompany.trim(),
-      status: 'Client',
+      status: convType,
       lastContacted: 'Justo ahora (Convertido de prospecto)',
       email: convEmail.trim(),
       phone: convPhone.trim(),
@@ -185,6 +187,7 @@ export default function ColdCallingScreen({
         .slice(0, 2)
         .toUpperCase() || 'CLI',
       color: subtleColor,
+      temperature: convertingLead.temperature || 'Caliente',
       assignedUserEmail: convertingLead.assignedToEmail !== 'unassigned' ? convertingLead.assignedToEmail : undefined,
       contactedByComercialEmail: convertingLead.assignedToEmail !== 'unassigned' ? convertingLead.assignedToEmail : undefined,
       contactedByComercialName: convertingLead.assignedToName && convertingLead.assignedToName !== 'Sin asignar' ? convertingLead.assignedToName : undefined,
@@ -206,73 +209,75 @@ export default function ColdCallingScreen({
     const matchedCom = comercialesList.find(c => c.email.toLowerCase() === assignedEmail.toLowerCase());
     const commPct = matchedCom?.commissionPercentage ?? 10; // defaults to 10% if not set
 
-    // 4. Generate the Invoice (Factura) and Transactions (Cobros)
-    const invoiceId = 'inv_cc_' + Math.random().toString(36).substring(2, 9);
-    const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
-    
-    // Create Invoice Items
-    const invoiceItems: InvoiceItem[] = [];
-    for (let i = 1; i <= convInstallments; i++) {
-      const txId = 'tx_cc_' + Math.random().toString(36).substring(2, 9) + '_' + i;
+    if (convType === 'Client') {
+      // 4. Generate the Invoice (Factura) and Transactions (Cobros) - only for Client
+      const invoiceId = 'inv_cc_' + Math.random().toString(36).substring(2, 9);
+      const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
       
-      invoiceItems.push({
-        id: 'item_' + i + '_' + Date.now(),
-        description: `${convConcept} - Plazo ${i} de ${convInstallments}`,
-        quantity: 1,
-        unitPrice: pricePerInstallment,
-        total: pricePerInstallment,
-        isPending: true,
-        pendingTxId: txId,
-        paymentMethod: 'transfer'
-      });
+      // Create Invoice Items
+      const invoiceItems: InvoiceItem[] = [];
+      for (let i = 1; i <= convInstallments; i++) {
+        const txId = 'tx_cc_' + Math.random().toString(36).substring(2, 9) + '_' + i;
+        
+        invoiceItems.push({
+          id: 'item_' + i + '_' + Date.now(),
+          description: `${convConcept} - Plazo ${i} de ${convInstallments}`,
+          quantity: 1,
+          unitPrice: pricePerInstallment,
+          total: pricePerInstallment,
+          isPending: true,
+          pendingTxId: txId,
+          paymentMethod: 'transfer'
+        });
 
-      // Insert matching FinanceTransaction in DB
-      const transaction: FinanceTransaction = {
-        id: txId,
-        type: 'income',
-        category: 'Ventas',
-        amount: pricePerInstallment,
-        date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
-        description: `${convConcept} (${convCompany}) - Plazo ${i} de ${convInstallments} (Pendiente)`,
-        status: 'pending',
-        paymentMethod: 'transfer',
-        invoiceId: invoiceId,
+        // Insert matching FinanceTransaction in DB
+        const transaction: FinanceTransaction = {
+          id: txId,
+          type: 'income',
+          category: 'Ventas',
+          amount: pricePerInstallment,
+          date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
+          description: `${convConcept} (${convCompany}) - Plazo ${i} de ${convInstallments} (Pendiente)`,
+          status: 'pending',
+          paymentMethod: 'transfer',
+          invoiceId: invoiceId,
+          comercialId: matchedCom?.id,
+          comercialEmail: assignedEmail,
+          isInitialSale: true
+        };
+
+        try {
+          await db.insertFinanceTransaction(transaction);
+        } catch (err) {
+          console.error('Error inserting transaction:', err);
+        }
+      }
+
+      // Create and Insert Finance Invoice in DB
+      const newInvoice: Invoice = {
+        id: invoiceId,
+        clientId: newContact.id,
+        clientName: convName.trim(),
+        clientEmail: convEmail.trim(),
+        date: new Date().toISOString().split('T')[0],
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: 'sent',
+        items: invoiceItems,
+        subtotal: convSalePrice,
+        taxPercentage: 0,
+        taxAmount: 0,
+        total: convSalePrice,
+        notes: `Venta inicial generada automáticamente desde Cold Calling. Comercial: ${convertingLead.assignedToName || 'Sin asignar'}. Comisión: ${commPct}%.`,
         comercialId: matchedCom?.id,
         comercialEmail: assignedEmail,
         isInitialSale: true
       };
 
       try {
-        await db.insertFinanceTransaction(transaction);
+        await db.insertFinanceInvoice(newInvoice);
       } catch (err) {
-        console.error('Error inserting transaction:', err);
+        console.error('Error inserting invoice:', err);
       }
-    }
-
-    // Create and Insert Finance Invoice in DB
-    const newInvoice: Invoice = {
-      id: invoiceId,
-      clientId: newContact.id,
-      clientName: convName.trim(),
-      clientEmail: convEmail.trim(),
-      date: new Date().toISOString().split('T')[0],
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: 'sent',
-      items: invoiceItems,
-      subtotal: convSalePrice,
-      taxPercentage: 0,
-      taxAmount: 0,
-      total: convSalePrice,
-      notes: `Venta inicial generada automáticamente desde Cold Calling. Comercial: ${convertingLead.assignedToName || 'Sin asignar'}. Comisión: ${commPct}%.`,
-      comercialId: matchedCom?.id,
-      comercialEmail: assignedEmail,
-      isInitialSale: true
-    };
-
-    try {
-      await db.insertFinanceInvoice(newInvoice);
-    } catch (err) {
-      console.error('Error inserting invoice:', err);
     }
 
     // Sync/create ComercialLead for metrics
@@ -288,10 +293,11 @@ export default function ColdCallingScreen({
         if (existingLead) {
           const updatedLead: ComercialLead = {
             ...existingLead,
-            status: 'Ganado',
-            value: convSalePrice,
+            status: convType === 'Client' ? 'Ganado' : 'Pendiente',
+            value: convType === 'Client' ? convSalePrice : 0,
             comercialId: matchedCom.id,
-            comercialName: matchedCom.name
+            comercialName: matchedCom.name,
+            temperature: convertingLead.temperature || 'Caliente'
           };
           await db.updateComercialLead(updatedLead);
         } else {
@@ -303,12 +309,12 @@ export default function ColdCallingScreen({
             company: convCompany.trim() || 'Empresa',
             email: convEmail.trim() || '',
             phone: convPhone.trim() || '',
-            status: 'Ganado',
-            value: convSalePrice,
+            status: convType === 'Client' ? 'Ganado' : 'Pendiente',
+            value: convType === 'Client' ? convSalePrice : 0,
             notes: `Creado al convertir desde Cold Calling por ${matchedCom.name}`,
             createdAt: new Date().toISOString(),
-            temperature: 'Caliente',
-            isDone: true
+            temperature: convertingLead.temperature || 'Caliente',
+            isDone: convType === 'Client'
           };
           await db.insertComercialLead(newLead);
         }
@@ -321,13 +327,22 @@ export default function ColdCallingScreen({
       onRefreshFinance();
     }
 
-    alert(`¡Felicidades! Se ha convertido a "${convCompany}" en Cliente.\n\n` +
-          `• Venta Registrada: ${convSalePrice.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
-          `• Plazos de Pago: ${convInstallments} plazo(s)\n` +
-          `• Comisión para el Comercial (${commPct}%): ${(convSalePrice * commPct / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
-          `• Se ha generado la Factura e Ingresos en Finanzas Globales.`);
+    if (convType === 'Client') {
+      alert(`¡Felicidades! Se ha convertido a "${convCompany}" en Cliente.\n\n` +
+            `• Venta Registrada: ${convSalePrice.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+            `• Plazos de Pago: ${convInstallments} plazo(s)\n` +
+            `• Comisión para el Comercial (${commPct}%): ${(convSalePrice * commPct / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+            `• Se ha generado la Factura e Ingresos en Finanzas Globales.`);
+    } else {
+      alert(`¡Perfecto! Se ha traspasado a "${convCompany}" como Prospecto (Lead) en el CRM.\n\n` +
+            `• El comercial conservará la asignación de este Lead, pero ya no podrá contactarlo desde su panel de captación fría (Cold Calling).\n` +
+            `• Ya está disponible en la columna de Prospectos (Leads) del CRM para su seguimiento.`);
+    }
 
     setConvertingLead(null);
+    if (onNavigate) {
+      onNavigate('crm', 'push');
+    }
     if (onNavigate) {
       onNavigate('crm', 'push');
     }
@@ -1196,8 +1211,8 @@ export default function ColdCallingScreen({
                     </div>
 
                     {/* Assignee Column (Clickable dropdown for admin) */}
-                    <div className="col-span-2 lg:text-center flex items-center gap-2 lg:justify-center">
-                      <span className="lg:hidden text-[10px] font-mono text-slate-500 uppercase">Responsable:</span>
+                    <div className="col-span-2 lg:text-center flex items-center gap-2 lg:justify-center overflow-hidden min-w-0 w-full">
+                      <span className="lg:hidden text-[10px] font-mono text-slate-500 uppercase shrink-0">Responsable:</span>
                       {isAdmin ? (
                         <select
                           value={lead.assignedToEmail || 'unassigned'}
@@ -1210,7 +1225,7 @@ export default function ColdCallingScreen({
                               assignedToName: matched ? matched.name : 'Sin asignar'
                             });
                           }}
-                          className="text-[10px] bg-[#020205] border border-violet-500/25 text-violet-300 px-2.5 py-1.5 rounded-xl font-mono cursor-pointer focus:outline-none hover:border-violet-400 focus:border-violet-500 transition font-sans"
+                          className="text-[10px] bg-[#020205] border border-violet-500/25 text-violet-300 px-2 py-1.5 rounded-xl font-mono cursor-pointer focus:outline-none hover:border-violet-400 focus:border-violet-500 transition font-sans w-full max-w-[130px] truncate"
                         >
                           <option value="unassigned">👤 Sin asignar</option>
                           {allAssignees.map(com => (
@@ -1218,7 +1233,7 @@ export default function ColdCallingScreen({
                           ))}
                         </select>
                       ) : (
-                        <span className="text-[11px] bg-slate-900 border border-white/5 text-slate-300 px-2.5 py-1 rounded-lg font-sans max-w-[130px] truncate" title={lead.assignedToEmail}>
+                        <span className="text-[11px] bg-slate-900 border border-white/5 text-slate-300 px-2.5 py-1 rounded-lg font-sans w-full max-w-[130px] truncate block text-center" title={lead.assignedToName || 'Sin asignar'}>
                           👤 {lead.assignedToName || 'Sin asignar'}
                         </span>
                       )}
@@ -3575,20 +3590,66 @@ export default function ColdCallingScreen({
             <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
             <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-emerald-400">
-                <CheckCircle2 className="w-6 h-6" />
+              <div className={`p-3 rounded-2xl border transition-colors ${
+                convType === 'Client'
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                  : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+              }`}>
+                {convType === 'Client' ? (
+                  <CheckCircle2 className="w-6 h-6" />
+                ) : (
+                  <UserPlus className="w-6 h-6" />
+                )}
               </div>
               <div>
                 <h3 className="text-base font-black text-white font-sans tracking-wide">
-                  Convertir en Cliente y Liquidar Venta
+                  {convType === 'Client' ? 'Convertir en Cliente y Liquidar Venta' : 'Traspasar Contacto como Lead CRM'}
                 </h3>
                 <p className="text-[11px] text-slate-400 font-sans mt-0.5">
-                  Establece los parámetros del contrato para registrar la venta en Finanzas y calcular comisiones.
+                  {convType === 'Client'
+                    ? 'Establece los parámetros del contrato para registrar la venta en Finanzas y calcular comisiones.'
+                    : 'Traspasa el prospecto de Call Calling al CRM global para que sea gestionado formalmente.'}
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleConfirmConvertToClient} className="space-y-4">
+              {/* Traspaso Choice Button Group */}
+              <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
+                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Tipo de Traspaso</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setConvType('Client')}
+                    className={`py-2.5 px-4 rounded-xl text-xs font-bold font-sans transition-all flex items-center justify-center gap-2 border cursor-pointer ${
+                      convType === 'Client'
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.1)]'
+                        : 'bg-slate-900/50 text-slate-400 border-white/5 hover:text-white'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Cliente Activo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConvType('Lead')}
+                    className={`py-2.5 px-4 rounded-xl text-xs font-bold font-sans transition-all flex items-center justify-center gap-2 border cursor-pointer ${
+                      convType === 'Lead'
+                        ? 'bg-blue-500/15 text-blue-400 border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.1)]'
+                        : 'bg-slate-900/50 text-slate-400 border-white/5 hover:text-white'
+                    }`}
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Prospecto (Lead)</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
+                  {convType === 'Client'
+                    ? '✓ El contacto se crea como Cliente. Generará facturas y comisiones automáticas asociadas.'
+                    : '✓ El contacto se crea en la columna de Prospectos (Leads) del CRM. El comercial conserva su autoría, pero pierde acceso de llamada fría.'}
+                </p>
+              </div>
+
               {/* Client Info Grid */}
               <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
                 <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Información del Cliente</span>
@@ -3601,7 +3662,7 @@ export default function ColdCallingScreen({
                       required
                       value={convName}
                       onChange={(e) => setConvName(e.target.value)}
-                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
+                      className="w-full bg-slate-900 border border-white/10 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white"
                     />
                   </div>
                   <div>
@@ -3611,7 +3672,7 @@ export default function ColdCallingScreen({
                       required
                       value={convCompany}
                       onChange={(e) => setConvCompany(e.target.value)}
-                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
+                      className="w-full bg-slate-900 border border-white/10 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white"
                     />
                   </div>
                 </div>
@@ -3624,7 +3685,7 @@ export default function ColdCallingScreen({
                       required
                       value={convEmail}
                       onChange={(e) => setConvEmail(e.target.value)}
-                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
+                      className="w-full bg-slate-900 border border-white/10 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white"
                     />
                   </div>
                   <div>
@@ -3634,58 +3695,60 @@ export default function ColdCallingScreen({
                       required
                       value={convPhone}
                       onChange={(e) => setConvPhone(e.target.value)}
+                      className="w-full bg-slate-900 border border-white/10 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Terms Panel - ONLY FOR CLIENT */}
+              {convType === 'Client' && (
+                <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
+                  <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Condiciones Económicas de la Venta</span>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Concepto de Facturación</label>
+                    <input
+                      type="text"
+                      required={convType === 'Client'}
+                      value={convConcept}
+                      onChange={(e) => setConvConcept(e.target.value)}
                       className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
                     />
                   </div>
-                </div>
-              </div>
 
-              {/* Financial Terms Panel */}
-              <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
-                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Condiciones Económicas de la Venta</span>
-
-                <div>
-                  <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Concepto de Facturación</label>
-                  <input
-                    type="text"
-                    required
-                    value={convConcept}
-                    onChange={(e) => setConvConcept(e.target.value)}
-                    className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Importe del Contrato (EUR)</label>
-                    <div className="relative">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Importe del Contrato (EUR)</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="1"
+                          required={convType === 'Client'}
+                          value={convSalePrice}
+                          onChange={(e) => setConvSalePrice(Number(e.target.value))}
+                          className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl pl-3 pr-7 py-2 text-xs text-white font-mono"
+                        />
+                        <span className="absolute right-3 top-2.5 text-slate-500 text-xs font-mono">€</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Fraccionar en Plazos (Mensual)</label>
                       <input
                         type="number"
                         min="1"
-                        required
-                        value={convSalePrice}
-                        onChange={(e) => setConvSalePrice(Number(e.target.value))}
-                        className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl pl-3 pr-7 py-2 text-xs text-white font-mono"
+                        max="12"
+                        required={convType === 'Client'}
+                        value={convInstallments}
+                        onChange={(e) => setConvInstallments(Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white font-mono"
                       />
-                      <span className="absolute right-3 top-2.5 text-slate-500 text-xs font-mono">€</span>
                     </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 font-mono font-bold block mb-1">Fraccionar en Plazos (Mensual)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="12"
-                      required
-                      value={convInstallments}
-                      onChange={(e) => setConvInstallments(Number(e.target.value))}
-                      className="w-full bg-slate-900 border border-white/10 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                    />
-                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Calculated Results Preview */}
+              {/* Calculated Results Preview or Assignment Information */}
               {(() => {
                 const assignedEmail = convertingLead.assignedToEmail || '';
                 const matchedCom = comercialesList.find(c => c.email.toLowerCase() === assignedEmail.toLowerCase());
@@ -3693,40 +3756,56 @@ export default function ColdCallingScreen({
                 const totalComm = (convSalePrice * commPct) / 100;
                 const installmentAmount = Math.round((convSalePrice / convInstallments) * 100) / 100;
 
-                return (
-                  <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl space-y-3 font-sans">
-                    <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest block">Plan de Cobros y Liquidaciones</span>
-                    
-                    <div className="grid grid-cols-2 gap-4 text-xs">
-                      <div>
-                        <span className="text-slate-400 text-[10px]">Primer Cobro (Hoy):</span>
-                        <p className="font-mono text-white font-bold mt-0.5">{installmentAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</p>
+                if (convType === 'Client') {
+                  return (
+                    <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl space-y-3 font-sans">
+                      <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest block">Plan de Cobros y Liquidaciones</span>
+                      
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <span className="text-slate-400 text-[10px]">Primer Cobro (Hoy):</span>
+                          <p className="font-mono text-white font-bold mt-0.5">{installmentAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px]">Cuotas Pendientes:</span>
+                          <p className="font-mono text-slate-300 mt-0.5">
+                            {convInstallments > 1 
+                              ? `${convInstallments - 1} de ${installmentAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} / mes`
+                              : 'Ninguna (Pago Único)'
+                            }
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-slate-400 text-[10px]">Cuotas Pendientes:</span>
-                        <p className="font-mono text-slate-300 mt-0.5">
-                          {convInstallments > 1 
-                            ? `${convInstallments - 1} de ${installmentAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} / mes`
-                            : 'Ninguna (Pago Único)'
-                          }
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="border-t border-white/5 pt-2 flex justify-between items-center text-xs">
-                      <div>
-                        <span className="text-[10px] text-slate-400">Comercial Asignado:</span>
-                        <p className="font-semibold text-slate-200">{convertingLead.assignedToName || 'N/A'} ({assignedEmail || 'Sin email'})</p>
+                      <div className="border-t border-white/5 pt-2 flex justify-between items-center text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400">Comercial Asignado:</span>
+                          <p className="font-semibold text-slate-200">{convertingLead.assignedToName || 'N/A'} ({assignedEmail || 'Sin email'})</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400">Comisión Devengada ({commPct}%):</span>
+                          <p className="font-mono font-bold text-amber-400 text-sm mt-0.5">
+                            {totalComm.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400">Comisión Devengada ({commPct}%):</span>
-                        <p className="font-mono font-bold text-amber-400 text-sm mt-0.5">
-                          {totalComm.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded-2xl space-y-2.5 font-sans">
+                      <span className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest block">Asignación de Autoría</span>
+                      <div className="text-xs space-y-1">
+                        <p className="text-slate-300 leading-relaxed">
+                          El comercial <strong className="text-white">{convertingLead.assignedToName || 'N/A'}</strong> figurará permanentemente como el autor / asignado de este Lead.
+                        </p>
+                        <p className="text-slate-400 text-[10.5px] leading-relaxed">
+                          Si en el futuro la administración de la agencia cierra un contrato con este cliente, la venta le será atribuida automáticamente para el cobro de sus comisiones.
                         </p>
                       </div>
                     </div>
-                  </div>
-                );
+                  );
+                }
               })()}
 
               <div className="flex gap-3 justify-end pt-2">
@@ -3739,10 +3818,14 @@ export default function ColdCallingScreen({
                 </button>
                 <button
                   type="submit"
-                  className="px-5.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(16,185,129,0.3)] flex items-center gap-1.5"
+                  className={`px-5.5 py-2 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer flex items-center gap-1.5 ${
+                    convType === 'Client'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.3)]'
+                      : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.3)]'
+                  }`}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  Confirmar y Activar Cliente
+                  {convType === 'Client' ? 'Confirmar y Activar Cliente' : 'Confirmar y Traspasar como Lead'}
                 </button>
               </div>
             </form>

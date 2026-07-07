@@ -3016,7 +3016,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                   tx.isInitialSale === true && 
                   (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
                 );
-                const volume = txs.reduce((s, t) => s + (t.amount || 0), 0);
+                const paidTxs = txs.filter(tx => tx.status === 'paid');
+                const volume = paidTxs.reduce((s, t) => s + (t.amount || 0), 0);
                 
                 const clientsCount = contacts.filter(c => 
                   c.status === 'Client' && 
@@ -3120,6 +3121,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                         (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
                       );
                       const volume = txs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+                      const paidTxs = txs.filter(tx => tx.status === 'paid');
+                      const paidVolume = paidTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
                       
                       const clientsCount = contacts.filter(c => 
                         c.status === 'Client' && 
@@ -3128,7 +3131,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                       
                       const closures = Math.max(clientsCount, txs.length);
                       const pct = getTieredCommission(closures);
-                      const benefits = volume * (pct / 100);
+                      const benefits = paidVolume * (pct / 100);
 
                       return (
                         <tr key={com.id} className="text-xs hover:bg-white/[0.01] transition-colors">
@@ -3149,11 +3152,21 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                               {clientsCount} {clientsCount === 1 ? 'cliente' : 'clientes'}
                             </span>
                           </td>
-                          <td className="p-4 text-left font-mono text-slate-300">
-                            {volume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
+                          <td className="p-4 text-left font-mono">
+                            <div className="text-slate-300 font-semibold">
+                              {paidVolume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                            </div>
+                            <div className="text-[9px] text-slate-500">
+                              de {volume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} adjudicado
+                            </div>
                           </td>
                           <td className="p-4 text-right font-mono text-amber-400 font-bold text-sm">
-                            {benefits.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
+                            <div>{benefits.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</div>
+                            {volume > paidVolume && (
+                              <div className="text-[9px] text-slate-500 font-medium">
+                                + {((volume - paidVolume) * (pct / 100)).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} pendiente
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
@@ -3212,7 +3225,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                         commPct = getTieredCommission(closures);
                       }
                       
-                      const commVal = t.amount * (commPct / 100);
+                      const isPaid = t.status === 'paid';
+                      const commVal = isPaid ? (t.amount * (commPct / 100)) : 0;
+                      const potentialComm = t.amount * (commPct / 100);
 
                       return (
                         <tr key={t.id} className="hover:bg-white/[0.01] transition-colors text-left">
@@ -3225,11 +3240,25 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                           </td>
                           <td className="p-3 text-slate-400 font-mono">{t.date}</td>
                           <td className="p-3 font-mono font-bold text-emerald-400">
-                            {t.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                            <div>{t.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</div>
+                            <span className={`text-[8px] font-mono font-bold px-1 py-0.2 rounded mt-0.5 inline-block uppercase tracking-wider ${
+                              isPaid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            }`}>
+                              {isPaid ? 'Cobrado' : 'Pendiente'}
+                            </span>
                           </td>
                           <td className="p-3 text-right font-mono">
-                            <span className="text-amber-400 font-bold block">{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
-                            <span className="text-[9px] text-slate-500 block">Basado en {commPct}%</span>
+                            {isPaid ? (
+                              <>
+                                <span className="text-emerald-400 font-bold block">{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+                                <span className="text-[9px] text-slate-500 block">Basado en {commPct}% (Pagado)</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-slate-500 font-bold block">{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+                                <span className="text-[9px] text-amber-500/70 block">Pendiente ({potentialComm.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} al cobrar)</span>
+                              </>
+                            )}
                           </td>
                         </tr>
                       );
