@@ -1565,16 +1565,43 @@ export const db = {
       let phone = row.phone || '';
       let commissionPercentage = 10; // Default commission percentage is 10%
       const commRegex = /\s*\[COMM:([\d.]+)\]/g;
-      const match = commRegex.exec(phone);
-      if (match) {
-        commissionPercentage = parseFloat(match[1]);
+      const commMatch = commRegex.exec(phone);
+      if (commMatch) {
+        commissionPercentage = parseFloat(commMatch[1]);
       }
       phone = phone.replace(commRegex, '').trim();
+
+      let iban = '';
+      const ibanRegex = /\s*\[IBAN:([^\]]+)\]/g;
+      const ibanMatch = ibanRegex.exec(phone);
+      if (ibanMatch) {
+        iban = ibanMatch[1];
+      }
+      phone = phone.replace(ibanRegex, '').trim();
+
+      let bic = '';
+      const bicRegex = /\s*\[BIC:([^\]]+)\]/g;
+      const bicMatch = bicRegex.exec(phone);
+      if (bicMatch) {
+        bic = bicMatch[1];
+      }
+      phone = phone.replace(bicRegex, '').trim();
+
+      let bankName = '';
+      const bankRegex = /\s*\[BANK:([^\]]+)\]/g;
+      const bankMatch = bankRegex.exec(phone);
+      if (bankMatch) {
+        bankName = bankMatch[1];
+      }
+      phone = phone.replace(bankRegex, '').trim();
 
       return {
         ...row,
         phone: phone || undefined,
         commissionPercentage,
+        iban: iban || undefined,
+        bic: bic || undefined,
+        bankName: bankName || undefined,
         createdAt: row.created_at || new Date().toISOString()
       };
     }) as ComercialAccount[];
@@ -1584,6 +1611,15 @@ export const db = {
     let phone = account.phone || '';
     if (account.commissionPercentage !== undefined) {
       phone += ` [COMM:${account.commissionPercentage}]`;
+    }
+    if (account.iban) {
+      phone += ` [IBAN:${account.iban}]`;
+    }
+    if (account.bic) {
+      phone += ` [BIC:${account.bic}]`;
+    }
+    if (account.bankName) {
+      phone += ` [BANK:${account.bankName}]`;
     }
 
     const payload = {
@@ -1602,6 +1638,15 @@ export const db = {
     let phone = account.phone || '';
     if (account.commissionPercentage !== undefined) {
       phone += ` [COMM:${account.commissionPercentage}]`;
+    }
+    if (account.iban) {
+      phone += ` [IBAN:${account.iban}]`;
+    }
+    if (account.bic) {
+      phone += ` [BIC:${account.bic}]`;
+    }
+    if (account.bankName) {
+      phone += ` [BANK:${account.bankName}]`;
     }
 
     const payload = {
