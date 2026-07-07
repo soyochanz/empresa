@@ -578,7 +578,7 @@ export default function ComercialesPanelScreen({
                   {comercial.iban && (
                     <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-400 font-medium leading-relaxed flex items-start gap-2.5">
                       <Lock className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>Los datos bancarios están guardados de forma segura. Si necesitas modificarlos o corregir algún dato, haz clic en el botón de <strong>"Reiniciar Datos Bancarios"</strong> para vaciarlos e introducirlos de nuevo.</span>
+                      <span>Los datos bancarios solo se pueden configurar una vez para prevenir accesos no autorizados y fraudes en las liquidaciones de Stripe. Este panel está ahora <strong>BLOQUEADO</strong> de forma segura. Si necesitas actualizar tus datos, solicita un cambio formal con administración.</span>
                     </div>
                   )}
 
@@ -589,33 +589,9 @@ export default function ComercialesPanelScreen({
                   )}
 
                   {comercial.iban ? (
-                    <div className="space-y-3">
-                      <div className="w-full py-2.5 bg-slate-900/80 border border-white/5 text-slate-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>Configuración de Cobro Guardada</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (safeConfirm('¿Estás seguro de que deseas reiniciar tus datos bancarios? Esto vaciará tu IBAN, BIC y Banco para que puedas rellenarlos de nuevo.')) {
-                            setIban('');
-                            setBic('');
-                            setBankName('');
-                            if (onUpdateComercial) {
-                              onUpdateComercial({
-                                ...comercial,
-                                iban: '',
-                                bic: '',
-                                bankName: ''
-                              });
-                            }
-                          }
-                        }}
-                        className="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 text-rose-400 hover:text-rose-300 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>Reiniciar Datos Bancarios</span>
-                      </button>
+                    <div className="w-full py-2.5 bg-slate-900/80 border border-white/5 text-slate-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Configuración de Cobro Guardada</span>
                     </div>
                   ) : (
                     <button

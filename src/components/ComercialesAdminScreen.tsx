@@ -849,26 +849,6 @@ export default function ComercialesAdminScreen({
                         <div className="bg-slate-950/50 p-3.5 rounded-xl border border-white/5 space-y-2 text-left">
                           <div className="flex justify-between items-center">
                             <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest block font-bold">Cuenta de Destino</span>
-                            {currentComercial.iban && (
-                              <button
-                                onClick={() => {
-                                  if (confirm(`¿Estás seguro de que deseas reiniciar los datos bancarios de ${currentComercial.name}? Esto vaciará su IBAN, BIC y banco para que pueda configurarlos de nuevo.`)) {
-                                    onUpdateComercial({
-                                      ...currentComercial,
-                                      iban: '',
-                                      bic: '',
-                                      bankName: ''
-                                    });
-                                    alert('Datos bancarios reiniciados correctamente. El comercial ya puede volver a introducirlos.');
-                                  }
-                                }}
-                                className="text-[9px] text-rose-400 hover:text-rose-300 flex items-center gap-1 hover:underline cursor-pointer bg-transparent border-none p-0"
-                                title="Reiniciar datos bancarios"
-                              >
-                                <RefreshCw className="w-2.5 h-2.5" />
-                                <span>Reiniciar datos</span>
-                              </button>
-                            )}
                           </div>
                           {currentComercial.iban ? (
                             <div className="space-y-1">
@@ -901,7 +881,7 @@ export default function ComercialesAdminScreen({
                               return;
                             }
                             if (!currentComercial.iban) {
-                              alert('No se puede procesar el pago porque el comercial no ha registrado sus datos bancarios.');
+                              alert('No se puede procesar el pago because el comercial no ha registrado sus datos bancarios.');
                               return;
                             }
                             if (confirm(`¿Confirmas que deseas transferir ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name} utilizando Stripe Direct?`)) {
@@ -932,7 +912,7 @@ export default function ComercialesAdminScreen({
                           }`}
                         >
                           <Coins className="w-4 h-4" />
-                          <span>Liquidar {indPendingCommission.toLocaleString('es-ES', { maximumFractionDigits: 0 })} € con Stripe</span>
+                          <span>Liquidar {indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} con Stripe</span>
                         </button>
                       </>
                     );

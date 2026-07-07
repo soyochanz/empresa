@@ -498,10 +498,50 @@ export async function seedSupabaseDatabase(
 }
 
 // ==========================================
+// DB Caching Layer to minimize Supabase Egress
+// ==========================================
+const CACHE_TTL_MS = 25000; // Cache GET requests for 25 seconds
+const _queryCache: Record<string, { data: any; timestamp: number }> = {};
+
+function getCached<T>(key: string): T | null {
+  const cached = _queryCache[key];
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+    return cached.data as T;
+  }
+  return null;
+}
+
+function setCached(key: string, data: any): void {
+  _queryCache[key] = {
+    data,
+    timestamp: Date.now()
+  };
+}
+
+function invalidateCache(keyPrefix: string): void {
+  Object.keys(_queryCache).forEach(k => {
+    if (k.startsWith(keyPrefix)) {
+      delete _queryCache[k];
+    }
+  });
+}
+
+function clearAllCache(): void {
+  Object.keys(_queryCache).forEach(k => {
+    delete _queryCache[k];
+  });
+}
+
+// ==========================================
 // DB API Helper functions for each Resource
 // ==========================================
 
 export const db = {
+  // --- CACHE MANUAL EXPOSURE ---
+  clearAllCache() {
+    clearAllCache();
+  },
+
   // --- CONTACTS ---
   parseContactMetadata(contact: any): ClientContact {
     if (!contact) return contact;
@@ -705,11 +745,17 @@ export const db = {
   },
 
   async getContacts(userId?: string): Promise<ClientContact[]> {
+    const cacheKey = 'contacts';
+    const cached = getCached<ClientContact[]>(cacheKey);
+    if (cached) return cached;
+
     let query = supabase.from('contacts').select('*');
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     const raw = data || [];
-    return raw.map((c: any) => this.parseContactMetadata(c));
+    const result = raw.map((c: any) => this.parseContactMetadata(c));
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertContact(contact: ClientContact, userId?: string): Promise<void> {
@@ -717,6 +763,7 @@ export const db = {
     const payload = { ...serialized, user_id: userId || null };
     const { error } = await supabase.from('contacts').insert(payload);
     if (error) throw error;
+    invalidateCache('contacts');
   },
 
   async updateContact(contact: ClientContact, userId?: string): Promise<void> {
@@ -725,11 +772,13 @@ export const db = {
     const { user_id, id, ...payload } = serialized;
     const { error } = await supabase.from('contacts').update(payload).eq('id', contact.id);
     if (error) throw error;
+    invalidateCache('contacts');
   },
 
   async deleteContact(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('contacts').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('contacts');
   },
 
   // --- FINANCE TRANSACTIONS EXTRA HELPERS ---
@@ -846,13 +895,17 @@ export const db = {
 
   // --- FINANCE TRANSACTIONS ---
   async getFinanceTransactions(userId?: string): Promise<FinanceTransaction[]> {
+    const cacheKey = 'finance_transactions';
+    const cached = getCached<FinanceTransaction[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('finance_transactions').select('*').order('date', { ascending: false });
     if (error) {
        console.error('finance_transactions table read error:', error);
        throw error;
     }
     const list = (data || []) as any[];
-    return list.map(tx => {
+    const result = list.map(tx => {
       const decoded = this._decodeDescription(tx.description || '');
       return {
         id: tx.id,
@@ -873,6 +926,8 @@ export const db = {
         isInitialSale: decoded.isInitialSale
       };
     });
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
@@ -904,6 +959,7 @@ export const db = {
 
     const { error } = await supabase.from('finance_transactions').insert(payload);
     if (error) throw error;
+    invalidateCache('finance_transactions');
   },
 
   async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
@@ -933,21 +989,29 @@ export const db = {
 
     const { error } = await supabase.from('finance_transactions').update(payload).eq('id', id);
     if (error) throw error;
+    invalidateCache('finance_transactions');
   },
 
   async deleteFinanceTransaction(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('finance_transactions').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('finance_transactions');
   },
 
   // --- FINANCE INVOICES ---
   async getFinanceInvoices(userId?: string): Promise<Invoice[]> {
+    const cacheKey = 'finance_invoices';
+    const cached = getCached<Invoice[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('finance_invoices').select('*').order('date', { ascending: false });
     if (error) {
        console.error('finance_invoices table read error:', error);
        throw error;
     }
-    return (data || []) as Invoice[];
+    const result = (data || []) as Invoice[];
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
@@ -971,6 +1035,7 @@ export const db = {
     };
     const { error } = await supabase.from('finance_invoices').insert(payload);
     if (error) throw error;
+    invalidateCache('finance_invoices');
   },
 
   async updateFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
@@ -992,27 +1057,36 @@ export const db = {
     };
     const { error } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id);
     if (error) throw error;
+    invalidateCache('finance_invoices');
   },
 
   async deleteFinanceInvoice(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('finance_invoices').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('finance_invoices');
   },
 
   // --- ALTHERA CONTRACTS ---
   async getContractsAlthera(userId?: string): Promise<any[]> {
+    const cacheKey = 'contracts_althera';
+    const cached = getCached<any[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('contracts_althera').select('*').order('created_at', { ascending: false });
     if (error) {
       console.warn('contracts_althera table read error:', error.message);
       return [];
     }
-    return data || [];
+    const result = data || [];
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertContractAlthera(contract: any, userId?: string): Promise<void> {
     const payload = { ...contract, user_id: userId || null };
     const { error } = await supabase.from('contracts_althera').insert(payload);
     if (error) throw error;
+    invalidateCache('contracts_althera');
   },
 
   async updateContractAlthera(contract: any, userId?: string): Promise<void> {
@@ -1020,11 +1094,13 @@ export const db = {
     const { user_id, ...payload } = contract;
     const { error } = await supabase.from('contracts_althera').update(payload).eq('id', contract.id);
     if (error) throw error;
+    invalidateCache('contracts_althera');
   },
 
   async deleteContractAlthera(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('contracts_althera').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('contracts_althera');
   },
 
   // --- METADATA HELPERS FOR BACKWARD COMPATIBILITY ---
@@ -1131,11 +1207,17 @@ export const db = {
 
   // --- EVENTS ---
   async getEvents(userId?: string): Promise<CalendarEvent[]> {
+    const cacheKey = 'events';
+    const cached = getCached<CalendarEvent[]>(cacheKey);
+    if (cached) return cached;
+
     let query = supabase.from('events').select('*');
     const { data, error } = await query.order('created_at', { ascending: true });
     if (error) throw error;
     const rawEvents = (data || []) as CalendarEvent[];
-    return rawEvents.map(e => this.parseEventMetadata(e));
+    const result = rawEvents.map(e => this.parseEventMetadata(e));
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertEvent(event: CalendarEvent, userId?: string): Promise<void> {
@@ -1144,6 +1226,7 @@ export const db = {
     const payload = { ...cleanEvent, user_id: userId || null };
     const { error } = await supabase.from('events').insert(payload);
     if (error) throw error;
+    invalidateCache('events');
   },
 
   async updateEvent(event: CalendarEvent, userId?: string): Promise<void> {
@@ -1152,15 +1235,21 @@ export const db = {
     const { status, parentEventId, user_id, id, ...cleanEvent } = serialized;
     const { error } = await supabase.from('events').update(cleanEvent).eq('id', event.id);
     if (error) throw error;
+    invalidateCache('events');
   },
 
   async deleteEvent(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('events').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('events');
   },
 
   // --- NOTES ---
   async getNotes(userId?: string): Promise<Note[]> {
+    const cacheKey = 'notes';
+    const cached = getCached<Note[]>(cacheKey);
+    if (cached) return cached;
+
     let query = supabase.from('notes').select('*');
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
@@ -1181,7 +1270,9 @@ export const db = {
       };
     }) as Note[];
 
-    return notes.map(n => this.parseNoteMetadata(n));
+    const result = notes.map(n => this.parseNoteMetadata(n));
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertNote(note: Note, userId?: string): Promise<void> {
@@ -1200,7 +1291,10 @@ export const db = {
     };
 
     const { error: camelError } = await supabase.from('notes').insert(camelPayload);
-    if (!camelError) return;
+    if (!camelError) {
+      invalidateCache('notes');
+      return;
+    }
 
     // Retry with snake_case if first format is rejected
     const snakePayload = {
@@ -1215,6 +1309,7 @@ export const db = {
     };
     const { error: snakeError } = await supabase.from('notes').insert(snakePayload);
     if (snakeError) throw snakeError;
+    invalidateCache('notes');
   },
 
   async updateNote(note: Note, userId?: string): Promise<void> {
@@ -1231,7 +1326,10 @@ export const db = {
     };
 
     const { error: camelError } = await supabase.from('notes').update(camelPayload).eq('id', cleanNote.id);
-    if (!camelError) return;
+    if (!camelError) {
+      invalidateCache('notes');
+      return;
+    }
 
     // Retry with snake_case
     const snakePayload = {
@@ -1244,21 +1342,29 @@ export const db = {
     };
     const { error: snakeError } = await supabase.from('notes').update(snakePayload).eq('id', cleanNote.id);
     if (snakeError) throw snakeError;
+    invalidateCache('notes');
   },
 
   async deleteNote(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('notes').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('notes');
   },
 
   // --- ACTIVITIES ---
   async getActivities(userId?: string): Promise<Activity[]> {
+    const cacheKey = 'activities';
+    const cached = getCached<Activity[]>(cacheKey);
+    if (cached) return cached;
+
     let query = supabase.from('activities').select('*');
     const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(30);
     if (error) throw error;
-    return (data || []) as Activity[];
+    const result = (data || []) as Activity[];
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertActivity(activity: Activity, userId?: string): Promise<void> {
@@ -1274,16 +1380,23 @@ export const db = {
     };
     const { error } = await supabase.from('activities').insert(payload);
     if (error) throw error;
+    invalidateCache('activities');
   },
 
   // --- PROFILES ---
   async getProfiles(): Promise<any[]> {
+    const cacheKey = 'profiles';
+    const cached = getCached<any[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('profiles').select('*');
     if (error) {
       console.warn('Profiles table not yet configured or error loading profiles:', error.message);
       return [];
     }
-    return data || [];
+    const result = data || [];
+    setCached(cacheKey, result);
+    return result;
   },
 
   async upsertProfile(profile: { id: string; name: string; email: string }): Promise<void> {
@@ -1295,17 +1408,23 @@ export const db = {
     const { error } = await supabase.from('profiles').upsert(payload);
     if (error) {
       console.warn('Could not register profile in Supabase profiles (expected if table script not run yet):', error.message);
+    } else {
+      invalidateCache('profiles');
     }
   },
 
   // --- INQUIRIES (CONTACTOS RECIBIDOS) ---
   async getInquiries(): Promise<InquiryMessage[]> {
+    const cacheKey = 'inquiries';
+    const cached = getCached<InquiryMessage[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('inquiries').select('*').order('created_at', { ascending: false });
     if (error) {
       // Return memory list fallback or throw
       throw error;
     }
-    return (data || []).map((row: any) => ({
+    const result = (data || []).map((row: any) => ({
       id: row.id,
       name: row.name,
       email: row.email,
@@ -1313,6 +1432,8 @@ export const db = {
       archived: row.archived ?? false,
       created_at: row.created_at || new Date().toISOString()
     })) as InquiryMessage[];
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertInquiry(inquiry: InquiryMessage): Promise<void> {
@@ -1326,6 +1447,7 @@ export const db = {
     };
     const { error } = await supabase.from('inquiries').insert(payload);
     if (error) throw error;
+    invalidateCache('inquiries');
   },
 
   async updateInquiry(inquiry: InquiryMessage): Promise<void> {
@@ -1338,21 +1460,29 @@ export const db = {
     };
     const { error } = await supabase.from('inquiries').update(payload).eq('id', inquiry.id);
     if (error) throw error;
+    invalidateCache('inquiries');
   },
 
   async deleteInquiry(id: string): Promise<void> {
     const { error } = await supabase.from('inquiries').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('inquiries');
   },
 
   // --- PROJECTS ---
   async getProjects(userId?: string): Promise<any[]> {
+    const cacheKey = 'projects';
+    const cached = getCached<any[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
     if (error) {
       console.warn('projects table read error:', error.message);
       throw error;
     }
-    return data || [];
+    const result = data || [];
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertProject(project: any, userId?: string): Promise<void> {
@@ -1376,6 +1506,7 @@ export const db = {
     };
     const { error } = await supabase.from('projects').insert(payload);
     if (error) throw error;
+    invalidateCache('projects');
   },
 
   async updateProject(project: any, userId?: string): Promise<void> {
@@ -1398,11 +1529,13 @@ export const db = {
     };
     const { error } = await supabase.from('projects').update(dbPayload).eq('id', project.id);
     if (error) throw error;
+    invalidateCache('projects');
   },
 
   async deleteProject(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('projects').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('projects');
   },
 
   // --- COLD LEADS ---
@@ -1445,13 +1578,19 @@ export const db = {
   },
 
   async getColdLeads(): Promise<ColdCallingLead[]> {
+    const cacheKey = 'cold_calling_leads';
+    const cached = getCached<ColdCallingLead[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('cold_calling_leads').select('*').order('created_at', { ascending: false });
     if (error) {
       console.warn('cold_calling_leads table read error:', error.message);
       throw error;
     }
     const raw = data || [];
-    return raw.map((row: any) => this.parseColdLeadMetadata(row));
+    const result = raw.map((row: any) => this.parseColdLeadMetadata(row));
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertColdLead(lead: ColdCallingLead, userId?: string): Promise<void> {
@@ -1478,6 +1617,7 @@ export const db = {
     };
     const { error } = await supabase.from('cold_calling_leads').insert(payload);
     if (error) throw error;
+    invalidateCache('cold_calling_leads');
   },
 
   async updateColdLead(lead: ColdCallingLead, userId?: string): Promise<void> {
@@ -1502,24 +1642,32 @@ export const db = {
     };
     const { error } = await supabase.from('cold_calling_leads').update(payload).eq('id', lead.id);
     if (error) throw error;
+    invalidateCache('cold_calling_leads');
   },
 
   async deleteColdLead(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('cold_calling_leads').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('cold_calling_leads');
   },
 
   // --- COMERCIAL LEADS ---
   async getComercialLeads(): Promise<ComercialLead[]> {
+    const cacheKey = 'comercial_leads';
+    const cached = getCached<ComercialLead[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('comercial_leads').select('*').order('created_at', { ascending: false });
     if (error) {
       console.warn('comercial_leads table read error:', error.message);
       throw error;
     }
-    return (data || []).map((row: any) => ({
+    const result = (data || []).map((row: any) => ({
       ...row,
       createdAt: row.created_at || new Date().toISOString()
     })) as ComercialLead[];
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertComercialLead(lead: ComercialLead, userId?: string): Promise<void> {
@@ -1540,6 +1688,7 @@ export const db = {
     };
     const { error } = await supabase.from('comercial_leads').insert(payload);
     if (error) throw error;
+    invalidateCache('comercial_leads');
   },
 
   async updateComercialLead(lead: ComercialLead, userId?: string): Promise<void> {
@@ -1558,21 +1707,27 @@ export const db = {
     };
     const { error } = await supabase.from('comercial_leads').update(payload).eq('id', lead.id);
     if (error) throw error;
+    invalidateCache('comercial_leads');
   },
 
   async deleteComercialLead(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('comercial_leads').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('comercial_leads');
   },
 
   // --- COMERCIAL ACCOUNTS ---
   async getComercialesAccounts(): Promise<ComercialAccount[]> {
+    const cacheKey = 'comerciales_accounts';
+    const cached = getCached<ComercialAccount[]>(cacheKey);
+    if (cached) return cached;
+
     const { data, error } = await supabase.from('comerciales_accounts').select('*').order('created_at', { ascending: false });
     if (error) {
       console.warn('comerciales_accounts table read error:', error.message);
       throw error;
     }
-    return (data || []).map((row: any) => {
+    const result = (data || []).map((row: any) => {
       let phone = row.phone || '';
       let commissionPercentage = 10; // Default commission percentage is 10%
       const commRegex = /\s*\[COMM:([\d.]+)\]/g;
@@ -1616,6 +1771,8 @@ export const db = {
         createdAt: row.created_at || new Date().toISOString()
       };
     }) as ComercialAccount[];
+    setCached(cacheKey, result);
+    return result;
   },
 
   async insertComercialAccount(account: ComercialAccount, userId?: string): Promise<void> {
@@ -1643,6 +1800,7 @@ export const db = {
     };
     const { error } = await supabase.from('comerciales_accounts').insert(payload);
     if (error) throw error;
+    invalidateCache('comerciales_accounts');
   },
 
   async updateComercialAccount(account: ComercialAccount, userId?: string): Promise<void> {
@@ -1668,10 +1826,12 @@ export const db = {
     };
     const { error } = await supabase.from('comerciales_accounts').update(payload).eq('id', account.id);
     if (error) throw error;
+    invalidateCache('comerciales_accounts');
   },
 
   async deleteComercialAccount(id: string, _userId?: string): Promise<void> {
     const { error } = await supabase.from('comerciales_accounts').delete().eq('id', id);
     if (error) throw error;
+    invalidateCache('comerciales_accounts');
   }
 };

@@ -267,8 +267,24 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
             </div>
           </motion.div>
 
-          {/* Action triggers - Team exclusive portal access */}
-          <div className="flex items-center gap-4">
+          {/* Action triggers - Team & Commercial portals */}
+          <div className="flex items-center gap-3">
+            <motion.button
+              whileHover={{ 
+                scale: 1.03, 
+                borderColor: "rgba(212, 175, 55, 0.4)",
+                boxShadow: "0 0 15px rgba(212, 175, 55, 0.15)"
+              }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => onNavigate('comerciales_acceso', 'push')}
+              className="bg-slate-950 text-amber-200 hover:text-amber-100 border border-amber-500/20 text-xs font-semibold px-4.5 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-lg shadow-black/80"
+              title="Portal de Acceso para Representantes y Comerciales de Ventas"
+            >
+              <Users className="w-3.5 h-3.5 text-amber-400" />
+              <span>Acceso Comerciales</span>
+              <ArrowRight className="w-3 h-3 text-amber-400/50" />
+            </motion.button>
+
             <motion.button
               whileHover={{ 
                 scale: 1.03, 
@@ -1539,9 +1555,10 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
             {/* Added Acceso a Comerciales button */}
             <button 
               onClick={() => onNavigate('comerciales_acceso', 'push')}
-              className="text-[11px] text-fuchsia-400 hover:text-fuchsia-300 font-bold transition duration-200 cursor-pointer p-1.5 px-3 bg-fuchsia-500/5 hover:bg-fuchsia-500/10 border border-fuchsia-500/15 rounded-lg flex items-center gap-1 leading-none"
+              className="text-[11px] text-amber-400 hover:text-amber-300 font-bold transition duration-200 cursor-pointer py-1.5 px-3 bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/15 rounded-xl flex items-center gap-1.5 leading-none"
             >
-              💼 <span>Acceso a Comerciales</span>
+              <Users className="w-3 h-3 text-amber-400" />
+              <span>Acceso a Comerciales</span>
             </button>
           </div>
           <p className="text-[10px] text-slate-500 font-mono">
