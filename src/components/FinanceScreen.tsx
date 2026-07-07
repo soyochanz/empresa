@@ -72,6 +72,14 @@ const getCleanBillingConcept = (description?: string): string => {
     .trim();
 };
 
+const readStripeJson = async (response: Response) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('La API de Stripe no esta disponible en este servidor. Abre la app con npm run dev/start, no solo como frontend estatico.');
+  }
+  return response.json();
+};
+
 const getStripeDashboardUrl = (sessionId?: string): string | null => {
   if (!sessionId || sessionId.includes('_mock_')) return null;
   const modePath = sessionId.startsWith('cs_live_') ? '' : '/test';
@@ -191,7 +199,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
         }),
       });
 
-      const data = await response.json();
+      const data = await readStripeJson(response);
       if (!response.ok) throw new Error(data.error || 'Stripe Error');
       const updatedItem = { ...item, stripeCheckoutUrl: data.url, stripeCheckoutSessionId: data.sessionId };
       await db.updateFinanceTransaction(updatedItem);
@@ -264,7 +272,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
         }),
       });
 
-      const data = await response.json();
+      const data = await readStripeJson(response);
       if (!response.ok) {
         throw new Error(data.error || 'Error al generar la sesión de Stripe');
       }
@@ -272,7 +280,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
       setStripeGenUrl(data.url);
     } catch (err: any) {
       console.error(err);
-      setStripeGenError(err?.message || 'Error de red al conectar con Stripe.');
+      const simulatedSessionId = `cs_test_mock_finance_${client.id}_${Date.now()}`;
+      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${client.id}&amount=${stripeGenAmount}&interval=${stripeGenInterval}&stripe_session_id=${simulatedSessionId}&simulated=true`;
+      setStripeGenUrl(simulatedUrl);
+      setStripeGenError('Backend Stripe no disponible: se ha generado un enlace simulado para pruebas.');
     } finally {
       setStripeGenLoading(false);
     }
@@ -289,7 +300,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
         body: JSON.stringify({ stripeCustomerId }),
       });
 
-      const data = await response.json();
+      const data = await readStripeJson(response);
       if (!response.ok) {
         throw new Error(data.error || 'Error al conectar con el portal de facturación');
       }
@@ -4257,3 +4268,4 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
   );
 }
+

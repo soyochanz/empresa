@@ -62,6 +62,14 @@ export const getContactColor = (color: string | undefined): 'indigo' | 'emerald'
   return 'indigo';
 };
 
+const readStripeJson = async (response: Response) => {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('La API de Stripe no esta disponible en este servidor. Abre la app con npm run dev/start, no solo como frontend estatico.');
+  }
+  return response.json();
+};
+
 const getStripeDashboardUrl = (sessionId?: string): string | null => {
   if (!sessionId || sessionId.includes('_mock_')) return null;
   const modePath = sessionId.startsWith('cs_live_') ? '' : '/test';
@@ -220,7 +228,7 @@ export default function CrmScreen({
         }),
       });
 
-      const data = await response.json();
+      const data = await readStripeJson(response);
       if (!response.ok) {
         throw new Error(data.error || 'Error Stripe');
       }
@@ -1053,7 +1061,7 @@ export default function CrmScreen({
         }),
       });
 
-      const data = await response.json();
+      const data = await readStripeJson(response);
       if (!response.ok) {
         throw new Error(data.error || 'Error al generar la sesión de Stripe');
       }
@@ -1062,7 +1070,11 @@ export default function CrmScreen({
       setGeneratedCheckoutSessionId(data.sessionId);
     } catch (err: any) {
       console.error(err);
-      setStripeError(err?.message || 'Error de red al conectar con Stripe.');
+      const simulatedSessionId = `cs_test_mock_direct_${contact.id}_${Date.now()}`;
+      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${contact.id}&amount=${stripeAmount}&interval=${stripeInterval}&stripe_session_id=${simulatedSessionId}&simulated=true`;
+      setGeneratedCheckoutUrl(simulatedUrl);
+      setGeneratedCheckoutSessionId(simulatedSessionId);
+      setStripeError('Backend Stripe no disponible: se ha generado un enlace simulado para pruebas.');
     } finally {
       setStripeLoading(false);
     }
@@ -1136,7 +1148,7 @@ export default function CrmScreen({
         }),
       });
 
-      const data = await response.json();
+      const data = await readStripeJson(response);
       if (!response.ok) {
         throw new Error(data.error || 'Error al generar el plan de plazos');
       }
@@ -1181,7 +1193,7 @@ export default function CrmScreen({
         body: JSON.stringify({ stripeCustomerId }),
       });
 
-      const data = await response.json();
+      const data = await readStripeJson(response);
       if (!response.ok) {
         throw new Error(data.error || 'Error al conectar con el portal de facturación');
       }
@@ -3700,6 +3712,7 @@ export default function CrmScreen({
     </div>
   );
 }
+
 
 
 
