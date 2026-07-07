@@ -9,10 +9,9 @@ interface LoginScreenProps {
 
 export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenProps) {
   // Navigation states
-  const [isSignUp, setIsSignUp] = useState(false);
+  // Registration is disabled
 
   // Form states
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('name@agency.com');
   const [password, setPassword] = useState('password123');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,62 +29,23 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
     setLoading(true);
 
     try {
-      if (isSignUp) {
-        // Real register linked with Supabase Auth
-        if (!name.trim()) {
-          throw new Error('Please enter username / name.');
-        }
+      // Real login linked with Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password
+      });
 
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password: password,
-          options: {
-            data: {
-              name: name.trim()
-            }
-          }
-        });
+      if (error) throw error;
 
-        if (error) throw error;
-
-        // If active user is returned but session is null, it means verification email was sent
-        if (data.user && !data.session) {
-          setSuccessMsg('¡Registro exitoso! Por favor verifica tu casilla de correo electrónico para confirmar tu cuenta y poder iniciar sesión.');
-          // Reset form to Login view
-          setIsSignUp(false);
-        } else if (data.session) {
-          setSuccessMsg('¡Registro exitoso! Iniciando sesión...');
-          // Trigger callbacks after a brief delay
-          setTimeout(() => {
-            onSignIn({
-              id: data.user?.id || '',
-              email: data.user?.email || email,
-              name: name.trim()
-            });
-          }, 1500);
-        } else {
-          setSuccessMsg('¡Usuario registrado correctamente! Ya puedes iniciar sesión.');
-          setIsSignUp(false);
-        }
-      } else {
-        // Real login linked with Supabase Auth
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password
-        });
-
-        if (error) throw error;
-
-        if (data.session && data.user) {
-          setSuccessMsg('Inicio de sesión correcto. Redirigiendo...');
-          setTimeout(() => {
-            onSignIn({
-              id: data.user.id,
-              email: data.user.email || email,
-              name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Agency Member'
-            });
-          }, 1000);
-        }
+      if (data.session && data.user) {
+        setSuccessMsg('Inicio de sesión correcto. Redirigiendo...');
+        setTimeout(() => {
+          onSignIn({
+            id: data.user.id,
+            email: data.user.email || email,
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Agency Member'
+          });
+        }, 1000);
       }
     } catch (err: any) {
       console.error('Auth error detailed:', err);
@@ -130,26 +90,11 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
         {/* Central Card */}
         <div className="bg-[#030306]/90 backdrop-blur-3xl border border-white/5 p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] hover:border-amber-500/10 transition-all duration-300">
           <div className="mb-6 text-left">
-            <div className="flex justify-between items-center mb-1.5">
-              <h2 className="text-xl font-bold text-white tracking-tight">
-                {isSignUp ? 'Crear una cuenta' : 'Welcome Back'}
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setErrorMsg(null);
-                  setSuccessMsg(null);
-                }}
-                className="text-[10px] text-amber-550 hover:text-amber-400 font-mono uppercase tracking-wider font-semibold cursor-pointer underline-offset-4 hover:underline"
-              >
-                {isSignUp ? 'Inicia Sesión' : 'Regístrate'}
-              </button>
-            </div>
+            <h2 className="text-xl font-bold text-white tracking-tight mb-1.5">
+              Welcome Back
+            </h2>
             <p className="text-slate-450 text-xs leading-relaxed font-sans font-medium">
-              {isSignUp 
-                ? 'Regístrate para almacenar leads, CRM y notas bajo tu titularidad.' 
-                : 'Introduce tus credenciales para acceder al panel de control corporativo.'}
+              Introduce tus credenciales para acceder al panel de control corporativo.
             </p>
           </div>
 
@@ -176,26 +121,6 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             
-            {/* Full Name field (Only during Sign Up) */}
-            {isSignUp && (
-              <div className="space-y-1.5 space-y-y">
-                <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest ml-1 block text-left">
-                  Tu nombre completo
-                </label>
-                <div className="relative group">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 group-focus-within:text-amber-500 transition-colors" />
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-4 text-xs focus:outline-none focus:border-amber-500/30 transition-all text-slate-100 placeholder:text-slate-650 font-sans"
-                    placeholder="Escribe tu nombre y apellido"
-                    required={isSignUp}
-                  />
-                </div>
-              </div>
-            )}
-
             {/* Email Field */}
             <div className="space-y-1.5">
               <label className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest ml-1 block text-left">
@@ -207,7 +132,7 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-4 text-xs focus:outline-none focus:border-amber-500/30 ring-offset-[#020204] focus:ring-1 focus:ring-amber-500/10 transition-all text-slate-100 placeholder:text-slate-600 text-left font-sans"
+                  className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-4 text-xs focus:outline-none focus:border-amber-500/30 ring-offset-[#020204] focus:ring-1 focus:ring-amber-500/10 transition-all text-slate-100 placeholder:text-slate-650 text-left font-sans"
                   placeholder="nombre@agency.com"
                   required
                 />
@@ -225,7 +150,7 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-12 text-xs focus:outline-none focus:border-amber-500/30 ring-offset-[#020204] focus:ring-1 focus:ring-amber-500/10 transition-all text-slate-100 placeholder:text-slate-600 text-left font-sans"
+                  className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-12 text-xs focus:outline-none focus:border-amber-500/30 ring-offset-[#020204] focus:ring-1 focus:ring-amber-500/10 transition-all text-slate-100 placeholder:text-slate-650 text-left font-sans"
                   placeholder="••••••••"
                   required
                 />
@@ -240,28 +165,26 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
             </div>
 
             {/* Remember Me & Help Links */}
-            {!isSignUp && (
-              <div className="flex items-center justify-between pt-1 text-[11px]">
-                <label className="flex items-center space-x-2 cursor-pointer group select-none">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={() => setRememberMe(!rememberMe)}
-                    className="rounded border-white/5 bg-[#020204] text-amber-500 focus:ring-0 focus:ring-offset-0 transition cursor-pointer w-3.5 h-3.5"
-                  />
-                  <span className="text-slate-450 group-hover:text-slate-200 transition-colors font-sans font-medium">
-                    Recordarme en este equipo
-                  </span>
-                </label>
-                <a 
-                  href="#" 
-                  onClick={(e) => { e.preventDefault(); alert("Por favor contacta al administrador de Althera para recibir tus claves administrativas."); }} 
-                  className="text-amber-500/90 hover:text-amber-400 hover:underline transition-all font-medium"
-                >
-                  ¿Olvidada?
-                </a>
-              </div>
-            )}
+            <div className="flex items-center justify-between pt-1 text-[11px]">
+              <label className="flex items-center space-x-2 cursor-pointer group select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={() => setRememberMe(!rememberMe)}
+                  className="rounded border-white/5 bg-[#020204] text-amber-500 focus:ring-0 focus:ring-offset-0 transition cursor-pointer w-3.5 h-3.5"
+                />
+                <span className="text-slate-450 group-hover:text-slate-200 transition-colors font-sans font-medium">
+                  Recordarme en este equipo
+                </span>
+              </label>
+              <a 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); alert("Por favor contacta al administrador de Althera para recibir tus claves administrativas."); }} 
+                className="text-amber-550 hover:text-amber-400 hover:underline transition-all font-medium"
+              >
+                ¿Olvidada?
+              </a>
+            </div>
 
             {/* Action Trigger Submit Button */}
             <button
@@ -276,10 +199,34 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
                 </div>
               ) : (
                 <>
-                  <span>{isSignUp ? 'Crear mi cuenta' : 'Ingresar al sistema'}</span>
+                  <span>Ingresar al sistema</span>
                   <ArrowRight className="w-4 h-4 stroke-[2.5px]" />
                 </>
               )}
+            </button>
+
+            {/* Offline/Local Demo login fallback */}
+            <div className="relative flex py-2 items-center my-1">
+              <div className="flex-grow border-t border-white/5"></div>
+              <span className="flex-shrink mx-3 text-[9px] font-mono text-slate-500 uppercase tracking-widest">o también</span>
+              <div className="flex-grow border-t border-white/5"></div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSuccessMsg('Accediendo en Modo Demo (Local sin Supabase)...');
+                setTimeout(() => {
+                  onSignIn({
+                    id: null,
+                    email: email || 'demo@agency.com',
+                    name: 'Administrador Althera'
+                  });
+                }, 800);
+              }}
+              className="w-full bg-[#05050c]/80 hover:bg-amber-500/5 border border-white/5 hover:border-amber-500/20 text-slate-300 hover:text-amber-400 font-bold text-xs uppercase tracking-widest py-2.5 rounded-xl flex items-center justify-center transition-all cursor-pointer duration-200"
+            >
+              <span>Acceso de Prueba Local (Demo)</span>
             </button>
 
           </form>
