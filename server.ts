@@ -15,13 +15,43 @@ const DEFAULT_SUPABASE_URL = "https://czyrolmczcwtexxgxzrg.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6eXJvbG1jemN3dGV4eGd4enJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzOTcxMjEsImV4cCI6MjA5NDk3MzEyMX0.OO17A0soth1VcIQQm6p02Po8uWPtP8GggfnmUXzGvp4";
 
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_ANON_KEY ||
-    DEFAULT_SUPABASE_ANON_KEY,
-);
+function cleanEnv(value?: string): string {
+  let cleaned = (value || "").trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+}
+
+function isPlaceholder(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return !value || normalized.includes("placeholder") || normalized.includes("my_") || normalized.includes("your_");
+}
+
+function resolveSupabaseUrl(): string {
+  const configured = cleanEnv(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
+  if (!isPlaceholder(configured) && /^https?:\/\//i.test(configured)) {
+    return configured;
+  }
+  return DEFAULT_SUPABASE_URL;
+}
+
+function resolveSupabaseKey(): string {
+  const configured = cleanEnv(
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.VITE_SUPABASE_ANON_KEY,
+  );
+  if (!isPlaceholder(configured) && configured.length > 20) {
+    return configured;
+  }
+  return DEFAULT_SUPABASE_ANON_KEY;
+}
+
+const supabaseAdmin = createClient(resolveSupabaseUrl(), resolveSupabaseKey());
 
 // Request logging middleware for debugging API calls
 app.use((req, res, next) => {
