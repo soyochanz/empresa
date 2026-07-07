@@ -1891,6 +1891,30 @@ export const db = {
       }
       phone = phone.replace(stripeAcctRegex, '').trim();
 
+      let stripeOnboardingCompleted = false;
+      const stripeOnboardingRegex = /\s*\[STRIPEONBOARDING:(true|false)\]/g;
+      const stripeOnboardingMatch = stripeOnboardingRegex.exec(phone);
+      if (stripeOnboardingMatch) {
+        stripeOnboardingCompleted = stripeOnboardingMatch[1] === 'true';
+      }
+      phone = phone.replace(stripeOnboardingRegex, '').trim();
+
+      let stripePayoutsEnabled = false;
+      const stripePayoutsRegex = /\s*\[STRIPEPAYOUTS:(true|false)\]/g;
+      const stripePayoutsMatch = stripePayoutsRegex.exec(phone);
+      if (stripePayoutsMatch) {
+        stripePayoutsEnabled = stripePayoutsMatch[1] === 'true';
+      }
+      phone = phone.replace(stripePayoutsRegex, '').trim();
+
+      let stripeChargesEnabled = false;
+      const stripeChargesRegex = /\s*\[STRIPECHARGES:(true|false)\]/g;
+      const stripeChargesMatch = stripeChargesRegex.exec(phone);
+      if (stripeChargesMatch) {
+        stripeChargesEnabled = stripeChargesMatch[1] === 'true';
+      }
+      phone = phone.replace(stripeChargesRegex, '').trim();
+
       let payouts: any[] = [];
       const payoutsRegex = /\s*\[PAYOUTS:([^\]]+)\]/g;
       const payoutsMatch = payoutsRegex.exec(phone);
@@ -1912,6 +1936,9 @@ export const db = {
         bic: bic || undefined,
         bankName: bankName || undefined,
         stripeConnectAccountId: stripeConnectAccountId || undefined,
+        stripeOnboardingCompleted,
+        stripePayoutsEnabled,
+        stripeChargesEnabled,
         payouts,
         createdAt: row.created_at || new Date().toISOString()
       };
@@ -1936,6 +1963,15 @@ export const db = {
     }
     if (account.stripeConnectAccountId) {
       phone += ` [STRIPEACCT:${account.stripeConnectAccountId}]`;
+    }
+    if (account.stripeOnboardingCompleted !== undefined) {
+      phone += ` [STRIPEONBOARDING:${account.stripeOnboardingCompleted ? 'true' : 'false'}]`;
+    }
+    if (account.stripePayoutsEnabled !== undefined) {
+      phone += ` [STRIPEPAYOUTS:${account.stripePayoutsEnabled ? 'true' : 'false'}]`;
+    }
+    if (account.stripeChargesEnabled !== undefined) {
+      phone += ` [STRIPECHARGES:${account.stripeChargesEnabled ? 'true' : 'false'}]`;
     }
     if (account.payouts && account.payouts.length > 0) {
       phone += ` [PAYOUTS:${encodeURIComponent(JSON.stringify(account.payouts))}]`;
@@ -1970,6 +2006,15 @@ export const db = {
     }
     if (account.stripeConnectAccountId) {
       phone += ` [STRIPEACCT:${account.stripeConnectAccountId}]`;
+    }
+    if (account.stripeOnboardingCompleted !== undefined) {
+      phone += ` [STRIPEONBOARDING:${account.stripeOnboardingCompleted ? 'true' : 'false'}]`;
+    }
+    if (account.stripePayoutsEnabled !== undefined) {
+      phone += ` [STRIPEPAYOUTS:${account.stripePayoutsEnabled ? 'true' : 'false'}]`;
+    }
+    if (account.stripeChargesEnabled !== undefined) {
+      phone += ` [STRIPECHARGES:${account.stripeChargesEnabled ? 'true' : 'false'}]`;
     }
     if (account.payouts && account.payouts.length > 0) {
       phone += ` [PAYOUTS:${encodeURIComponent(JSON.stringify(account.payouts))}]`;

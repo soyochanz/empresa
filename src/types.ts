@@ -181,6 +181,9 @@ export interface ComercialAccount {
   bic?: string;
   bankName?: string;
   stripeConnectAccountId?: string;
+  stripeOnboardingCompleted?: boolean;
+  stripePayoutsEnabled?: boolean;
+  stripeChargesEnabled?: boolean;
   payouts?: PayoutTransaction[];
 }
 

@@ -91,6 +91,17 @@ function getAppUrl(req: express.Request): string {
   return `${req.protocol}://${req.get("host") || "localhost:3000"}`.replace(/\/$/, "");
 }
 
+function formatStripeConnectAccount(account: any) {
+  return {
+    accountId: account.id,
+    onboardingCompleted: Boolean(account.details_submitted),
+    payoutsEnabled: Boolean(account.payouts_enabled),
+    chargesEnabled: Boolean(account.charges_enabled),
+    requirementsDue: account.requirements?.currently_due || [],
+    disabledReason: account.requirements?.disabled_reason || "",
+  };
+}
+
 function readTag(description: string, tag: string): string | undefined {
   const match = new RegExp(`\\[${tag}:([^\\]]+)\\]`).exec(description || "");
   return match?.[1];
@@ -551,6 +562,7 @@ app.post("/api/stripe/create-connect-account", async (req, res) => {
       });
     }
 
+    const account = await stripe.accounts.retrieve(accountId);
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
       refresh_url: `${appUrl}?stripe_connect=refresh&comercial_id=${comercialId}`,
@@ -558,9 +570,25 @@ app.post("/api/stripe/create-connect-account", async (req, res) => {
       type: "account_onboarding",
     });
 
-    res.json({ accountId, url: accountLink.url });
+    res.json({ ...formatStripeConnectAccount(account), url: accountLink.url });
   } catch (error: any) {
     console.error("Error creating Stripe Connect account:", error);
+    res.status(500).json({ error: error?.message || "Internal Server Error" });
+  }
+});
+
+app.post("/api/stripe/connect-account-status", async (req, res) => {
+  try {
+    const { stripeConnectAccountId } = req.body;
+    if (!stripeConnectAccountId) {
+      return res.status(400).json({ error: "stripeConnectAccountId is required" });
+    }
+
+    const stripe = getStripe();
+    const account = await stripe.accounts.retrieve(stripeConnectAccountId);
+    res.json(formatStripeConnectAccount(account));
+  } catch (error: any) {
+    console.error("Error retrieving Stripe Connect account:", error);
     res.status(500).json({ error: error?.message || "Internal Server Error" });
   }
 });

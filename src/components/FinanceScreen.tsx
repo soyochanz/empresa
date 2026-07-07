@@ -535,7 +535,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
   const commercialSalaries = comercialesList
     .flatMap(com => com.payouts || [])
-    .filter(p => p.status === 'completed')
+    .filter(p => p.status === 'completed' && p.stripeConnectAccountId)
     .reduce((sum, p) => sum + p.amount, 0);
 
   const netProfit = totalIncomes - totalExpenses - commercialSalaries;

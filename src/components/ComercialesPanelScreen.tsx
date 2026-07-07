@@ -162,10 +162,40 @@ export default function ComercialesPanelScreen({
       onUpdateComercial({
         ...comercial,
         stripeConnectAccountId: data.accountId,
+        stripeOnboardingCompleted: data.onboardingCompleted,
+        stripePayoutsEnabled: data.payoutsEnabled,
+        stripeChargesEnabled: data.chargesEnabled,
       });
       window.open(data.url, '_blank', 'noopener,noreferrer');
     } catch (err: any) {
       setStripeConnectError(err?.message || 'No se pudo iniciar Stripe Connect.');
+    } finally {
+      setStripeConnectLoading(false);
+    }
+  };
+
+  const handleRefreshStripeStatus = async () => {
+    if (!onUpdateComercial || !comercial.stripeConnectAccountId) return;
+    setStripeConnectLoading(true);
+    setStripeConnectError('');
+    try {
+      const response = await fetch('/api/stripe/connect-account-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stripeConnectAccountId: comercial.stripeConnectAccountId }),
+      });
+      const data = await readStripeJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo actualizar Stripe');
+      }
+      onUpdateComercial({
+        ...comercial,
+        stripeOnboardingCompleted: data.onboardingCompleted,
+        stripePayoutsEnabled: data.payoutsEnabled,
+        stripeChargesEnabled: data.chargesEnabled,
+      });
+    } catch (err: any) {
+      setStripeConnectError(err?.message || 'No se pudo actualizar el estado de Stripe.');
     } finally {
       setStripeConnectLoading(false);
     }
@@ -655,13 +685,29 @@ export default function ComercialesPanelScreen({
                     <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
                     <span className="text-[10px] uppercase font-mono font-bold text-indigo-400 tracking-wider">Stripe Direct Payouts</span>
                   </div>
-                  {true ? (
-                    <div className="p-3 bg-slate-900/60 border border-white/5 rounded-xl text-[10px] text-slate-400 leading-normal">
-                      Las comisiones se registran en Althera como liquidaciones manuales. El pago real lo realizara administracion fuera de la plataforma.
-                    </div>
-                  ) : comercial.stripeConnectAccountId ? (
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[10px] text-emerald-400 font-mono break-all">
-                      Stripe Connect vinculado: {comercial.stripeConnectAccountId}
+                  {comercial.stripeConnectAccountId ? (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[10px] text-emerald-400 space-y-2">
+                      <p className="font-mono break-all">Stripe Connect: {comercial.stripeConnectAccountId}</p>
+                      <div className="grid grid-cols-3 gap-1.5 text-center">
+                        <span className={`rounded border px-1 py-1 ${comercial.stripeOnboardingCompleted ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
+                          {comercial.stripeOnboardingCompleted ? 'Onboarding OK' : 'Pendiente'}
+                        </span>
+                        <span className={`rounded border px-1 py-1 ${comercial.stripePayoutsEnabled ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
+                          {comercial.stripePayoutsEnabled ? 'Payouts OK' : 'Payouts no'}
+                        </span>
+                        <span className={`rounded border px-1 py-1 ${comercial.stripeChargesEnabled ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
+                          {comercial.stripeChargesEnabled ? 'Cargos OK' : 'Cargos no'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRefreshStripeStatus}
+                        disabled={stripeConnectLoading}
+                        className="w-full py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 rounded-lg text-[10px] text-slate-300 font-bold flex items-center justify-center gap-1.5"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${stripeConnectLoading ? 'animate-spin' : ''}`} />
+                        <span>Actualizar estado Stripe</span>
+                      </button>
                     </div>
                   ) : (
                     <button
