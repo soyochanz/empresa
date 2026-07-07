@@ -372,7 +372,9 @@ export default function ComercialesPanelScreen({
   const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
   const myBenefitsPotential = myTotalSalesVolume * (myCommissionPercentage / 100);
   const myBenefitsPendingOnClientPayment = Math.max(0, myBenefitsPotential - myBenefitsEarned);
-  const myBenefitsPaidOut = (comercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
+  const myBenefitsPaidOut = (comercial.payouts || [])
+    .filter(p => p.status === 'completed' && p.stripeConnectAccountId && p.stripeTransferId?.startsWith('tr_'))
+    .reduce((sum, p) => sum + p.amount, 0);
   const myBenefitsReadyToPayout = Math.max(0, myBenefitsEarned - myBenefitsPaidOut);
 
   // Status distributions for chart
@@ -686,17 +688,22 @@ export default function ComercialesPanelScreen({
                     <span className="text-[10px] uppercase font-mono font-bold text-indigo-400 tracking-wider">Stripe Direct Payouts</span>
                   </div>
                   {comercial.stripeConnectAccountId ? (
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[10px] text-emerald-400 space-y-2">
-                      <p className="font-mono break-all">Stripe Connect: {comercial.stripeConnectAccountId}</p>
-                      <div className="grid grid-cols-3 gap-1.5 text-center">
-                        <span className={`rounded border px-1 py-1 ${comercial.stripeOnboardingCompleted ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
-                          {comercial.stripeOnboardingCompleted ? 'Onboarding OK' : 'Pendiente'}
+                    <div className="p-4 bg-gradient-to-br from-emerald-500/10 via-cyan-500/5 to-indigo-500/10 border border-emerald-500/20 rounded-2xl text-[10px] text-emerald-300 space-y-3 shadow-lg shadow-emerald-950/10">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="block text-[8px] uppercase tracking-[0.22em] text-emerald-400/70 font-mono font-black">Cuenta conectada</span>
+                          <p className="font-mono break-all text-emerald-200 mt-1">{comercial.stripeConnectAccountId}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[8px] uppercase font-mono font-black ${comercial.stripeOnboardingCompleted && comercial.stripePayoutsEnabled ? 'bg-emerald-500/15 border-emerald-400/25 text-emerald-200' : 'bg-amber-500/10 border-amber-400/25 text-amber-200'}`}>
+                          {comercial.stripeOnboardingCompleted && comercial.stripePayoutsEnabled ? 'Lista para cobrar' : 'Pendiente'}
                         </span>
-                        <span className={`rounded border px-1 py-1 ${comercial.stripePayoutsEnabled ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
-                          {comercial.stripePayoutsEnabled ? 'Payouts OK' : 'Payouts no'}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-center">
+                        <span className={`rounded-xl border px-2 py-2 ${comercial.stripeOnboardingCompleted ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
+                          {comercial.stripeOnboardingCompleted ? 'Identidad verificada' : 'Falta identidad'}
                         </span>
-                        <span className={`rounded border px-1 py-1 ${comercial.stripeChargesEnabled ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
-                          {comercial.stripeChargesEnabled ? 'Cargos OK' : 'Cargos no'}
+                        <span className={`rounded-xl border px-2 py-2 ${comercial.stripePayoutsEnabled ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-300'}`}>
+                          {comercial.stripePayoutsEnabled ? 'Cuenta de cobro activa' : 'Cuenta de cobro pendiente'}
                         </span>
                       </div>
                       <button

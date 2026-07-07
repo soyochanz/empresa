@@ -947,7 +947,9 @@ export default function ComercialesAdminScreen({
                   </div>
 
                   {(() => {
-                    const indPaidCommissions = (currentComercial.payouts || []).filter(p => p.status === 'completed' && p.stripeConnectAccountId).reduce((sum, p) => sum + p.amount, 0);
+                    const indPaidCommissions = (currentComercial.payouts || [])
+                      .filter(p => p.status === 'completed' && p.stripeConnectAccountId && p.stripeTransferId?.startsWith('tr_'))
+                      .reduce((sum, p) => sum + p.amount, 0);
                     const indPendingCommission = Math.max(0, indBenefitsEarned - indPaidCommissions);
 
                     return (

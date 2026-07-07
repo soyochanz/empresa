@@ -535,7 +535,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
   const commercialSalaries = comercialesList
     .flatMap(com => com.payouts || [])
-    .filter(p => p.status === 'completed' && p.stripeConnectAccountId)
+    .filter(p => p.status === 'completed' && p.stripeConnectAccountId && p.stripeTransferId?.startsWith('tr_'))
     .reduce((sum, p) => sum + p.amount, 0);
 
   const netProfit = totalIncomes - totalExpenses - commercialSalaries;
@@ -549,7 +549,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     .filter(t => t.type === 'expense' && t.status === 'paid')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const consolidatedBalance = consolidatedIncomes - consolidatedExpenses;
+  const consolidatedBalance = consolidatedIncomes;
   const netCashBalance = consolidatedIncomes - consolidatedExpenses - commercialSalaries;
 
   const pendingIncomes = transactions
@@ -561,6 +561,28 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     .reduce((sum, t) => sum + t.amount, 0);
 
   const pendingBalance = pendingIncomes - pendingExpenses;
+
+  const getClientStripePaymentProgress = (client: ClientContact) => {
+    const clientTxs = transactions.filter(tx => tx.clientId === client.id);
+    const installmentTxs = clientTxs.filter(tx => tx.stripeInstallmentCount && tx.stripeInstallmentCount > 1);
+
+    if (installmentTxs.length > 0) {
+      const totalInstallments = Math.max(...installmentTxs.map(tx => tx.stripeInstallmentCount || 0));
+      const paidInstallments = new Set(
+        installmentTxs
+          .filter(tx => tx.status === 'paid')
+          .map(tx => tx.stripeInstallmentIndex || tx.id)
+      ).size;
+
+      return `${paidInstallments}/${totalInstallments}`;
+    }
+
+    const overview = stripeOverviewByClient[client.id];
+    const paidInvoices = overview?.invoices?.filter((inv: any) => inv.status === 'paid' || inv.paid).length || 0;
+    const localPaidPayments = clientTxs.filter(tx => tx.type === 'income' && tx.status === 'paid').length;
+
+    return String(Math.max(paidInvoices, localPaidPayments));
+  };
 
   // Stripe-specific calculations for automation
   const activeSubs = contacts.filter(c => c.stripeSubscriptionStatus === 'active');
@@ -1982,7 +2004,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
           </h3>
           <p className="text-[10px] text-emerald-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>Ingresos - gastos</span>
+            <span>Cobrado bruto</span>
           </p>
         </div>
 
@@ -2095,6 +2117,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
             </span>
           </button>
           <button
+            hidden
             onClick={() => setActiveTab('invoices')}
             className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
               activeTab === 'invoices' 
@@ -2137,11 +2160,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
             ? `Mostrando ${filteredTxs.length} registros` 
             : activeTab === 'recurring' 
               ? `${recurringExpenses.length} suscripciones operativas` 
-              : activeTab === 'invoices' 
-                ? `Sincronizadas ${filteredInvoices.length} facturas`
-                : activeTab === 'stripe'
-                  ? `Pasarela Stripe Integrada & Activa`
-                  : `${comercialesList.length} representantes comerciales`}
+              : activeTab === 'stripe'
+                ? `Pasarela Stripe Integrada & Activa`
+                : `${comercialesList.length} representantes comerciales`}
         </span>
       </div>
 
@@ -3019,8 +3040,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                     </div>
                   ) : (
                     activeSubs.map(c => (
-                      <div key={c.id} className="flex items-center justify-between p-3.5 bg-[#07070b]/40 rounded-2xl border border-white/5 hover:border-violet-500/20 transition group">
-                        <div className="space-y-1 text-left min-w-0 max-w-[70%]">
+                      <div key={c.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 p-4 bg-[#07070b]/45 rounded-2xl border border-white/5 hover:border-violet-500/20 transition group">
+                        <div className="space-y-1 text-left min-w-0">
                           <h4 className="text-xs font-bold text-white group-hover:text-violet-400 transition truncate">{c.name}</h4>
                           <p className="text-[10px] text-slate-400 font-mono truncate">{c.email}</p>
                           <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -3031,10 +3052,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                             <span className="text-[8px] font-mono text-slate-500 truncate">
                               ID: {c.stripeCustomerId}
                             </span>
+                            <span className="text-[8px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/15 px-1.5 py-0.5 rounded-md uppercase tracking-wider font-extrabold">
+                              Pagos: {getClientStripePaymentProgress(c)}
+                            </span>
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0 space-y-1.5">
+                        <div className="text-left md:text-right shrink-0 space-y-1.5">
                           <span className="block text-xs font-black font-mono text-white leading-none">
                             {c.stripeSubscriptionPrice} € <span className="text-[9px] text-slate-500 font-light">/ {c.stripeSubscriptionInterval === 'year' ? 'año' : 'mes'}</span>
                           </span>
@@ -3057,7 +3081,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                             type="button"
                             disabled={stripeOverviewLoading === c.id}
                             onClick={() => handleLoadFinanceStripeOverview(c)}
-                            className="mt-2 px-3 py-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 rounded-lg text-[9px] text-slate-300 font-bold flex items-center gap-1.5"
+                            className="mt-2 px-3 py-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 rounded-lg text-[9px] text-slate-300 font-bold inline-flex items-center gap-1.5"
                           >
                             {stripeOverviewLoading === c.id ? (
                               <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -3068,10 +3092,10 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                           </button>
                         </div>
                         {stripeOverviewByClient[c.id] && (
-                          <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-3 gap-2 text-center">
-                            <div className="bg-black/20 rounded-lg p-2 border border-white/5">
-                              <span className="block text-[7px] text-slate-500 uppercase font-mono">Facturas</span>
-                              <span className="text-[11px] text-white font-black">{stripeOverviewByClient[c.id].invoices?.length || 0}</span>
+                          <div className="md:col-span-2 pt-3 border-t border-white/5 grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-cyan-500/5 rounded-lg p-2 border border-cyan-500/10">
+                              <span className="block text-[7px] text-slate-500 uppercase font-mono">Pagos</span>
+                              <span className="text-[11px] text-cyan-300 font-black">{getClientStripePaymentProgress(c)}</span>
                             </div>
                             <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
                               <span className="block text-[7px] text-slate-500 uppercase font-mono">Cobrado</span>
