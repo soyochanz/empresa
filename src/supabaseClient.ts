@@ -27,31 +27,7 @@ const getSupabaseConfig = () => {
     key = key.slice(1, -1).trim();
   }
 
-  let isServiceRole = false;
-  try {
-    if (key) {
-      const parts = key.split('.');
-      if (parts.length === 3) {
-        const base64Url = parts[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(
-          (typeof window !== 'undefined' ? window.atob(base64) : Buffer.from(base64, 'base64').toString('binary'))
-            .split('')
-            .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-            .join('')
-        );
-        const payload = JSON.parse(jsonPayload);
-        if (payload.role === 'service_role') {
-          isServiceRole = true;
-          console.warn('VITE_SUPABASE_ANON_KEY is a service_role key. Falling back to public anon key for secure client-side usage.');
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('Error verifying JWT payload:', e);
-  }
-
-  if (!key || key.includes('placeholder') || key.includes('YOUR_') || key.includes('your-') || key.length < 20 || isServiceRole) {
+  if (!key || key.includes('placeholder') || key.includes('YOUR_') || key.includes('your-') || key.length < 20) {
     key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6eXJvbG1jemN3dGV4eGd4enJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzOTcxMjEsImV4cCI6MjA5NDk3MzEyMX0.OO17A0soth1VcIQQm6p02Po8uWPtP8GggfnmUXzGvp4';
   }
 

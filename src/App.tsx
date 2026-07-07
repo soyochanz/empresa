@@ -160,7 +160,12 @@ export default function App() {
   const [projects, setProjects] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('crm_projects');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.length >= INITIAL_PROJECTS.length) {
+          return parsed;
+        }
+      }
       localStorage.setItem('crm_projects', JSON.stringify(INITIAL_PROJECTS));
       return INITIAL_PROJECTS;
     } catch {

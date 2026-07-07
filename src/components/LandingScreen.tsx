@@ -25,7 +25,11 @@ import {
   X,
   Monitor,
   Smartphone,
-  Zap
+  Zap,
+  Plus,
+  RefreshCw,
+  FileDown,
+  DollarSign
 } from 'lucide-react';
 import { motion, useScroll, useTransform, AnimatePresence } from 'motion/react';
 
@@ -50,24 +54,31 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
   const [selectedProject, setSelectedProject] = useState<any | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<'desktop' | 'mobile'>('desktop');
 
-  // Interactive Digital Lab States
-  const [labTab, setLabTab] = useState<'invoice' | 'dashboard'>('invoice');
+  // Interactive Sandbox Playground States
+  const [activePlaygroundTab, setActivePlaygroundTab] = useState<'invoice' | 'dashboard'>('invoice');
   
-  // 1. Invoice Generator Lab States
-  const [invoiceClient, setInvoiceClient] = useState('Cliente Corporativo S.L.');
-  const [invoiceItem, setInvoiceItem] = useState('Consultoría en Arquitectura Cloud & React');
-  const [invoiceRate, setInvoiceRate] = useState(85);
-  const [invoiceHours, setInvoiceHours] = useState(40);
-  const [invoiceIsGenerating, setInvoiceIsGenerating] = useState(false);
-  const [invoicePdfPreview, setInvoicePdfPreview] = useState(false);
+  // Invoice states
+  const [invoiceClient, setInvoiceClient] = useState('Cliente Premium S.L.');
+  const [invoiceConcept, setInvoiceConcept] = useState('Desarrollo de Plataforma SaaS & UI Design');
+  const [invoiceAmount, setInvoiceAmount] = useState<number>(3450);
+  const [invoiceTax, setInvoiceTax] = useState<number>(21);
+  const [invoiceNumber, setInvoiceNumber] = useState('AL-2026-042');
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [invoiceGeneratedSuccess, setInvoiceGeneratedSuccess] = useState(false);
 
-  // 2. Mini Admin Dashboard Lab States
-  const [adminTimeframe, setAdminTimeframe] = useState<'7d' | '30d' | '12m'>('7d');
-  const [adminMetricTab, setAdminMetricTab] = useState<'sales' | 'visits' | 'signups'>('sales');
+  // Admin Dashboard states
+  const [simulatedVisits, setSimulatedVisits] = useState(24850);
+  const [simulatedRevenue, setSimulatedRevenue] = useState(148500);
+  const [simulatedSalesCount, setSimulatedSalesCount] = useState(142);
+  const [simulatedClients, setSimulatedClients] = useState([
+    { id: 1, name: 'Aetheria Corp', concept: 'SaaS Suite v1', status: 'Pagado', amount: 8400 },
+    { id: 2, name: 'Vortex Global', concept: 'Integración E-Commerce', status: 'Pendiente', amount: 3100 },
+    { id: 3, name: 'Nexus Limited', concept: 'Luxury Brand Hub', status: 'Pagado', amount: 5900 },
+    { id: 4, name: 'Zenith Labs', concept: 'Cloud Metrics Monitor', status: 'Activo', amount: 4800 }
+  ]);
 
-  // Ultra-Responsive Adaptive Showcase States
-  const [showcaseWebsite, setShowcaseWebsite] = useState<'luxury-store' | 'tech-saas' | 'architects'>('luxury-store');
-  const [showcaseViewport, setShowcaseViewport] = useState<'desktop' | 'mobile'>('desktop');
+  // Flagship Responsive Watch Showcase State
+  const [flagshipTheme, setFlagshipTheme] = useState<'obsidian' | 'gold' | 'emerald'>('obsidian');
 
   // High-fidelity real projects carried out by the digital boutique agency
   const displayProjects = React.useMemo(() => {
@@ -780,624 +791,596 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
 
         </section>
 
-        {/* INTERACTIVE LAB: "Prueba Nuestro Código" */}
-        <section className="space-y-12 scroll-mt-24 font-sans border-t border-white/5 pt-16">
-          {/* Header */}
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
-            <span className="text-[10px] font-mono text-fuchsia-400 uppercase tracking-widest font-bold block">EXPERIENCIA LIVE</span>
-            <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">Laboratorio de Código Interactivo</h2>
-            <p className="text-slate-450 text-xs sm:text-sm leading-relaxed font-light">
-              Experimenta de primera mano la agilidad y el acabado premium de nuestros desarrollos antes de iniciar tu proyecto. Modifica valores en tiempo real.
-            </p>
+        </section>
 
-            {/* Switch Tabs */}
-            <div className="inline-flex items-center gap-1.5 p-1 bg-[#040409]/90 border border-white/5 rounded-xl mt-4">
-              <button
-                onClick={() => setLabTab('invoice')}
-                className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  labTab === 'invoice' 
-                    ? 'bg-violet-605/25 border border-violet-500/30 text-white' 
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Generador de Facturas</span>
-              </button>
-              <button
-                onClick={() => setLabTab('dashboard')}
-                className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  labTab === 'dashboard' 
-                    ? 'bg-violet-605/25 border border-violet-500/30 text-white' 
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>Mini Panel de Control</span>
-              </button>
-            </div>
+        {/* ALTHERA INTERACTIVE LABS - INTERACTION ON THE LANDING PAGE */}
+        <motion.section
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.7 }}
+          id="labs"
+          className="bg-black/35 border border-white/5 rounded-3xl p-8 sm:p-12 space-y-10 relative overflow-hidden backdrop-blur-3xl scroll-mt-24"
+        >
+          <div className="absolute top-0 right-0 w-[50%] h-[50%] bg-violet-600/5 rounded-full blur-[140px] pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-[40%] h-[40%] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none" />
+
+          {/* Heading */}
+          <div className="max-w-2xl mx-auto text-center space-y-3 relative z-10">
+            <span className="text-[10px] font-mono text-violet-400 uppercase tracking-[0.3em] font-bold">Laboratorio Interactivo</span>
+            <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-none">
+              Prueba Nuestras Soluciones en Vivo
+            </h2>
+            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed font-light">
+              Hemos preparado este espacio para que puedas interactuar directamente con micro-demostraciones de sistemas reales que programamos diariamente (facturadores analíticos, paneles de control corporativos, etc).
+            </p>
           </div>
 
-          {/* Interactive lab sandbox box */}
-          <div className="bg-[#030307]/80 border border-white/5 rounded-3xl p-6 sm:p-8 relative overflow-hidden backdrop-blur-3xl">
-            <div className="absolute top-0 left-1/4 w-96 h-96 bg-violet-605/5 rounded-full blur-[120px] pointer-events-none" />
-            
-            {labTab === 'invoice' ? (
-              /* INVOICE GENERATOR LIVE SANDBOX */
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-                {/* Left controls panel */}
-                <div className="lg:col-span-5 space-y-4 bg-black/30 p-5 rounded-2xl border border-white/5 flex flex-col justify-between">
+          {/* Tab Selection */}
+          <div className="flex items-center justify-center gap-2 p-1 bg-black/60 border border-white/5 rounded-2xl max-w-sm mx-auto relative z-10">
+            <button
+              onClick={() => setActivePlaygroundTab('invoice')}
+              className={`flex-1 py-2.5 text-[11px] font-mono uppercase tracking-wider font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activePlaygroundTab === 'invoice' ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/15' : 'text-slate-450 hover:text-white'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Facturador</span>
+            </button>
+            <button
+              onClick={() => setActivePlaygroundTab('dashboard')}
+              className={`flex-1 py-2.5 text-[11px] font-mono uppercase tracking-wider font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activePlaygroundTab === 'dashboard' ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/15' : 'text-slate-450 hover:text-white'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Mini Dashboard</span>
+            </button>
+          </div>
+
+          {/* Tab Content Display */}
+          <div className="relative z-10">
+            {activePlaygroundTab === 'invoice' ? (
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+                className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch"
+              >
+                {/* Invoice Form Controls */}
+                <div className="lg:col-span-5 bg-[#030307]/90 border border-white/5 rounded-3xl p-6 sm:p-8 flex flex-col justify-between shadow-xl">
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 border-b border-white/5 pb-2">
-                      <Sparkles className="w-4 h-4 text-violet-400" />
-                      <span className="text-[11px] font-mono text-slate-300 font-bold uppercase">Consola de Control</span>
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                      <h4 className="text-[10px] uppercase tracking-wider font-mono font-bold text-slate-400">Parámetros del Documento</h4>
                     </div>
 
-                    {/* Inputs */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono text-slate-400 block font-bold uppercase">Cliente</label>
-                      <input 
-                        type="text" 
-                        value={invoiceClient}
-                        onChange={(e) => { setInvoiceClient(e.target.value); setInvoicePdfPreview(false); }}
-                        className="w-full bg-[#020204] border border-white/5 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500/30 font-sans"
-                        placeholder="Escribe el nombre del cliente"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono text-slate-400 block font-bold uppercase">Concepto del Servicio</label>
-                      <input 
-                        type="text" 
-                        value={invoiceItem}
-                        onChange={(e) => { setInvoiceItem(e.target.value); setInvoicePdfPreview(false); }}
-                        className="w-full bg-[#020204] border border-white/5 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500/30 font-sans"
-                        placeholder="Escribe el servicio"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono text-slate-400 block font-bold uppercase">Tarifa por Hora (€)</label>
-                        <input 
-                          type="number" 
-                          value={invoiceRate}
-                          onChange={(e) => { setInvoiceRate(Math.max(1, Number(e.target.value))); setInvoicePdfPreview(false); }}
-                          className="w-full bg-[#020204] border border-white/5 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500/30 font-mono"
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase font-mono text-slate-500 block font-semibold">Número de Factura</label>
+                        <input
+                          type="text"
+                          value={invoiceNumber}
+                          onChange={(e) => setInvoiceNumber(e.target.value)}
+                          className="w-full bg-[#020204] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-violet-500/50 transition-all font-mono"
                         />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-mono text-slate-400 block font-bold uppercase">Horas Invertidas</label>
-                        <input 
-                          type="number" 
-                          value={invoiceHours}
-                          onChange={(e) => { setInvoiceHours(Math.max(1, Number(e.target.value))); setInvoicePdfPreview(false); }}
-                          className="w-full bg-[#020204] border border-white/5 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:border-violet-500/30 font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setInvoiceIsGenerating(true);
-                      setTimeout(() => {
-                        setInvoiceIsGenerating(false);
-                        setInvoicePdfPreview(true);
-                      }, 1000);
-                    }}
-                    disabled={invoiceIsGenerating}
-                    className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-violet-500/15"
-                  >
-                    {invoiceIsGenerating ? (
-                      <>
-                        <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-white animate-spin" />
-                        <span>Compilando Estilos PDF...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-3.5 h-3.5" />
-                        <span>Generar Vista Previa Premium</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Right Interactive Result PDF Mockup */}
-                <div className="lg:col-span-7 bg-[#05050e] border border-white/10 rounded-2xl p-6 sm:p-8 flex flex-col justify-between shadow-2xl relative min-h-[350px]">
-                  <div className="absolute top-2 right-2 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                    <span className="text-[8px] font-mono text-emerald-400 uppercase font-bold tracking-wider">Lógica Activa</span>
-                  </div>
-
-                  {invoicePdfPreview ? (
-                    <motion.div 
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="space-y-6 flex-grow flex flex-col justify-between"
-                    >
-                      {/* PDF Header Mock */}
-                      <div className="flex justify-between items-start border-b border-white/5 pb-4 text-left">
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="w-2.5 h-2.5 bg-violet-500 rounded" />
-                            <span className="text-xs font-extrabold text-white uppercase tracking-wider">Althera Solutions</span>
-                          </div>
-                          <p className="text-[9px] font-mono text-slate-500">CIF: B-07492463 • Ibiza, España</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[9px] font-mono text-violet-400 uppercase tracking-widest font-bold bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/15">Factura Proforma</span>
-                          <p className="text-[10px] font-mono text-slate-300 mt-1.5">#{(invoiceClient.length * 1234 + 100000)}</p>
-                        </div>
-                      </div>
-
-                      {/* PDF Info Row */}
-                      <div className="grid grid-cols-2 gap-4 text-left">
-                        <div>
-                          <span className="text-[9px] font-mono text-slate-500 uppercase block font-bold">Facturar a:</span>
-                          <p className="text-xs font-bold text-white mt-1">{invoiceClient || 'Cliente Corporativo S.L.'}</p>
-                          <p className="text-[9px] font-mono text-slate-400 mt-0.5">contacto@{invoiceClient.toLowerCase().replace(/[^a-z0-9]/g, '') || 'cliente'}.com</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[9px] font-mono text-slate-500 uppercase block font-bold">Fecha de Emisión:</span>
-                          <p className="text-xs text-slate-300 mt-1">{new Date().toLocaleDateString('es-ES')}</p>
-                          <p className="text-[9px] font-mono text-slate-500 mt-0.5">Vencimiento: 15 días netos</p>
-                        </div>
-                      </div>
-
-                      {/* PDF Table Item */}
-                      <div className="border border-white/5 rounded-xl overflow-hidden bg-black/40">
-                        <div className="grid grid-cols-12 bg-white/5 p-2 text-[9px] font-mono text-slate-400 uppercase font-bold border-b border-white/5">
-                          <div className="col-span-6 text-left">Descripción del Servicio</div>
-                          <div className="col-span-2 text-center">Horas</div>
-                          <div className="col-span-2 text-right">Tarifa</div>
-                          <div className="col-span-2 text-right">Subtotal</div>
-                        </div>
-                        <div className="grid grid-cols-12 p-3 text-xs text-slate-200">
-                          <div className="col-span-6 text-left font-medium text-white truncate">{invoiceItem || 'Consultoría Tecnológica'}</div>
-                          <div className="col-span-2 text-center font-mono text-slate-300">{invoiceHours}h</div>
-                          <div className="col-span-2 text-right font-mono text-slate-300">{invoiceRate}€</div>
-                          <div className="col-span-2 text-right font-mono text-slate-100 font-semibold">{(invoiceHours * invoiceRate).toLocaleString()}€</div>
-                        </div>
-                      </div>
-
-                      {/* PDF Total block */}
-                      <div className="flex justify-end pt-2">
-                        <div className="w-52 space-y-1.5 border-t border-white/5 pt-2 text-xs">
-                          <div className="flex justify-between text-slate-400">
-                            <span>Base Imponible:</span>
-                            <span className="font-mono text-slate-200">{(invoiceHours * invoiceRate).toLocaleString()}€</span>
-                          </div>
-                          <div className="flex justify-between text-slate-400">
-                            <span>Impuestos (21% IVA):</span>
-                            <span className="font-mono text-slate-200">{Math.round(invoiceHours * invoiceRate * 0.21).toLocaleString()}€</span>
-                          </div>
-                          <div className="flex justify-between border-t border-white/5 pt-2 text-sm font-extrabold text-white">
-                            <span>Total Facturado:</span>
-                            <span className="font-mono text-violet-400">{Math.round(invoiceHours * invoiceRate * 1.21).toLocaleString()}€</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-[8px] font-mono text-slate-600 text-center border-t border-white/5 pt-3">
-                        Documento proforma generado dinámicamente con estándares de maquetación vectorial para Althera.
-                      </div>
-                    </motion.div>
-                  ) : (
-                    <div className="flex-grow flex flex-col items-center justify-center text-center space-y-3 p-8">
-                      <div className="w-12 h-12 rounded-full bg-violet-500/5 border border-violet-500/10 flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-violet-400" />
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs text-white font-bold">Generador Listo para Renderizar</p>
-                        <p className="text-[10px] text-slate-500 max-w-xs leading-relaxed">
-                          Modifica los campos del panel de control izquierdo y presiona el botón para compilar la factura interactiva.
-                        </p>
+                        <label className="text-[9px] uppercase font-mono text-slate-500 block font-semibold">Cliente / Receptor</label>
+                        <input
+                          type="text"
+                          value={invoiceClient}
+                          onChange={(e) => setInvoiceClient(e.target.value)}
+                          className="w-full bg-[#020204] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-violet-500/50 transition-all"
+                        />
                       </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              /* MINI ADMIN DASHBOARD LIVE SANDBOX */
-              <div className="space-y-6">
-                {/* Dashboard Controls Bar */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/5 pb-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-bold">Dashboard Virtual</span>
-                    <div className="flex gap-1.5 p-0.5 bg-black border border-white/5 rounded-xl">
-                      {(['7d', '30d', '12m'] as const).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => setAdminTimeframe(t)}
-                          className={`px-2.5 py-1 text-[9px] font-mono rounded-lg transition-all cursor-pointer ${
-                            adminTimeframe === t ? 'bg-violet-600 text-white font-bold' : 'text-slate-500 hover:text-slate-300'
-                          }`}
-                        >
-                          {t === '7d' ? '7 Días' : t === '30d' ? '30 Días' : '12 Meses'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    {(['sales', 'visits', 'signups'] as const).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setAdminMetricTab(m)}
-                        className={`flex-1 sm:flex-none px-3.5 py-1.5 text-xs rounded-xl font-bold transition-all cursor-pointer text-center ${
-                          adminMetricTab === m 
-                            ? 'bg-violet-655/15 border border-violet-500/20 text-violet-300' 
-                            : 'bg-black/40 border border-white/5 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {m === 'sales' ? 'Facturación' : m === 'visits' ? 'Tráfico Web' : 'Conversiones'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Dashboard Body Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Card 1 */}
-                  <div className="bg-black/30 border border-white/5 rounded-2xl p-4.5 space-y-2 text-left">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase font-bold tracking-wider block">Métrica Principal</span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-extrabold text-white">
-                        {adminMetricTab === 'sales' 
-                          ? (adminTimeframe === '7d' ? '12.450 €' : adminTimeframe === '30d' ? '54.210 €' : '620.400 €')
-                          : adminMetricTab === 'visits'
-                          ? (adminTimeframe === '7d' ? '8.410' : adminTimeframe === '30d' ? '36.800' : '482.000')
-                          : (adminTimeframe === '7d' ? '142' : adminTimeframe === '30d' ? '642' : '7.850')
-                        }
-                      </span>
-                      <span className="text-[9px] font-mono text-emerald-400 font-bold">+18.4%</span>
-                    </div>
-                    <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: adminTimeframe === '7d' ? '40%' : adminTimeframe === '30d' ? '70%' : '100%' }}
-                        className="h-full bg-violet-500" 
-                      />
-                    </div>
-                  </div>
-
-                  {/* Card 2 */}
-                  <div className="bg-black/30 border border-white/5 rounded-2xl p-4.5 space-y-2 text-left">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase font-bold tracking-wider block">Tasa de Conversión</span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-extrabold text-white">
-                        {adminMetricTab === 'sales' ? '4.85%' : adminMetricTab === 'visits' ? '6.12%' : '8.24%'}
-                      </span>
-                      <span className="text-[9px] font-mono text-indigo-400 font-bold">+2.1%</span>
-                    </div>
-                    <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: adminMetricTab === 'sales' ? '60%' : '80%' }}
-                        className="h-full bg-indigo-500" 
-                      />
-                    </div>
-                  </div>
-
-                  {/* Card 3 */}
-                  <div className="bg-black/30 border border-white/5 rounded-2xl p-4.5 space-y-2 text-left">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase font-bold tracking-wider block">Eficiencia Servidor</span>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xl font-extrabold text-white">99.98%</span>
-                      <span className="text-[9px] font-mono text-emerald-400 font-bold">Estable</span>
-                    </div>
-                    <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-emerald-500 w-full" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Dashboard Chart Mock & Log Lines */}
-                <div className="bg-black/40 border border-white/5 rounded-2xl p-5 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                  <div className="lg:col-span-8 space-y-3">
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                      <span>Curva de Rendimiento Sincronizada</span>
-                      <span>{adminTimeframe === '7d' ? 'Lun - Dom' : adminTimeframe === '30d' ? 'Semana 1 - Semana 4' : 'Ene - Dic'}</span>
-                    </div>
-                    
-                    {/* Fake Chart Lines using bars */}
-                    <div className="h-28 flex items-end justify-between gap-2.5 pt-4">
-                      {(adminTimeframe === '7d' ? [40, 55, 45, 75, 60, 95, 80] : [35, 45, 50, 65, 55, 70, 75, 85, 90, 80, 95, 100]).map((val, idx) => (
-                        <div key={idx} className="flex-grow flex flex-col items-center gap-1.5 h-full justify-end group">
-                          <span className="text-[8px] font-mono text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity font-bold">{val}%</span>
-                          <motion.div
-                            initial={{ height: 0 }}
-                            animate={{ height: `${val}%` }}
-                            transition={{ type: "spring", stiffness: 100, damping: 15, delay: idx * 0.02 }}
-                            className="w-full rounded-t-lg bg-gradient-to-t from-violet-650/40 to-violet-500 group-hover:from-violet-500 group-hover:to-fuchsia-400 transition-all duration-300"
+                      <div className="space-y-1">
+                        <label className="text-[9px] uppercase font-mono text-slate-500 block font-semibold">Concepto / Servicio</label>
+                        <input
+                          type="text"
+                          value={invoiceConcept}
+                          onChange={(e) => setInvoiceConcept(e.target.value)}
+                          className="w-full bg-[#020204] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-violet-500/50 transition-all"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase font-mono text-slate-500 block font-semibold">Importe Base (€)</label>
+                          <input
+                            type="number"
+                            value={invoiceAmount}
+                            onChange={(e) => setInvoiceAmount(Number(e.target.value))}
+                            className="w-full bg-[#020204] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-violet-500/50 transition-all font-mono"
                           />
                         </div>
-                      ))}
+                        <div className="space-y-1">
+                          <label className="text-[9px] uppercase font-mono text-slate-500 block font-semibold">I.V.A. (%)</label>
+                          <select
+                            value={invoiceTax}
+                            onChange={(e) => setInvoiceTax(Number(e.target.value))}
+                            className="w-full bg-[#020204] border border-white/5 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-violet-500/50 transition-all cursor-pointer"
+                          >
+                            <option value={21}>21% (Estándar)</option>
+                            <option value={10}>10% (Reducido)</option>
+                            <option value={4}>4% (Superreducido)</option>
+                            <option value={0}>0% (Exento)</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Left mini table logs */}
-                  <div className="lg:col-span-4 space-y-3 text-left">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase font-bold block tracking-wider">Últimos Eventos</span>
-                    <div className="space-y-2 text-[11px] font-mono max-h-[120px] overflow-y-auto">
-                      <div className="flex justify-between text-slate-350 p-1.5 bg-[#050510] border border-white/5 rounded">
-                        <span>📥 Nuevo lead CRM</span>
-                        <span className="text-slate-500">Hace 2m</span>
+                  <div className="pt-6 mt-6 border-t border-white/5 space-y-3">
+                    <button
+                      onClick={() => {
+                        setIsGeneratingInvoice(true);
+                        setInvoiceGeneratedSuccess(false);
+                        setTimeout(() => {
+                          setIsGeneratingInvoice(false);
+                          setInvoiceGeneratedSuccess(true);
+                        }, 1000);
+                      }}
+                      disabled={isGeneratingInvoice}
+                      className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold uppercase font-mono tracking-wider rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-violet-600/10"
+                    >
+                      {isGeneratingInvoice ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Procesando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                          <span>Emitir y Firmar Factura</span>
+                        </>
+                      )}
+                    </button>
+                    {invoiceGeneratedSuccess && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-sans rounded-xl flex items-start gap-2 text-left"
+                      >
+                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>Firma criptográfica válida. El documento ha sido generado correctamente.</span>
+                      </motion.div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live Preview Document */}
+                <div className="lg:col-span-7 bg-slate-950/20 border border-white/5 rounded-3xl p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden">
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.03),transparent_70%)] pointer-events-none" />
+                  
+                  <div className="relative z-10 bg-[#05050e]/95 border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 text-left">
+                    {/* Invoice Brand header */}
+                    <div className="flex items-start justify-between border-b border-white/5 pb-4">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-5 h-5 flex items-center justify-center bg-black rounded p-0.5 border border-violet-500/35">
+                            <img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="A" className="w-4 h-4 object-contain" referrerPolicy="no-referrer" />
+                          </div>
+                          <span className="text-[10px] font-black text-white tracking-widest font-mono uppercase">ALTHERA SOLUTIONS</span>
+                        </div>
+                        <p className="text-[8px] font-mono text-slate-500">C/ Vara de Rey, 12, Ibiza • ESB9403819 • info@althera.dev</p>
                       </div>
-                      <div className="flex justify-between text-slate-350 p-1.5 bg-[#050510] border border-white/5 rounded">
-                        <span>💰 Cobro de 1.450€</span>
-                        <span className="text-slate-500">Hace 15m</span>
+
+                      <div className="text-right space-y-1">
+                        <span className="text-[7.5px] font-mono uppercase bg-violet-500/10 text-violet-400 border border-violet-500/20 px-2 py-0.5 rounded-full font-bold">Documento Emitido</span>
+                        <p className="text-[12px] font-mono font-bold text-white tracking-tight mt-1">{invoiceNumber || 'AL-XXXX'}</p>
+                        <p className="text-[8px] font-mono text-slate-500">Fecha: {new Date().toLocaleDateString('es-ES')}</p>
                       </div>
-                      <div className="flex justify-between text-slate-350 p-1.5 bg-[#050510] border border-white/5 rounded">
-                        <span>🚀 Compilación OK</span>
-                        <span className="text-slate-500">Hace 1h</span>
+                    </div>
+
+                    {/* Client Info Grid */}
+                    <div className="space-y-1">
+                      <span className="text-[8px] font-mono uppercase font-bold text-slate-500 tracking-wider">Cliente / Comitente:</span>
+                      <p className="text-xs font-bold text-slate-200">{invoiceClient || 'Cliente General S.L.'}</p>
+                      <p className="text-[8px] text-slate-500 font-mono">Verified Account • Secure Channel Auth</p>
+                    </div>
+
+                    {/* Items Table representation */}
+                    <div className="border border-white/5 rounded-xl overflow-hidden bg-black/40">
+                      <div className="grid grid-cols-12 bg-slate-900/50 p-2.5 border-b border-white/5 text-[8.5px] font-mono uppercase text-slate-400 font-bold tracking-wider">
+                        <div className="col-span-8">Detalle del Concepto Técnico</div>
+                        <div className="col-span-4 text-right">Subtotal</div>
                       </div>
+                      <div className="grid grid-cols-12 p-3.5 text-xs text-slate-300">
+                        <div className="col-span-8 truncate font-medium">{invoiceConcept || 'Servicio de Consultoría y Desarrollo SaaS'}</div>
+                        <div className="col-span-4 text-right font-mono font-bold text-white">{invoiceAmount.toLocaleString('es-ES')} €</div>
+                      </div>
+                    </div>
+
+                    {/* Cost Breakdown */}
+                    <div className="flex justify-end pt-2">
+                      <div className="w-56 space-y-1.5 text-right font-mono">
+                        <div className="flex justify-between items-center text-[10px] text-slate-500">
+                          <span>Base Imponible:</span>
+                          <span className="font-bold text-slate-300">{invoiceAmount.toLocaleString('es-ES')} €</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] text-slate-500">
+                          <span>I.V.A. Repercutido ({invoiceTax}%):</span>
+                          <span className="font-bold text-slate-300">{((invoiceAmount * invoiceTax) / 100).toLocaleString('es-ES')} €</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs font-bold text-white border-t border-white/5 pt-2">
+                          <span className="text-violet-400 font-sans uppercase text-[10px] tracking-wider font-extrabold">Total Factura:</span>
+                          <span className="text-sm text-violet-400">{(invoiceAmount + (invoiceAmount * invoiceTax) / 100).toLocaleString('es-ES')} €</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Stamp secure indicators */}
+                    <div className="flex items-center justify-between border-t border-white/5 pt-4 text-[8px] font-mono text-slate-600">
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span>FIRMADO DIGITALMENTE POR ALTHERA GROUP</span>
+                      </div>
+                      <span>ID-KEY: {invoiceNumber ? 'HASH_' + invoiceNumber.replace(/-/g, '_') : 'ID_UNASSIGNED'}</span>
+                    </div>
+                  </div>
+
+                  {/* Actions Area */}
+                  <div className="flex justify-end gap-2 mt-5 relative z-10">
+                    <button
+                      onClick={() => {
+                        const content = `======================================\nFACTURA EMITIDA POR ALTHERA SOLUTIONS\n======================================\nFactura: ${invoiceNumber}\nCliente: ${invoiceClient}\nConcepto: ${invoiceConcept}\nBase: ${invoiceAmount} EUR\nIVA: ${invoiceTax}%\nTotal: ${invoiceAmount + (invoiceAmount * invoiceTax) / 100} EUR\n======================================`;
+                        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                        const el = document.createElement('a');
+                        el.href = URL.createObjectURL(blob);
+                        el.download = `Factura_${invoiceNumber || 'Althera'}.txt`;
+                        el.click();
+                      }}
+                      className="px-4 py-2 bg-[#020204] border border-white/5 text-slate-300 font-bold rounded-xl text-xs hover:text-white flex items-center gap-1.5 transition-all cursor-pointer hover:border-violet-500/20 shadow-md"
+                    >
+                      <FileDown className="w-3.5 h-3.5 text-violet-400" />
+                      <span>Descargar Resumen TXT</span>
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4 }}
+                className="space-y-6 text-left"
+              >
+                {/* Admin Simulation metrics row */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-[#030307]/90 border border-white/5 p-5 rounded-2xl flex items-center justify-between group shadow-xl">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">Ingresos Acumulados</span>
+                      <p className="text-xl font-mono font-bold text-emerald-400">{simulatedRevenue.toLocaleString('es-ES')} €</p>
+                      <button
+                        onClick={() => {
+                          setSimulatedRevenue(prev => prev + 1250);
+                          setSimulatedSalesCount(prev => prev + 1);
+                          setSimulatedClients(prev => [
+                            { id: Date.now(), name: 'Global Tech S.A.', concept: 'Módulo AI Integration', status: 'Pagado', amount: 1250 },
+                            ...prev
+                          ].slice(0, 5));
+                        }}
+                        className="text-[9px] font-mono text-violet-400 hover:text-violet-300 hover:underline mt-1.5 block cursor-pointer"
+                      >
+                        + Simular Cobro (+1.250€)
+                      </button>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/5 border border-emerald-500/15 text-emerald-400 flex items-center justify-center group-hover:bg-emerald-500/10 transition-all">
+                      <DollarSign className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#030307]/90 border border-white/5 p-5 rounded-2xl flex items-center justify-between group shadow-xl">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">Servicios Activos</span>
+                      <p className="text-xl font-mono font-bold text-indigo-400">{simulatedSalesCount}</p>
+                      <span className="text-[9px] text-slate-500 block mt-1.5">Conversión media de visitas: 3.8%</span>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-indigo-500/5 border border-indigo-500/15 text-indigo-400 flex items-center justify-center group-hover:bg-indigo-500/10 transition-all">
+                      <CheckCircle className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#030307]/90 border border-white/5 p-5 rounded-2xl flex items-center justify-between group shadow-xl">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-mono text-slate-500 uppercase font-bold tracking-wider">Visitas Mensuales</span>
+                      <p className="text-xl font-mono font-bold text-fuchsia-400">{simulatedVisits.toLocaleString('es-ES')}</p>
+                      <button
+                        onClick={() => setSimulatedVisits(prev => prev + 350)}
+                        className="text-[9px] font-mono text-fuchsia-400 hover:text-fuchsia-300 hover:underline mt-1.5 block cursor-pointer"
+                      >
+                        + Simular Campaña (+350 visitas)
+                      </button>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-fuchsia-500/5 border border-fuchsia-500/15 text-fuchsia-400 flex items-center justify-center group-hover:bg-fuchsia-500/10 transition-all">
+                      <TrendingUp className="w-5 h-5" />
                     </div>
                   </div>
                 </div>
-              </div>
+
+                {/* Simulated Clients interactive grid list */}
+                <div className="bg-[#030307]/90 border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+                  <div className="p-5 sm:p-6 border-b border-white/5 flex items-center justify-between flex-wrap gap-2">
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">Consola Interactiva de Proyectos</h4>
+                      <p className="text-[10px] text-slate-500 font-light">Pulsa en "Alternar Estado" de cualquier cliente para interactuar con el panel.</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSimulatedClients([
+                          { id: 1, name: 'Aetheria Corp', concept: 'SaaS Suite v1', status: 'Pagado', amount: 8400 },
+                          { id: 2, name: 'Vortex Global', concept: 'Integración E-Commerce', status: 'Pendiente', amount: 3100 },
+                          { id: 3, name: 'Nexus Limited', concept: 'Luxury Brand Hub', status: 'Pagado', amount: 5900 },
+                          { id: 4, name: 'Zenith Labs', concept: 'Cloud Metrics Monitor', status: 'Activo', amount: 4800 }
+                        ]);
+                        setSimulatedRevenue(148500);
+                        setSimulatedSalesCount(142);
+                      }}
+                      className="px-3 py-1.5 bg-slate-900 border border-white/5 hover:border-white/10 text-slate-400 hover:text-white rounded-lg text-[10px] font-mono flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Resetear Datos</span>
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-white/5 bg-black/35 text-[9px] font-mono uppercase text-slate-500 font-bold select-none">
+                          <th className="p-4 pl-6">Empresa Cliente</th>
+                          <th className="p-4">Servicio Digital</th>
+                          <th className="p-4">Monto Presupuestado</th>
+                          <th className="p-4">Estado de Ejecución</th>
+                          <th className="p-4 text-right pr-6">Acción de Simulación</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {simulatedClients.map((cl) => (
+                          <tr key={cl.id} className="hover:bg-white/[0.01] transition-all">
+                            <td className="p-4 pl-6 font-bold text-slate-200">{cl.name}</td>
+                            <td className="p-4 text-slate-450 font-light font-sans">{cl.concept}</td>
+                            <td className="p-4 font-mono text-slate-350 font-semibold">{cl.amount.toLocaleString('es-ES')} €</td>
+                            <td className="p-4">
+                              <span className={`text-[9px] font-mono px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold ${
+                                cl.status === 'Pagado' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/10' :
+                                cl.status === 'Pendiente' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/10' :
+                                'bg-indigo-500/10 text-indigo-400 border border-indigo-500/10'
+                              }`}>
+                                {cl.status}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right pr-6">
+                              <button
+                                onClick={() => {
+                                  const nextStatus = cl.status === 'Pagado' ? 'Pendiente' : cl.status === 'Pendiente' ? 'Activo' : 'Pagado';
+                                  setSimulatedClients(prev => prev.map(p => p.id === cl.id ? { ...p, status: nextStatus } : p));
+                                }}
+                                className="px-3 py-1 bg-violet-600/15 border border-violet-500/20 hover:bg-violet-600/25 text-violet-300 text-[10px] font-bold rounded-lg transition-all cursor-pointer"
+                              >
+                                Alternar Estado
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </motion.div>
             )}
           </div>
-        </section>
+        </motion.section>
 
-
-        {/* SECTION 2: ADAPTIVE SHOWCASE (Ficha Técnica de Adaptabilidad Ultra-Responsive) */}
-        <section className="space-y-12 scroll-mt-24 font-sans border-t border-white/5 pt-16">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-            <div className="space-y-2 text-left">
-              <span className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-bold block">INGENIERÍA FLUIDA</span>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">Estudio de Adaptabilidad Web</h2>
-              <p className="text-slate-400 text-xs sm:text-sm max-w-xl leading-relaxed font-light">
-                Comprueba cómo adaptamos un único código fuente a cualquier pantalla, garantizando una estética de lujo y flujos legibles tanto en móviles como en ordenadores de sobremesa.
-              </p>
-            </div>
-
-            {/* Showcase Selector Tabs */}
-            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#040409]/90 border border-white/5 rounded-2xl self-start">
-              {[
-                { id: 'luxury-store', label: 'E-Commerce de Lujo' },
-                { id: 'tech-saas', label: 'Plataforma SaaS AI' },
-                { id: 'architects', label: 'Estudio Arquitectura' }
-              ].map((site) => {
-                const isActive = showcaseWebsite === site.id;
-                return (
-                  <button
-                    key={site.id}
-                    onClick={() => setShowcaseWebsite(site.id as any)}
-                    className={`relative px-4 py-2 text-xs font-semibold rounded-xl transition-all duration-300 cursor-pointer ${
-                      isActive ? 'text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {isActive && (
-                      <motion.div
-                        layoutId="activeShowcaseBg"
-                        className="absolute inset-0 bg-violet-650/25 border border-violet-500/30 rounded-xl"
-                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      />
-                    )}
-                    <span className="relative z-10">{site.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+        {/* FLAGSHIP DUAL DESKTOP & MOBILE RESPONSIVE MOCKUP SHOWCASE */}
+        <motion.section
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.7 }}
+          className="space-y-10"
+        >
+          {/* Header titles */}
+          <div className="max-w-2xl mx-auto text-center space-y-3">
+            <span className="text-[10px] font-mono text-fuchsia-400 uppercase tracking-[0.3em] font-bold">Responsive Design Mockup</span>
+            <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-none">
+              Adaptabilidad Milimétrica en Cada Dispositivo
+            </h2>
+            <p className="text-slate-400 text-xs sm:text-sm leading-relaxed font-light">
+              Diseñamos interfaces líquidas. Comprueba cómo se adapta en tiempo real una web de lujo que hemos desarrollado: <strong className="text-fuchsia-400 font-semibold">Aura Watch Atelier</strong>, alternando el color y modelo para ver la sincronización reactiva inmediata entre móvil y ordenador.
+            </p>
           </div>
 
-          {/* Interactive Dual Mockup Canvas */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-[#020204]/60 border border-white/5 rounded-3xl p-6 sm:p-10 relative overflow-hidden">
+          {/* Theme Selector triggers */}
+          <div className="flex justify-center gap-3">
+            {(['obsidian', 'gold', 'emerald'] as const).map((theme) => (
+              <button
+                key={theme}
+                onClick={() => setFlagshipTheme(theme)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider font-mono border transition-all cursor-pointer ${
+                  flagshipTheme === theme
+                    ? 'bg-white text-black border-white shadow-xl shadow-white/5'
+                    : 'bg-black/40 border-white/5 text-slate-450 hover:text-white hover:border-white/15'
+                }`}
+              >
+                {theme === 'obsidian' ? 'Obsidian Black' : theme === 'gold' ? 'Champagne Gold' : 'Emerald Forest'}
+              </button>
+            ))}
+          </div>
+
+          {/* Symmetrical Dual Device Screen Showcase */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-center pt-4">
             
-            {/* Ambient glows */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-violet-605/5 rounded-full blur-[160px] pointer-events-none" />
+            {/* Informative text side */}
+            <div className="xl:col-span-4 space-y-5 text-left">
+              <span className="text-[10px] font-mono text-fuchsia-400 uppercase tracking-widest font-bold">Aura Haute Couture Horology</span>
+              <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+                {flagshipTheme === 'obsidian' ? 'Aura Chrono Obsidian' : flagshipTheme === 'gold' ? 'Aura Chrono Champagne' : 'Aura Chrono Emerald'}
+              </h3>
+              
+              <p className="text-slate-400 text-xs leading-relaxed font-light">
+                {flagshipTheme === 'obsidian' 
+                  ? 'La fusión perfecta de grafito cepillado de grado aeroespacial, bisel cerámico ultra-opaco y un sensor de ritmo cardíaco fotoeléctrico integrado bajo una esfera de cristal líquido OLED táctil.'
+                  : flagshipTheme === 'gold'
+                  ? 'Estética clásica atemporal reimaginada con tecnología inteligente de vanguardia. Caja de acero inoxidable pulido revestida en oro champagne de 18 quilates, esfera blanca satinada y correa de piel.'
+                  : 'Inspirado en la elegancia orgánica de los bosques del norte. Bisel de aluminio anodizado en verde cepillado, esfera con patrones guilloché de precisión matemática y correa de fluoroelastómero.'
+                }
+              </p>
 
-            {/* Left Specs explanation */}
-            <div className="lg:col-span-4 space-y-6 text-left">
-              <div className="space-y-2">
-                <div className="text-[10px] font-mono text-fuchsia-400 uppercase tracking-widest font-bold">Anatomía del Layout</div>
-                <h3 className="text-xl font-bold text-white tracking-tight">
-                  {showcaseWebsite === 'luxury-store' && 'Aura Cosmetics Web'}
-                  {showcaseWebsite === 'tech-saas' && 'Zephyr Intelligence Engine'}
-                  {showcaseWebsite === 'architects' && 'Atrium Studio Minimal'}
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed font-light">
-                  {showcaseWebsite === 'luxury-store' && 'Un portal de venta exclusivo con cuadrículas fluidas, animaciones refinadas de desplazamiento y pasarela de pago Stripe acoplada de forma invisible.'}
-                  {showcaseWebsite === 'tech-saas' && 'Una interfaz oscura futurista con gráficos vectoriales interactivos, paneles laterales plegables para optimizar espacio y tasas de refresco de 60fps.'}
-                  {showcaseWebsite === 'architects' && 'Diseño centrado en la fotografía editorial de gran formato, tipografía con amplio tracking de lujo y transiciones líquidas entre obras.'}
-                </p>
-              </div>
-
-              <div className="space-y-3.5 border-t border-white/5 pt-4">
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <span className="text-xs font-bold text-slate-200 block">Soporte Multi-Gesto</span>
-                    <span className="text-[10px] text-slate-450 block leading-relaxed">Navegación por deslizamiento (swipes) optimizada para pulgares.</span>
-                  </div>
+              <div className="grid grid-cols-3 gap-3 border-t border-white/5 pt-4">
+                <div className="space-y-0.5">
+                  <span className="text-[8px] font-mono uppercase text-slate-500 block">Autonomía</span>
+                  <span className="text-xs font-mono font-bold text-white">{flagshipTheme === 'obsidian' ? '14 días' : flagshipTheme === 'gold' ? '10 días' : '16 días'}</span>
                 </div>
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <span className="text-xs font-bold text-slate-200 block">Imágenes WebP Fluidas</span>
-                    <span className="text-[10px] text-slate-450 block leading-relaxed">Carga perezosa y resolución adaptativa según densidad de píxeles (retina).</span>
-                  </div>
+                <div className="space-y-0.5">
+                  <span className="text-[8px] font-mono uppercase text-slate-500 block">Protección</span>
+                  <span className="text-xs font-mono font-bold text-white">{flagshipTheme === 'obsidian' ? '50m WR' : flagshipTheme === 'gold' ? '30m WR' : '100m WR'}</span>
                 </div>
-                <div className="flex items-start gap-2.5">
-                  <CheckCircle className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <span className="text-xs font-bold text-slate-200 block">Código Semántico Accesible</span>
-                    <span className="text-[10px] text-slate-450 block leading-relaxed">Uso estricto de etiquetas HTML5 y directrices ARIA para lectores de pantalla.</span>
-                  </div>
+                <div className="space-y-0.5">
+                  <span className="text-[8px] font-mono uppercase text-slate-500 block">Carga</span>
+                  <span className="text-xs font-mono font-bold text-white">Magnética</span>
                 </div>
               </div>
             </div>
 
-            {/* Right: Side-by-side Dual Device Mockup Frame */}
-            <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+            {/* Symmetrical device layout containing live preview mockups side by side */}
+            <div className="xl:col-span-8 grid grid-cols-1 md:grid-cols-12 gap-6 items-end relative">
               
-              {/* Desktop Device (Mockup 8 columns) */}
-              <div className="md:col-span-8 space-y-2">
-                <div className="flex items-center justify-between px-2 text-[9px] font-mono text-slate-500">
-                  <span>ORDENADOR DE SOBREMESA (Desktop)</span>
-                  <span className="text-violet-400">1920 x 1080px</span>
+              {/* DESKTOP LAPTOP FRAME MOCKUP */}
+              <div className="md:col-span-8 bg-slate-900/40 border border-white/10 rounded-2xl overflow-hidden shadow-2xl relative">
+                {/* Desktop top header/tab line */}
+                <div className="bg-[#0b0c10] px-4 py-2 border-b border-white/5 flex items-center justify-between text-[10px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-500" />
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  </div>
+                  <div className="bg-black/50 px-6 py-0.5 rounded text-[8px] text-slate-400 font-mono select-none">
+                    aurachrono.luxury/showroom
+                  </div>
+                  <Globe className="w-3 h-3 text-slate-500" />
                 </div>
-                
-                <div className="bg-[#05050f] border border-white/10 rounded-2xl overflow-hidden aspect-[16/10] shadow-2xl flex flex-col">
-                  {/* Browser Header */}
-                  <div className="h-6.5 bg-slate-950 border-b border-white/5 px-3 flex items-center justify-between flex-shrink-0">
-                    <div className="flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500/60" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-yellow-500/60" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500/60" />
+
+                {/* Simulated Desktop website design */}
+                <div className={`p-6 bg-gradient-to-br ${
+                  flagshipTheme === 'obsidian' ? 'from-zinc-950 via-slate-900 to-black' :
+                  flagshipTheme === 'gold' ? 'from-amber-950/40 via-[#161005] to-black' :
+                  'from-emerald-950/30 via-[#041209] to-black'
+                } min-h-[250px] flex flex-col justify-between transition-all duration-750 text-left relative`}>
+                  
+                  {/* Subtle vector circles inside mock */}
+                  <div className="absolute top-10 right-10 w-44 h-44 rounded-full border border-white/[0.02] pointer-events-none" />
+
+                  <div className="flex items-center justify-between border-b border-white/[0.05] pb-3 relative z-10">
+                    <span className="text-[9px] font-bold text-white uppercase tracking-wider font-mono">AURA ATELIER</span>
+                    <div className="flex items-center gap-4 text-[8px] font-mono text-slate-300">
+                      <span className="text-white">Relojes</span>
+                      <span>Colecciones</span>
+                      <span>Sostenibilidad</span>
                     </div>
-                    <div className="bg-slate-900 text-[8px] text-slate-400 font-mono text-center rounded py-0.5 px-4 truncate max-w-[150px] select-none">
-                      {showcaseWebsite === 'luxury-store' && 'aura.agencyflow.com'}
-                      {showcaseWebsite === 'tech-saas' && 'zephyr.agencyflow.com'}
-                      {showcaseWebsite === 'architects' && 'atrium.agencyflow.com'}
-                    </div>
-                    <div className="w-12" />
                   </div>
 
-                  {/* Browser content */}
-                  <div className="flex-grow bg-slate-950 relative overflow-hidden p-4 flex flex-col justify-between">
-                    {showcaseWebsite === 'luxury-store' && (
-                      <div className="h-full flex flex-col justify-between">
-                        <div className="flex justify-between items-center text-[10px] text-white font-bold tracking-wider">
-                          <span>AURA COSMETICS</span>
-                          <div className="flex gap-2 text-slate-400 font-normal"><span>SHOP</span><span>ABOUT</span><span>BAG (0)</span></div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 my-auto">
-                          <div className="space-y-2 text-left self-center">
-                            <h4 className="text-sm font-extrabold text-white leading-tight">Esencia Orgánica Pura</h4>
-                            <p className="text-[9px] text-slate-400 leading-relaxed">Cuidado premium de la piel con ingredientes mediterráneos recolectados a mano.</p>
-                            <button className="px-2.5 py-1 bg-white text-[9px] text-slate-950 font-bold rounded">Comprar Colección</button>
-                          </div>
-                          <div className="aspect-square rounded-lg overflow-hidden bg-slate-900 border border-white/5">
-                            <img src="https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=400&q=80" alt="Cosmético" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                          </div>
-                        </div>
+                  <div className="grid grid-cols-2 gap-4 items-center py-4 relative z-10">
+                    <div className="space-y-2">
+                      <span className="text-[7px] uppercase font-mono bg-white/10 text-white px-2 py-0.5 rounded border border-white/10">Bespoke Collection</span>
+                      <h4 className="text-base font-extrabold text-white leading-tight font-sans">
+                        {flagshipTheme === 'obsidian' ? 'Obsidian Chrono' : flagshipTheme === 'gold' ? 'Champagne Chrono' : 'Emerald Forest'}
+                      </h4>
+                      <p className="text-[9px] text-slate-400 font-light font-sans leading-relaxed">
+                        Artesanía Suiza integrada con circuitos inteligentes premium.
+                      </p>
+                      <div className="text-[11px] font-mono font-bold text-white">
+                        {flagshipTheme === 'obsidian' ? '1.450 €' : flagshipTheme === 'gold' ? '1.850 €' : '1.550 €'}
                       </div>
-                    )}
+                    </div>
 
-                    {showcaseWebsite === 'tech-saas' && (
-                      <div className="h-full flex flex-col justify-between">
-                        <div className="flex justify-between items-center text-[10px] text-white font-mono font-bold">
-                          <span>// ZEPHYR.AI</span>
-                          <span className="text-[9px] text-violet-400 font-bold">STATUS: ACTIVE</span>
-                        </div>
-                        <div className="grid grid-cols-12 gap-4 my-auto items-center">
-                          <div className="col-span-7 space-y-2 text-left">
-                            <span className="text-[8px] bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 rounded text-violet-400 font-mono font-bold">MODEL v3.5-PRO</span>
-                            <h4 className="text-sm font-extrabold text-white leading-tight">Optimización Predictiva en Tiempo Real</h4>
-                            <p className="text-[9px] text-slate-400 leading-relaxed">Escala la eficiencia de tu infraestructura con modelos matemáticos avanzados de aprendizaje continuo.</p>
-                          </div>
-                          <div className="col-span-5 bg-black/40 border border-white/5 p-2 rounded-lg space-y-1.5 font-mono text-[8px] text-slate-400 text-left">
-                            <div className="flex justify-between"><span>Latencia</span><span className="text-emerald-400 font-bold">4.2ms</span></div>
-                            <div className="flex justify-between"><span>CPU</span><span className="text-violet-400 font-bold">22.4%</span></div>
-                            <div className="flex justify-between"><span>Uso de RAM</span><span className="text-indigo-400 font-bold">1.8GB</span></div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    <div className="flex justify-center">
+                      <motion.img
+                        key={flagshipTheme}
+                        initial={{ opacity: 0, scale: 0.9, rotate: -10 }}
+                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                        transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                        src={
+                          flagshipTheme === 'obsidian' ? 'https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=400&q=80' :
+                          flagshipTheme === 'gold' ? 'https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?auto=format&fit=crop&w=400&q=80' :
+                          'https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&w=400&q=80'
+                        }
+                        alt="Watch Model"
+                        className="w-24 h-24 object-contain drop-shadow-[0_15px_25px_rgba(0,0,0,0.6)]"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  </div>
 
-                    {showcaseWebsite === 'architects' && (
-                      <div className="h-full flex flex-col justify-between">
-                        <div className="flex justify-between items-center text-[10px] text-white uppercase tracking-widest font-semibold">
-                          <span>Atrium Studio</span>
-                          <span className="text-slate-500 font-light">Estepona // Ibiza</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3 my-auto">
-                          {[
-                            'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=300&q=80',
-                            'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=300&q=80',
-                            'https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=300&q=80'
-                          ].map((url, i) => (
-                            <div key={i} className="aspect-[4/3] rounded overflow-hidden bg-slate-900 border border-white/5 relative group">
-                              <img src={url} alt="Villa" referrerPolicy="no-referrer" className="w-full h-full object-cover filter brightness-75 group-hover:brightness-100 transition-all" />
-                              <span className="absolute bottom-1.5 left-1.5 text-[8px] text-white font-mono tracking-wider">PROYECTO 0{i+1}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                  <div className="flex items-center justify-between border-t border-white/[0.05] pt-3 text-[7px] font-mono text-slate-500 relative z-10">
+                    <span>© Aura Watch Group LLC</span>
+                    <span>100% Responsive Design</span>
                   </div>
                 </div>
               </div>
 
-              {/* Mobile Device (Mockup 4 columns) */}
-              <div className="md:col-span-4 space-y-2">
-                <div className="flex items-center justify-between px-2 text-[9px] font-mono text-slate-500">
-                  <span>MÓVIL (Mobile)</span>
-                  <span className="text-violet-400">390 x 844px</span>
+              {/* MOBILE IPHONE FRAME MOCKUP OVERLAPPING */}
+              <div className="md:col-span-4 bg-[#0a0a0e] border-[3px] border-slate-800 rounded-[28px] overflow-hidden shadow-2xl relative max-w-[190px] mx-auto md:mx-0 md:-ml-8 md:translate-y-4">
+                {/* Notch */}
+                <div className="absolute top-0 inset-x-0 h-4 bg-[#0a0a0e] flex items-center justify-center z-20">
+                  <div className="w-12 h-2.5 bg-black rounded-full" />
                 </div>
 
-                <div className="bg-[#05050f] border border-white/15 rounded-[2.5rem] p-2 aspect-[9/19] max-w-[200px] mx-auto shadow-2xl flex flex-col relative overflow-hidden">
-                  {/* Speaker and Notch */}
-                  <div className="absolute top-3 left-1/2 -translate-x-1/2 w-14 h-4 bg-slate-950 rounded-full flex items-center justify-center gap-1.5 z-20">
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-800" />
-                    <span className="w-4 h-1 bg-slate-800 rounded-full" />
+                {/* Simulated Mobile screen design */}
+                <div className={`pt-6 pb-4 px-3.5 bg-gradient-to-br ${
+                  flagshipTheme === 'obsidian' ? 'from-zinc-950 via-slate-900 to-black' :
+                  flagshipTheme === 'gold' ? 'from-amber-950/40 via-[#161005] to-black' :
+                  'from-emerald-950/30 via-[#041209] to-black'
+                } min-h-[290px] flex flex-col justify-between transition-all duration-750 text-left`}>
+                  
+                  <div className="flex items-center justify-between border-b border-white/[0.05] pb-2 text-[8px]">
+                    <span className="font-extrabold text-white tracking-widest font-mono">AURA</span>
+                    {/* Burger Menu mockup */}
+                    <div className="space-y-0.5">
+                      <span className="block w-2.5 h-px bg-white" />
+                      <span className="block w-2.5 h-px bg-white" />
+                    </div>
                   </div>
 
-                  {/* Screen viewport */}
-                  <div className="flex-grow bg-slate-950 rounded-[2rem] overflow-hidden p-3 pt-6 flex flex-col justify-between relative">
-                    {showcaseWebsite === 'luxury-store' && (
-                      <div className="h-full flex flex-col justify-between">
-                        <div className="flex justify-between items-center text-[8px] text-white font-bold tracking-wider">
-                          <span>AURA</span>
-                          <span className="text-slate-500 font-normal">☰ Menu</span>
-                        </div>
-                        <div className="aspect-square rounded-lg overflow-hidden bg-slate-900 border border-white/5 my-2">
-                          <img src="https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&w=250&q=80" alt="Cosmético" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                        </div>
-                        <div className="space-y-1.5 text-left">
-                          <h4 className="text-[10px] font-extrabold text-white leading-tight">Esencia Orgánica</h4>
-                          <p className="text-[8px] text-slate-400 leading-relaxed">Cuidado premium de la piel con ingredientes recolectados a mano.</p>
-                          <button className="w-full py-1 bg-white text-[8px] text-slate-950 font-bold rounded">Comprar</button>
-                        </div>
-                      </div>
-                    )}
+                  <div className="text-center py-2 space-y-1.5">
+                    <h5 className="text-[10px] font-bold text-white font-sans uppercase leading-none">
+                      {flagshipTheme === 'obsidian' ? 'Obsidian' : flagshipTheme === 'gold' ? 'Champagne' : 'Emerald'}
+                    </h5>
+                    
+                    <div className="flex justify-center my-1.5">
+                      <motion.img
+                        key={flagshipTheme + '_mob'}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.5 }}
+                        src={
+                          flagshipTheme === 'obsidian' ? 'https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=250&q=80' :
+                          flagshipTheme === 'gold' ? 'https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?auto=format&fit=crop&w=250&q=80' :
+                          'https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&w=250&q=80'
+                        }
+                        alt="Watch Model Mobile"
+                        className="w-18 h-18 object-contain drop-shadow-[0_8px_15px_rgba(0,0,0,0.5)]"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
 
-                    {showcaseWebsite === 'tech-saas' && (
-                      <div className="h-full flex flex-col justify-between">
-                        <div className="flex justify-between items-center text-[8px] text-white font-mono">
-                          <span>// ZEPHYR</span>
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                        </div>
-                        <div className="space-y-1.5 text-left my-2">
-                          <span className="text-[7px] bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded text-violet-400 font-mono">v3.5</span>
-                          <h4 className="text-[10px] font-extrabold text-white leading-tight">Optimización Predictiva</h4>
-                          <p className="text-[8px] text-slate-400 leading-relaxed">Modelos matemáticos dinámicos de aprendizaje continuo.</p>
-                        </div>
-                        <div className="bg-black/40 border border-white/5 p-2 rounded-lg space-y-1.5 font-mono text-[7px] text-slate-400 text-left">
-                          <div className="flex justify-between"><span>Latencia</span><span className="text-emerald-400 font-bold">4.2ms</span></div>
-                          <div className="flex justify-between"><span>Uso CPU</span><span className="text-violet-400 font-bold">22.4%</span></div>
-                        </div>
-                      </div>
-                    )}
-
-                    {showcaseWebsite === 'architects' && (
-                      <div className="h-full flex flex-col justify-between text-left">
-                        <div className="flex justify-between items-center text-[8px] text-white uppercase tracking-widest font-semibold">
-                          <span>Atrium</span>
-                          <span className="text-slate-500">☰</span>
-                        </div>
-                        <div className="space-y-2 my-2">
-                          <div className="aspect-[16/10] rounded overflow-hidden bg-slate-900 border border-white/5 relative">
-                            <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=250&q=80" alt="Villa" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                            <span className="absolute bottom-1 left-1 text-[7px] text-white font-mono">CASA IBIZA</span>
-                          </div>
-                          <div className="aspect-[16/10] rounded overflow-hidden bg-slate-900 border border-white/5 relative">
-                            <img src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=250&q=80" alt="Villa" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                            <span className="absolute bottom-1 left-1 text-[7px] text-white font-mono">VILLA ESTEPONA</span>
-                          </div>
-                        </div>
-                        <span className="text-[8px] text-slate-500 text-center font-mono">Deslizar para ver más</span>
-                      </div>
-                    )}
+                    <div className="text-[10px] font-mono font-bold text-white">
+                      {flagshipTheme === 'obsidian' ? '1.450 €' : flagshipTheme === 'gold' ? '1.850 €' : '1.550 €'}
+                    </div>
                   </div>
+
+                  <div className="space-y-1">
+                    <button className="w-full py-1.5 bg-white text-black font-extrabold text-[8px] rounded-lg tracking-wider uppercase">
+                      Adquirir
+                    </button>
+                    <p className="text-[6px] text-center text-slate-500 font-mono">Mobile Friendly View</p>
+                  </div>
+
                 </div>
               </div>
 
             </div>
           </div>
-        </section>
+        </motion.section>
 
         {/* DETAILED SERVICES BLOCK */}
         <motion.section 
