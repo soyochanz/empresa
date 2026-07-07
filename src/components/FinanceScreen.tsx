@@ -243,6 +243,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const [stripeGenCopied, setStripeGenCopied] = useState(false);
   const [stripeGenError, setStripeGenError] = useState('');
   const [stripePortalLoading, setStripePortalLoading] = useState<string | null>(null);
+  const [stripeOverviewByClient, setStripeOverviewByClient] = useState<Record<string, any>>({});
+  const [stripeOverviewLoading, setStripeOverviewLoading] = useState<string | null>(null);
+  const [stripeOverviewError, setStripeOverviewError] = useState('');
 
   const handleCreateFinanceStripeCheckout = async () => {
     if (!stripeClientId) {
@@ -316,6 +319,31 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
       alert(err?.message || 'No se pudo abrir el portal de facturación.');
     } finally {
       setStripePortalLoading(null);
+    }
+  };
+
+  const handleLoadFinanceStripeOverview = async (client: ClientContact) => {
+    setStripeOverviewLoading(client.id);
+    setStripeOverviewError('');
+    try {
+      const response = await fetch('/api/stripe/customer-overview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: client.stripeCustomerId || '',
+          subscriptionId: client.stripeSubscriptionId || '',
+          email: client.email || '',
+        }),
+      });
+      const data = await readStripeJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo consultar Stripe');
+      }
+      setStripeOverviewByClient(prev => ({ ...prev, [client.id]: data }));
+    } catch (err: any) {
+      setStripeOverviewError(err?.message || 'No se pudo consultar Stripe.');
+    } finally {
+      setStripeOverviewLoading(null);
     }
   };
 
@@ -3025,11 +3053,63 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                               <span>Portal</span>
                             </button>
                           )}
+                          <button
+                            type="button"
+                            disabled={stripeOverviewLoading === c.id}
+                            onClick={() => handleLoadFinanceStripeOverview(c)}
+                            className="mt-2 px-3 py-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 rounded-lg text-[9px] text-slate-300 font-bold flex items-center gap-1.5"
+                          >
+                            {stripeOverviewLoading === c.id ? (
+                              <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <CreditCard className="w-3 h-3" />
+                            )}
+                            <span>Info Stripe</span>
+                          </button>
                         </div>
+                        {stripeOverviewByClient[c.id] && (
+                          <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-black/20 rounded-lg p-2 border border-white/5">
+                              <span className="block text-[7px] text-slate-500 uppercase font-mono">Facturas</span>
+                              <span className="text-[11px] text-white font-black">{stripeOverviewByClient[c.id].invoices?.length || 0}</span>
+                            </div>
+                            <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
+                              <span className="block text-[7px] text-slate-500 uppercase font-mono">Cobrado</span>
+                              <span className="text-[11px] text-emerald-400 font-black">{(stripeOverviewByClient[c.id].totals?.paidInvoices || 0).toFixed(2)} €</span>
+                            </div>
+                            <div className="bg-black/20 rounded-lg p-2 border border-amber-500/10">
+                              <span className="block text-[7px] text-slate-500 uppercase font-mono">Abierto</span>
+                              <span className="text-[11px] text-amber-400 font-black">{(stripeOverviewByClient[c.id].totals?.openInvoices || 0).toFixed(2)} €</span>
+                            </div>
+                            <div className="col-span-3 space-y-1.5 text-left">
+                              {(stripeOverviewByClient[c.id].subscriptions || []).slice(0, 1).map((sub: any) => (
+                                <div key={sub.id} className="flex justify-between gap-2 text-[9px] bg-black/20 border border-white/5 rounded-lg p-2">
+                                  <span className="text-slate-300 truncate">{sub.id}</span>
+                                  <span className={sub.status === 'active' ? 'text-emerald-400' : sub.status === 'canceled' ? 'text-rose-400' : 'text-amber-400'}>
+                                    {sub.cancelAtPeriodEnd ? 'cancela al final' : sub.status}
+                                  </span>
+                                </div>
+                              ))}
+                              {(stripeOverviewByClient[c.id].invoices || []).slice(0, 2).map((inv: any) => (
+                                <div key={inv.id} className="flex justify-between gap-2 text-[9px] bg-black/20 border border-white/5 rounded-lg p-2">
+                                  <span className="text-slate-300 truncate">{inv.number || inv.id}</span>
+                                  <a href={inv.hostedInvoiceUrl || inv.dashboardUrl} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
+                                    {inv.status} · {inv.amountPaid.toFixed(2)} €
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
                 </div>
+                {stripeOverviewError && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[10px] text-rose-400">
+                    {stripeOverviewError}
+                  </div>
+                )}
               </div>
             </div>
           </div>

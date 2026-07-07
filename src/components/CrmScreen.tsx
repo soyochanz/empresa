@@ -195,6 +195,9 @@ export default function CrmScreen({
   const [stripeCopied, setStripeCopied] = useState(false);
   const [stripeError, setStripeError] = useState('');
   const [stripeEmailInput, setStripeEmailInput] = useState('');
+  const [stripeOverview, setStripeOverview] = useState<any>(null);
+  const [stripeOverviewLoading, setStripeOverviewLoading] = useState(false);
+  const [stripeOverviewError, setStripeOverviewError] = useState('');
 
   // Automatic Installments Generator States
   const [instTotalAmount, setInstTotalAmount] = useState('');
@@ -210,6 +213,8 @@ export default function CrmScreen({
     setGeneratedCheckoutSessionId('');
     setStripeCopied(false);
     setStripeError('');
+    setStripeOverview(null);
+    setStripeOverviewError('');
     setStripeEmailInput(selectedContact?.email || '');
 
     // Reset and dynamically set automatic installments generator states based on pending payments
@@ -252,6 +257,34 @@ export default function CrmScreen({
       setInstConcept('Servicios de Desarrollo y Consultoría');
     }
   }, [selectedContactId, selectedContact, transactions, invoices]);
+
+  const handleLoadStripeOverview = async () => {
+    if (!selectedContact) return;
+    setStripeOverviewLoading(true);
+    setStripeOverviewError('');
+    try {
+      const response = await fetch('/api/stripe/customer-overview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: selectedContact.stripeCustomerId || '',
+          subscriptionId: selectedContact.stripeSubscriptionId || '',
+          checkoutSessionId: selectedPaymentSummary.checkoutSessionId || generatedCheckoutSessionId || '',
+          invoiceId: selectedPaymentSummary.stripeInvoiceId || '',
+          email: selectedContact.email || stripeEmailInput || '',
+        }),
+      });
+      const data = await readStripeJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo cargar Stripe');
+      }
+      setStripeOverview(data);
+    } catch (err: any) {
+      setStripeOverviewError(err?.message || 'No se pudo cargar la informacion de Stripe.');
+    } finally {
+      setStripeOverviewLoading(false);
+    }
+  };
 
   // Dynamic Stripe link generation states for individual pending transactions/installments
   const [activeTxStripeUrl, setActiveTxStripeUrl] = useState<{[txId: string]: string}>({});
@@ -2132,6 +2165,100 @@ export default function CrmScreen({
                           <ExternalLink className="w-3 h-3" />
                           <span>Ver cobro en Stripe</span>
                         </a>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleLoadStripeOverview}
+                        disabled={stripeOverviewLoading}
+                        className="w-full py-1.5 px-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 text-[10px] rounded-lg text-slate-300 font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      >
+                        {stripeOverviewLoading ? (
+                          <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <CreditCard className="w-3 h-3" />
+                        )}
+                        <span>{stripeOverviewLoading ? 'Consultando Stripe...' : 'Actualizar info de Stripe'}</span>
+                      </button>
+
+                      {stripeOverviewError && (
+                        <div className="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-[9px] text-rose-400 leading-normal">
+                          {stripeOverviewError}
+                        </div>
+                      )}
+
+                      {stripeOverview && (
+                        <div className="space-y-2 border-t border-white/5 pt-2">
+                          <div className="flex items-center justify-between text-[9px] text-slate-500">
+                            <span>Cliente Stripe</span>
+                            {stripeOverview.customer?.dashboardUrl && (
+                              <a href={stripeOverview.customer.dashboardUrl} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
+                                Abrir cliente
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-1.5 text-center">
+                            <div className="bg-black/20 rounded-lg p-2 border border-white/5">
+                              <span className="block text-[7px] uppercase tracking-widest text-slate-500 font-mono">Facturas</span>
+                              <span className="block text-[10px] font-black text-slate-200">{stripeOverview.invoices?.length || 0}</span>
+                            </div>
+                            <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
+                              <span className="block text-[7px] uppercase tracking-widest text-slate-500 font-mono">Cobrado</span>
+                              <span className="block text-[10px] font-black text-emerald-400">{(stripeOverview.totals?.paidInvoices || 0).toFixed(2)} €</span>
+                            </div>
+                            <div className="bg-black/20 rounded-lg p-2 border border-amber-500/10">
+                              <span className="block text-[7px] uppercase tracking-widest text-slate-500 font-mono">Abierto</span>
+                              <span className="block text-[10px] font-black text-amber-400">{(stripeOverview.totals?.openInvoices || 0).toFixed(2)} €</span>
+                            </div>
+                          </div>
+
+                          {(stripeOverview.subscriptions || []).slice(0, 2).map((sub: any) => (
+                            <div key={sub.id} className="bg-black/20 rounded-lg p-2 border border-white/5 space-y-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[9px] text-slate-300 font-bold truncate">{sub.id}</span>
+                                <span className={`text-[8px] uppercase font-mono font-bold px-1.5 py-0.5 rounded border ${
+                                  sub.status === 'active'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                    : sub.status === 'canceled'
+                                      ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                }`}>
+                                  {sub.cancelAtPeriodEnd ? 'Cancela al final' : sub.status}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-[9px] text-slate-500">
+                                <span>{sub.amount !== null ? `${sub.amount.toFixed(2)} € / ${sub.interval || 'periodo'}` : 'Importe no disponible'}</span>
+                                {sub.dashboardUrl && (
+                                  <a href={sub.dashboardUrl} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
+                                    Ver
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+
+                          {(stripeOverview.invoices || []).slice(0, 3).map((invoice: any) => (
+                            <div key={invoice.id} className="flex items-center justify-between gap-2 bg-black/20 rounded-lg p-2 border border-white/5">
+                              <div className="min-w-0">
+                                <p className="text-[9px] text-slate-300 font-bold truncate">{invoice.number || invoice.id}</p>
+                                <p className="text-[8px] text-slate-500">{invoice.status} · {invoice.amountPaid.toFixed(2)} € pagado</p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {invoice.hostedInvoiceUrl && (
+                                  <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer" className="text-[8px] text-emerald-300 hover:text-emerald-200">
+                                    Factura
+                                  </a>
+                                )}
+                                {invoice.dashboardUrl && (
+                                  <a href={invoice.dashboardUrl} target="_blank" rel="noreferrer" className="text-[8px] text-indigo-300 hover:text-indigo-200">
+                                    Stripe
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   );

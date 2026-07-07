@@ -384,6 +384,139 @@ app.post("/api/stripe/create-portal-session", async (req, res) => {
   }
 });
 
+app.post("/api/stripe/customer-overview", async (req, res) => {
+  try {
+    const { customerId, subscriptionId, checkoutSessionId, invoiceId, email } = req.body || {};
+    const stripe = getStripe();
+
+    let resolvedCustomerId = typeof customerId === "string" ? customerId : "";
+    let checkoutSession: Stripe.Checkout.Session | null = null;
+
+    if (checkoutSessionId && typeof checkoutSessionId === "string" && !checkoutSessionId.includes("_mock_")) {
+      checkoutSession = await stripe.checkout.sessions.retrieve(checkoutSessionId, {
+        expand: ["customer", "subscription", "payment_intent"],
+      });
+      const sessionCustomer = checkoutSession.customer;
+      if (!resolvedCustomerId) {
+        resolvedCustomerId = typeof sessionCustomer === "string" ? sessionCustomer : sessionCustomer?.id || "";
+      }
+    }
+
+    if (!resolvedCustomerId && invoiceId && typeof invoiceId === "string") {
+      const invoice = await stripe.invoices.retrieve(invoiceId);
+      const invoiceCustomer = invoice.customer;
+      resolvedCustomerId = typeof invoiceCustomer === "string" ? invoiceCustomer : invoiceCustomer?.id || "";
+    }
+
+    if (!resolvedCustomerId && subscriptionId && typeof subscriptionId === "string") {
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const subscriptionCustomer = subscription.customer;
+      resolvedCustomerId = typeof subscriptionCustomer === "string" ? subscriptionCustomer : subscriptionCustomer?.id || "";
+    }
+
+    if (!resolvedCustomerId && email && typeof email === "string") {
+      const customersByEmail = await stripe.customers.list({ email, limit: 1 });
+      resolvedCustomerId = customersByEmail.data[0]?.id || "";
+    }
+
+    if (!resolvedCustomerId) {
+      return res.status(404).json({ error: "No se encontro cliente de Stripe para esta ficha." });
+    }
+
+    const [customer, subscriptions, invoices, paymentIntents] = await Promise.all([
+      stripe.customers.retrieve(resolvedCustomerId),
+      stripe.subscriptions.list({ customer: resolvedCustomerId, status: "all", limit: 10 }),
+      stripe.invoices.list({ customer: resolvedCustomerId, limit: 12 }),
+      stripe.paymentIntents.list({ customer: resolvedCustomerId, limit: 12 }),
+    ]);
+
+    const normalizedSubscriptions = subscriptions.data.map((sub: any) => ({
+      id: sub.id,
+      status: sub.status,
+      cancelAtPeriodEnd: sub.cancel_at_period_end,
+      cancelAt: sub.cancel_at,
+      canceledAt: sub.canceled_at,
+      currentPeriodStart: sub.current_period_start,
+      currentPeriodEnd: sub.current_period_end,
+      amount:
+        sub.items?.data?.[0]?.price?.unit_amount !== undefined
+          ? sub.items.data[0].price.unit_amount / 100
+          : null,
+      currency: sub.currency,
+      interval: sub.items?.data?.[0]?.price?.recurring?.interval || null,
+      productName: sub.items?.data?.[0]?.price?.nickname || sub.description || null,
+      dashboardUrl: `https://dashboard.stripe.com/subscriptions/${sub.id}`,
+    }));
+
+    const normalizedInvoices = invoices.data.map((invoice: any) => ({
+      id: invoice.id,
+      number: invoice.number,
+      status: invoice.status,
+      paid: invoice.paid,
+      amountDue: (invoice.amount_due || 0) / 100,
+      amountPaid: (invoice.amount_paid || 0) / 100,
+      amountRemaining: (invoice.amount_remaining || 0) / 100,
+      currency: invoice.currency,
+      created: invoice.created,
+      dueDate: invoice.due_date,
+      hostedInvoiceUrl: invoice.hosted_invoice_url,
+      invoicePdf: invoice.invoice_pdf,
+      subscriptionId: typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id || null,
+      dashboardUrl: `https://dashboard.stripe.com/invoices/${invoice.id}`,
+    }));
+
+    const normalizedPayments = paymentIntents.data.map((payment: any) => ({
+      id: payment.id,
+      status: payment.status,
+      amount: (payment.amount || 0) / 100,
+      amountReceived: (payment.amount_received || 0) / 100,
+      currency: payment.currency,
+      created: payment.created,
+      description: payment.description,
+      latestCharge: typeof payment.latest_charge === "string" ? payment.latest_charge : payment.latest_charge?.id || null,
+      dashboardUrl: `https://dashboard.stripe.com/payments/${payment.id}`,
+    }));
+
+    res.json({
+      customer:
+        customer.deleted
+          ? { id: resolvedCustomerId, deleted: true }
+          : {
+              id: customer.id,
+              email: customer.email,
+              name: customer.name,
+              phone: customer.phone,
+              balance: customer.balance,
+              delinquent: customer.delinquent,
+              created: customer.created,
+              dashboardUrl: `https://dashboard.stripe.com/customers/${customer.id}`,
+            },
+      checkoutSession: checkoutSession
+        ? {
+            id: checkoutSession.id,
+            status: checkoutSession.status,
+            paymentStatus: checkoutSession.payment_status,
+            amountTotal: checkoutSession.amount_total ? checkoutSession.amount_total / 100 : null,
+            currency: checkoutSession.currency,
+            url: checkoutSession.url,
+          }
+        : null,
+      subscriptions: normalizedSubscriptions,
+      invoices: normalizedInvoices,
+      payments: normalizedPayments,
+      totals: {
+        paidInvoices: normalizedInvoices.filter(inv => inv.paid).reduce((sum, inv) => sum + inv.amountPaid, 0),
+        openInvoices: normalizedInvoices.filter(inv => inv.status === "open").reduce((sum, inv) => sum + inv.amountRemaining, 0),
+        successfulPayments: normalizedPayments.filter(p => p.status === "succeeded").reduce((sum, p) => sum + p.amountReceived, 0),
+      },
+      fetchedAt: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Error retrieving Stripe customer overview:", error);
+    res.status(500).json({ error: error?.message || "Internal Server Error" });
+  }
+});
+
 app.post("/api/stripe/create-connect-account", async (req, res) => {
   try {
     const { comercialId, comercialName, comercialEmail, existingAccountId } = req.body;
