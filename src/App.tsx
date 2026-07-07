@@ -31,59 +31,63 @@ import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, Connection
 import SupabaseInfoModal from './components/SupabaseInfoModal';
 import { Bell, X, Calendar as CalendarAtom, Check } from 'lucide-react';
 
-function getScreenFromHash(hashString: string, isLoggedIn: boolean, isComercialLoggedIn: boolean): { screen: Screen; redirectedHash?: string } {
-  const hash = hashString || '#/';
+function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialLoggedIn: boolean): { screen: Screen; redirectedPath?: string } {
+  let path = pathString || '/';
+  // Strip trailing slashes to maintain uniform match
+  if (path !== '/' && path.endsWith('/')) {
+    path = path.slice(0, -1);
+  }
   
-  if (hash === '#/' || hash === '#' || hash === '') {
+  if (path === '/' || path === '') {
     return { screen: 'landing' };
   }
   
-  if (hash === '#/acceso' || hash === '#/login') {
+  if (path === '/acceso' || path === '/login') {
     if (isLoggedIn) {
-      return { screen: 'dashboard', redirectedHash: '#/admin/dashboard' };
+      return { screen: 'dashboard', redirectedPath: '/admin/dashboard' };
     }
     return { screen: 'acceso' };
   }
   
-  if (hash === '#/comerciales') {
+  if (path === '/comerciales') {
     if (isComercialLoggedIn) {
-      return { screen: 'comerciales_panel', redirectedHash: '#/comerciales/panel' };
+      return { screen: 'comerciales_panel', redirectedPath: '/comerciales/panel' };
     }
-    return { screen: 'comerciales_acceso', redirectedHash: '#/comerciales/acceso' };
+    return { screen: 'comerciales_acceso', redirectedPath: '/comerciales/acceso' };
   }
-  if (hash === '#/comerciales/acceso') {
+  if (path === '/comerciales/acceso') {
     if (isComercialLoggedIn) {
-      return { screen: 'comerciales_panel', redirectedHash: '#/comerciales/panel' };
+      return { screen: 'comerciales_panel', redirectedPath: '/comerciales/panel' };
     }
     return { screen: 'comerciales_acceso' };
   }
-  if (hash === '#/comerciales/panel') {
+  if (path === '/comerciales/panel') {
     if (!isComercialLoggedIn) {
-      return { screen: 'comerciales_acceso', redirectedHash: '#/comerciales/acceso' };
+      return { screen: 'comerciales_acceso', redirectedPath: '/comerciales/acceso' };
     }
     return { screen: 'comerciales_panel' };
   }
 
   // Admin and sub panels
-  if (hash.startsWith('#/admin')) {
+  if (path.startsWith('/admin')) {
     if (!isLoggedIn) {
-      return { screen: 'acceso', redirectedHash: '#/acceso' };
+      return { screen: 'acceso', redirectedPath: '/acceso' };
     }
     
-    if (hash === '#/admin' || hash === '#/admin/' || hash === '#/admin/dashboard') {
+    if (path === '/admin' || path === '/admin/' || path === '/admin/dashboard') {
       return { screen: 'dashboard' };
     }
-    if (hash === '#/admin/calendar') return { screen: 'calendar' };
-    if (hash === '#/admin/crm') return { screen: 'crm' };
-    if (hash === '#/admin/notes') return { screen: 'notes' };
-    if (hash === '#/admin/projects') return { screen: 'projects' };
-    if (hash === '#/admin/finanzas') return { screen: 'finanzas' };
-    if (hash === '#/admin/contactos') return { screen: 'contactos' };
-    if (hash === '#/admin/citas') return { screen: 'citas' };
-    if (hash === '#/admin/contratos') return { screen: 'contratos' };
-    if (hash === '#/admin/comerciales') return { screen: 'comerciales_admin' };
-    if (hash === '#/admin/cold-calling') return { screen: 'cold_calling' };
-    if (hash === '#/admin/dev-hub') return { screen: 'developer_hub' };
+    if (path === '/admin/calendar') return { screen: 'calendar' };
+    if (path === '/admin/crm') return { screen: 'crm' };
+    if (path === '/admin/notes') return { screen: 'notes' };
+    if (path === '/admin/projects') return { screen: 'projects' };
+    if (path === '/admin/finanzas') return { screen: 'finanzas' };
+    if (path === '/admin/contactos') return { screen: 'contactos' };
+    if (path === '/admin/citas') return { screen: 'citas' };
+    if (path === '/admin/contratos') return { screen: 'contratos' };
+    if (path === '/admin/comerciales') return { screen: 'comerciales_admin' };
+    if (path === '/admin/cold-calling') return { screen: 'cold_calling' };
+    if (path === '/admin/dev-hub') return { screen: 'developer_hub' };
     
     return { screen: 'dashboard' };
   }
@@ -91,38 +95,38 @@ function getScreenFromHash(hashString: string, isLoggedIn: boolean, isComercialL
   return { screen: 'landing' };
 }
 
-function getHashFromScreen(screen: Screen): string {
+function getPathFromScreen(screen: Screen): string {
   switch (screen) {
-    case 'landing': return '';
-    case 'acceso': return '#/acceso';
-    case 'comerciales_acceso': return '#/comerciales/acceso';
-    case 'comerciales_panel': return '#/comerciales/panel';
-    case 'dashboard': return '#/admin/dashboard';
-    case 'calendar': return '#/admin/calendar';
-    case 'crm': return '#/admin/crm';
-    case 'notes': return '#/admin/notes';
-    case 'projects': return '#/admin/projects';
-    case 'developer_hub': return '#/admin/dev-hub';
-    case 'finanzas': return '#/admin/finanzas';
-    case 'contactos': return '#/admin/contactos';
-    case 'citas': return '#/admin/citas';
-    case 'contratos': return '#/admin/contratos';
-    case 'comerciales_admin': return '#/admin/comerciales';
-    case 'cold_calling': return '#/admin/cold-calling';
-    default: return '';
+    case 'landing': return '/';
+    case 'acceso': return '/acceso';
+    case 'comerciales_acceso': return '/comerciales/acceso';
+    case 'comerciales_panel': return '/comerciales/panel';
+    case 'dashboard': return '/admin/dashboard';
+    case 'calendar': return '/admin/calendar';
+    case 'crm': return '/admin/crm';
+    case 'notes': return '/admin/notes';
+    case 'projects': return '/admin/projects';
+    case 'developer_hub': return '/admin/dev-hub';
+    case 'finanzas': return '/admin/finanzas';
+    case 'contactos': return '/admin/contactos';
+    case 'citas': return '/admin/citas';
+    case 'contratos': return '/admin/contratos';
+    case 'comerciales_admin': return '/admin/comerciales';
+    case 'cold_calling': return '/admin/cold-calling';
+    default: return '/';
   }
 }
 
 export default function App() {
   // Screens state
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
-    const initialHash = window.location.hash || '';
+    const initialPath = window.location.pathname || '/';
     const savedUser = sessionStorage.getItem('agency_user');
     const isLoggedIn = !!savedUser;
     const savedComercial = sessionStorage.getItem('agency_current_comercial');
     const isComercialLoggedIn = !!savedComercial;
 
-    const { screen } = getScreenFromHash(initialHash, isLoggedIn, isComercialLoggedIn);
+    const { screen } = getScreenFromPath(initialPath, isLoggedIn, isComercialLoggedIn);
     return screen;
   });
   const [transitionType, setTransitionType] = useState<'none' | 'push' | 'push_back'>('none');
@@ -420,7 +424,7 @@ export default function App() {
       if (!stripeStatus) return;
 
       // Clear search query parameters immediately so they don't persist on refresh
-      const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+      const cleanUrl = window.location.origin + window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
 
       // Fetch the latest contacts list to make sure we operate on up-to-date data
@@ -606,8 +610,12 @@ export default function App() {
 
   useEffect(() => {
     handleRefreshFinance();
-    // Keep checking every 8 seconds for updates
-    const interval = setInterval(handleRefreshFinance, 8000);
+    // Keep checking every 60 seconds for updates, only when tab is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        handleRefreshFinance();
+      }
+    }, 60000);
     return () => clearInterval(interval);
   }, [handleRefreshFinance]);
 
@@ -786,43 +794,43 @@ export default function App() {
     }
   };
 
-  // Keep checking for database updates in the background (silent sync) every 8 seconds
+  // Keep checking for database updates in the background (silent sync) every 60 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      syncWithSupabase(undefined, true);
-    }, 8000);
+      if (document.visibilityState === 'visible') {
+        syncWithSupabase(undefined, true);
+      }
+    }, 60000);
     return () => clearInterval(interval);
   }, [currentUser, currentComercial]);
 
   // Router synchronization effect
   useEffect(() => {
-    const handleHashChange = () => {
-      const { screen, redirectedHash } = getScreenFromHash(
-        window.location.hash,
+    const handlePathChange = () => {
+      const { screen, redirectedPath } = getScreenFromPath(
+        window.location.pathname,
         !!currentUser,
         !!currentComercial
       );
       
       setCurrentScreen(screen);
       
-      if (redirectedHash && window.location.hash !== redirectedHash) {
-        window.location.hash = redirectedHash;
+      if (redirectedPath && window.location.pathname !== redirectedPath) {
+        window.history.replaceState({}, '', redirectedPath);
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handlePathChange);
     
     // Initial sync
-    const initialHash = window.location.hash || '#/';
-    const { screen, redirectedHash } = getScreenFromHash(initialHash, !!currentUser, !!currentComercial);
+    const initialPath = window.location.pathname || '/';
+    const { screen, redirectedPath } = getScreenFromPath(initialPath, !!currentUser, !!currentComercial);
     setCurrentScreen(screen);
-    if (redirectedHash && window.location.hash !== redirectedHash) {
-      window.location.hash = redirectedHash;
-    } else if (!window.location.hash) {
-      window.location.hash = '#/';
+    if (redirectedPath && window.location.pathname !== redirectedPath) {
+      window.history.replaceState({}, '', redirectedPath);
     }
 
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('popstate', handlePathChange);
   }, [currentUser, currentComercial]);
 
   // Auth synchronization effect
@@ -839,9 +847,9 @@ export default function App() {
         sessionStorage.setItem('agency_user', JSON.stringify(u));
         syncWithSupabase(session.user.id);
         
-        // Let the hash determine the screen; if they were on /acceso or login, redirect to admin
-        const initialHash = window.location.hash || '';
-        if (initialHash === '#/acceso' || initialHash === '#/login') {
+        // Let the path determine the screen; if they were on /acceso or login, redirect to admin
+        const initialPath = window.location.pathname || '';
+        if (initialPath === '/acceso' || initialPath === '/login') {
           navigateTo('dashboard', 'none');
         }
       } else {
@@ -858,8 +866,8 @@ export default function App() {
           sessionStorage.removeItem('agency_user');
           
           // If they were on an admin screen but not logged in, redirect to login
-          const initialHash = window.location.hash || '';
-          if (initialHash.startsWith('#/admin')) {
+          const initialPath = window.location.pathname || '';
+          if (initialPath.startsWith('/admin')) {
             navigateTo('acceso', 'none');
           }
         }
@@ -878,8 +886,8 @@ export default function App() {
         sessionStorage.setItem('agency_user', JSON.stringify(u));
         syncWithSupabase(session.user.id);
         
-        const initialHash = window.location.hash || '#/';
-        if (initialHash === '#/acceso' || initialHash === '#/login') {
+        const initialPath = window.location.pathname || '/';
+        if (initialPath === '/acceso' || initialPath === '/login') {
           navigateTo('dashboard', 'none');
         }
       } else if (event === 'SIGNED_OUT') {
@@ -990,9 +998,11 @@ export default function App() {
   // Main navigation handles with transition controls
   const navigateTo = (target: Screen, transition: 'none' | 'push' | 'push_back') => {
     setTransitionType(transition);
-    const targetHash = getHashFromScreen(target);
-    if (window.location.hash !== targetHash) {
-      window.location.hash = targetHash;
+    const targetPath = getPathFromScreen(target);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+      // Dispatch popstate manually to trigger standard handler
+      window.dispatchEvent(new PopStateEvent('popstate'));
     } else {
       setCurrentScreen(target);
     }

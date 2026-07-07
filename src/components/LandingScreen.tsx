@@ -791,8 +791,6 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
 
         </section>
 
-        </section>
-
         {/* ALTHERA INTERACTIVE LABS - INTERACTION ON THE LANDING PAGE */}
         <motion.section
           initial={{ opacity: 0, y: 40 }}
