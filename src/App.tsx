@@ -420,6 +420,8 @@ export default function App() {
       const sessionId = urlParams.get('stripe_session_id');
       const amount = urlParams.get('amount') || '';
       const interval = urlParams.get('interval') || 'month';
+      const installmentsStr = urlParams.get('installments') || '';
+      const customConcept = urlParams.get('concept') || '';
 
       if (!stripeStatus) return;
 
@@ -483,15 +485,17 @@ export default function App() {
 
             // Create a FinanceTransaction of type income
             const todayStr = new Date().toISOString().split('T')[0];
+            const baseConcept = customConcept ? decodeURIComponent(customConcept) : (isSubscription 
+              ? `Mensualidad Stripe Automática - ${client.name}` 
+              : `Pago Único Stripe - ${client.name}`);
+
             const newTx: any = {
               id: `tx_stripe_${sessionId}`,
               type: 'income',
               category: isSubscription ? 'Mensualidad' : 'Desarrollo',
               amount: Number(amount),
               date: todayStr,
-              description: isSubscription 
-                ? `Mensualidad Stripe Automática - ${client.name}` 
-                : `Pago Único Stripe - ${client.name}`,
+              description: baseConcept,
               isRecurring: isSubscription,
               recurrencePeriod: isSubscription ? (interval === 'year' ? 'yearly' : 'monthly') : undefined,
               status: 'paid',
@@ -499,6 +503,34 @@ export default function App() {
             };
 
             await db.insertFinanceTransaction(newTx);
+
+            // Handle multi-installment automatic setup
+            if (installmentsStr === '2' || installmentsStr === '3') {
+              const numInstallments = parseInt(installmentsStr, 10);
+              const decodedConcept = customConcept ? decodeURIComponent(customConcept) : 'Pago';
+              for (let i = 2; i <= numInstallments; i++) {
+                const daysAhead = (i - 1) * 30;
+                const d = new Date();
+                d.setDate(d.getDate() + daysAhead);
+                const futureDateStr = d.toISOString().split('T')[0];
+                
+                // Construct clean name for the installment
+                const cleanConcept = decodedConcept.replace(/Plazo \d+ de \d+/, `Plazo ${i} de ${numInstallments}`);
+                const instTx: any = {
+                  id: `tx_stripe_inst_${sessionId}_${i}`,
+                  type: 'income',
+                  category: 'Desarrollo',
+                  amount: Number(amount),
+                  date: futureDateStr,
+                  description: `${cleanConcept} (Cobro Automático programado)`,
+                  isRecurring: false,
+                  status: 'pending',
+                  paymentMethod: 'card'
+                };
+                
+                await db.insertFinanceTransaction(instTx);
+              }
+            }
 
             // Mark pending client invoices and transactions as paid
             try {

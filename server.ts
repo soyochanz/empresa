@@ -53,7 +53,7 @@ app.get("/api/stripe/config", (req, res) => {
 // Create subscription or single payment checkout session
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
-    const { clientId, clientName, clientEmail, amount, interval } = req.body;
+    const { clientId, clientName, clientEmail, amount, interval, installments, concept } = req.body;
 
     if (!clientId || !clientEmail || !amount) {
       return res.status(400).json({ error: "clientId, clientEmail, and amount are required" });
@@ -67,9 +67,9 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       price_data: {
         currency: "eur",
         product_data: {
-          name: isSubscription 
+          name: concept || (isSubscription 
             ? `Mensualidad Automática - ${clientName || "Cliente"}` 
-            : `Pago Único - ${clientName || "Cliente"}`,
+            : `Pago Único - ${clientName || "Cliente"}`),
           description: isSubscription 
             ? `Suscripción recurrente de pago para el cliente ${clientName || clientEmail}` 
             : `Pago único de servicio para el cliente ${clientName || clientEmail}`,
@@ -91,12 +91,14 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       line_items: [lineItem],
       mode: isSubscription ? "subscription" : "payment",
       customer_email: clientEmail,
-      success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${amount}&interval=${interval || "month"}`,
+      success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${amount}&interval=${interval || "month"}&installments=${installments || ""}&concept=${encodeURIComponent(concept || "")}`,
       cancel_url: `${appUrl}?stripe_status=cancel&client_id=${clientId}`,
       metadata: {
         clientId,
         clientName: clientName || "",
         clientEmail,
+        installments: installments || "",
+        concept: concept || "",
       },
     });
 

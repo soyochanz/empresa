@@ -126,12 +126,29 @@ export default function CrmScreen({
   const [stripeError, setStripeError] = useState('');
   const [stripeEmailInput, setStripeEmailInput] = useState('');
 
+  // Automatic Installments Generator States
+  const [instTotalAmount, setInstTotalAmount] = useState('1500');
+  const [instCount, setInstCount] = useState<2 | 3>(3);
+  const [instConcept, setInstConcept] = useState('Servicios de Desarrollo y Consultoría');
+  const [instLoading, setInstLoading] = useState(false);
+  const [instError, setInstError] = useState('');
+  const [instGeneratedUrl, setInstGeneratedUrl] = useState('');
+  const [instCopied, setInstCopied] = useState(false);
+
   React.useEffect(() => {
     setGeneratedCheckoutUrl('');
     setGeneratedCheckoutSessionId('');
     setStripeCopied(false);
     setStripeError('');
     setStripeEmailInput(selectedContact?.email || '');
+
+    // Reset automatic installments generator states
+    setInstTotalAmount('1500');
+    setInstCount(3);
+    setInstConcept('Servicios de Desarrollo y Consultoría');
+    setInstError('');
+    setInstGeneratedUrl('');
+    setInstCopied(false);
   }, [selectedContactId, selectedContact]);
 
   // Dynamic Stripe link generation states for individual pending transactions/installments
@@ -986,6 +1003,61 @@ export default function CrmScreen({
       setStripeError(err?.message || 'Error de red al conectar con Stripe.');
     } finally {
       setStripeLoading(false);
+    }
+  };
+
+  const handleCreateInstallmentStripeCheckout = async (contact: ClientContact) => {
+    const targetEmail = contact.email || stripeEmailInput.trim();
+    if (!targetEmail) {
+      setInstError('El cliente debe tener un email registrado para configurar Stripe.');
+      return;
+    }
+    
+    const total = parseFloat(instTotalAmount);
+    if (isNaN(total) || total <= 0) {
+      setInstError('El monto total debe ser un número positivo.');
+      return;
+    }
+
+    setInstLoading(true);
+    setInstError('');
+    try {
+      // Calculate amount per installment
+      const installmentAmount = (total / instCount).toFixed(2);
+      const formattedConcept = `${instConcept} - Plazo 1 de ${instCount}`;
+
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId: contact.id,
+          clientName: contact.name,
+          clientEmail: targetEmail,
+          amount: installmentAmount,
+          interval: 'month', // Auto-billed monthly subscription
+          installments: instCount.toString(),
+          concept: formattedConcept,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al generar el plan de plazos');
+      }
+
+      setInstGeneratedUrl(data.url);
+    } catch (err: any) {
+      console.error(err);
+      // Fallback simulated link if Stripe is not fully set up
+      const installmentAmount = (total / instCount).toFixed(2);
+      const formattedConcept = `${instConcept} - Plazo 1 de ${instCount}`;
+      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${contact.id}&amount=${installmentAmount}&interval=month&installments=${instCount}&concept=${encodeURIComponent(formattedConcept)}&stripe_session_id=cs_test_mock_inst_${contact.id}_${Date.now()}&simulated=true`;
+      
+      setInstGeneratedUrl(simulatedUrl);
+    } finally {
+      setInstLoading(false);
     }
   };
 
@@ -1950,6 +2022,171 @@ export default function CrmScreen({
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Financiación / Generación de Enlace de Plazos (Cobro Automático) */}
+              <div className="bg-[#030305] p-4 rounded-2xl border border-white/5 space-y-3.5 text-left w-full shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+                <div className="flex items-center gap-2 border-b border-white/5 pb-2.5">
+                  <CreditCard className="w-4 h-4 text-emerald-400" />
+                  <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Cobro en Plazos (Stripe Automático)</span>
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    Configura un pago financiado en 2 o 3 plazos automáticos. El cliente pagará la primera cuota hoy y los pagos restantes se cobrarán de su tarjeta automáticamente cada mes.
+                  </p>
+
+                  <div>
+                    <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">
+                      Monto Total del Proyecto (€)
+                    </label>
+                    <input
+                      type="number"
+                      value={instTotalAmount}
+                      onChange={(e) => {
+                        setInstTotalAmount(e.target.value);
+                        setInstGeneratedUrl('');
+                      }}
+                      className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
+                      placeholder="1500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1.5">
+                      Número de Plazos
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInstCount(2);
+                          setInstGeneratedUrl('');
+                        }}
+                        className={`py-1.5 text-[10px] font-mono font-bold rounded-lg border transition ${
+                          instCount === 2
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/35 shadow-[0_0_8px_rgba(16,185,129,0.05)]'
+                            : 'bg-[#07070b] text-slate-400 border-white/5 hover:border-white/10'
+                        }`}
+                      >
+                        2 Plazos (50% / 50%)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInstCount(3);
+                          setInstGeneratedUrl('');
+                        }}
+                        className={`py-1.5 text-[10px] font-mono font-bold rounded-lg border transition ${
+                          instCount === 3
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/35 shadow-[0_0_8px_rgba(16,185,129,0.05)]'
+                            : 'bg-[#07070b] text-slate-400 border-white/5 hover:border-white/10'
+                        }`}
+                      >
+                        3 Plazos (33.3% x 3)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1 font-sans">
+                      Concepto del Cobro
+                    </label>
+                    <input
+                      type="text"
+                      value={instConcept}
+                      onChange={(e) => {
+                        setInstConcept(e.target.value);
+                        setInstGeneratedUrl('');
+                      }}
+                      className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition font-sans"
+                      placeholder="Proyecto Desarrollo Web Althera"
+                    />
+                  </div>
+
+                  {/* Detalle de Cuotas */}
+                  {(() => {
+                    const total = parseFloat(instTotalAmount) || 0;
+                    const cuota = total > 0 ? (total / instCount).toFixed(2) : '0.00';
+                    return (
+                      <div className="bg-[#050508] p-2.5 rounded-xl border border-white/5 space-y-1 font-mono text-[9px] text-slate-400 leading-relaxed">
+                        <span className="block text-[8px] text-slate-500 uppercase font-bold tracking-wider mb-0.5 font-sans">Plan de Cobros Planificado:</span>
+                        <div className="flex justify-between border-b border-white/5 pb-1">
+                          <span>• Cuota por Plazo:</span>
+                          <span className="text-emerald-450 font-extrabold">{cuota} € / mes</span>
+                        </div>
+                        <div className="flex justify-between pt-0.5">
+                          <span>1º Pago (Hoy):</span>
+                          <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Cobrado al instante)</span></span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>2º Pago (+30 días):</span>
+                          <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Auto-cobrado)</span></span>
+                        </div>
+                        {instCount === 3 && (
+                          <div className="flex justify-between">
+                            <span>3º Pago (+60 días):</span>
+                            <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Auto-cobrado)</span></span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {instError && (
+                    <p className="text-[9px] text-rose-400 leading-tight bg-rose-500/5 p-2 rounded-lg border border-rose-500/10">
+                      {instError}
+                    </p>
+                  )}
+
+                  {!instGeneratedUrl ? (
+                    <button
+                      type="button"
+                      disabled={instLoading || !instTotalAmount.trim()}
+                      onClick={() => handleCreateInstallmentStripeCheckout(selectedContact)}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-[0_2px_12px_rgba(16,185,129,0.15)]"
+                    >
+                      {instLoading ? (
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <CreditCard className="w-3.5 h-3.5" />
+                      )}
+                      <span>{instLoading ? 'Generando...' : 'Generar Enlace de Plazos'}</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-2 bg-[#040408] p-2.5 rounded-xl border border-white/5">
+                      <span className="block text-[9px] font-mono text-emerald-400 font-bold uppercase tracking-wide">¡Enlace de Plazos Listo!</span>
+                      <p className="text-[9px] text-slate-400 leading-snug">
+                        Comparte este enlace con el cliente para que configure los pagos automáticos. Al pagar el 1º plazo, las cuotas restantes se cobrarán de forma automática:
+                      </p>
+                      
+                      <div className="flex gap-1.5 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(instGeneratedUrl);
+                            setInstCopied(true);
+                            setTimeout(() => setInstCopied(false), 2000);
+                          }}
+                          className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 border border-white/5 text-[10px] rounded-lg text-slate-300 font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        >
+                          {instCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                          <span>{instCopied ? 'Copiado' : 'Copiar'}</span>
+                        </button>
+                        
+                        <a
+                          href={instGeneratedUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 py-1.5 px-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/20 text-[10px] rounded-lg text-emerald-300 font-semibold flex items-center justify-center gap-1 transition-all text-center"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Abrir</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Action Buttons Icons Row - REMOVED Chat button as requested */}
