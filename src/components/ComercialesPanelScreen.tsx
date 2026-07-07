@@ -110,6 +110,8 @@ export default function ComercialesPanelScreen({
   const [bic, setBic] = useState(comercial.bic || '');
   const [bankName, setBankName] = useState(comercial.bankName || '');
   const [settingsSuccess, setSettingsSuccess] = useState(false);
+  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
+  const [stripeConnectError, setStripeConnectError] = useState('');
 
   React.useEffect(() => {
     if (comercial) {
@@ -129,6 +131,45 @@ export default function ComercialesPanelScreen({
   const [activeLoggerLeadId, setActiveLoggerLeadId] = useState<string | null>(null);
   const [quickLogNotes, setQuickLogNotes] = useState('');
   const [quickLogResult, setQuickLogResult] = useState('Responde');
+
+  const readStripeJson = async (response: Response) => {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('La API de Stripe no esta disponible. Abre la app desde el servidor Node, no solo como frontend estatico.');
+    }
+    return response.json();
+  };
+
+  const handleConnectStripe = async () => {
+    if (!onUpdateComercial) return;
+    setStripeConnectLoading(true);
+    setStripeConnectError('');
+    try {
+      const response = await fetch('/api/stripe/create-connect-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comercialId: comercial.id,
+          comercialName: comercial.name,
+          comercialEmail: comercial.email,
+          existingAccountId: comercial.stripeConnectAccountId || '',
+        }),
+      });
+      const data = await readStripeJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo conectar con Stripe');
+      }
+      onUpdateComercial({
+        ...comercial,
+        stripeConnectAccountId: data.accountId,
+      });
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      setStripeConnectError(err?.message || 'No se pudo iniciar Stripe Connect.');
+    } finally {
+      setStripeConnectLoading(false);
+    }
+  };
   const [quickLogTemp, setQuickLogTemp] = useState<'Frío' | 'Templado' | 'Caliente'>('Templado');
   const [quickLogScheduled, setQuickLogScheduled] = useState<string>('Llamada hecha');
   const [quickLogCallbackDate, setQuickLogCallbackDate] = useState('');
