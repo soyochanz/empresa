@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import Stripe from "stripe";
+import { createClient } from "@supabase/supabase-js";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 
@@ -10,6 +11,17 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const DEFAULT_SUPABASE_URL = "https://czyrolmczcwtexxgxzrg.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6eXJvbG1jemN3dGV4eGd4enJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzOTcxMjEsImV4cCI6MjA5NDk3MzEyMX0.OO17A0soth1VcIQQm6p02Po8uWPtP8GggfnmUXzGvp4";
+
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    DEFAULT_SUPABASE_ANON_KEY,
+);
 
 // Request logging middleware for debugging API calls
 app.use((req, res, next) => {
@@ -22,8 +34,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
-app.use(express.json());
 
 // Lazy Stripe initialization to prevent crashes on startup if secret key is missing
 let stripeInstance: Stripe | null = null;
@@ -50,6 +60,186 @@ function getAppUrl(req: express.Request): string {
   if (forwardedHost) return `${forwardedProto || req.protocol}://${forwardedHost}`.replace(/\/$/, "");
   return `${req.protocol}://${req.get("host") || "localhost:3000"}`.replace(/\/$/, "");
 }
+
+function readTag(description: string, tag: string): string | undefined {
+  const match = new RegExp(`\\[${tag}:([^\\]]+)\\]`).exec(description || "");
+  return match?.[1];
+}
+
+function writeTag(description: string, tag: string, value: string): string {
+  const withoutTag = (description || "").replace(new RegExp(`\\s*\\[${tag}:[^\\]]+\\]`, "g"), "").trim();
+  return `${withoutTag} [${tag}:${value}]`.trim();
+}
+
+function getStripeInvoiceSubscriptionId(invoice: Stripe.Invoice): string | undefined {
+  const expandedInvoice = invoice as any;
+  const subscription = expandedInvoice.subscription;
+  if (typeof subscription === "string") return subscription;
+  if (subscription?.id) return subscription.id;
+  return (
+    expandedInvoice.parent?.subscription_details?.subscription ||
+    expandedInvoice.subscription_details?.subscription ||
+    undefined
+  );
+}
+
+function getStripePaidDate(invoice: Stripe.Invoice): string {
+  const paidAt = (invoice.status_transitions?.paid_at || Math.floor(Date.now() / 1000)) * 1000;
+  return new Date(paidAt).toISOString().split("T")[0];
+}
+
+async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updated: boolean; reason?: string; txId?: string }> {
+  const stripe = getStripe();
+  const invoiceId = invoice.id;
+  const subscriptionId = getStripeInvoiceSubscriptionId(invoice);
+
+  if (!invoiceId) return { updated: false, reason: "missing_invoice_id" };
+  if (!subscriptionId) return { updated: false, reason: "not_subscription_invoice" };
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const invoiceMetadata = (invoice as any).subscription_details?.metadata || {};
+  const stripePlanId =
+    subscription.metadata?.stripePlanId ||
+    invoiceMetadata.stripePlanId ||
+    invoice.metadata?.stripePlanId ||
+    "";
+  const firstPendingTxId =
+    subscription.metadata?.pendingTxId ||
+    invoiceMetadata.pendingTxId ||
+    invoice.metadata?.pendingTxId ||
+    "";
+
+  const { data: transactions, error: txError } = await supabaseAdmin
+    .from("finance_transactions")
+    .select("*");
+
+  if (txError) throw txError;
+
+  const rows = transactions || [];
+  if (rows.some((tx: any) => (tx.description || "").includes(`[STRIPEINVOICE:${invoiceId}]`))) {
+    return { updated: false, reason: "already_processed" };
+  }
+
+  const matchingRows = rows.filter((tx: any) => {
+    const description = tx.description || "";
+    return (
+      (stripePlanId && description.includes(`[STRIPEPLAN:${stripePlanId}]`)) ||
+      (firstPendingTxId && tx.id === firstPendingTxId)
+    );
+  });
+
+  if (matchingRows.length === 0) {
+    return { updated: false, reason: "no_matching_transaction" };
+  }
+
+  const isFirstInvoice = (invoice as any).billing_reason === "subscription_create";
+  let targetTx =
+    isFirstInvoice && firstPendingTxId
+      ? matchingRows.find((tx: any) => tx.id === firstPendingTxId)
+      : undefined;
+
+  if (targetTx?.status === "paid") {
+    const description = targetTx.description || "";
+    if (!description.includes(`[STRIPEINVOICE:${invoiceId}]`)) {
+      const updatedDescription = writeTag(description, "STRIPEINVOICE", invoiceId);
+      const { error: tagError } = await supabaseAdmin
+        .from("finance_transactions")
+        .update({ description: updatedDescription })
+        .eq("id", targetTx.id);
+      if (tagError) throw tagError;
+      return { updated: false, reason: "already_paid_invoice_tag_saved", txId: targetTx.id };
+    }
+    return { updated: false, reason: "first_installment_already_paid" };
+  }
+
+  if (!targetTx) {
+    targetTx = matchingRows
+      .filter((tx: any) => tx.status === "pending")
+      .sort((a: any, b: any) => {
+        const aIndex = Number.parseInt(readTag(a.description || "", "STRIPEIDX") || "999", 10);
+        const bIndex = Number.parseInt(readTag(b.description || "", "STRIPEIDX") || "999", 10);
+        if (aIndex !== bIndex) return aIndex - bIndex;
+        return String(a.date || "").localeCompare(String(b.date || ""));
+      })[0];
+  }
+
+  if (!targetTx) {
+    return { updated: false, reason: "no_pending_transaction" };
+  }
+
+  let updatedDescription = (targetTx.description || "").replace(/\s*\(Pendiente\)/g, "").trim();
+  updatedDescription = writeTag(updatedDescription, "STRIPEINVOICE", invoiceId);
+
+  const { error: updateTxError } = await supabaseAdmin
+    .from("finance_transactions")
+    .update({
+      status: "paid",
+      date: getStripePaidDate(invoice),
+      description: updatedDescription,
+    })
+    .eq("id", targetTx.id);
+
+  if (updateTxError) throw updateTxError;
+
+  const { data: invoices, error: invError } = await supabaseAdmin
+    .from("finance_invoices")
+    .select("*");
+
+  if (invError) throw invError;
+
+  await Promise.all(
+    (invoices || [])
+      .filter((financeInvoice: any) =>
+        Array.isArray(financeInvoice.items) &&
+        financeInvoice.items.some((item: any) => item.pendingTxId === targetTx.id),
+      )
+      .map((financeInvoice: any) => {
+        const items = financeInvoice.items.map((item: any) =>
+          item.pendingTxId === targetTx.id
+            ? { ...item, isPending: false, paymentMethod: "transfer" }
+            : item,
+        );
+        const status = items.some((item: any) => item.isPending) ? "sent" : "paid";
+        return supabaseAdmin
+          .from("finance_invoices")
+          .update({ items, status })
+          .eq("id", financeInvoice.id);
+      }),
+  );
+
+  return { updated: true, txId: targetTx.id };
+}
+
+app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    const stripe = getStripe();
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const signature = req.headers["stripe-signature"] as string | undefined;
+    let event: Stripe.Event;
+
+    if (webhookSecret) {
+      if (!signature) {
+        return res.status(400).json({ error: "Missing Stripe signature" });
+      }
+      event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
+    } else {
+      event = JSON.parse(req.body.toString("utf8")) as Stripe.Event;
+      console.warn("STRIPE_WEBHOOK_SECRET is not set. Webhook signature verification is disabled.");
+    }
+
+    if (event.type === "invoice.paid") {
+      const result = await markStripeInvoiceAsPaid(event.data.object as Stripe.Invoice);
+      console.log("Processed Stripe invoice.paid webhook:", result);
+    }
+
+    res.json({ received: true });
+  } catch (error: any) {
+    console.error("Error handling Stripe webhook:", error);
+    res.status(400).json({ error: error?.message || "Webhook error" });
+  }
+});
+
+app.use(express.json());
 
 // API Routes
 app.get("/api/health", (req, res) => {

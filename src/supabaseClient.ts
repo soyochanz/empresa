@@ -798,6 +798,7 @@ export const db = {
     stripePlanId?: string;
     stripeCheckoutUrl?: string;
     stripeCheckoutSessionId?: string;
+    stripeInvoiceId?: string;
     stripeInstallmentIndex?: number;
     stripeInstallmentCount?: number;
     invoiceId?: string;
@@ -826,6 +827,9 @@ export const db = {
     }
     if (metadata.stripeCheckoutSessionId) {
       res += ` [STRIPESESSION:${metadata.stripeCheckoutSessionId}]`;
+    }
+    if (metadata.stripeInvoiceId) {
+      res += ` [STRIPEINVOICE:${metadata.stripeInvoiceId}]`;
     }
     if (metadata.stripeInstallmentIndex !== undefined && metadata.stripeInstallmentIndex !== null) {
       res += ` [STRIPEIDX:${metadata.stripeInstallmentIndex}]`;
@@ -857,6 +861,7 @@ export const db = {
     stripePlanId?: string;
     stripeCheckoutUrl?: string;
     stripeCheckoutSessionId?: string;
+    stripeInvoiceId?: string;
     stripeInstallmentIndex?: number;
     stripeInstallmentCount?: number;
     invoiceId?: string;
@@ -872,6 +877,7 @@ export const db = {
     let stripePlanId: string | undefined = undefined;
     let stripeCheckoutUrl: string | undefined = undefined;
     let stripeCheckoutSessionId: string | undefined = undefined;
+    let stripeInvoiceId: string | undefined = undefined;
     let stripeInstallmentIndex: number | undefined = undefined;
     let stripeInstallmentCount: number | undefined = undefined;
     let invoiceId: string | undefined = undefined;
@@ -886,6 +892,7 @@ export const db = {
     const stripePlanRegex = /\s*\[STRIPEPLAN:([^\]]+)\]/g;
     const stripeUrlRegex = /\s*\[STRIPEURL:([^\]]+)\]/g;
     const stripeSessionRegex = /\s*\[STRIPESESSION:([^\]]+)\]/g;
+    const stripeInvoiceRegex = /\s*\[STRIPEINVOICE:([^\]]+)\]/g;
     const stripeIdxRegex = /\s*\[STRIPEIDX:(\d+)\]/g;
     const stripeCntRegex = /\s*\[STRIPECNT:(\d+)\]/g;
     const invRegex = /\s*\[INV:([^\]]+)\]/g;
@@ -933,6 +940,11 @@ export const db = {
     }
     cleanDesc = cleanDesc.replace(stripeSessionRegex, '');
 
+    while ((match = stripeInvoiceRegex.exec(cleanDesc)) !== null) {
+      stripeInvoiceId = match[1];
+    }
+    cleanDesc = cleanDesc.replace(stripeInvoiceRegex, '');
+
     while ((match = stripeIdxRegex.exec(cleanDesc)) !== null) {
       stripeInstallmentIndex = parseInt(match[1], 10);
     }
@@ -972,6 +984,7 @@ export const db = {
       stripePlanId,
       stripeCheckoutUrl,
       stripeCheckoutSessionId,
+      stripeInvoiceId,
       stripeInstallmentIndex,
       stripeInstallmentCount,
       invoiceId,
@@ -1012,6 +1025,7 @@ export const db = {
         stripePlanId: decoded.stripePlanId,
         stripeCheckoutUrl: decoded.stripeCheckoutUrl,
         stripeCheckoutSessionId: decoded.stripeCheckoutSessionId,
+        stripeInvoiceId: decoded.stripeInvoiceId,
         stripeInstallmentIndex: decoded.stripeInstallmentIndex,
         stripeInstallmentCount: decoded.stripeInstallmentCount,
         invoiceId: decoded.invoiceId,
@@ -1026,7 +1040,7 @@ export const db = {
 
   async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
     const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
-    const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
+    const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
 
     const encodedDesc = this._encodeDescription(description, {
       paymentMethod,
@@ -1036,6 +1050,7 @@ export const db = {
       stripePlanId,
       stripeCheckoutUrl,
       stripeCheckoutSessionId,
+      stripeInvoiceId,
       stripeInstallmentIndex,
       stripeInstallmentCount,
       invoiceId,
@@ -1064,7 +1079,7 @@ export const db = {
 
   async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
     const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
-    const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
+    const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
 
     const encodedDesc = this._encodeDescription(description, {
       paymentMethod,
@@ -1074,6 +1089,7 @@ export const db = {
       stripePlanId,
       stripeCheckoutUrl,
       stripeCheckoutSessionId,
+      stripeInvoiceId,
       stripeInstallmentIndex,
       stripeInstallmentCount,
       invoiceId,
@@ -1867,6 +1883,19 @@ export const db = {
       }
       phone = phone.replace(bankRegex, '').trim();
 
+      let payouts: any[] = [];
+      const payoutsRegex = /\s*\[PAYOUTS:([^\]]+)\]/g;
+      const payoutsMatch = payoutsRegex.exec(phone);
+      if (payoutsMatch) {
+        try {
+          payouts = JSON.parse(decodeURIComponent(payoutsMatch[1]));
+        } catch (e) {
+          console.error('Error parsing comercial payouts metadata', e);
+          payouts = [];
+        }
+      }
+      phone = phone.replace(payoutsRegex, '').trim();
+
       return {
         ...row,
         phone: phone || undefined,
@@ -1874,6 +1903,7 @@ export const db = {
         iban: iban || undefined,
         bic: bic || undefined,
         bankName: bankName || undefined,
+        payouts,
         createdAt: row.created_at || new Date().toISOString()
       };
     }) as ComercialAccount[];
@@ -1894,6 +1924,9 @@ export const db = {
     }
     if (account.bankName) {
       phone += ` [BANK:${account.bankName}]`;
+    }
+    if (account.payouts && account.payouts.length > 0) {
+      phone += ` [PAYOUTS:${encodeURIComponent(JSON.stringify(account.payouts))}]`;
     }
 
     const payload = {
@@ -1922,6 +1955,9 @@ export const db = {
     }
     if (account.bankName) {
       phone += ` [BANK:${account.bankName}]`;
+    }
+    if (account.payouts && account.payouts.length > 0) {
+      phone += ` [PAYOUTS:${encodeURIComponent(JSON.stringify(account.payouts))}]`;
     }
 
     const payload = {

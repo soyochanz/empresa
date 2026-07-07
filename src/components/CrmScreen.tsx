@@ -70,10 +70,15 @@ const readStripeJson = async (response: Response) => {
   return response.json();
 };
 
-const getStripeDashboardUrl = (sessionId?: string): string | null => {
-  if (!sessionId || sessionId.includes('_mock_')) return null;
-  const modePath = sessionId.startsWith('cs_live_') ? '' : '/test';
-  return `https://dashboard.stripe.com${modePath}/checkout/sessions/${sessionId}`;
+const getStripeDashboardUrl = (sessionId?: string, invoiceId?: string): string | null => {
+  if (sessionId && !sessionId.includes('_mock_')) {
+    const modePath = sessionId.startsWith('cs_live_') ? '' : '/test';
+    return `https://dashboard.stripe.com${modePath}/checkout/sessions/${sessionId}`;
+  }
+  if (invoiceId) {
+    return `https://dashboard.stripe.com/invoices/${invoiceId}`;
+  }
+  return null;
 };
 
 interface CrmScreenProps {
@@ -134,6 +139,53 @@ export default function CrmScreen({
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
 
+  const selectedClientInvoices = React.useMemo(() => {
+    if (!selectedContact) return [];
+    return invoices.filter(inv => {
+      const matchesId = inv.clientId === selectedContact.id;
+      const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
+      const matchesName = inv.clientName?.toLowerCase().includes(selectedContact.name?.toLowerCase() || '');
+      return matchesId || matchesEmail || matchesName;
+    });
+  }, [invoices, selectedContact]);
+
+  const selectedClientTransactions = React.useMemo(() => {
+    if (!selectedContact) return [];
+    return transactions.filter(t => {
+      if (t.clientId === selectedContact.id) return true;
+      if (selectedClientInvoices.some(inv => inv.id === t.invoiceId)) return true;
+      const descLower = t.description.toLowerCase();
+      const containsName = descLower.includes(selectedContact.name.toLowerCase());
+      const containsCompany = selectedContact.company ? descLower.includes(selectedContact.company.toLowerCase()) : false;
+      return containsName || containsCompany;
+    });
+  }, [transactions, selectedContact, selectedClientInvoices]);
+
+  const selectedPaymentSummary = React.useMemo(() => {
+    const saleTransactions = selectedClientTransactions.filter(t => t.type === 'income');
+    const paidTransactions = saleTransactions.filter(t => t.status === 'paid');
+    const pendingTransactions = saleTransactions.filter(t => t.status === 'pending');
+    const latestStripeTx = [...saleTransactions]
+      .filter(t => t.stripeCheckoutUrl)
+      .sort((a, b) => {
+        const aTime = new Date(a.date).getTime() || 0;
+        const bTime = new Date(b.date).getTime() || 0;
+        return bTime - aTime;
+      })[0];
+
+    return {
+      total: saleTransactions.reduce((sum, t) => sum + t.amount, 0),
+      paid: paidTransactions.reduce((sum, t) => sum + t.amount, 0),
+      pending: pendingTransactions.reduce((sum, t) => sum + t.amount, 0),
+      paidCount: paidTransactions.length,
+      pendingCount: pendingTransactions.length,
+      totalCount: saleTransactions.length,
+      checkoutUrl: latestStripeTx?.stripeCheckoutUrl || '',
+      checkoutSessionId: latestStripeTx?.stripeCheckoutSessionId || '',
+      stripeInvoiceId: latestStripeTx?.stripeInvoiceId || '',
+    };
+  }, [selectedClientTransactions]);
+
   // Stripe Subscription States
   const [stripeAmount, setStripeAmount] = useState('50');
   const [stripeInterval, setStripeInterval] = useState<'month' | 'year' | 'once'>('month');
@@ -185,7 +237,7 @@ export default function CrmScreen({
       const pendingTxs = clientTransactions.filter(t => t.status === 'pending');
       if (pendingTxs.length > 0) {
         const pendingSum = pendingTxs.reduce((sum, t) => sum + t.amount, 0);
-        setInstTotalAmount(pendingSum.toString());
+        setInstTotalAmount(pendingSum.toFixed(2));
         setInstCount(pendingTxs.length === 2 ? 2 : 3);
         const cleanDesc = pendingTxs[0].description.split(' - ')[0].split(' (')[0];
         setInstConcept(cleanDesc || 'Servicios de Desarrollo y Consultoría');
@@ -1988,16 +2040,105 @@ export default function CrmScreen({
                   <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Mensualidad Stripe</span>
                 </div>
 
+                {(() => {
+                  const visibleCheckoutUrl = generatedCheckoutUrl || instGeneratedUrl || selectedPaymentSummary.checkoutUrl;
+                  const stripeDashboardUrl = getStripeDashboardUrl(selectedPaymentSummary.checkoutSessionId, selectedPaymentSummary.stripeInvoiceId);
+                  const hasPaymentInfo = selectedPaymentSummary.totalCount > 0;
+                  const isSubscribedOrLinked = selectedContact.stripeSubscriptionStatus === 'active' || !!visibleCheckoutUrl || selectedPaymentSummary.paidCount > 0;
+
+                  return (
+                    <div className="bg-slate-950/45 p-3 rounded-xl border border-white/5 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-slate-400">Estado:</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest border ${
+                          isSubscribedOrLinked
+                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                            : 'bg-slate-855 text-slate-400 border-slate-700'
+                        }`}>
+                          {selectedContact.stripeSubscriptionStatus === 'active'
+                            ? 'Activo'
+                            : visibleCheckoutUrl
+                              ? 'Link generado'
+                              : selectedPaymentSummary.paidCount > 0
+                                ? 'Pagos recibidos'
+                                : 'Sin suscribir'}
+                        </span>
+                      </div>
+
+                      {hasPaymentInfo && (
+                        <div className="grid grid-cols-3 gap-1.5 text-center">
+                          <div className="bg-black/20 rounded-lg p-2 border border-white/5">
+                            <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Total</span>
+                            <span className="block text-[11px] font-black text-slate-200">{selectedPaymentSummary.total.toFixed(2)} €</span>
+                          </div>
+                          <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
+                            <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Pagado</span>
+                            <span className="block text-[11px] font-black text-emerald-400">{selectedPaymentSummary.paid.toFixed(2)} €</span>
+                          </div>
+                          <div className="bg-black/20 rounded-lg p-2 border border-amber-500/10">
+                            <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Pendiente</span>
+                            <span className="block text-[11px] font-black text-amber-400">{selectedPaymentSummary.pending.toFixed(2)} €</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {hasPaymentInfo && (
+                        <div className="flex justify-between text-[10px] text-slate-500">
+                          <span>Cuotas:</span>
+                          <span className="font-mono text-slate-300">
+                            {selectedPaymentSummary.paidCount} liquidadas / {selectedPaymentSummary.pendingCount} pendientes
+                          </span>
+                        </div>
+                      )}
+
+                      {visibleCheckoutUrl && (
+                        <div className="space-y-1.5 border-t border-white/5 pt-2">
+                          <span className="block text-[8px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
+                            Link de pago guardado
+                          </span>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(visibleCheckoutUrl);
+                                setStripeCopied(true);
+                                setTimeout(() => setStripeCopied(false), 2000);
+                              }}
+                              className="flex-1 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 border border-white/5 text-[10px] rounded-lg text-slate-300 font-medium flex items-center justify-center gap-1 transition-all cursor-pointer"
+                            >
+                              {stripeCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                              <span>{stripeCopied ? 'Copiado' : 'Copiar link'}</span>
+                            </button>
+                            <a
+                              href={visibleCheckoutUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex-1 py-1.5 px-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/20 text-[10px] rounded-lg text-violet-300 font-semibold flex items-center justify-center gap-1 transition-all text-center"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Abrir link</span>
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
+                      {stripeDashboardUrl && (
+                        <a
+                          href={stripeDashboardUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full py-1.5 px-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-[10px] rounded-lg text-indigo-300 font-semibold flex items-center justify-center gap-1 transition-all text-center"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Ver cobro en Stripe</span>
+                        </a>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {selectedContact.stripeSubscriptionStatus === 'active' ? (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-slate-400">Estado:</span>
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 shadow-[0_0_10px_rgba(16,185,129,0.05)]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        Activo
-                      </span>
-                    </div>
-
                     <div className="bg-slate-950/45 p-3 rounded-xl border border-white/5 space-y-1.5">
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-500 text-[10px]">Cuota mensual:</span>
@@ -2035,13 +2176,6 @@ export default function CrmScreen({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-slate-400">Estado:</span>
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest bg-slate-855 text-slate-400 border border-slate-700">
-                        Sin Suscribir
-                      </span>
-                    </div>
-
                     <p className="text-[10px] text-slate-400 leading-normal">
                       Configura un plan recurrente para cobrar automáticamente desde la tarjeta/cuenta del cliente.
                     </p>
@@ -2521,7 +2655,7 @@ export default function CrmScreen({
                           {clientTransactions.map(tx => {
                             const isPending = tx.status === 'pending' || tx.description.toLowerCase().includes('pendiente');
                             const stripeUrl = tx.stripeCheckoutUrl || activeTxStripeUrl[tx.id];
-                            const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId);
+                            const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId, tx.stripeInvoiceId);
                             const isLoading = txStripeLoading[tx.id];
 
                             return (

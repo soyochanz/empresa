@@ -117,6 +117,7 @@ export interface FinanceTransaction {
   stripePlanId?: string;
   stripeCheckoutUrl?: string;
   stripeCheckoutSessionId?: string;
+  stripeInvoiceId?: string;
   stripeInstallmentIndex?: number;
   stripeInstallmentCount?: number;
   comercialId?: string; // New: associated commercial ID

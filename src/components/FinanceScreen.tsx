@@ -80,10 +80,15 @@ const readStripeJson = async (response: Response) => {
   return response.json();
 };
 
-const getStripeDashboardUrl = (sessionId?: string): string | null => {
-  if (!sessionId || sessionId.includes('_mock_')) return null;
-  const modePath = sessionId.startsWith('cs_live_') ? '' : '/test';
-  return `https://dashboard.stripe.com${modePath}/checkout/sessions/${sessionId}`;
+const getStripeDashboardUrl = (sessionId?: string, invoiceId?: string): string | null => {
+  if (sessionId && !sessionId.includes('_mock_')) {
+    const modePath = sessionId.startsWith('cs_live_') ? '' : '/test';
+    return `https://dashboard.stripe.com${modePath}/checkout/sessions/${sessionId}`;
+  }
+  if (invoiceId) {
+    return `https://dashboard.stripe.com/invoices/${invoiceId}`;
+  }
+  return null;
 };
 
 function getNextPaymentDate(startDateStr: string, period?: string): string {
@@ -2178,7 +2183,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                       };
                       const tagStyle = catColors[t.category] || 'bg-white/5 text-slate-300 border-white/10';
                       const linkedInv = getLinkedInvoice(t);
-                      const stripeDashboardUrl = getStripeDashboardUrl(t.stripeCheckoutSessionId);
+                      const stripeDashboardUrl = getStripeDashboardUrl(t.stripeCheckoutSessionId, t.stripeInvoiceId);
 
                       return (
                         <tr 
