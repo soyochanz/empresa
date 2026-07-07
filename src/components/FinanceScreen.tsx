@@ -505,7 +505,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const netProfit = totalIncomes - totalExpenses;
+  const commercialSalaries = comercialesList
+    .flatMap(com => com.payouts || [])
+    .filter(p => p.status === 'completed' && p.stripeConnectAccountId)
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const netProfit = totalIncomes - totalExpenses - commercialSalaries;
 
   // Cálculo de Saldos Consolidado y Pendiente según requerimiento
   const consolidatedIncomes = transactions
@@ -517,6 +522,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     .reduce((sum, t) => sum + t.amount, 0);
 
   const consolidatedBalance = consolidatedIncomes - consolidatedExpenses;
+  const netCashBalance = consolidatedIncomes - consolidatedExpenses - commercialSalaries;
 
   const pendingIncomes = transactions
     .filter(t => t.type === 'income' && t.status === 'pending')
@@ -1934,7 +1940,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       )}
 
       {/* Financial Bento Scoreboard Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-5">
         
         {/* Metric 1: Saldo Consolidado */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-emerald-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-emerald-500/[0.02]">
@@ -1948,7 +1954,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
           </h3>
           <p className="text-[10px] text-emerald-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>Fondos liquidados</span>
+            <span>Ingresos - gastos</span>
           </p>
         </div>
 
@@ -1997,6 +2003,38 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
           <p className="text-[10px] text-rose-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
             <TrendingDown className="w-3.5 h-3.5" />
             <span>Fijos y variables registrados</span>
+          </p>
+        </div>
+
+        {/* Metric 5: Sueldos Comerciales */}
+        <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-violet-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-violet-500/[0.02]">
+          <div className="absolute top-5 right-5 bg-violet-500/10 rounded-2xl p-3 border border-violet-500/10 group-hover:scale-105 transition-transform duration-300">
+            <Briefcase className="w-5 h-5 text-violet-400" />
+          </div>
+          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-violet-500/5 rounded-full blur-2xl group-hover:bg-violet-500/10 transition-all duration-500" />
+          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Sueldos Comerciales</span>
+          <h3 className="text-3px font-black text-white mt-2 tracking-tight font-serif select-all text-3xl">
+            {commercialSalaries.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-violet-400 text-lg ml-1 font-sans">â‚¬</span>
+          </h3>
+          <p className="text-[10px] text-violet-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
+            <CreditCard className="w-3.5 h-3.5" />
+            <span>Comisiones liquidadas</span>
+          </p>
+        </div>
+
+        {/* Metric 6: Saldo Neto */}
+        <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-cyan-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-cyan-500/[0.02]">
+          <div className="absolute top-5 right-5 bg-cyan-500/10 rounded-2xl p-3 border border-cyan-500/10 group-hover:scale-105 transition-transform duration-300">
+            <ShieldCheck className="w-5 h-5 text-cyan-400" />
+          </div>
+          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-cyan-500/5 rounded-full blur-2xl group-hover:bg-cyan-500/10 transition-all duration-500" />
+          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Saldo Neto</span>
+          <h3 className="text-3px font-black text-white mt-2 tracking-tight font-serif select-all text-3xl">
+            {netCashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-cyan-400 text-lg ml-1 font-sans">â‚¬</span>
+          </h3>
+          <p className="text-[10px] text-cyan-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>Ingresos - gastos - sueldos</span>
           </p>
         </div>
 

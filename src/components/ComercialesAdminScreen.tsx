@@ -91,6 +91,8 @@ export default function ComercialesAdminScreen({
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showDossierModal, setShowDossierModal] = useState(false);
+  const [stripePayoutLoading, setStripePayoutLoading] = useState(false);
+  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
 
   // Dialog modal custom implementation to avoid sandboxed iframe native blockings
   const [customDialog, setCustomDialog] = useState<{
@@ -118,6 +120,93 @@ export default function ComercialesAdminScreen({
       message,
       onConfirm
     });
+  };
+
+  const readStripeJson = async (response: Response) => {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('La API de Stripe no esta disponible. Abre la app desde el servidor Node, no solo como frontend estatico.');
+    }
+    return response.json();
+  };
+
+  const handleConnectComercialStripe = async (comercial: ComercialAccount) => {
+    setStripeConnectLoading(true);
+    try {
+      const response = await fetch('/api/stripe/create-connect-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comercialId: comercial.id,
+          comercialName: comercial.name,
+          comercialEmail: comercial.email,
+          existingAccountId: comercial.stripeConnectAccountId || '',
+        }),
+      });
+      const data = await readStripeJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo crear la cuenta Connect');
+      }
+      onUpdateComercial({
+        ...comercial,
+        stripeConnectAccountId: data.accountId,
+      });
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+      triggerAlert(
+        'Onboarding de Stripe abierto',
+        'Completa la configuracion de Stripe Connect del comercial. Cuando Stripe active la capacidad de transfers, podras liquidar comisiones reales.'
+      );
+    } catch (err: any) {
+      triggerAlert('Error Stripe Connect', err?.message || 'No se pudo iniciar la conexion con Stripe.');
+    } finally {
+      setStripeConnectLoading(false);
+    }
+  };
+
+  const handleLiquidateComercialStripe = async (comercial: ComercialAccount, amount: number) => {
+    setStripePayoutLoading(true);
+    try {
+      const response = await fetch('/api/stripe/create-comercial-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comercialId: comercial.id,
+          comercialName: comercial.name,
+          amount,
+          stripeConnectAccountId: comercial.stripeConnectAccountId,
+        }),
+      });
+      const data = await readStripeJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || 'Stripe no pudo crear la transferencia');
+      }
+
+      const newPayout = {
+        id: `pay_${Date.now()}`,
+        comercialId: comercial.id,
+        amount,
+        date: new Date().toISOString(),
+        status: 'completed' as const,
+        bankAccount: comercial.iban || '',
+        bankName: comercial.bankName,
+        stripeTransferId: data.transferId,
+        stripeConnectAccountId: comercial.stripeConnectAccountId
+      };
+
+      onUpdateComercial({
+        ...comercial,
+        payouts: [...(comercial.payouts || []), newPayout]
+      });
+
+      triggerAlert(
+        'Transferencia Stripe creada',
+        `Stripe ha creado la transferencia ${data.transferId} por ${amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}. El ingreso en banco depende del calendario de payouts de la cuenta conectada.`
+      );
+    } catch (err: any) {
+      triggerAlert('Stripe no ha liquidado', err?.message || 'No se pudo crear la transferencia real en Stripe.');
+    } finally {
+      setStripePayoutLoading(false);
+    }
   };
 
   // Auto-select first commercial if list changes and none selected
@@ -855,7 +944,7 @@ export default function ComercialesAdminScreen({
                   </div>
 
                   {(() => {
-                    const indPaidCommissions = (currentComercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
+                    const indPaidCommissions = (currentComercial.payouts || []).filter(p => p.status === 'completed' && p.stripeConnectAccountId).reduce((sum, p) => sum + p.amount, 0);
                     const indPendingCommission = Math.max(0, indBenefitsEarned - indPaidCommissions);
 
                     return (
@@ -895,6 +984,11 @@ export default function ComercialesAdminScreen({
                                   BIC/SWIFT: {currentComercial.bic}
                                 </p>
                               )}
+                              {currentComercial.stripeConnectAccountId && (
+                                <p className="text-[9px] font-mono text-emerald-400">
+                                  Stripe Connect: {currentComercial.stripeConnectAccountId}
+                                </p>
+                              )}
                             </div>
                           ) : (
                             <div className="text-[10px] text-amber-400 bg-amber-500/5 p-2 rounded-lg border border-amber-500/10 leading-normal font-sans">
@@ -902,6 +996,22 @@ export default function ComercialesAdminScreen({
                             </div>
                           )}
                         </div>
+
+                        {!currentComercial.stripeConnectAccountId && (
+                          <button
+                            type="button"
+                            onClick={() => handleConnectComercialStripe(currentComercial)}
+                            disabled={stripeConnectLoading}
+                            className="w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md font-sans bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 border border-emerald-500/25 cursor-pointer"
+                          >
+                            {stripeConnectLoading ? (
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <CreditCard className="w-4 h-4" />
+                            )}
+                            <span>Conectar comercial con Stripe</span>
+                          </button>
+                        )}
 
                         {/* LIQUIDATE BUTTON */}
                         <button
@@ -914,10 +1024,16 @@ export default function ComercialesAdminScreen({
                               triggerAlert('Datos incompletos', 'No se puede procesar el pago porque el comercial no ha registrado sus datos bancarios todavía.');
                               return;
                             }
+                            if (!currentComercial.stripeConnectAccountId) {
+                              triggerAlert('Stripe Connect pendiente', 'No se puede liquidar con Stripe hasta conectar y activar la cuenta Stripe Connect del comercial.');
+                              return;
+                            }
                             triggerConfirm(
                               'Confirmar Liquidación',
                               `¿Confirmas que deseas transferir ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name} utilizando Stripe Direct?`,
                               () => {
+                                handleLiquidateComercialStripe(currentComercial, indPendingCommission);
+                                return;
                                 const newPayout = {
                                   id: `pay_${Date.now()}`,
                                   comercialId: currentComercial.id,
@@ -941,15 +1057,15 @@ export default function ComercialesAdminScreen({
                               }
                             );
                           }}
-                          disabled={indPendingCommission <= 0 || !currentComercial.iban}
+                          disabled={stripePayoutLoading || indPendingCommission <= 0 || !currentComercial.iban || !currentComercial.stripeConnectAccountId}
                           className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md font-sans ${
-                            indPendingCommission <= 0 || !currentComercial.iban
+                            stripePayoutLoading || indPendingCommission <= 0 || !currentComercial.iban || !currentComercial.stripeConnectAccountId
                               ? 'bg-slate-900 text-slate-600 border border-white/5 cursor-not-allowed shadow-none'
                               : 'bg-[#635bff] hover:bg-[#5b52eb] text-white cursor-pointer active:scale-95 shadow-[#635bff]/25'
                           }`}
                         >
-                          <Coins className="w-4 h-4" />
-                          <span>Liquidar {indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} con Stripe</span>
+                          {stripePayoutLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Coins className="w-4 h-4" />}
+                          <span>{stripePayoutLoading ? 'Creando transferencia...' : `Liquidar ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} con Stripe`}</span>
                         </button>
                       </>
                     );

@@ -1883,6 +1883,14 @@ export const db = {
       }
       phone = phone.replace(bankRegex, '').trim();
 
+      let stripeConnectAccountId = '';
+      const stripeAcctRegex = /\s*\[STRIPEACCT:([^\]]+)\]/g;
+      const stripeAcctMatch = stripeAcctRegex.exec(phone);
+      if (stripeAcctMatch) {
+        stripeConnectAccountId = stripeAcctMatch[1];
+      }
+      phone = phone.replace(stripeAcctRegex, '').trim();
+
       let payouts: any[] = [];
       const payoutsRegex = /\s*\[PAYOUTS:([^\]]+)\]/g;
       const payoutsMatch = payoutsRegex.exec(phone);
@@ -1903,6 +1911,7 @@ export const db = {
         iban: iban || undefined,
         bic: bic || undefined,
         bankName: bankName || undefined,
+        stripeConnectAccountId: stripeConnectAccountId || undefined,
         payouts,
         createdAt: row.created_at || new Date().toISOString()
       };
@@ -1924,6 +1933,9 @@ export const db = {
     }
     if (account.bankName) {
       phone += ` [BANK:${account.bankName}]`;
+    }
+    if (account.stripeConnectAccountId) {
+      phone += ` [STRIPEACCT:${account.stripeConnectAccountId}]`;
     }
     if (account.payouts && account.payouts.length > 0) {
       phone += ` [PAYOUTS:${encodeURIComponent(JSON.stringify(account.payouts))}]`;
@@ -1955,6 +1967,9 @@ export const db = {
     }
     if (account.bankName) {
       phone += ` [BANK:${account.bankName}]`;
+    }
+    if (account.stripeConnectAccountId) {
+      phone += ` [STRIPEACCT:${account.stripeConnectAccountId}]`;
     }
     if (account.payouts && account.payouts.length > 0) {
       phone += ` [PAYOUTS:${encodeURIComponent(JSON.stringify(account.payouts))}]`;

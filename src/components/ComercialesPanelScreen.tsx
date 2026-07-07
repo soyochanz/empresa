@@ -301,7 +301,7 @@ export default function ComercialesPanelScreen({
   const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
   const myBenefitsPotential = myTotalSalesVolume * (myCommissionPercentage / 100);
   const myBenefitsPendingOnClientPayment = Math.max(0, myBenefitsPotential - myBenefitsEarned);
-  const myBenefitsPaidOut = (comercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
+  const myBenefitsPaidOut = (comercial.payouts || []).filter(p => p.status === 'completed' && p.stripeConnectAccountId).reduce((sum, p) => sum + p.amount, 0);
   const myBenefitsReadyToPayout = Math.max(0, myBenefitsEarned - myBenefitsPaidOut);
 
   // Status distributions for chart

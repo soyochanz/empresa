@@ -166,6 +166,7 @@ export interface PayoutTransaction {
   bankAccount: string;
   bankName?: string;
   stripeTransferId?: string;
+  stripeConnectAccountId?: string;
 }
 
 export interface ComercialAccount {
@@ -179,6 +180,7 @@ export interface ComercialAccount {
   iban?: string;
   bic?: string;
   bankName?: string;
+  stripeConnectAccountId?: string;
   payouts?: PayoutTransaction[];
 }
 

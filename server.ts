@@ -10,7 +10,7 @@ import fs from "fs";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 const DEFAULT_SUPABASE_URL = "https://czyrolmczcwtexxgxzrg.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6eXJvbG1jemN3dGV4eGd4enJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzOTcxMjEsImV4cCI6MjA5NDk3MzEyMX0.OO17A0soth1VcIQQm6p02Po8uWPtP8GggfnmUXzGvp4";
@@ -350,6 +350,87 @@ app.post("/api/stripe/create-portal-session", async (req, res) => {
     res.json({ url: session.url });
   } catch (error: any) {
     console.error("Error creating stripe portal session:", error);
+    res.status(500).json({ error: error?.message || "Internal Server Error" });
+  }
+});
+
+app.post("/api/stripe/create-connect-account", async (req, res) => {
+  try {
+    const { comercialId, comercialName, comercialEmail, existingAccountId } = req.body;
+
+    if (!comercialId || !comercialEmail) {
+      return res.status(400).json({ error: "comercialId and comercialEmail are required" });
+    }
+
+    const stripe = getStripe();
+    const appUrl = getAppUrl(req);
+    const accountId = existingAccountId || (await stripe.accounts.create({
+      type: "express",
+      country: "ES",
+      email: comercialEmail,
+      business_type: "individual",
+      capabilities: {
+        transfers: { requested: true },
+      },
+      metadata: {
+        comercialId,
+        comercialName: comercialName || "",
+      },
+    })).id;
+
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${appUrl}?stripe_connect=refresh&comercial_id=${comercialId}`,
+      return_url: `${appUrl}?stripe_connect=success&comercial_id=${comercialId}&stripe_account_id=${accountId}`,
+      type: "account_onboarding",
+    });
+
+    res.json({ accountId, url: accountLink.url });
+  } catch (error: any) {
+    console.error("Error creating Stripe Connect account:", error);
+    res.status(500).json({ error: error?.message || "Internal Server Error" });
+  }
+});
+
+app.post("/api/stripe/create-comercial-transfer", async (req, res) => {
+  try {
+    const { comercialId, comercialName, amount, stripeConnectAccountId } = req.body;
+
+    if (!comercialId || !amount || !stripeConnectAccountId) {
+      return res.status(400).json({ error: "comercialId, amount, and stripeConnectAccountId are required" });
+    }
+
+    const amountCents = Math.round(Number(amount) * 100);
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      return res.status(400).json({ error: "amount must be a positive number" });
+    }
+
+    const stripe = getStripe();
+    const account = await stripe.accounts.retrieve(stripeConnectAccountId);
+    if (account.capabilities?.transfers !== "active") {
+      return res.status(400).json({
+        error: "La cuenta Stripe Connect del comercial todavia no tiene transfers activos. Debe completar el onboarding de Stripe.",
+      });
+    }
+
+    const transfer = await stripe.transfers.create({
+      amount: amountCents,
+      currency: "eur",
+      destination: stripeConnectAccountId,
+      description: `Liquidacion de comisiones - ${comercialName || comercialId}`,
+      metadata: {
+        comercialId,
+        comercialName: comercialName || "",
+      },
+    });
+
+    res.json({
+      transferId: transfer.id,
+      amount: amountCents / 100,
+      destination: stripeConnectAccountId,
+    });
+  } catch (error: any) {
+    console.error("Error creating Stripe transfer:", error);
     res.status(500).json({ error: error?.message || "Internal Server Error" });
   }
 });
