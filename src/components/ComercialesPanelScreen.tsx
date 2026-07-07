@@ -708,6 +708,21 @@ export default function ComercialesPanelScreen({
                         <RefreshCw className={`w-3 h-3 ${stripeConnectLoading ? 'animate-spin' : ''}`} />
                         <span>Actualizar estado Stripe</span>
                       </button>
+                      {(!comercial.stripeOnboardingCompleted || !comercial.stripePayoutsEnabled) && (
+                        <button
+                          type="button"
+                          onClick={handleConnectStripe}
+                          disabled={stripeConnectLoading}
+                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 border border-emerald-500/20 rounded-lg text-[10px] text-white font-bold flex items-center justify-center gap-1.5"
+                        >
+                          {stripeConnectLoading ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <ExternalLink className="w-3 h-3" />
+                          )}
+                          <span>Continuar configuracion Stripe</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <button

@@ -1000,7 +1000,7 @@ export default function ComercialesAdminScreen({
                           )}
                         </div>
 
-                        {!currentComercial.stripeConnectAccountId && (
+                        {(!currentComercial.stripeConnectAccountId || !currentComercial.stripePayoutsEnabled) && (
                           <button
                             type="button"
                             onClick={() => handleConnectComercialStripe(currentComercial)}
@@ -1012,7 +1012,7 @@ export default function ComercialesAdminScreen({
                             ) : (
                               <CreditCard className="w-4 h-4" />
                             )}
-                            <span>Conectar comercial con Stripe</span>
+                            <span>{currentComercial.stripeConnectAccountId ? 'Continuar onboarding Stripe' : 'Conectar comercial con Stripe'}</span>
                           </button>
                         )}
 
