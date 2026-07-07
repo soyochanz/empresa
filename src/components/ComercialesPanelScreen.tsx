@@ -342,7 +342,7 @@ export default function ComercialesPanelScreen({
   const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
   const myBenefitsPotential = myTotalSalesVolume * (myCommissionPercentage / 100);
   const myBenefitsPendingOnClientPayment = Math.max(0, myBenefitsPotential - myBenefitsEarned);
-  const myBenefitsPaidOut = (comercial.payouts || []).filter(p => p.status === 'completed' && p.stripeConnectAccountId).reduce((sum, p) => sum + p.amount, 0);
+  const myBenefitsPaidOut = (comercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
   const myBenefitsReadyToPayout = Math.max(0, myBenefitsEarned - myBenefitsPaidOut);
 
   // Status distributions for chart
@@ -655,7 +655,11 @@ export default function ComercialesPanelScreen({
                     <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
                     <span className="text-[10px] uppercase font-mono font-bold text-indigo-400 tracking-wider">Stripe Direct Payouts</span>
                   </div>
-                  {comercial.stripeConnectAccountId ? (
+                  {true ? (
+                    <div className="p-3 bg-slate-900/60 border border-white/5 rounded-xl text-[10px] text-slate-400 leading-normal">
+                      Las comisiones se registran en Althera como liquidaciones manuales. El pago real lo realizara administracion fuera de la plataforma.
+                    </div>
+                  ) : comercial.stripeConnectAccountId ? (
                     <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[10px] text-emerald-400 font-mono break-all">
                       Stripe Connect vinculado: {comercial.stripeConnectAccountId}
                     </div>
