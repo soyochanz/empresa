@@ -189,7 +189,8 @@ export default function ColdCallingScreen({
       contactedByComercialEmail: convertingLead.assignedToEmail !== 'unassigned' ? convertingLead.assignedToEmail : undefined,
       contactedByComercialName: convertingLead.assignedToName && convertingLead.assignedToName !== 'Sin asignar' ? convertingLead.assignedToName : undefined,
       originalLeadNotes: convertingLead.notes || undefined,
-      notes: convertingLead.notes ? `[Historial de llamada] ${convertingLead.notes}` : undefined
+      notes: convertingLead.notes ? `[Historial de llamada] ${convertingLead.notes}` : undefined,
+      callsLog: convertingLead.callsLog || []
     };
 
     onAddContact(newContact);
@@ -212,7 +213,6 @@ export default function ColdCallingScreen({
     // Create Invoice Items
     const invoiceItems: InvoiceItem[] = [];
     for (let i = 1; i <= convInstallments; i++) {
-      const isFirst = i === 1;
       const txId = 'tx_cc_' + Math.random().toString(36).substring(2, 9) + '_' + i;
       
       invoiceItems.push({
@@ -221,7 +221,7 @@ export default function ColdCallingScreen({
         quantity: 1,
         unitPrice: pricePerInstallment,
         total: pricePerInstallment,
-        isPending: !isFirst,
+        isPending: true,
         pendingTxId: txId,
         paymentMethod: 'transfer'
       });
@@ -233,8 +233,8 @@ export default function ColdCallingScreen({
         category: 'Ventas',
         amount: pricePerInstallment,
         date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
-        description: `${convConcept} (${convCompany}) - Plazo ${i} de ${convInstallments} ${!isFirst ? '(Pendiente)' : '(Inicial)'}`,
-        status: isFirst ? 'paid' : 'pending',
+        description: `${convConcept} (${convCompany}) - Plazo ${i} de ${convInstallments} (Pendiente)`,
+        status: 'pending',
         paymentMethod: 'transfer',
         invoiceId: invoiceId,
         comercialId: matchedCom?.id,
@@ -257,7 +257,7 @@ export default function ColdCallingScreen({
       clientEmail: convEmail.trim(),
       date: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: convInstallments === 1 ? 'paid' : 'sent',
+      status: 'sent',
       items: invoiceItems,
       subtotal: convSalePrice,
       taxPercentage: 0,

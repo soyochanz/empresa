@@ -534,6 +534,7 @@ export const db = {
     let stripeSubscriptionStatus: 'active' | 'trialing' | 'canceled' | 'past_due' | 'none' | undefined = undefined;
     let stripeSubscriptionPrice: string | undefined = undefined;
     let stripeSubscriptionInterval: string | undefined = undefined;
+    let callsLog: any[] | undefined = undefined;
     
     if (parts.length > 1) {
       const metadataLines = parts[1].split('\n');
@@ -573,6 +574,13 @@ export const db = {
           }
           if (key === 'stripeSubscriptionPrice') stripeSubscriptionPrice = val || undefined;
           if (key === 'stripeSubscriptionInterval') stripeSubscriptionInterval = val || undefined;
+          if (key === 'callsLog') {
+            try {
+              callsLog = JSON.parse(decodeURIComponent(val));
+            } catch (e) {
+              console.error('Error parsing callsLog from metadata', e);
+            }
+          }
           
           try {
             if (key === 'notes') notes = decodeURIComponent(val) || undefined;
@@ -616,6 +624,7 @@ export const db = {
       stripeSubscriptionStatus,
       stripeSubscriptionPrice,
       stripeSubscriptionInterval,
+      callsLog,
       hostingCredentials: cleanCredentials
     };
   },
@@ -644,7 +653,8 @@ export const db = {
       contact.stripeSubscriptionId ||
       contact.stripeSubscriptionStatus ||
       contact.stripeSubscriptionPrice ||
-      contact.stripeSubscriptionInterval
+      contact.stripeSubscriptionInterval ||
+      contact.callsLog
     ) {
       metadataStr = '\n\n---METADATA---';
       if (contact.color) metadataStr += `\ncolor: ${contact.color}`;
@@ -668,6 +678,7 @@ export const db = {
       if (contact.stripeSubscriptionStatus) metadataStr += `\nstripeSubscriptionStatus: ${contact.stripeSubscriptionStatus}`;
       if (contact.stripeSubscriptionPrice) metadataStr += `\nstripeSubscriptionPrice: ${contact.stripeSubscriptionPrice}`;
       if (contact.stripeSubscriptionInterval) metadataStr += `\nstripeSubscriptionInterval: ${contact.stripeSubscriptionInterval}`;
+      if (contact.callsLog) metadataStr += `\ncallsLog: ${encodeURIComponent(JSON.stringify(contact.callsLog))}`;
     }
     const cleanCredentials = (contact.hostingCredentials || '').split('\n\n---METADATA---')[0];
     

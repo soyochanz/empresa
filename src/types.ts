@@ -48,6 +48,7 @@ export interface ClientContact {
   stripeSubscriptionStatus?: 'active' | 'trialing' | 'canceled' | 'past_due' | 'none';
   stripeSubscriptionPrice?: string;
   stripeSubscriptionInterval?: string;
+  callsLog?: CallLogItem[];
 }
 
 export interface CalendarEvent {

@@ -116,6 +116,10 @@ export default function CrmScreen({
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Connected Accounting & Invoice state definitions
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
+
   // Stripe Subscription States
   const [stripeAmount, setStripeAmount] = useState('50');
   const [stripeInterval, setStripeInterval] = useState<'month' | 'year' | 'once'>('month');
@@ -142,14 +146,45 @@ export default function CrmScreen({
     setStripeError('');
     setStripeEmailInput(selectedContact?.email || '');
 
-    // Reset automatic installments generator states
-    setInstTotalAmount('1500');
-    setInstCount(3);
-    setInstConcept('Servicios de Desarrollo y Consultoría');
+    // Reset and dynamically set automatic installments generator states based on pending payments
     setInstError('');
     setInstGeneratedUrl('');
     setInstCopied(false);
-  }, [selectedContactId, selectedContact]);
+
+    if (selectedContact) {
+      const clientInvoices = invoices.filter(inv => {
+        const matchesId = inv.clientId === selectedContact.id;
+        const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
+        const matchesName = inv.clientName?.toLowerCase().includes(selectedContact.name?.toLowerCase() || '');
+        return matchesId || matchesEmail || matchesName;
+      });
+
+      const clientTransactions = transactions.filter(t => {
+        const invoiceMatches = clientInvoices.some(inv => inv.id === t.invoiceId);
+        if (invoiceMatches) return true;
+        const containsName = t.description.toLowerCase().includes(selectedContact.name.toLowerCase());
+        const containsCompany = selectedContact.company ? t.description.toLowerCase().includes(selectedContact.company.toLowerCase()) : false;
+        return containsName || containsCompany;
+      });
+
+      const pendingTxs = clientTransactions.filter(t => t.status === 'pending');
+      if (pendingTxs.length > 0) {
+        const pendingSum = pendingTxs.reduce((sum, t) => sum + t.amount, 0);
+        setInstTotalAmount(pendingSum.toString());
+        setInstCount(pendingTxs.length === 2 ? 2 : 3);
+        const cleanDesc = pendingTxs[0].description.split(' - ')[0].split(' (')[0];
+        setInstConcept(cleanDesc || 'Servicios de Desarrollo y Consultoría');
+      } else {
+        setInstTotalAmount('');
+        setInstCount(3);
+        setInstConcept('Servicios de Desarrollo y Consultoría');
+      }
+    } else {
+      setInstTotalAmount('');
+      setInstCount(3);
+      setInstConcept('Servicios de Desarrollo y Consultoría');
+    }
+  }, [selectedContactId, selectedContact, transactions, invoices]);
 
   // Dynamic Stripe link generation states for individual pending transactions/installments
   const [activeTxStripeUrl, setActiveTxStripeUrl] = useState<{[txId: string]: string}>({});
@@ -211,7 +246,6 @@ export default function CrmScreen({
     // Create Invoice Items
     const invoiceItems: any[] = [];
     for (let i = 1; i <= convInstallments; i++) {
-      const isFirst = i === 1;
       const txId = 'tx_crm_' + Math.random().toString(36).substring(2, 9) + '_' + i;
       
       invoiceItems.push({
@@ -220,7 +254,7 @@ export default function CrmScreen({
         quantity: 1,
         unitPrice: pricePerInstallment,
         total: pricePerInstallment,
-        isPending: !isFirst,
+        isPending: true,
         pendingTxId: txId,
         paymentMethod: 'transfer'
       });
@@ -232,8 +266,8 @@ export default function CrmScreen({
         category: 'Ventas',
         amount: pricePerInstallment,
         date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
-        description: `${convConcept} (${convertingLead.company || 'Empresa'}) - Plazo ${i} de ${convInstallments} ${!isFirst ? '(Pendiente)' : '(Inicial)'}`,
-        status: isFirst ? 'paid' : 'pending',
+        description: `${convConcept} (${convertingLead.company || 'Empresa'}) - Plazo ${i} de ${convInstallments} (Pendiente)`,
+        status: 'pending',
         paymentMethod: 'transfer',
         invoiceId: invoiceId,
         comercialId: matchedCom?.id,
@@ -256,7 +290,7 @@ export default function CrmScreen({
       clientEmail: convertingLead.email,
       date: new Date().toISOString().split('T')[0],
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      status: convInstallments === 1 ? 'paid' : 'sent',
+      status: 'sent',
       items: invoiceItems,
       subtotal: convSalePrice,
       taxPercentage: 0,
@@ -350,8 +384,6 @@ export default function CrmScreen({
   };
 
   // Connected Accounting & Invoice state definitions
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
   const [loadingFinancials, setLoadingFinancials] = useState(false);
   const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -359,6 +391,7 @@ export default function CrmScreen({
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [paymentDesc, setPaymentDesc] = useState('');
   const [paymentInvoiceId, setPaymentInvoiceId] = useState('general');
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'pending'>('paid');
 
   const fetchFinancials = async () => {
     setLoadingFinancials(true);
@@ -481,7 +514,7 @@ export default function CrmScreen({
         date: paymentDate,
         description: paymentDesc.trim() || `Cobro Cliente: ${selectedContact.name} - ${selectedContact.company || ''}`,
         isRecurring: false,
-        status: 'paid',
+        status: paymentStatus,
         paymentMethod: paymentMethod,
         invoiceId: finalInvoiceId
       };
@@ -538,36 +571,38 @@ export default function CrmScreen({
         }
       }
 
-      // 2. If a specific invoice is targeted, mark it as paid!
-      if (finalInvoiceId) {
-        const targetInvoice = invoices.find(i => i.id === finalInvoiceId);
-        if (targetInvoice) {
-          const updatedInv: Invoice = { ...targetInvoice, status: 'paid' };
-          await db.updateFinanceInvoice(updatedInv);
-        }
-      } else {
-        // 3. Automated payment allocation (Auto-Matching pending invoices!)
-        // Find pending invoices of this client and automatically apply this payment to cover them
-        const clientPendingInvoices = invoices
-          .filter(inv => {
-            const matchesId = inv.clientId === selectedContact.id;
-            const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
-            return (matchesId || matchesEmail) && inv.status !== 'paid';
-          })
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      // 2. If payment is paid, match/settle invoices
+      if (paymentStatus === 'paid') {
+        if (finalInvoiceId) {
+          const targetInvoice = invoices.find(i => i.id === finalInvoiceId);
+          if (targetInvoice) {
+            const updatedInv: Invoice = { ...targetInvoice, status: 'paid' };
+            await db.updateFinanceInvoice(updatedInv);
+          }
+        } else {
+          // 3. Automated payment allocation (Auto-Matching pending invoices!)
+          // Find pending invoices of this client and automatically apply this payment to cover them
+          const clientPendingInvoices = invoices
+            .filter(inv => {
+              const matchesId = inv.clientId === selectedContact.id;
+              const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
+              return (matchesId || matchesEmail) && inv.status !== 'paid';
+            })
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        let remainingPayment = amt;
-        for (const pendingInv of clientPendingInvoices) {
-          if (remainingPayment >= pendingInv.total) {
-            // This payment fully covers this pending invoice!
-            const updatedInv: Invoice = { ...pendingInv, status: 'paid' };
-            await db.updateFinanceInvoice(updatedInv);
-            remainingPayment -= pendingInv.total;
-          } else if (remainingPayment > 0) {
-            // Partial coverage is marked as paid as well under the simplified flow
-            const updatedInv: Invoice = { ...pendingInv, status: 'paid' };
-            await db.updateFinanceInvoice(updatedInv);
-            break;
+          let remainingPayment = amt;
+          for (const pendingInv of clientPendingInvoices) {
+            if (remainingPayment >= pendingInv.total) {
+              // This payment fully covers this pending invoice!
+              const updatedInv: Invoice = { ...pendingInv, status: 'paid' };
+              await db.updateFinanceInvoice(updatedInv);
+              remainingPayment -= pendingInv.total;
+            } else if (remainingPayment > 0) {
+              // Partial coverage is marked as paid as well under the simplified flow
+              const updatedInv: Invoice = { ...pendingInv, status: 'paid' };
+              await db.updateFinanceInvoice(updatedInv);
+              break;
+            }
           }
         }
       }
@@ -3341,6 +3376,38 @@ export default function CrmScreen({
                     Efectivo
                   </button>
                 </div>
+              </div>
+
+              {/* Payment Status (Realizado vs Pendiente) */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Estado del Cobro</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentStatus('paid')}
+                    className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+                      paymentStatus === 'paid'
+                        ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
+                        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
+                    }`}
+                  >
+                    Pagado / Realizado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentStatus('pending')}
+                    className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+                      paymentStatus === 'pending'
+                        ? 'bg-amber-500/25 border-amber-500 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]'
+                        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
+                    }`}
+                  >
+                    Pendiente (Cobro Pendiente)
+                  </button>
+                </div>
+                <p className="text-[9px] text-slate-500 font-sans italic leading-tight mt-1">
+                  Nota: Para cobrar un nuevo servicio, primero regístralo como "Pendiente". Así aparecerá por defecto en el panel de plazos y links de Stripe.
+                </p>
               </div>
 
               {/* Invoice to Settle */}
