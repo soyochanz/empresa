@@ -26,8 +26,12 @@ import {
   PlusCircle,
   TrendingUp,
   Cpu,
-  Layers2
+  Layers2,
+  Copy,
+  Palette,
+  Image
 } from 'lucide-react';
+import { DemoWebsiteConfig, DemoWebsiteTemplate, parseDemoWebsiteConfig, TEMPLATE_BANNERS, TEMPLATE_DEFAULTS } from './WebsitePreviewScreen';
 
 interface DeveloperHubScreenProps {
   contacts: ClientContact[];
@@ -87,6 +91,7 @@ export default function DeveloperHubScreen({
   // Quick adds
   const [newChecklistText, setNewChecklistText] = useState('');
   const [newCustomTech, setNewCustomTech] = useState('');
+  const [copiedWebsiteLink, setCopiedWebsiteLink] = useState(false);
 
   // Find the selected contact
   const selectedContact = contacts.find(c => c.id === selectedContactId) || null;
@@ -196,6 +201,26 @@ export default function DeveloperHubScreen({
     }
     setNewCustomTech('');
   };
+
+  const updateDemoWebsite = (contact: ClientContact, patch: Partial<DemoWebsiteConfig>) => {
+    const current = parseDemoWebsiteConfig(contact);
+    const next = { ...current, ...patch };
+    onUpdateContact({
+      ...contact,
+      devWebsiteConfig: JSON.stringify(next),
+      website: `${window.location.origin}/web/${encodeURIComponent(contact.id)}`
+    });
+  };
+
+  const handleSelectWebsiteTemplate = (contact: ClientContact, template: DemoWebsiteTemplate) => {
+    updateDemoWebsite(contact, {
+      ...TEMPLATE_DEFAULTS[template],
+      template,
+      bannerUrl: TEMPLATE_BANNERS[template]
+    });
+  };
+
+  const getWebsiteShareUrl = (contact: ClientContact) => `${window.location.origin}/web/${encodeURIComponent(contact.id)}`;
 
   // Generate automated stack blueprint recommendation
   const handleApplyAIPreset = (contact: ClientContact, type: 'saas' | 'ecommerce' | 'corporate' | 'mobile') => {
@@ -739,6 +764,150 @@ export default function DeveloperHubScreen({
                   })}
                 </div>
               </div>
+
+              {/* Demo Website Generator */}
+              {(() => {
+                const websiteConfig = parseDemoWebsiteConfig(selectedContact);
+                const shareUrl = getWebsiteShareUrl(selectedContact);
+                return (
+                  <div className="p-4 bg-emerald-500/[0.035] border border-emerald-500/10 rounded-2xl space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold">
+                          <Globe className="w-3.5 h-3.5" />
+                          <span>Generador de Web Demo</span>
+                        </div>
+                        <p className="text-[9px] text-slate-500 leading-relaxed mt-1">
+                          Asocia una plantilla al cliente y comparte este enlace con el call caller.
+                        </p>
+                      </div>
+                      <a
+                        href={shareUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/20 text-[9px] rounded-lg text-emerald-300 font-bold flex items-center gap-1 transition"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Ver
+                      </a>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { key: 'peluqueria' as const, label: 'Peluqueria' },
+                        { key: 'restaurante' as const, label: 'Restaurante' },
+                        { key: 'mantenimiento' as const, label: 'Mantenimiento' }
+                      ].map(item => {
+                        const active = websiteConfig.template === item.key;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => handleSelectWebsiteTemplate(selectedContact, item.key)}
+                            className={`py-2 rounded-xl text-[9px] font-bold border transition cursor-pointer ${
+                              active
+                                ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
+                                : 'bg-black/25 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-white/5'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] uppercase tracking-wider font-bold text-slate-500 font-mono block">Nombre web</label>
+                        <input
+                          value={websiteConfig.businessName}
+                          onChange={(e) => updateDemoWebsite(selectedContact, { businessName: e.target.value })}
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] uppercase tracking-wider font-bold text-slate-500 font-mono flex items-center gap-1">
+                          <Palette className="w-3 h-3" />
+                          Color
+                        </label>
+                        <input
+                          type="color"
+                          value={websiteConfig.brandColor}
+                          onChange={(e) => updateDemoWebsite(selectedContact, { brandColor: e.target.value })}
+                          className="w-full h-[34px] bg-black/40 border border-white/10 rounded-xl px-2 py-1 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[9px] uppercase tracking-wider font-bold text-slate-500 font-mono flex items-center gap-1">
+                        <Image className="w-3 h-3" />
+                        Logo y banner
+                      </label>
+                      <input
+                        value={websiteConfig.logoUrl}
+                        onChange={(e) => updateDemoWebsite(selectedContact, { logoUrl: e.target.value })}
+                        placeholder="URL del logo..."
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500"
+                      />
+                      <input
+                        value={websiteConfig.bannerUrl}
+                        onChange={(e) => updateDemoWebsite(selectedContact, { bannerUrl: e.target.value })}
+                        placeholder="URL del banner..."
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <input
+                        value={websiteConfig.address}
+                        onChange={(e) => updateDemoWebsite(selectedContact, { address: e.target.value })}
+                        placeholder="Direccion del negocio..."
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500"
+                      />
+                      <input
+                        value={websiteConfig.phone}
+                        onChange={(e) => updateDemoWebsite(selectedContact, { phone: e.target.value })}
+                        placeholder="Telefono de contacto..."
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <textarea
+                      value={websiteConfig.headline}
+                      onChange={(e) => updateDemoWebsite(selectedContact, { headline: e.target.value })}
+                      rows={2}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500"
+                    />
+                    <textarea
+                      value={websiteConfig.subtitle}
+                      onChange={(e) => updateDemoWebsite(selectedContact, { subtitle: e.target.value })}
+                      rows={2}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500"
+                    />
+
+                    <div className="flex gap-2">
+                      <input
+                        value={shareUrl}
+                        readOnly
+                        className="flex-1 bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-400 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(shareUrl);
+                          setCopiedWebsiteLink(true);
+                          setTimeout(() => setCopiedWebsiteLink(false), 2000);
+                        }}
+                        className="px-3 py-2 bg-neutral-900 border border-white/10 hover:bg-neutral-800 rounded-xl text-[10px] font-bold text-slate-200 flex items-center gap-1.5"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        {copiedWebsiteLink ? 'Copiado' : 'Copiar'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* AI Auto-Stack Blueprint suggestions */}
               <div className="p-4 bg-violet-600/[0.04] border border-violet-500/10 rounded-2xl space-y-2.5">

@@ -62,6 +62,22 @@ interface FinanceScreenProps {
 
 const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
 
+const getCleanBillingConcept = (description?: string): string => {
+  return (description || '')
+    .replace(/^Cobro Pendiente:\s*/i, '')
+    .replace(/^Ingreso Facturado:\s*[^-]+-\s*/i, '')
+    .replace(/\s*\([^)]*\)\s*-\s*Plazo\s+\d+\s+de\s+\d+/i, '')
+    .replace(/\s*-\s*Plazo\s+\d+\s+de\s+\d+/i, '')
+    .replace(/\s*\((Pendiente|Cobro Automatico programado|Cobro AutomÃ¡tico programado|Ingreso Procesado|Cargo Procesado)\)/gi, '')
+    .trim();
+};
+
+const getStripeDashboardUrl = (sessionId?: string): string | null => {
+  if (!sessionId || sessionId.includes('_mock_')) return null;
+  const modePath = sessionId.startsWith('cs_live_') ? '' : '/test';
+  return `https://dashboard.stripe.com${modePath}/checkout/sessions/${sessionId}`;
+};
+
 function getNextPaymentDate(startDateStr: string, period?: string): string {
   const start = new Date(startDateStr);
   if (isNaN(start.getTime())) return 'N/A';
@@ -177,6 +193,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Stripe Error');
+      const updatedItem = { ...item, stripeCheckoutUrl: data.url, stripeCheckoutSessionId: data.sessionId };
+      await db.updateFinanceTransaction(updatedItem);
+      setTransactions(prev => prev.map(t => t.id === item.id ? updatedItem : t));
       setActiveRecStripeUrl(prev => ({ ...prev, [item.id]: data.url }));
     } catch (err) {
       console.warn("Stripe key missing or error, generating simulated recurring checkout URL", err);
@@ -189,6 +208,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
       const period = (item.recurrencePeriod as any) === 'weekly' || (item.recurrencePeriod as any) === 'semanal' ? 'week' : 'month';
       const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${matchedContact?.id || 'c2'}&amount=${item.amount}&interval=${period}&stripe_session_id=cs_test_mock_${item.id}&simulated=true`;
+      const updatedItem = { ...item, stripeCheckoutUrl: simulatedUrl, stripeCheckoutSessionId: `cs_test_mock_${item.id}` };
+      try {
+        await db.updateFinanceTransaction(updatedItem);
+        setTransactions(prev => prev.map(t => t.id === item.id ? updatedItem : t));
+      } catch (saveErr) {
+        console.error('Could not persist recurring Stripe URL', saveErr);
+      }
       setActiveRecStripeUrl(prev => ({ ...prev, [item.id]: simulatedUrl }));
     } finally {
       setRecStripeLoading(prev => ({ ...prev, [item.id]: false }));
@@ -2141,6 +2167,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                       };
                       const tagStyle = catColors[t.category] || 'bg-white/5 text-slate-300 border-white/10';
                       const linkedInv = getLinkedInvoice(t);
+                      const stripeDashboardUrl = getStripeDashboardUrl(t.stripeCheckoutSessionId);
 
                       return (
                         <tr 
@@ -2157,7 +2184,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                                 {t.id}
                               </span>
                               <span className="font-bold text-white text-xs block leading-snug group-hover:text-emerald-400 transition-colors">
-                                {t.description}
+                                {getCleanBillingConcept(t.description)}
                               </span>
                               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                 {linkedInv && (
@@ -2178,6 +2205,19 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                                     <CreditCard className="w-2.5 h-2.5" />
                                     <span>Procesado por Stripe</span>
                                   </span>
+                                )}
+                                {stripeDashboardUrl && (
+                                  <a
+                                    href={stripeDashboardUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/25 px-1.5 py-0.5 rounded-md"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title="Ver pago en Stripe"
+                                  >
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                    <span>Ver en Stripe</span>
+                                  </a>
                                 )}
                                 {t.paymentMethod && (
                                   <span className={`inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded-md select-none ${
@@ -2643,7 +2683,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                                 )}
                               </div>
                               <span className={`truncate text-[10px] leading-tight ${!it.isPending ? 'line-through text-slate-500' : 'font-medium text-slate-200'}`}>
-                                {it.description}
+                                {getCleanBillingConcept(it.description)}
                               </span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -4040,7 +4080,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                         <tr key={it.id || idx} className="text-[11px] text-slate-300">
                           <td className="p-3 font-medium text-white">
                             <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 flex-wrap">
-                              <span>{it.description}</span>
+                              <span>{getCleanBillingConcept(it.description)}</span>
                               {it.isPending ? (
                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-mono font-bold bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.2 rounded text-amber-400 select-none leading-none">
                                   <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />

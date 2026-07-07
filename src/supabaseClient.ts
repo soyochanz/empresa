@@ -567,6 +567,7 @@ export const db = {
     let devTechStack: string[] | undefined = undefined;
     let devChecklist: string | undefined = undefined;
     let devNotes: string | undefined = undefined;
+    let devWebsiteConfig: string | undefined = undefined;
     
     // Stripe metadata properties
     let stripeCustomerId: string | undefined = undefined;
@@ -627,8 +628,9 @@ export const db = {
             if (key === 'contactedByComercialName') contactedByComercialName = decodeURIComponent(val) || undefined;
             if (key === 'contactedByComercialEmail') contactedByComercialEmail = val || undefined;
             if (key === 'originalLeadNotes') originalLeadNotes = decodeURIComponent(val) || undefined;
-            if (key === 'devChecklist') devChecklist = decodeURIComponent(val) || undefined;
-            if (key === 'devNotes') devNotes = decodeURIComponent(val) || undefined;
+          if (key === 'devChecklist') devChecklist = decodeURIComponent(val) || undefined;
+          if (key === 'devNotes') devNotes = decodeURIComponent(val) || undefined;
+          if (key === 'devWebsiteConfig') devWebsiteConfig = decodeURIComponent(val) || undefined;
           } catch (e) {
             if (key === 'notes') notes = val || undefined;
             if (key === 'contactedByComercialName') contactedByComercialName = val || undefined;
@@ -636,6 +638,7 @@ export const db = {
             if (key === 'originalLeadNotes') originalLeadNotes = val || undefined;
             if (key === 'devChecklist') devChecklist = val || undefined;
             if (key === 'devNotes') devNotes = val || undefined;
+            if (key === 'devWebsiteConfig') devWebsiteConfig = val || undefined;
           }
         }
       });
@@ -659,6 +662,7 @@ export const db = {
       devTechStack,
       devChecklist,
       devNotes,
+      devWebsiteConfig,
       stripeCustomerId,
       stripeSubscriptionId,
       stripeSubscriptionStatus,
@@ -689,6 +693,7 @@ export const db = {
       contact.devTechStack ||
       contact.devChecklist ||
       contact.devNotes ||
+      contact.devWebsiteConfig ||
       contact.stripeCustomerId ||
       contact.stripeSubscriptionId ||
       contact.stripeSubscriptionStatus ||
@@ -713,6 +718,7 @@ export const db = {
       if (contact.devTechStack) metadataStr += `\ndevTechStack: ${contact.devTechStack.join(',')}`;
       if (contact.devChecklist) metadataStr += `\ndevChecklist: ${encodeURIComponent(contact.devChecklist)}`;
       if (contact.devNotes) metadataStr += `\ndevNotes: ${encodeURIComponent(contact.devNotes)}`;
+      if (contact.devWebsiteConfig) metadataStr += `\ndevWebsiteConfig: ${encodeURIComponent(contact.devWebsiteConfig)}`;
       if (contact.stripeCustomerId) metadataStr += `\nstripeCustomerId: ${contact.stripeCustomerId}`;
       if (contact.stripeSubscriptionId) metadataStr += `\nstripeSubscriptionId: ${contact.stripeSubscriptionId}`;
       if (contact.stripeSubscriptionStatus) metadataStr += `\nstripeSubscriptionStatus: ${contact.stripeSubscriptionStatus}`;
@@ -788,6 +794,12 @@ export const db = {
     paymentMethod?: 'cash' | 'transfer';
     firstAmount?: number;
     nextAmount?: number;
+    clientId?: string;
+    stripePlanId?: string;
+    stripeCheckoutUrl?: string;
+    stripeCheckoutSessionId?: string;
+    stripeInstallmentIndex?: number;
+    stripeInstallmentCount?: number;
     invoiceId?: string;
     comercialId?: string;
     comercialEmail?: string;
@@ -802,6 +814,24 @@ export const db = {
     }
     if (metadata.nextAmount !== undefined && metadata.nextAmount !== null) {
       res += ` [NA:${metadata.nextAmount}]`;
+    }
+    if (metadata.clientId) {
+      res += ` [CLIENT:${metadata.clientId}]`;
+    }
+    if (metadata.stripePlanId) {
+      res += ` [STRIPEPLAN:${metadata.stripePlanId}]`;
+    }
+    if (metadata.stripeCheckoutUrl) {
+      res += ` [STRIPEURL:${encodeURIComponent(metadata.stripeCheckoutUrl)}]`;
+    }
+    if (metadata.stripeCheckoutSessionId) {
+      res += ` [STRIPESESSION:${metadata.stripeCheckoutSessionId}]`;
+    }
+    if (metadata.stripeInstallmentIndex !== undefined && metadata.stripeInstallmentIndex !== null) {
+      res += ` [STRIPEIDX:${metadata.stripeInstallmentIndex}]`;
+    }
+    if (metadata.stripeInstallmentCount !== undefined && metadata.stripeInstallmentCount !== null) {
+      res += ` [STRIPECNT:${metadata.stripeInstallmentCount}]`;
     }
     if (metadata.invoiceId) {
       res += ` [INV:${metadata.invoiceId}]`;
@@ -823,6 +853,12 @@ export const db = {
     paymentMethod?: 'cash' | 'transfer';
     firstAmount?: number;
     nextAmount?: number;
+    clientId?: string;
+    stripePlanId?: string;
+    stripeCheckoutUrl?: string;
+    stripeCheckoutSessionId?: string;
+    stripeInstallmentIndex?: number;
+    stripeInstallmentCount?: number;
     invoiceId?: string;
     comercialId?: string;
     comercialEmail?: string;
@@ -832,6 +868,12 @@ export const db = {
     let paymentMethod: 'cash' | 'transfer' | undefined = undefined;
     let firstAmount: number | undefined = undefined;
     let nextAmount: number | undefined = undefined;
+    let clientId: string | undefined = undefined;
+    let stripePlanId: string | undefined = undefined;
+    let stripeCheckoutUrl: string | undefined = undefined;
+    let stripeCheckoutSessionId: string | undefined = undefined;
+    let stripeInstallmentIndex: number | undefined = undefined;
+    let stripeInstallmentCount: number | undefined = undefined;
     let invoiceId: string | undefined = undefined;
     let comercialId: string | undefined = undefined;
     let comercialEmail: string | undefined = undefined;
@@ -840,6 +882,12 @@ export const db = {
     const pmRegex = /\s*\[PM:(cash|transfer)\]/g;
     const faRegex = /\s*\[FA:([\d.]+)\]/g;
     const naRegex = /\s*\[NA:([\d.]+)\]/g;
+    const clientRegex = /\s*\[CLIENT:([^\]]+)\]/g;
+    const stripePlanRegex = /\s*\[STRIPEPLAN:([^\]]+)\]/g;
+    const stripeUrlRegex = /\s*\[STRIPEURL:([^\]]+)\]/g;
+    const stripeSessionRegex = /\s*\[STRIPESESSION:([^\]]+)\]/g;
+    const stripeIdxRegex = /\s*\[STRIPEIDX:(\d+)\]/g;
+    const stripeCntRegex = /\s*\[STRIPECNT:(\d+)\]/g;
     const invRegex = /\s*\[INV:([^\]]+)\]/g;
     const comidRegex = /\s*\[COMID:([^\]]+)\]/g;
     const comemailRegex = /\s*\[COMEMAIL:([^\]]+)\]/g;
@@ -860,6 +908,40 @@ export const db = {
       nextAmount = parseFloat(match[1]);
     }
     cleanDesc = cleanDesc.replace(naRegex, '');
+
+    while ((match = clientRegex.exec(cleanDesc)) !== null) {
+      clientId = match[1];
+    }
+    cleanDesc = cleanDesc.replace(clientRegex, '');
+
+    while ((match = stripePlanRegex.exec(cleanDesc)) !== null) {
+      stripePlanId = match[1];
+    }
+    cleanDesc = cleanDesc.replace(stripePlanRegex, '');
+
+    while ((match = stripeUrlRegex.exec(cleanDesc)) !== null) {
+      try {
+        stripeCheckoutUrl = decodeURIComponent(match[1]);
+      } catch {
+        stripeCheckoutUrl = match[1];
+      }
+    }
+    cleanDesc = cleanDesc.replace(stripeUrlRegex, '');
+
+    while ((match = stripeSessionRegex.exec(cleanDesc)) !== null) {
+      stripeCheckoutSessionId = match[1];
+    }
+    cleanDesc = cleanDesc.replace(stripeSessionRegex, '');
+
+    while ((match = stripeIdxRegex.exec(cleanDesc)) !== null) {
+      stripeInstallmentIndex = parseInt(match[1], 10);
+    }
+    cleanDesc = cleanDesc.replace(stripeIdxRegex, '');
+
+    while ((match = stripeCntRegex.exec(cleanDesc)) !== null) {
+      stripeInstallmentCount = parseInt(match[1], 10);
+    }
+    cleanDesc = cleanDesc.replace(stripeCntRegex, '');
 
     while ((match = invRegex.exec(cleanDesc)) !== null) {
       invoiceId = match[1];
@@ -886,6 +968,12 @@ export const db = {
       paymentMethod,
       firstAmount,
       nextAmount,
+      clientId,
+      stripePlanId,
+      stripeCheckoutUrl,
+      stripeCheckoutSessionId,
+      stripeInstallmentIndex,
+      stripeInstallmentCount,
       invoiceId,
       comercialId,
       comercialEmail,
@@ -920,6 +1008,12 @@ export const db = {
         paymentMethod: decoded.paymentMethod,
         firstAmount: decoded.firstAmount,
         nextAmount: decoded.nextAmount,
+        clientId: decoded.clientId,
+        stripePlanId: decoded.stripePlanId,
+        stripeCheckoutUrl: decoded.stripeCheckoutUrl,
+        stripeCheckoutSessionId: decoded.stripeCheckoutSessionId,
+        stripeInstallmentIndex: decoded.stripeInstallmentIndex,
+        stripeInstallmentCount: decoded.stripeInstallmentCount,
         invoiceId: decoded.invoiceId,
         comercialId: decoded.comercialId,
         comercialEmail: decoded.comercialEmail,
@@ -932,12 +1026,18 @@ export const db = {
 
   async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
     const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
-    const { paymentMethod, firstAmount, nextAmount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
+    const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
 
     const encodedDesc = this._encodeDescription(description, {
       paymentMethod,
       firstAmount,
       nextAmount,
+      clientId,
+      stripePlanId,
+      stripeCheckoutUrl,
+      stripeCheckoutSessionId,
+      stripeInstallmentIndex,
+      stripeInstallmentCount,
       invoiceId,
       comercialId,
       comercialEmail,
@@ -964,12 +1064,18 @@ export const db = {
 
   async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
     const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
-    const { paymentMethod, firstAmount, nextAmount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
+    const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
 
     const encodedDesc = this._encodeDescription(description, {
       paymentMethod,
       firstAmount,
       nextAmount,
+      clientId,
+      stripePlanId,
+      stripeCheckoutUrl,
+      stripeCheckoutSessionId,
+      stripeInstallmentIndex,
+      stripeInstallmentCount,
       invoiceId,
       comercialId,
       comercialEmail,

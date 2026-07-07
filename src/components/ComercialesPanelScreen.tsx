@@ -187,6 +187,23 @@ export default function ComercialesPanelScreen({
 
   // Dynamic calculation: If a lead belongs to a client contact with status === 'Client', we count it as 'Ganado'. Also append converted client contacts.
   const mappedLeadsList = useMemo(() => {
+    const getAdminSaleTotal = (contact: ClientContact): number => {
+      const nameLower = contact.name?.toLowerCase() || '';
+      const companyLower = contact.company?.toLowerCase() || '';
+      const emailLower = contact.email?.toLowerCase() || '';
+
+      const saleTxs = finTransactions.filter(tx => {
+        if (tx.type !== 'income' || tx.isInitialSale !== true) return false;
+        if (tx.clientId === contact.id) return true;
+        const descLower = tx.description?.toLowerCase() || '';
+        return (!!nameLower && descLower.includes(nameLower)) ||
+          (!!companyLower && descLower.includes(companyLower)) ||
+          (!!emailLower && tx.comercialEmail?.toLowerCase() === emailLower);
+      });
+
+      return saleTxs.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    };
+
     // 1. Map existing leads, force to 'Ganado' if matching contact is 'Client'
     const updated = leadsList
       .map(lead => {
@@ -196,18 +213,11 @@ export default function ComercialesPanelScreen({
         );
         
         if (matchingContact && matchingContact.status === 'Client') {
-          const clientTxs = finTransactions.filter(tx => {
-            if (tx.type !== 'income') return false;
-            const descLower = tx.description?.toLowerCase() || '';
-            const nameLower = matchingContact.name?.toLowerCase() || '';
-            const companyLower = matchingContact.company?.toLowerCase() || '';
-            return (nameLower && descLower.includes(nameLower)) || (companyLower && descLower.includes(companyLower));
-          });
-          const totalPaid = clientTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+          const adminSaleTotal = getAdminSaleTotal(matchingContact);
           return {
             ...lead,
             status: 'Ganado' as const,
-            value: lead.value || totalPaid || 1500
+            value: adminSaleTotal || lead.value || 0
           };
         }
         return lead;
@@ -243,14 +253,7 @@ export default function ComercialesPanelScreen({
           );
 
           if (!alreadyExists) {
-            const clientTxs = finTransactions.filter(tx => {
-              if (tx.type !== 'income') return false;
-              const descLower = tx.description?.toLowerCase() || '';
-              const nameLower = c.name?.toLowerCase() || '';
-              const companyLower = c.company?.toLowerCase() || '';
-              return (nameLower && descLower.includes(nameLower)) || (companyLower && descLower.includes(companyLower));
-            });
-            const totalPaid = clientTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+            const adminSaleTotal = getAdminSaleTotal(c);
 
             newLeadsFromClients.push({
               id: 'lead_client_sync_' + c.id,
@@ -261,7 +264,7 @@ export default function ComercialesPanelScreen({
               email: c.email || '',
               phone: c.phone || '',
               status: c.status === 'Client' ? 'Ganado' : 'Pendiente',
-              value: totalPaid || (c as any).estimatedValue || 1500,
+              value: adminSaleTotal || (c as any).estimatedValue || 0,
               notes: c.status === 'Client' ? 'Importado de Cartera de Clientes CRM' : 'Importado de Prospectos (Leads) CRM',
               createdAt: (c as any).createdAt || new Date().toISOString(),
               temperature: c.temperature || 'Caliente'
@@ -292,12 +295,14 @@ export default function ComercialesPanelScreen({
     (tx.comercialId === comercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === comercial.email.toLowerCase()))
   );
   const myInitialTxsPaid = myInitialTxs.filter(tx => tx.status === 'paid');
-  const closuresCount = Math.max(wonLeads.length, myInitialTxs.length);
-  const myCommissionPercentage = getTieredCommission(closuresCount);
+  const myCommissionPercentage = comercial.commissionPercentage ?? getTieredCommission(Math.max(wonLeads.length, myInitialTxs.length));
   const myInitialSalesVolume = myInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const myTotalSalesVolume = myInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
   const myBenefitsPotential = myTotalSalesVolume * (myCommissionPercentage / 100);
+  const myBenefitsPendingOnClientPayment = Math.max(0, myBenefitsPotential - myBenefitsEarned);
+  const myBenefitsPaidOut = (comercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0);
+  const myBenefitsReadyToPayout = Math.max(0, myBenefitsEarned - myBenefitsPaidOut);
 
   // Status distributions for chart
   const statusCounts = {
@@ -619,19 +624,19 @@ export default function ComercialesPanelScreen({
               <div className="lg:col-span-7 space-y-6 text-left">
                 
                 {/* ACCRUED COMISIONES BOX */}
-                <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="space-y-1">
                     <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Total Acumulado</span>
                     <span className="text-xl font-mono font-black text-amber-400 block">
                       {myBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                     </span>
-                    <span className="text-[8px] font-mono text-slate-500 block">Comisión {myCommissionPercentage}% escalonada</span>
+                    <span className="text-[8px] font-mono text-slate-500 block">Comision fijada {myCommissionPercentage}% sobre pagos cobrados</span>
                   </div>
 
                   <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/5 md:pl-6">
                     <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Total Liquidado</span>
                     <span className="text-xl font-mono font-black text-emerald-400 block">
-                      {((comercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0)).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                      {myBenefitsPaidOut.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                     </span>
                     <span className="text-[8px] font-mono text-slate-500 block">Historial de transferencias Stripe</span>
                   </div>
@@ -639,12 +644,19 @@ export default function ComercialesPanelScreen({
                   <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/5 md:pl-6 bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
                     <span className="text-[9px] font-mono text-amber-400 uppercase tracking-widest block font-bold">Pendiente de Liquidar</span>
                     <span className="text-xl font-mono font-black text-white block">
-                      {Math.max(0, myBenefitsEarned - (comercial.payouts || []).filter(p => p.status === 'completed').reduce((sum, p) => sum + p.amount, 0)).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                      {myBenefitsReadyToPayout.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                     </span>
                     <span className="text-[8px] font-mono text-amber-500/60 block">Listo para enviar a cuenta</span>
                   </div>
-                </div>
 
+                  <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/5 md:pl-6 bg-blue-500/5 p-3 rounded-xl border border-blue-500/10">
+                    <span className="text-[9px] font-mono text-blue-300 uppercase tracking-widest block font-bold">Pendiente al Cobrar</span>
+                    <span className="text-xl font-mono font-black text-blue-300 block">
+                      {myBenefitsPendingOnClientPayment.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                    </span>
+                    <span className="text-[8px] font-mono text-blue-400/70 block">Se activara cuando pague el cliente</span>
+                  </div>
+                </div>
                 {/* TRANSACTION HISTORY TABLE */}
                 <div className="bg-[#020205]/40 rounded-2xl border border-white/5 p-6 space-y-4">
                   <div className="flex items-center justify-between">
@@ -783,7 +795,7 @@ export default function ComercialesPanelScreen({
                 {myBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
               </h3>
               <p className="text-[10px] text-slate-400 mt-1">
-                Comisión fijada: <strong className="text-amber-400">{myCommissionPercentage}%</strong> | <span className="text-slate-500">{myBenefitsPotential.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} total</span>
+                Comision fijada: <strong className="text-amber-400">{myCommissionPercentage}%</strong> | <span className="text-blue-300">{myBenefitsPendingOnClientPayment.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} pendiente al cobrar</span>
               </p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 relative z-10">
@@ -1270,3 +1282,5 @@ export default function ComercialesPanelScreen({
     </div>
   );
 }
+
+

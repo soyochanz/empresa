@@ -181,6 +181,23 @@ export default function ComercialesAdminScreen({
 
   // Dynamic calculation: If a lead belongs to a client contact with status === 'Client', we count it as 'Ganado'. Also append converted client contacts.
   const mappedLeadsList = useMemo(() => {
+    const getAdminSaleTotal = (contact: ClientContact): number => {
+      const nameLower = contact.name?.toLowerCase() || '';
+      const companyLower = contact.company?.toLowerCase() || '';
+      const emailLower = contact.email?.toLowerCase() || '';
+
+      const saleTxs = finTransactions.filter(tx => {
+        if (tx.type !== 'income' || tx.isInitialSale !== true) return false;
+        if (tx.clientId === contact.id) return true;
+        const descLower = tx.description?.toLowerCase() || '';
+        return (!!nameLower && descLower.includes(nameLower)) ||
+          (!!companyLower && descLower.includes(companyLower)) ||
+          (!!emailLower && tx.comercialEmail?.toLowerCase() === emailLower);
+      });
+
+      return saleTxs.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    };
+
     // 1. Map existing leads, force to 'Ganado' if matching contact is 'Client'
     const updated = leadsList
       .map(lead => {
@@ -190,18 +207,11 @@ export default function ComercialesAdminScreen({
         );
         
         if (matchingContact && matchingContact.status === 'Client') {
-          const clientTxs = finTransactions.filter(tx => {
-            if (tx.type !== 'income') return false;
-            const descLower = tx.description?.toLowerCase() || '';
-            const nameLower = matchingContact.name?.toLowerCase() || '';
-            const companyLower = matchingContact.company?.toLowerCase() || '';
-            return (nameLower && descLower.includes(nameLower)) || (companyLower && descLower.includes(companyLower));
-          });
-          const totalPaid = clientTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+          const adminSaleTotal = getAdminSaleTotal(matchingContact);
           return {
             ...lead,
             status: 'Ganado' as const,
-            value: lead.value || totalPaid || 1500
+            value: adminSaleTotal || lead.value || 0
           };
         }
         return lead;
@@ -240,14 +250,7 @@ export default function ComercialesAdminScreen({
           );
 
           if (!alreadyExists) {
-            const clientTxs = finTransactions.filter(tx => {
-              if (tx.type !== 'income') return false;
-              const descLower = tx.description?.toLowerCase() || '';
-              const nameLower = c.name?.toLowerCase() || '';
-              const companyLower = c.company?.toLowerCase() || '';
-              return (nameLower && descLower.includes(nameLower)) || (companyLower && descLower.includes(companyLower));
-            });
-            const totalPaid = clientTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+            const adminSaleTotal = getAdminSaleTotal(c);
 
             newLeadsFromClients.push({
               id: 'lead_client_sync_' + c.id,
@@ -258,7 +261,7 @@ export default function ComercialesAdminScreen({
               email: c.email || '',
               phone: c.phone || '',
               status: c.status === 'Client' ? 'Ganado' : 'Pendiente',
-              value: totalPaid || (c as any).estimatedValue || 1500,
+              value: adminSaleTotal || (c as any).estimatedValue || 0,
               notes: c.status === 'Client' ? 'Importado de Cartera de Clientes CRM' : 'Importado de Prospectos (Leads) CRM',
               createdAt: (c as any).createdAt || new Date().toISOString(),
               temperature: c.temperature || 'Caliente'
@@ -351,8 +354,7 @@ export default function ComercialesAdminScreen({
   ) : [];
   const indInitialTxsPaid = indInitialTxs.filter(tx => tx.status === 'paid');
   const indInitialSalesVolume = indInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-  const indClosuresCount = Math.max(indWon.length, indInitialTxs.length);
-  const indCommissionPercentage = currentComercial ? getTieredCommission(indClosuresCount) : 10;
+  const indCommissionPercentage = currentComercial ? (currentComercial.commissionPercentage ?? getTieredCommission(Math.max(indWon.length, indInitialTxs.length))) : 10;
   const indBenefitsEarned = indInitialSalesVolume * (indCommissionPercentage / 100);
   
   const indConversionRate = individualLeads.length > 0 

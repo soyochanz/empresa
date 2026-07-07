@@ -38,6 +38,19 @@ function getStripe(): Stripe {
   return stripeInstance;
 }
 
+function getAppUrl(req: express.Request): string {
+  const configuredUrl = process.env.APP_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/$/, "");
+
+  const forwardedProto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim();
+  const forwardedHost = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim();
+  const origin = req.headers.origin;
+
+  if (origin) return origin.replace(/\/$/, "");
+  if (forwardedHost) return `${forwardedProto || req.protocol}://${forwardedHost}`.replace(/\/$/, "");
+  return `${req.protocol}://${req.get("host") || "localhost:3000"}`.replace(/\/$/, "");
+}
+
 // API Routes
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Stripe CRM API is active!" });
@@ -53,14 +66,14 @@ app.get("/api/stripe/config", (req, res) => {
 // Create subscription or single payment checkout session
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
-    const { clientId, clientName, clientEmail, amount, interval, installments, concept } = req.body;
+    const { clientId, clientName, clientEmail, amount, interval, installments, concept, pendingTxId, stripePlanId, installmentIndex } = req.body;
 
     if (!clientId || !clientEmail || !amount) {
       return res.status(400).json({ error: "clientId, clientEmail, and amount are required" });
     }
 
     const stripe = getStripe();
-    const appUrl = process.env.APP_URL || "http://localhost:3000";
+    const appUrl = getAppUrl(req);
     const isSubscription = interval !== "once";
 
     const lineItem: any = {
@@ -91,7 +104,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       line_items: [lineItem],
       mode: isSubscription ? "subscription" : "payment",
       customer_email: clientEmail,
-      success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${amount}&interval=${interval || "month"}&installments=${installments || ""}&concept=${encodeURIComponent(concept || "")}`,
+      success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${amount}&interval=${interval || "month"}&installments=${installments || ""}&concept=${encodeURIComponent(concept || "")}&pending_tx_id=${pendingTxId || ""}&stripe_plan_id=${stripePlanId || ""}&installment_index=${installmentIndex || ""}`,
       cancel_url: `${appUrl}?stripe_status=cancel&client_id=${clientId}`,
       metadata: {
         clientId,
@@ -99,6 +112,9 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         clientEmail,
         installments: installments || "",
         concept: concept || "",
+        pendingTxId: pendingTxId || "",
+        stripePlanId: stripePlanId || "",
+        installmentIndex: installmentIndex || "",
       },
     });
 
@@ -119,7 +135,7 @@ app.post("/api/stripe/create-portal-session", async (req, res) => {
     }
 
     const stripe = getStripe();
-    const appUrl = process.env.APP_URL || "http://localhost:3000";
+    const appUrl = getAppUrl(req);
 
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,

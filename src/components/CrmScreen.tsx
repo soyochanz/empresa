@@ -62,6 +62,12 @@ export const getContactColor = (color: string | undefined): 'indigo' | 'emerald'
   return 'indigo';
 };
 
+const getStripeDashboardUrl = (sessionId?: string): string | null => {
+  if (!sessionId || sessionId.includes('_mock_')) return null;
+  const modePath = sessionId.startsWith('cs_live_') ? '' : '/test';
+  return `https://dashboard.stripe.com${modePath}/checkout/sessions/${sessionId}`;
+};
+
 interface CrmScreenProps {
   contacts: ClientContact[];
   events?: CalendarEvent[];
@@ -131,7 +137,7 @@ export default function CrmScreen({
   const [stripeEmailInput, setStripeEmailInput] = useState('');
 
   // Automatic Installments Generator States
-  const [instTotalAmount, setInstTotalAmount] = useState('1500');
+  const [instTotalAmount, setInstTotalAmount] = useState('');
   const [instCount, setInstCount] = useState<2 | 3>(3);
   const [instConcept, setInstConcept] = useState('Servicios de Desarrollo y Consultoría');
   const [instLoading, setInstLoading] = useState(false);
@@ -160,6 +166,7 @@ export default function CrmScreen({
       });
 
       const clientTransactions = transactions.filter(t => {
+        if (t.clientId === selectedContact.id) return true;
         const invoiceMatches = clientInvoices.some(inv => inv.id === t.invoiceId);
         if (invoiceMatches) return true;
         const containsName = t.description.toLowerCase().includes(selectedContact.name.toLowerCase());
@@ -205,6 +212,11 @@ export default function CrmScreen({
           clientEmail: targetEmail,
           amount: tx.amount.toString(),
           interval: 'once', // Installments are one-off payments
+          pendingTxId: tx.id,
+          stripePlanId: tx.stripePlanId,
+          installmentIndex: tx.stripeInstallmentIndex,
+          installments: tx.stripeInstallmentCount?.toString() || '',
+          concept: tx.description,
         }),
       });
 
@@ -212,10 +224,20 @@ export default function CrmScreen({
       if (!response.ok) {
         throw new Error(data.error || 'Error Stripe');
       }
+      const updatedTx = { ...tx, stripeCheckoutUrl: data.url, stripeCheckoutSessionId: data.sessionId };
+      await db.updateFinanceTransaction(updatedTx);
+      setTransactions(prev => prev.map(item => item.id === tx.id ? updatedTx : item));
       setActiveTxStripeUrl(prev => ({ ...prev, [tx.id]: data.url }));
     } catch (err) {
       console.error("Stripe error, using fallback simulated URL", err);
-      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${selectedContact?.id || 'c2'}&amount=${tx.amount}&interval=once&stripe_session_id=cs_test_mock_${tx.id}&simulated=true`;
+      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${selectedContact?.id || 'c2'}&amount=${tx.amount}&interval=once&pending_tx_id=${tx.id}&stripe_plan_id=${tx.stripePlanId || ''}&installment_index=${tx.stripeInstallmentIndex || ''}&installments=${tx.stripeInstallmentCount || ''}&concept=${encodeURIComponent(tx.description)}&stripe_session_id=cs_test_mock_${tx.id}&simulated=true`;
+      const updatedTx = { ...tx, stripeCheckoutUrl: simulatedUrl, stripeCheckoutSessionId: `cs_test_mock_${tx.id}` };
+      try {
+        await db.updateFinanceTransaction(updatedTx);
+        setTransactions(prev => prev.map(item => item.id === tx.id ? updatedTx : item));
+      } catch (saveErr) {
+        console.error("Could not persist simulated Stripe URL", saveErr);
+      }
       setActiveTxStripeUrl(prev => ({ ...prev, [tx.id]: simulatedUrl }));
     } finally {
       setTxStripeLoading(prev => ({ ...prev, [tx.id]: false }));
@@ -241,6 +263,7 @@ export default function CrmScreen({
 
     // 2. Generate the Invoice (Factura) and Transactions (Cobros)
     const invoiceId = 'inv_crm_' + Math.random().toString(36).substring(2, 9);
+    const stripePlanId = 'plan_crm_' + Math.random().toString(36).substring(2, 9);
     const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
     
     // Create Invoice Items
@@ -266,9 +289,13 @@ export default function CrmScreen({
         category: 'Ventas',
         amount: pricePerInstallment,
         date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
-        description: `${convConcept} (${convertingLead.company || 'Empresa'}) - Plazo ${i} de ${convInstallments} (Pendiente)`,
+        description: `${convConcept} - Plazo ${i} de ${convInstallments} (Pendiente)`,
         status: 'pending',
         paymentMethod: 'transfer',
+        clientId: convertingLead.id,
+        stripePlanId,
+        stripeInstallmentIndex: i,
+        stripeInstallmentCount: convInstallments,
         invoiceId: invoiceId,
         comercialId: matchedCom?.id,
         comercialEmail: assignedEmail,
@@ -1056,10 +1083,39 @@ export default function CrmScreen({
 
     setInstLoading(true);
     setInstError('');
+    let txForCheckout: FinanceTransaction | null = null;
     try {
-      // Calculate amount per installment
-      const installmentAmount = (total / instCount).toFixed(2);
-      const formattedConcept = `${instConcept} - Plazo 1 de ${instCount}`;
+      const clientInvoices = invoices.filter(inv => {
+        const matchesId = inv.clientId === contact.id;
+        const matchesEmail = inv.clientEmail?.toLowerCase() === contact.email?.toLowerCase();
+        const matchesName = inv.clientName?.toLowerCase().includes(contact.name?.toLowerCase() || '');
+        return matchesId || matchesEmail || matchesName;
+      });
+
+      const pendingTxs = transactions
+        .filter(t => {
+          if (t.type !== 'income' || t.status !== 'pending') return false;
+          if (t.clientId === contact.id) return true;
+          if (clientInvoices.some(inv => inv.id === t.invoiceId)) return true;
+          const descLower = t.description.toLowerCase();
+          const containsName = descLower.includes(contact.name.toLowerCase());
+          const containsCompany = contact.company ? descLower.includes(contact.company.toLowerCase()) : false;
+          return containsName || containsCompany;
+        })
+        .sort((a, b) => {
+          const byInstallment = (a.stripeInstallmentIndex || 999) - (b.stripeInstallmentIndex || 999);
+          if (byInstallment !== 0) return byInstallment;
+          return new Date(a.date).getTime() - new Date(b.date).getTime();
+        });
+
+      txForCheckout = pendingTxs[0] || null;
+      if (!txForCheckout) {
+        setInstError('No hay plazos pendientes para este cliente. Crea primero la venta con sus plazos.');
+        return;
+      }
+
+      const installmentAmount = txForCheckout.amount.toFixed(2);
+      const formattedConcept = txForCheckout.description || `${instConcept} - Plazo ${txForCheckout.stripeInstallmentIndex || 1} de ${txForCheckout.stripeInstallmentCount || instCount}`;
 
       const response = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',
@@ -1071,9 +1127,12 @@ export default function CrmScreen({
           clientName: contact.name,
           clientEmail: targetEmail,
           amount: installmentAmount,
-          interval: 'month', // Auto-billed monthly subscription
-          installments: instCount.toString(),
+          interval: 'once',
+          installments: (txForCheckout.stripeInstallmentCount || instCount).toString(),
           concept: formattedConcept,
+          pendingTxId: txForCheckout.id,
+          stripePlanId: txForCheckout.stripePlanId,
+          installmentIndex: txForCheckout.stripeInstallmentIndex,
         }),
       });
 
@@ -1082,14 +1141,28 @@ export default function CrmScreen({
         throw new Error(data.error || 'Error al generar el plan de plazos');
       }
 
+      const updatedTx = { ...txForCheckout, stripeCheckoutUrl: data.url, stripeCheckoutSessionId: data.sessionId };
+      await db.updateFinanceTransaction(updatedTx);
+      setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
       setInstGeneratedUrl(data.url);
     } catch (err: any) {
       console.error(err);
+      if (!txForCheckout) {
+        setInstError(err?.message || 'No se pudo localizar un plazo pendiente para generar el enlace.');
+        return;
+      }
       // Fallback simulated link if Stripe is not fully set up
-      const installmentAmount = (total / instCount).toFixed(2);
-      const formattedConcept = `${instConcept} - Plazo 1 de ${instCount}`;
-      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${contact.id}&amount=${installmentAmount}&interval=month&installments=${instCount}&concept=${encodeURIComponent(formattedConcept)}&stripe_session_id=cs_test_mock_inst_${contact.id}_${Date.now()}&simulated=true`;
+      const installmentAmount = txForCheckout.amount.toFixed(2);
+      const formattedConcept = txForCheckout.description || `${instConcept} - Plazo ${txForCheckout.stripeInstallmentIndex || 1} de ${txForCheckout.stripeInstallmentCount || instCount}`;
+      const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${contact.id}&amount=${installmentAmount}&interval=once&pending_tx_id=${txForCheckout.id}&stripe_plan_id=${txForCheckout.stripePlanId || ''}&installment_index=${txForCheckout.stripeInstallmentIndex || ''}&installments=${txForCheckout.stripeInstallmentCount || instCount}&concept=${encodeURIComponent(formattedConcept)}&stripe_session_id=cs_test_mock_inst_${txForCheckout.id}_${Date.now()}&simulated=true`;
       
+      const updatedTx = { ...txForCheckout, stripeCheckoutUrl: simulatedUrl, stripeCheckoutSessionId: `cs_test_mock_inst_${txForCheckout.id}` };
+      try {
+        await db.updateFinanceTransaction(updatedTx);
+        setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
+      } catch (saveErr) {
+        console.error('Could not persist fallback installment link', saveErr);
+      }
       setInstGeneratedUrl(simulatedUrl);
     } finally {
       setInstLoading(false);
@@ -2073,7 +2146,7 @@ export default function CrmScreen({
 
                   <div>
                     <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">
-                      Monto Total del Proyecto (€)
+                      Monto Pendiente para Generar Link (EUR)
                     </label>
                     <input
                       type="number"
@@ -2083,7 +2156,7 @@ export default function CrmScreen({
                         setInstGeneratedUrl('');
                       }}
                       className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
-                      placeholder="1500"
+                      placeholder="Sin pagos pendientes"
                     />
                   </div>
 
@@ -2152,16 +2225,16 @@ export default function CrmScreen({
                         </div>
                         <div className="flex justify-between pt-0.5">
                           <span>1º Pago (Hoy):</span>
-                          <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Cobrado al instante)</span></span>
+                          <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Pendiente hasta pago)</span></span>
                         </div>
                         <div className="flex justify-between">
                           <span>2º Pago (+30 días):</span>
-                          <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Auto-cobrado)</span></span>
+                          <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Pendiente hasta pago)</span></span>
                         </div>
                         {instCount === 3 && (
                           <div className="flex justify-between">
                             <span>3º Pago (+60 días):</span>
-                            <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Auto-cobrado)</span></span>
+                            <span className="text-slate-300 font-bold">{cuota} € <span className="text-slate-500 text-[8px] font-sans font-normal">(Pendiente hasta pago)</span></span>
                           </div>
                         )}
                       </div>
@@ -2296,6 +2369,7 @@ export default function CrmScreen({
                 });
 
                 const clientTransactions = transactions.filter(t => {
+                  if (t.clientId === selectedContact.id) return true;
                   const invoiceMatches = clientInvoices.some(inv => inv.id === t.invoiceId);
                   if (invoiceMatches) return true;
                   const containsName = t.description.toLowerCase().includes(selectedContact.name.toLowerCase());
@@ -2434,7 +2508,8 @@ export default function CrmScreen({
                         <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                           {clientTransactions.map(tx => {
                             const isPending = tx.status === 'pending' || tx.description.toLowerCase().includes('pendiente');
-                            const stripeUrl = activeTxStripeUrl[tx.id];
+                            const stripeUrl = tx.stripeCheckoutUrl || activeTxStripeUrl[tx.id];
+                            const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId);
                             const isLoading = txStripeLoading[tx.id];
 
                             return (
@@ -2469,7 +2544,7 @@ export default function CrmScreen({
                                         disabled={isLoading}
                                         onClick={() => handleGenerateStripeForTx(tx)}
                                         className="p-1 bg-violet-600/15 hover:bg-violet-600/30 text-violet-400 border border-violet-500/25 rounded-lg transition-all cursor-pointer flex items-center justify-center"
-                                        title="Generar enlace de cobro automático por Stripe para este plazo"
+                                        title={tx.stripeCheckoutUrl ? 'Regenerar enlace de Stripe para este plazo' : 'Generar enlace de cobro por Stripe para este plazo'}
                                       >
                                         {isLoading ? (
                                           <span className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin" />
@@ -2480,6 +2555,18 @@ export default function CrmScreen({
                                     )}
 
                                     {/* Delete Button */}
+                                    {stripeDashboardUrl && (
+                                      <a
+                                        href={stripeDashboardUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="p-1 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-indigo-400 border border-transparent rounded-lg transition-all cursor-pointer"
+                                        title="Ver pago en Stripe"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </a>
+                                    )}
+
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteTransaction(tx.id)}
@@ -3526,7 +3613,7 @@ export default function CrmScreen({
                     required
                     value={convSalePrice}
                     onChange={(e) => setConvSalePrice(Number(e.target.value))}
-                    placeholder="1500"
+                    placeholder="Sin pagos pendientes"
                     className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
                   />
                 </div>
@@ -3613,3 +3700,6 @@ export default function CrmScreen({
     </div>
   );
 }
+
+
+

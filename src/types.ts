@@ -1,4 +1,4 @@
-export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub';
+export type Screen = 'landing' | 'website_preview' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub';
 
 export interface InquiryMessage {
   id: string;
@@ -42,6 +42,7 @@ export interface ClientContact {
   devTechStack?: string[];
   devChecklist?: string; // stringified JSON tasks: { id: string; text: string; done: boolean }[]
   devNotes?: string;
+  devWebsiteConfig?: string; // stringified JSON demo website config
   // Stripe integration properties
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
@@ -112,6 +113,12 @@ export interface FinanceTransaction {
   paymentMethod?: 'cash' | 'transfer'; // New: payment method 'cash' or 'transfer'
   firstAmount?: number; // Cost of the first occurrence
   nextAmount?: number;  // Cost of the subsequent occurrences
+  clientId?: string;
+  stripePlanId?: string;
+  stripeCheckoutUrl?: string;
+  stripeCheckoutSessionId?: string;
+  stripeInstallmentIndex?: number;
+  stripeInstallmentCount?: number;
   comercialId?: string; // New: associated commercial ID
   comercialEmail?: string; // New: associated commercial email
   isInitialSale?: boolean; // New: is initial acquisition sale
@@ -228,5 +235,3 @@ export interface ColdCallingLead {
   callsCount?: number;             // Veces que se le ha llamado
   callsLog?: CallLogItem[];        // Historial de llamadas
 }
-
-

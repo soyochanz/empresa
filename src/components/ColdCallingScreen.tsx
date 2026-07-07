@@ -212,6 +212,7 @@ export default function ColdCallingScreen({
     if (convType === 'Client') {
       // 4. Generate the Invoice (Factura) and Transactions (Cobros) - only for Client
       const invoiceId = 'inv_cc_' + Math.random().toString(36).substring(2, 9);
+      const stripePlanId = 'plan_cc_' + Math.random().toString(36).substring(2, 9);
       const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
       
       // Create Invoice Items
@@ -237,9 +238,13 @@ export default function ColdCallingScreen({
           category: 'Ventas',
           amount: pricePerInstallment,
           date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
-          description: `${convConcept} (${convCompany}) - Plazo ${i} de ${convInstallments} (Pendiente)`,
+          description: `${convConcept} - Plazo ${i} de ${convInstallments} (Pendiente)`,
           status: 'pending',
           paymentMethod: 'transfer',
+          clientId: newContact.id,
+          stripePlanId,
+          stripeInstallmentIndex: i,
+          stripeInstallmentCount: convInstallments,
           invoiceId: invoiceId,
           comercialId: matchedCom?.id,
           comercialEmail: assignedEmail,

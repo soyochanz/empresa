@@ -26,6 +26,7 @@ import ComercialesPanelScreen from './components/ComercialesPanelScreen';
 import ComercialesAdminScreen from './components/ComercialesAdminScreen';
 import ColdCallingScreen from './components/ColdCallingScreen';
 import DeveloperHubScreen from './components/DeveloperHubScreen';
+import WebsitePreviewScreen from './components/WebsitePreviewScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
@@ -40,6 +41,10 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
   
   if (path === '/' || path === '') {
     return { screen: 'landing' };
+  }
+
+  if (path.startsWith('/web/')) {
+    return { screen: 'website_preview' };
   }
   
   if (path === '/acceso' || path === '/login') {
@@ -98,6 +103,7 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
 function getPathFromScreen(screen: Screen): string {
   switch (screen) {
     case 'landing': return '/';
+    case 'website_preview': return window.location.pathname;
     case 'acceso': return '/acceso';
     case 'comerciales_acceso': return '/comerciales/acceso';
     case 'comerciales_panel': return '/comerciales/panel';
@@ -422,6 +428,9 @@ export default function App() {
       const interval = urlParams.get('interval') || 'month';
       const installmentsStr = urlParams.get('installments') || '';
       const customConcept = urlParams.get('concept') || '';
+      const pendingTxId = urlParams.get('pending_tx_id') || '';
+      const stripePlanId = urlParams.get('stripe_plan_id') || '';
+      const installmentIndexStr = urlParams.get('installment_index') || '';
 
       if (!stripeStatus) return;
 
@@ -483,31 +492,71 @@ export default function App() {
             // Refresh local contacts list
             setContacts(prev => prev.map(c => c.id === clientId ? updatedClient : c));
 
-            // Create a FinanceTransaction of type income
+            const allTxsBeforePayment = await db.getFinanceTransactions();
             const todayStr = new Date().toISOString().split('T')[0];
             const baseConcept = customConcept ? decodeURIComponent(customConcept) : (isSubscription 
               ? `Mensualidad Stripe Automática - ${client.name}` 
               : `Pago Único Stripe - ${client.name}`);
 
-            const newTx: any = {
-              id: `tx_stripe_${sessionId}`,
-              type: 'income',
-              category: isSubscription ? 'Mensualidad' : 'Desarrollo',
-              amount: Number(amount),
-              date: todayStr,
-              description: baseConcept,
-              isRecurring: isSubscription,
-              recurrencePeriod: isSubscription ? (interval === 'year' ? 'yearly' : 'monthly') : undefined,
-              status: 'paid',
-              paymentMethod: 'transfer'
-            };
+            const amountNumber = Number(amount);
+            const clientCompany = (client.company || '').toLowerCase();
+            const selectedPendingTx = allTxsBeforePayment.find(tx => tx.id === pendingTxId) ||
+              allTxsBeforePayment
+                .filter(tx => tx.type === 'income' && tx.status === 'pending')
+                .find(tx => {
+                  const descLower = tx.description?.toLowerCase() || '';
+                  const belongsToClient = tx.clientId === clientId ||
+                    descLower.includes(client.name.toLowerCase()) ||
+                    (!!clientCompany && descLower.includes(clientCompany));
+                  const samePlan = !stripePlanId || tx.stripePlanId === stripePlanId;
+                  const sameInstallment = !installmentIndexStr || tx.stripeInstallmentIndex === Number(installmentIndexStr);
+                  return belongsToClient && samePlan && sameInstallment && Math.abs(Number(tx.amount) - amountNumber) < 0.01;
+                });
 
-            await db.insertFinanceTransaction(newTx);
+            let paidTx: FinanceTransaction;
+            if (selectedPendingTx) {
+              paidTx = {
+                ...selectedPendingTx,
+                status: 'paid',
+                date: todayStr,
+                description: selectedPendingTx.description.replace(/\s*\(Pendiente\)/gi, ''),
+                paymentMethod: 'transfer',
+                stripeCheckoutSessionId: sessionId
+              };
+              await db.updateFinanceTransaction(paidTx);
+            } else {
+              const matchedComercial = comercialesList.find(c =>
+                c.email.toLowerCase() === (client.contactedByComercialEmail || client.assignedUserEmail || '').toLowerCase()
+              );
+              paidTx = {
+                id: `tx_stripe_${sessionId}`,
+                type: 'income',
+                category: isSubscription ? 'Mensualidad' : 'Desarrollo',
+                amount: amountNumber,
+                date: todayStr,
+                description: baseConcept,
+                isRecurring: isSubscription,
+                recurrencePeriod: isSubscription ? (interval === 'year' ? 'yearly' : 'monthly') : undefined,
+                status: 'paid',
+                paymentMethod: 'transfer',
+                clientId,
+                stripePlanId: stripePlanId || undefined,
+                stripeCheckoutSessionId: sessionId,
+                comercialId: matchedComercial?.id,
+                comercialEmail: client.contactedByComercialEmail || client.assignedUserEmail,
+                isInitialSale: true
+              };
+              await db.insertFinanceTransaction(paidTx);
+            }
 
             // Handle multi-installment automatic setup
-            if (installmentsStr === '2' || installmentsStr === '3') {
+            if (!selectedPendingTx && (installmentsStr === '2' || installmentsStr === '3')) {
               const numInstallments = parseInt(installmentsStr, 10);
               const decodedConcept = customConcept ? decodeURIComponent(customConcept) : 'Pago';
+              const generatedStripePlanId = stripePlanId || `plan_stripe_${sessionId}`;
+              const matchedComercial = comercialesList.find(c =>
+                c.email.toLowerCase() === (client.contactedByComercialEmail || client.assignedUserEmail || '').toLowerCase()
+              );
               for (let i = 2; i <= numInstallments; i++) {
                 const daysAhead = (i - 1) * 30;
                 const d = new Date();
@@ -525,14 +574,21 @@ export default function App() {
                   description: `${cleanConcept} (Cobro Automático programado)`,
                   isRecurring: false,
                   status: 'pending',
-                  paymentMethod: 'card'
+                  paymentMethod: 'transfer',
+                  clientId,
+                  stripePlanId: generatedStripePlanId,
+                  stripeInstallmentIndex: i,
+                  stripeInstallmentCount: numInstallments,
+                  comercialId: matchedComercial?.id,
+                  comercialEmail: client.contactedByComercialEmail || client.assignedUserEmail,
+                  isInitialSale: true
                 };
                 
                 await db.insertFinanceTransaction(instTx);
               }
             }
 
-            // Mark pending client invoices and transactions as paid
+            // Mark only the paid installment in client invoices.
             try {
               const allInvoices = await db.getFinanceInvoices();
               const clientInvoices = allInvoices.filter(inv => 
@@ -542,36 +598,20 @@ export default function App() {
               );
 
               for (const inv of clientInvoices) {
-                if (inv.status !== 'paid') {
+                const hasPaidItem = inv.items.some(item => item.pendingTxId === paidTx.id);
+                if (hasPaidItem) {
+                  const updatedItems = inv.items.map(item => item.pendingTxId === paidTx.id ? ({
+                    ...item,
+                    isPending: false,
+                    paymentMethod: 'transfer' as const
+                  }) : item);
+                  const hasPendingItems = updatedItems.some(item => item.isPending);
                   const updatedInvoice: Invoice = {
                     ...inv,
-                    status: 'paid',
-                    items: inv.items.map(item => ({
-                      ...item,
-                      isPending: false
-                    }))
+                    status: hasPendingItems ? 'sent' : 'paid',
+                    items: updatedItems
                   };
                   await db.updateFinanceInvoice(updatedInvoice);
-
-                  // Also find associated pending transactions and mark them paid
-                  for (const item of inv.items) {
-                    if (item.pendingTxId) {
-                      try {
-                        const txs = await db.getFinanceTransactions();
-                        const matchedTx = txs.find(t => t.id === item.pendingTxId);
-                        if (matchedTx && matchedTx.status !== 'paid') {
-                          const updatedTx: FinanceTransaction = {
-                            ...matchedTx,
-                            status: 'paid',
-                            paymentMethod: 'transfer'
-                          };
-                          await db.updateFinanceTransaction(updatedTx);
-                        }
-                      } catch (txErr) {
-                        console.error("Error updating matched pending transaction:", txErr);
-                      }
-                    }
-                  }
                 }
               }
             } catch (invErr) {
@@ -1627,6 +1667,17 @@ export default function App() {
           <LandingScreen onNavigate={navigateTo} projects={projects} />
         </motion.div>
       </AnimatePresence>
+    );
+  }
+
+  if (currentScreen === 'website_preview') {
+    const contactId = decodeURIComponent((window.location.pathname.split('/web/')[1] || '').split('/')[0]);
+    return (
+      <WebsitePreviewScreen
+        contactId={contactId}
+        contacts={contacts}
+        onBack={() => navigateTo('developer_hub', 'push_back')}
+      />
     );
   }
 
