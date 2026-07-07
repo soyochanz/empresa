@@ -79,16 +79,25 @@ function getStripe(): Stripe {
 }
 
 function getAppUrl(req: express.Request): string {
-  const configuredUrl = process.env.APP_URL?.trim();
-  if (configuredUrl) return configuredUrl.replace(/\/$/, "");
+  const configuredUrl = cleanEnv(process.env.APP_URL || process.env.RENDER_EXTERNAL_URL);
+  const isLocalConfiguredUrl = /localhost|127\.0\.0\.1/i.test(configuredUrl);
+  if (configuredUrl && !(process.env.NODE_ENV === "production" && isLocalConfiguredUrl)) {
+    return configuredUrl.replace(/\/$/, "");
+  }
 
   const forwardedProto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim();
   const forwardedHost = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim();
+  const host = req.get("host") || "localhost:3000";
   const origin = req.headers.origin;
 
-  if (origin) return origin.replace(/\/$/, "");
+  if (origin && !(process.env.NODE_ENV === "production" && /localhost|127\.0\.0\.1/i.test(origin))) {
+    return origin.replace(/\/$/, "");
+  }
   if (forwardedHost) return `${forwardedProto || req.protocol}://${forwardedHost}`.replace(/\/$/, "");
-  return `${req.protocol}://${req.get("host") || "localhost:3000"}`.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production" && host.includes("onrender.com")) {
+    return `https://${host}`.replace(/\/$/, "");
+  }
+  return `${req.protocol}://${host}`.replace(/\/$/, "");
 }
 
 function formatStripeConnectAccount(account: any) {
