@@ -400,6 +400,7 @@ app.post("/api/stripe/create-connect-account", async (req, res) => {
       email: comercialEmail,
       business_type: "individual",
       capabilities: {
+        card_payments: { requested: true },
         transfers: { requested: true },
       },
       metadata: {
@@ -407,6 +408,15 @@ app.post("/api/stripe/create-connect-account", async (req, res) => {
         comercialName: comercialName || "",
       },
     })).id;
+
+    if (existingAccountId) {
+      await stripe.accounts.update(accountId, {
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+      });
+    }
 
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
