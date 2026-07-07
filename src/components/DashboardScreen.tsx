@@ -199,20 +199,7 @@ export default function DashboardScreen({
       });
     }
 
-    // Baseline historical seed data to keep the CRM dashboard vibrant, active, and informative on initial render
-    const baselineSeed = [
-      { leads: 18, conversions: 7 },
-      { leads: 22, conversions: 11 },
-      { leads: 31, conversions: 14 },
-      { leads: 28, conversions: 16 },
-      { leads: 39, conversions: 21 },
-      { leads: 34, conversions: 19 }
-    ];
-
-    slots.forEach((slot, index) => {
-      slot.leads = baselineSeed[index].leads;
-      slot.conversions = baselineSeed[index].conversions;
-    });
+    // Chart aggregates 100% real data from the database. Each slot starts at 0.
 
     const parseLeadDate = (dateStr?: string): Date | null => {
       if (!dateStr) return null;

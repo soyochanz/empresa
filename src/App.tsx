@@ -157,7 +157,16 @@ export default function App() {
   const [activities, setActivities] = useState<Activity[]>([]);
 
   // Global projects state
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('crm_projects');
+      if (saved) return JSON.parse(saved);
+      localStorage.setItem('crm_projects', JSON.stringify(INITIAL_PROJECTS));
+      return INITIAL_PROJECTS;
+    } catch {
+      return INITIAL_PROJECTS;
+    }
+  });
 
   // Dynamic users state
   const [usersList, setUsersList] = useState<PanelUser[]>(REGISTERED_USERS);
@@ -166,7 +175,42 @@ export default function App() {
   const [comercialesList, setComercialesList] = useState<ComercialAccount[]>(() => {
     try {
       const saved = localStorage.getItem('crm_comerciales_accounts');
-      return saved ? JSON.parse(saved) : [];
+      if (saved) return JSON.parse(saved);
+      
+      const defaultComs: ComercialAccount[] = [
+        {
+          id: 'com_demo',
+          name: 'Alfonso Sales',
+          email: 'vendedor@agency.com',
+          createdAt: new Date().toISOString(),
+          iban: 'ES21 0000 0000 0000 0000 0000',
+          bic: 'BSANES2X',
+          bankName: 'Banco Santander',
+          payouts: []
+        },
+        {
+          id: 'com_maria',
+          name: 'María Gómez',
+          email: 'maria@agency.com',
+          createdAt: new Date().toISOString(),
+          iban: 'ES21 1111 2222 3333 4444 5555',
+          bic: 'BBVAESMM',
+          bankName: 'BBVA',
+          payouts: []
+        },
+        {
+          id: 'com_javier',
+          name: 'Javier Ruiz',
+          email: 'javier@agency.com',
+          createdAt: new Date().toISOString(),
+          iban: 'ES21 9999 8888 7777 6666 5555',
+          bic: 'CAIXAESX',
+          bankName: 'CaixaBank',
+          payouts: []
+        }
+      ];
+      localStorage.setItem('crm_comerciales_accounts', JSON.stringify(defaultComs));
+      return defaultComs;
     } catch {
       return [];
     }
@@ -175,7 +219,51 @@ export default function App() {
   const [leadsList, setLeadsList] = useState<ComercialLead[]>(() => {
     try {
       const saved = localStorage.getItem('crm_comercial_leads');
-      return saved ? JSON.parse(saved) : [];
+      if (saved) return JSON.parse(saved);
+      
+      const seedLeads: ComercialLead[] = [
+        // Enero 2026
+        { id: 'lead_s1', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Alfonso', company: 'SaaS Logistics SL', email: 'contacto@saaslog.com', phone: '654321098', status: 'Ganado', value: 12000, notes: 'Cliente cerrado en campaña de logística.', temperature: 'Caliente', isDone: true, createdAt: '2026-01-15T10:00:00.000Z' },
+        { id: 'lead_s2', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Laura', company: 'Inmobiliaria Express', email: 'laura@inmoexp.es', phone: '612345678', status: 'Ganado', value: 6000, notes: 'Proyecto de software de gestión.', temperature: 'Caliente', isDone: true, createdAt: '2026-01-22T14:30:00.000Z' },
+        { id: 'lead_s3', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Alberto', company: 'Consultora HR Nova', email: 'info@hrnova.com', phone: '699887766', status: 'Perdido', value: 8500, notes: 'Presupuesto descartado por costes.', temperature: 'Frío', isDone: true, createdAt: '2026-01-10T09:15:00.000Z' },
+        { id: 'lead_s4', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Patricia', company: 'Fintech Alborán', email: 'p.alboran@fintech.io', phone: '633445566', status: 'Pendiente', value: 15000, notes: 'Interesados en pasarela de pago personalizada.', temperature: 'Templado', isDone: false, createdAt: '2026-01-18T16:00:00.000Z' },
+        
+        // Febrero 2026
+        { id: 'lead_s5', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Jorge', company: 'Clínica Dental Premium', email: 'jorge@dentalpremium.com', phone: '688112233', status: 'Ganado', value: 9500, notes: 'CRM de citas y fichas clínicas.', temperature: 'Caliente', isDone: true, createdAt: '2026-02-12T11:00:00.000Z' },
+        { id: 'lead_s6', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Elena', company: 'E-commerce Calzados', email: 'elena@zapatoshops.es', phone: '622778899', status: 'Ganado', value: 4500, notes: 'Tienda Shopify a medida con headless API.', temperature: 'Caliente', isDone: true, createdAt: '2026-02-18T15:20:00.000Z' },
+        { id: 'lead_s7', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Mario', company: 'Agencia de Viajes Nómada', email: 'nomada@viajes.com', phone: '677443322', status: 'Negociación', value: 11000, notes: 'Ajustando integraciones con Amadeus.', temperature: 'Caliente', isDone: false, createdAt: '2026-02-05T10:30:00.000Z' },
+        { id: 'lead_s8', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Víctor', company: 'Supermercados Hércules', email: 'v.hercules@super.es', phone: '600112233', status: 'Perdido', value: 24000, notes: 'Decidieron desarrollarlo con equipo interno.', temperature: 'Frío', isDone: true, createdAt: '2026-02-25T17:45:00.000Z' },
+        
+        // Marzo 2026
+        { id: 'lead_s9', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Raúl', company: 'Software Distribuido', email: 'raul@distsoft.io', phone: '611559900', status: 'Ganado', value: 18000, notes: 'Desarrollo de panel de control SaaS.', temperature: 'Caliente', isDone: true, createdAt: '2026-03-08T09:00:00.000Z' },
+        { id: 'lead_s10', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Diana', company: 'Gimnasios FitLife', email: 'diana@fitlife.es', phone: '655331122', status: 'Ganado', value: 7500, notes: 'App móvil de entrenamiento integrada.', temperature: 'Caliente', isDone: true, createdAt: '2026-03-14T12:00:00.000Z' },
+        { id: 'lead_s11', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Carlos', company: 'Restauración Madrid Group', email: 'c.restaurantes@madrid.es', phone: '699228811', status: 'Contactado', value: 13000, notes: 'En espera de propuesta de digitalización completa.', temperature: 'Templado', isDone: false, createdAt: '2026-03-21T14:10:00.000Z' },
+        { id: 'lead_s12', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Sonia', company: 'Automoción Getafe', email: 'sonia@autogetafe.com', phone: '644889900', status: 'Ganado', value: 16500, notes: 'Intranet de postventa y recambios.', temperature: 'Caliente', isDone: true, createdAt: '2026-03-29T16:30:00.000Z' },
+        
+        // Abril 2026
+        { id: 'lead_s13', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Francisco', company: 'Despacho Abogados Aranzadi', email: 'f.aranzadi@abogados.com', phone: '600334411', status: 'Ganado', value: 14000, notes: 'Gestor documental con firma digital integrada.', temperature: 'Caliente', isDone: true, createdAt: '2026-04-11T10:15:00.000Z' },
+        { id: 'lead_s14', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Marta', company: 'Energías Renovables Sur', email: 'marta@renosur.es', phone: '622446688', status: 'Perdido', value: 35000, notes: 'Proyecto cancelado por cambio de dirección.', temperature: 'Frío', isDone: true, createdAt: '2026-04-18T13:00:00.000Z' },
+        { id: 'lead_s15', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Andrés', company: 'Colegio Mayor Minerva', email: 'andres@minervacm.es', phone: '677112288', status: 'Ganado', value: 10500, notes: 'Web y pasarela de matrículas.', temperature: 'Caliente', isDone: true, createdAt: '2026-04-22T15:00:00.000Z' },
+        { id: 'lead_s16', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Lucas', company: 'Plataforma de Cursos Sapiens', email: 'lucas@sapiens.es', phone: '611990022', status: 'Negociación', value: 8900, notes: 'Enviada propuesta económica final.', temperature: 'Templado', isDone: false, createdAt: '2026-04-27T11:20:00.000Z' },
+        
+        // Mayo 2026
+        { id: 'lead_s17', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Ramón', company: 'Logística Inteligente Express', email: 'ramon@logintel.es', phone: '655887766', status: 'Ganado', value: 22000, notes: 'Panel administrativo de rutas optimizadas por IA.', temperature: 'Caliente', isDone: true, createdAt: '2026-05-04T09:45:00.000Z' },
+        { id: 'lead_s18', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Sofía', company: 'Constructora del Águila', email: 'sofia@delaguila.es', phone: '688992211', status: 'Ganado', value: 45000, notes: 'ERP completo de compras y subcontratas.', temperature: 'Caliente', isDone: true, createdAt: '2026-05-12T14:00:00.000Z' },
+        { id: 'lead_s19', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Isabel', company: 'Laboratorios Biotech SL', email: 'isabel@biotechsl.es', phone: '611223344', status: 'Perdido', value: 19500, notes: 'No respondieron tras dos semanas de seguimiento.', temperature: 'Frío', isDone: true, createdAt: '2026-05-19T16:15:00.000Z' },
+        { id: 'lead_s20', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Daniel', company: 'Cadena de Hoteles Sol', email: 'daniel@hotelessol.com', phone: '644556677', status: 'Ganado', value: 30000, notes: 'Portal de reservas multi-idioma integrado.', temperature: 'Caliente', isDone: true, createdAt: '2026-05-26T10:00:00.000Z' },
+        
+        // Junio 2026
+        { id: 'lead_s21', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Hugo', company: 'Startup AI Analytics', email: 'hugo@aianalytic.io', phone: '677990011', status: 'Ganado', value: 28000, notes: 'Modelado predictivo y visualizador interactivo.', temperature: 'Caliente', isDone: true, createdAt: '2026-06-03T11:30:00.000Z' },
+        { id: 'lead_s22', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Clara', company: 'Inversiones Capital Plus', email: 'clara@capitalplus.es', phone: '622003311', status: 'Negociación', value: 50000, notes: 'Panel financiero avanzado de inversiones.', temperature: 'Caliente', isDone: false, createdAt: '2026-06-10T15:00:00.000Z' },
+        { id: 'lead_s23', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Miguel', company: 'Distribuidora de Alimentación', email: 'miguel@distribaliment.es', phone: '655667788', status: 'Ganado', value: 16000, notes: 'App de pedidos y control de existencias.', temperature: 'Caliente', isDone: true, createdAt: '2026-06-18T17:20:00.000Z' },
+        { id: 'lead_s24', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Teresa', company: 'Clínicas Médicas Unificadas', email: 'teresa@clinicasunificadas.com', phone: '688554433', status: 'Ganado', value: 21000, notes: 'Historia clínica digital encriptada.', temperature: 'Caliente', isDone: true, createdAt: '2026-06-25T14:40:00.000Z' },
+        
+        // Julio 2026
+        { id: 'lead_s25', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Lucas', company: 'Software RRHH Nexus', email: 'lucas@nexusrrhh.es', phone: '611002233', status: 'Pendiente', value: 13500, notes: 'Reunión fijada para demo la próxima semana.', temperature: 'Templado', isDone: false, createdAt: '2026-07-02T10:00:00.000Z' },
+        { id: 'lead_s26', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Sandra', company: 'Moda Online Sostenible', email: 'sandra@modasost.com', phone: '633889900', status: 'Contactado', value: 9200, notes: 'Interesados en e-commerce ecológico.', temperature: 'Templado', isDone: false, createdAt: '2026-07-05T13:20:00.000Z' }
+      ];
+      localStorage.setItem('crm_comercial_leads', JSON.stringify(seedLeads));
+      return seedLeads;
     } catch {
       return [];
     }
@@ -1405,6 +1493,7 @@ export default function App() {
             onAddComercial={handleAddComercialAccount}
             onUpdateComercial={handleUpdateComercialAccount}
             onDeleteComercial={handleDeleteComercialAccount}
+            onNavigate={navigateTo}
           />
         );
       case 'cold_calling':

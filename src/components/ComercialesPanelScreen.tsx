@@ -25,7 +25,8 @@ import {
   Landmark,
   CreditCard,
   Coins,
-  History
+  History,
+  Lock
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact } from '../types';
 import ColdCallingScreen from './ColdCallingScreen';
@@ -535,10 +536,11 @@ export default function ComercialesPanelScreen({
                     <input
                       type="text"
                       required
+                      disabled={!!comercial.iban}
                       placeholder="ES21 0000 0000 0000 0000 0000"
                       value={iban}
                       onChange={(e) => setIban(e.target.value)}
-                      className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all font-mono"
+                      className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-900/50 disabled:border-white/5"
                     />
                   </div>
 
@@ -548,10 +550,11 @@ export default function ComercialesPanelScreen({
                       <input
                         type="text"
                         required
+                        disabled={!!comercial.iban}
                         placeholder="Ej. ESBRES2X"
                         value={bic}
                         onChange={(e) => setBic(e.target.value)}
-                        className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all font-mono"
+                        className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-900/50 disabled:border-white/5"
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -559,13 +562,21 @@ export default function ComercialesPanelScreen({
                       <input
                         type="text"
                         required
+                        disabled={!!comercial.iban}
                         placeholder="Ej. Santander, BBVA"
                         value={bankName}
                         onChange={(e) => setBankName(e.target.value)}
-                        className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all"
+                        className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-900/50 disabled:border-white/5"
                       />
                     </div>
                   </div>
+
+                  {comercial.iban && (
+                    <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-400 font-medium leading-relaxed flex items-start gap-2.5">
+                      <Lock className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>Los datos bancarios solo se pueden configurar una vez para prevenir accesos no autorizados y fraudes en las liquidaciones de Stripe. Este panel está ahora <strong>BLOQUEADO</strong> de forma segura. Si necesitas actualizar tus datos, solicita un cambio formal con administración.</span>
+                    </div>
+                  )}
 
                   {settingsSuccess && (
                     <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-400 font-medium">
@@ -573,12 +584,19 @@ export default function ComercialesPanelScreen({
                     </div>
                   )}
 
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-lg shadow-violet-500/15"
-                  >
-                    Guardar Configuración
-                  </button>
+                  {comercial.iban ? (
+                    <div className="w-full py-2.5 bg-slate-900/80 border border-white/5 text-slate-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Configuración de Cobro Bloqueada</span>
+                    </div>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-lg shadow-violet-500/15"
+                    >
+                      Guardar Configuración
+                    </button>
+                  )}
                 </form>
 
                 {/* STRIPE INFO CARD */}

@@ -31,9 +31,10 @@ import {
   History,
   CreditCard,
   Coins,
-  Clock
+  Clock,
+  Globe
 } from 'lucide-react';
-import { ComercialAccount, ComercialLead, ColdCallingLead, ClientContact } from '../types';
+import { ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen } from '../types';
 import DossierModal from './DossierModal';
 
 export const getTieredCommission = (closures: number): number => {
@@ -57,6 +58,7 @@ interface ComercialesAdminScreenProps {
   onAddComercial: (comercial: ComercialAccount) => void;
   onUpdateComercial: (account: ComercialAccount) => void;
   onDeleteComercial: (id: string) => void;
+  onNavigate?: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
 }
 
 type TabType = 'general' | 'individual' | 'gestion';
@@ -69,7 +71,8 @@ export default function ComercialesAdminScreen({
   contacts = [],
   onAddComercial,
   onUpdateComercial,
-  onDeleteComercial
+  onDeleteComercial,
+  onNavigate
 }: ComercialesAdminScreenProps) {
   // Tab control
   const [activeTab, setActiveTab] = useState<TabType>('general');
@@ -375,11 +378,20 @@ export default function ComercialesAdminScreen({
           </p>
           <div className="flex gap-2 items-center mt-2.5">
             <button
+              id="admin-view-onboarding-dossier"
               onClick={() => setShowDossierModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-[10px] font-mono uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-500/10"
             >
               <FileText className="w-3.5 h-3.5" />
               Ver Dossier Onboarding (PDF)
+            </button>
+            <button
+              id="admin-view-landing-page"
+              onClick={() => onNavigate && onNavigate('landing', 'none')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-[10px] font-mono uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-violet-500/15"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              Ver Landing Page
             </button>
           </div>
         </div>

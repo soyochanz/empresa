@@ -21,9 +21,13 @@ import {
   MessageSquare,
   Send,
   CheckCircle,
-  ExternalLink
+  ExternalLink,
+  X,
+  Monitor,
+  Smartphone,
+  Zap
 } from 'lucide-react';
-import { motion, useScroll, useTransform } from 'motion/react';
+import { motion, useScroll, useTransform, AnimatePresence } from 'motion/react';
 
 interface LandingScreenProps {
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
@@ -41,6 +45,11 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
   const [inquiryMessage, setInquiryMessage] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
 
+  // Advanced Interactive Portfolio States
+  const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
+  const [selectedProject, setSelectedProject] = useState<any | null>(null);
+  const [selectedDevice, setSelectedDevice] = useState<'desktop' | 'mobile'>('desktop');
+
   // High-fidelity real projects carried out by the digital boutique agency
   const displayProjects = React.useMemo(() => {
     const rawProjects = (projects && projects.length > 0) ? projects : [];
@@ -50,13 +59,19 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
       const activeOnLanding = rawProjects.filter((p: any) => p.showOnLanding !== false);
       if (activeOnLanding.length > 0) {
         return activeOnLanding.map((p: any) => ({
+          id: p.id,
           title: p.title,
           category: p.category,
-          tag: p.status, // e.g. 'Completed', 'Beta Active'
+          tag: p.status || 'Completed', // e.g. 'Completed', 'Beta Active'
           description: p.description,
+          detailText: p.detailText || "Diseño minimalista premium de alto nivel y lógica eficiente de extremo a extremo.",
+          performanceScore: p.performanceScore || 98,
+          seoScore: p.seoScore || 100,
           image: p.image || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
-          url: p.url,
-          tech: [...(p.tools || []), ...(p.addons || [])].slice(0, 5) // combine tools and addons as tech
+          url: p.url || "demo.agencyflow.com",
+          tech: [...(p.tools || []), ...(p.addons || [])].slice(0, 5), // combine tools and addons as tech
+          tools: p.tools || ['React', 'TypeScript'],
+          addons: p.addons || ['Tailwind CSS']
         }));
       }
     }
@@ -361,8 +376,8 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
           })}
         </section>
 
-        {/* PORTFOLIO / PROJECTS SECTION: "que proyectos hemos llevado a cabo" con imágenes reales */}
-        <section id="proyectos" className="space-y-12 scroll-mt-24">
+        {/* PORTFOLIO / PROJECTS SECTION: Rediseñado con Filtros, Animaciones y Modal de Detalles Interactivos */}
+        <section id="proyectos" className="space-y-12 scroll-mt-24 font-sans">
           
           {/* Header */}
           <motion.div 
@@ -370,15 +385,43 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ duration: 0.6 }}
-            className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/5 pb-6"
+            className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-white/5 pb-8"
           >
-            <div className="space-y-1">
-              <span className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-semibold block">Nuestra Galería de Código</span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Proyectos Llevados a Cabo</h2>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-violet-500 animate-ping" />
+                <span className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-semibold block">Nuestra Galería de Código</span>
+              </div>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">Proyectos Llevados a Cabo</h2>
+              <p className="text-slate-400 text-xs sm:text-sm max-w-xl leading-relaxed font-light">
+                Desarrollamos soluciones digitales a medida que aúnan estética ultra-moderna y flujos lógicos eficientes bajo estándares de ingeniería excepcionales.
+              </p>
             </div>
-            <p className="text-slate-400 text-xs max-w-sm leading-relaxed font-light">
-              Desarrollamos soluciones digitales que aúnan estética ultra-moderna y flujos lógicos eficientes bajo estándares de ingeniería excepcionales.
-            </p>
+
+            {/* Filter Tabs with sliding active background */}
+            <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-[#040409]/80 border border-white/5 rounded-2xl self-start lg:self-end">
+              {['Todos', 'SaaS', 'Luxury Portals', 'E-Commerce'].map((cat) => {
+                const isActive = selectedCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`relative px-4 py-2 text-xs font-semibold rounded-xl transition-all duration-300 cursor-pointer ${
+                      isActive ? 'text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeFilterBg"
+                        className="absolute inset-0 bg-violet-650/25 border border-violet-500/30 rounded-xl"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10">{cat}</span>
+                  </button>
+                );
+              })}
+            </div>
           </motion.div>
 
           {/* Grid list of detailed elite projects with visual browser mockups */}
@@ -391,95 +434,330 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
                 </p>
               </div>
             ) : (
-              displayProjects.map((proj, idx) => {
-              return (
-                <motion.div 
-                  key={idx} 
-                  initial={{ opacity: 0, y: 40 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-100px" }}
-                  transition={{ duration: 0.6, delay: idx * 0.15 }}
-                  whileHover={{ 
-                    y: -10, 
-                    borderColor: "rgba(168, 85, 247, 0.25)",
-                    boxShadow: "0 25px 50px -12px rgba(168, 85, 247, 0.1)"
-                  }}
-                  className="group relative bg-[#040409]/90 border border-white/5 p-5 sm:p-6 rounded-3xl transition-all duration-300 flex flex-col gap-5 overflow-hidden"
-                >
-                  
-                  {/* High Quality Web Browser Mockup Frame enclosing real website image */}
-                  <div className="relative w-full aspect-[16/10] bg-[#07070f] rounded-2xl overflow-hidden border border-white/5 shadow-2xl flex flex-col">
-                    
-                    {/* Browser Header Bar */}
-                    <div className="h-8 bg-slate-950/80 border-b border-white/5 px-4 flex items-center justify-between flex-shrink-0">
-                      {/* Left: Window Dots */}
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f56] opacity-80" />
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e] opacity-80" />
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#27c93f] opacity-80" />
-                      </div>
+              displayProjects
+                .filter(p => selectedCategory === 'Todos' || p.category === selectedCategory)
+                .map((proj, idx) => {
+                  return (
+                    <motion.div 
+                      key={proj.title} 
+                      initial={{ opacity: 0, y: 30 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: "-100px" }}
+                      transition={{ duration: 0.5, delay: idx * 0.1 }}
+                      whileHover={{ 
+                        y: -8, 
+                        borderColor: "rgba(168, 85, 247, 0.2)",
+                        boxShadow: "0 20px 40px -15px rgba(168, 85, 247, 0.15)"
+                      }}
+                      onClick={() => setSelectedProject(proj)}
+                      className="group relative bg-[#040409]/90 border border-white/5 p-5 sm:p-6 rounded-3xl transition-all duration-300 flex flex-col gap-5 overflow-hidden cursor-pointer"
+                    >
+                      {/* Gradient Ambient Glow Mesh inside card */}
+                      <div className="absolute top-0 right-0 w-48 h-48 bg-violet-500/5 rounded-full blur-3xl pointer-events-none group-hover:bg-violet-500/10 transition-all duration-500" />
                       
-                      {/* Center: Address Bar */}
-                      <div className="bg-slate-900 border border-white/5 text-[9px] text-slate-500 font-mono text-center rounded-lg py-0.5 px-6 truncate max-w-[190px] select-none flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500 inline-block animate-pulse" />
-                        <span>https://{proj.url}</span>
+                      {/* High Quality Web Browser Mockup Frame enclosing real website image */}
+                      <div className="relative w-full aspect-[16/10] bg-[#07070f] rounded-2xl overflow-hidden border border-white/5 shadow-2xl flex flex-col">
+                        {/* Browser Header Bar */}
+                        <div className="h-8 bg-slate-950/80 border-b border-white/5 px-4 flex items-center justify-between flex-shrink-0">
+                          {/* Left: Window Dots */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]/90" />
+                            <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]/90" />
+                            <span className="w-2.5 h-2.5 rounded-full bg-[#27c93f]/90" />
+                          </div>
+                          
+                          {/* Center: Address Bar */}
+                          <div className="bg-slate-900 border border-white/5 text-[9px] text-slate-500 font-mono text-center rounded-lg py-0.5 px-6 truncate max-w-[210px] select-none flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-violet-500 inline-block animate-pulse" />
+                            <span>https://{proj.url}</span>
+                          </div>
+                          
+                          {/* Right Layout Item */}
+                          <div className="w-12 h-1 px-1 flex justify-end">
+                            <ExternalLink className="w-3 h-3 text-slate-600 group-hover:text-violet-400 transition-colors" />
+                          </div>
+                        </div>
+
+                        {/* Web Preview Screen */}
+                        <div className="relative flex-grow overflow-hidden bg-slate-950">
+                          <motion.img 
+                            src={proj.image} 
+                            alt={proj.title}
+                            referrerPolicy="no-referrer"
+                            whileHover={{ scale: 1.05 }}
+                            transition={{ duration: 0.5 }}
+                            className="w-full h-full object-cover object-top filter contrast-[1.03] brightness-[0.95]"
+                          />
+                          {/* Visual Gradient Mesh Overlay */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent pointer-events-none" />
+                        </div>
                       </div>
-                      
-                      {/* Right Layout Item */}
-                      <div className="w-12 h-1 px-1 flex justify-end">
-                        <ExternalLink className="w-3 h-3 text-slate-600" />
+
+                      {/* Info Meta Row */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-mono text-violet-400 bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-full uppercase tracking-wider font-semibold">
+                          {proj.category}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wider font-semibold">
+                            {proj.tag}
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Web Preview Screen */}
-                    <div className="relative flex-grow overflow-hidden bg-slate-950">
-                      <motion.img 
-                        src={proj.image} 
-                        alt={proj.title}
-                        referrerPolicy="no-referrer"
-                        whileHover={{ scale: 1.06 }}
-                        transition={{ duration: 0.6, ease: "easeOut" }}
-                        className="w-full h-full object-cover object-top filter contrast-[1.05] brightness-[0.9] transition-transform duration-500 ease-out"
-                      />
-                      {/* Visual Gradient Mesh Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none" />
-                    </div>
+                      {/* Body Content */}
+                      <div className="space-y-2 flex-grow">
+                        <h3 className="text-base font-bold text-white group-hover:text-violet-400 tracking-tight transition-colors flex items-center gap-2">
+                          <span>{proj.title}</span>
+                          <ArrowRight className="w-3.5 h-3.5 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-violet-400" />
+                        </h3>
+                        <p className="text-slate-400 text-[12px] leading-relaxed font-light line-clamp-2">
+                          {proj.description}
+                        </p>
+                      </div>
 
-                  </div>
-
-                  {/* Info Meta Row */}
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="text-[9px] font-mono text-violet-400 bg-violet-500/5 border border-violet-500/10 px-2.5 py-1 rounded-full uppercase leading-none font-semibold">
-                      {proj.category}
-                    </span>
-                    <span className="text-[9px] font-mono text-fuchsia-400 bg-fuchsia-500/10 border border-fuchsia-500/20 px-2 py-0.5 rounded-full uppercase leading-none font-semibold">
-                      {proj.tag}
-                    </span>
-                  </div>
-
-                  {/* Body Content */}
-                  <div className="space-y-2 flex-grow">
-                    <h3 className="text-base font-bold text-white group-hover:text-violet-400 tracking-tight transition-colors">
-                      {proj.title}
-                    </h3>
-                    <p className="text-slate-400 text-[12px] leading-relaxed font-light">
-                      {proj.description}
-                    </p>
-                  </div>
-
-                  {/* Tech stack badge alignments */}
-                  <div className="flex flex-wrap items-center gap-1.5 border-t border-white/5 pt-4">
-                    {proj.tech.map((t, tIdx) => (
-                      <span key={tIdx} className="text-[9px] font-mono text-slate-500 bg-[#070711] border border-white/10 px-2.5 py-1 rounded">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-
-                </motion.div>
-              );
-            }))}
+                      {/* Tech stack badge alignments */}
+                      <div className="flex flex-wrap items-center gap-1.5 border-t border-white/5 pt-4">
+                        {proj.tech.map((t: string, tIdx: number) => (
+                          <span key={tIdx} className="text-[9px] font-mono text-slate-400 bg-[#070711] border border-white/5 px-2.5 py-1 rounded">
+                            {t}
+                          </span>
+                        ))}
+                        <span className="text-[9px] font-mono text-violet-400 ml-auto font-bold group-hover:underline">Ficha Técnica →</span>
+                      </div>
+                    </motion.div>
+                  );
+                })
+            )}
           </div>
+
+          {/* SPECTACULAR INTERACTIVE OVERLAY MODAL */}
+          <AnimatePresence>
+            {selectedProject && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 font-sans">
+                {/* Backdrop Blur */}
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setSelectedProject(null)}
+                  className="fixed inset-0 bg-slate-950/85 backdrop-blur-md cursor-zoom-out"
+                />
+
+                {/* Modal Window Container */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                  transition={{ type: "spring", duration: 0.5 }}
+                  className="relative w-full max-w-4xl bg-[#030308] border border-white/10 rounded-3xl overflow-hidden shadow-2xl z-10 flex flex-col lg:flex-row max-h-[90vh] lg:max-h-[85vh]"
+                >
+                  {/* LEFT PANEL: Live Interactive Device Mockup (Simulates Desktop vs Mobile) */}
+                  <div className="w-full lg:w-3/5 bg-slate-950/60 p-6 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-white/5">
+                    
+                    {/* Device Simulator Toggle Header */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping" />
+                        <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">Simulador de Entorno</span>
+                      </div>
+
+                      <div className="flex items-center gap-1 p-0.5 bg-[#040409] border border-white/5 rounded-xl">
+                        <button
+                          onClick={() => setSelectedDevice('desktop')}
+                          className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                            selectedDevice === 'desktop' ? 'bg-violet-600 text-white' : 'text-slate-500 hover:text-white'
+                          }`}
+                          title="Vista de Escritorio"
+                        >
+                          <Monitor className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setSelectedDevice('mobile')}
+                          className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                            selectedDevice === 'mobile' ? 'bg-violet-600 text-white' : 'text-slate-500 hover:text-white'
+                          }`}
+                          title="Vista de Móvil"
+                        >
+                          <Smartphone className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Frame Simulator Viewport Canvas */}
+                    <div className="flex-grow flex items-center justify-center p-4">
+                      <motion.div 
+                        layout
+                        animate={{ 
+                          width: selectedDevice === 'desktop' ? '100%' : '260px',
+                          height: selectedDevice === 'desktop' ? '100%' : '440px',
+                          aspectRatio: selectedDevice === 'desktop' ? '16/10' : '9/16'
+                        }}
+                        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                        className="relative bg-[#07070f] rounded-2xl overflow-hidden border border-white/10 shadow-2xl flex flex-col w-full"
+                      >
+                        {/* Browser Header inside modal simulator (only for desktop) */}
+                        {selectedDevice === 'desktop' && (
+                          <div className="h-7 bg-slate-950 border-b border-white/5 px-3.5 flex items-center justify-between flex-shrink-0">
+                            <div className="flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-red-500/80" />
+                              <span className="w-2 h-2 rounded-full bg-yellow-500/80" />
+                              <span className="w-2 h-2 rounded-full bg-green-500/80" />
+                            </div>
+                            <div className="bg-slate-900 text-[8px] text-slate-400 font-mono text-center rounded py-0.5 px-4 truncate max-w-[140px] select-none">
+                              {selectedProject.url}
+                            </div>
+                            <div className="w-4" />
+                          </div>
+                        )}
+
+                        {/* Mobile notch simulator (only for mobile) */}
+                        {selectedDevice === 'mobile' && (
+                          <div className="h-6 bg-slate-950 flex items-center justify-center relative flex-shrink-0 border-b border-white/5">
+                            <div className="w-16 h-3 bg-slate-900 rounded-full flex items-center justify-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-950" />
+                              <span className="w-5 h-1 bg-slate-950 rounded-full" />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Simulated Canvas Image Web Content */}
+                        <div className="relative flex-grow overflow-hidden bg-slate-950">
+                          <img 
+                            src={selectedProject.image} 
+                            alt={selectedProject.title}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover object-top"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent pointer-events-none" />
+                        </div>
+                      </motion.div>
+                    </div>
+
+                    {/* Lighthouse Performance Score Indicator */}
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      <div className="bg-[#050510] border border-white/5 rounded-xl p-3 flex items-center justify-between">
+                        <div>
+                          <span className="text-[9px] font-mono text-slate-400 block font-bold uppercase">Rendimiento (Core Vitals)</span>
+                          <span className="text-[10px] font-mono text-emerald-400 mt-0.5 block font-semibold">Carga en &lt; 0.8s</span>
+                        </div>
+                        <div className="relative w-11 h-11 flex items-center justify-center">
+                          <svg className="absolute inset-0 w-full h-full -rotate-90">
+                            <circle cx="22" cy="22" r="18" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
+                            <circle cx="22" cy="22" r="18" fill="transparent" stroke="#10b981" strokeWidth="3" 
+                              strokeDasharray={`${2 * Math.PI * 18}`}
+                              strokeDashoffset={`${2 * Math.PI * 18 * (1 - selectedProject.performanceScore / 100)}`}
+                            />
+                          </svg>
+                          <span className="text-[10px] font-mono text-emerald-400 font-extrabold">{selectedProject.performanceScore}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#050510] border border-white/5 rounded-xl p-3 flex items-center justify-between">
+                        <div>
+                          <span className="text-[9px] font-mono text-slate-400 block font-bold uppercase">Optimización SEO</span>
+                          <span className="text-[10px] font-mono text-indigo-400 mt-0.5 block font-semibold">Semántica Perfecta</span>
+                        </div>
+                        <div className="relative w-11 h-11 flex items-center justify-center">
+                          <svg className="absolute inset-0 w-full h-full -rotate-90">
+                            <circle cx="22" cy="22" r="18" fill="transparent" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
+                            <circle cx="22" cy="22" r="18" fill="transparent" stroke="#6366f1" strokeWidth="3" 
+                              strokeDasharray={`${2 * Math.PI * 18}`}
+                              strokeDashoffset={`${2 * Math.PI * 18 * (1 - selectedProject.seoScore / 100)}`}
+                            />
+                          </svg>
+                          <span className="text-[10px] font-mono text-indigo-400 font-extrabold">{selectedProject.seoScore}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* RIGHT PANEL: Specifications, Core Tools, and Integration Badges */}
+                  <div className="w-full lg:w-2/5 p-6 sm:p-8 flex flex-col justify-between overflow-y-auto">
+                    
+                    {/* Header Details */}
+                    <div className="space-y-5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] font-mono text-violet-400 bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded-full uppercase tracking-wider font-semibold">
+                          {selectedProject.category}
+                        </span>
+                        
+                        <button 
+                          onClick={() => setSelectedProject(null)}
+                          className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-all cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <h3 className="text-xl font-extrabold text-white tracking-tight leading-tight">
+                          {selectedProject.title}
+                        </h3>
+                        <p className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span>Estatus: {selectedProject.tag}</span>
+                        </p>
+                      </div>
+
+                      <p className="text-slate-300 text-xs leading-relaxed font-light">
+                        {selectedProject.detailText}
+                      </p>
+
+                      {/* Technical stack lists */}
+                      <div className="space-y-4 pt-2">
+                        {/* Core Technologies */}
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] uppercase font-mono text-slate-400 font-bold tracking-wider">Tecnologías Core</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedProject.tools.map((t: string) => (
+                              <span key={t} className="text-[10px] font-mono text-violet-300 bg-violet-500/5 border border-violet-500/10 px-2.5 py-1 rounded">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Integration Addons */}
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] uppercase font-mono text-slate-400 font-bold tracking-wider">Integraciones & Sistemas</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedProject.addons.map((a: string) => (
+                              <span key={a} className="text-[10px] font-mono text-fuchsia-300 bg-fuchsia-500/5 border border-fuchsia-500/10 px-2.5 py-1 rounded">
+                                {a}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Footer */}
+                    <div className="pt-6 mt-6 border-t border-white/5 flex gap-3">
+                      <button
+                        onClick={() => setSelectedProject(null)}
+                        className="flex-1 py-2.5 bg-slate-900 border border-white/5 text-slate-300 font-bold rounded-xl text-xs hover:text-white transition-all cursor-pointer"
+                      >
+                        Cerrar Ficha
+                      </button>
+                      
+                      <a
+                        href={`https://${selectedProject.url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-violet-500/15"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Ver Demo Real</span>
+                      </a>
+                    </div>
+
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
 
         </section>
 
