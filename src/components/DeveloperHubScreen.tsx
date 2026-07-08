@@ -31,7 +31,7 @@ import {
   Palette,
   Image
 } from 'lucide-react';
-import { DemoWebsiteConfig, DemoWebsiteTemplate, parseDemoWebsiteConfig, TEMPLATE_BANNERS, TEMPLATE_DEFAULTS, TEMPLATE_VARIANTS } from './WebsitePreviewScreen';
+import { DemoWebsiteConfig, DemoWebsiteTemplate, parseDemoWebsiteConfig, TEMPLATE_BANNERS, TEMPLATE_DEFAULTS, TEMPLATE_VARIANTS, HEADER_STYLES, HEADER_BACKGROUNDS } from './WebsitePreviewScreen';
 
 interface DeveloperHubScreenProps {
   contacts: ClientContact[];
@@ -812,6 +812,63 @@ export default function DeveloperHubScreen({
                           </button>
                         );
                       })}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[9px] uppercase tracking-wider font-bold text-slate-500 font-mono block">
+                        Menú superior
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {HEADER_STYLES.map(item => {
+                          const active = websiteConfig.headerStyle === item.key;
+                          return (
+                            <button
+                              key={item.key}
+                              type="button"
+                              title={item.description}
+                              onClick={() => updateDemoWebsite(selectedContact, { headerStyle: item.key })}
+                              className={`py-2 rounded-xl text-[8px] font-bold border transition cursor-pointer ${
+                                active
+                                  ? 'bg-blue-500/15 border-blue-500/35 text-blue-300'
+                                  : 'bg-black/25 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-white/5'
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {HEADER_BACKGROUNDS.map(item => {
+                          const active = websiteConfig.headerBackground === item.key;
+                          return (
+                            <button
+                              key={item.key}
+                              type="button"
+                              title={item.description}
+                              onClick={() => updateDemoWebsite(selectedContact, { headerBackground: item.key })}
+                              className={`py-2 rounded-xl text-[8px] font-bold border transition cursor-pointer ${
+                                active
+                                  ? 'bg-fuchsia-500/15 border-fuchsia-500/35 text-fuchsia-300'
+                                  : 'bg-black/25 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-white/5'
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateDemoWebsite(selectedContact, { headerSticky: !websiteConfig.headerSticky })}
+                        className={`w-full py-2 rounded-xl text-[9px] font-bold border transition cursor-pointer ${
+                          websiteConfig.headerSticky
+                            ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
+                            : 'bg-black/25 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-white/5'
+                        }`}
+                      >
+                        Menú sticky: {websiteConfig.headerSticky ? 'Activado' : 'Desactivado'}
+                      </button>
                     </div>
 
                     <div className="grid grid-cols-3 gap-1.5">

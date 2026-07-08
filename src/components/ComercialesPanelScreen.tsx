@@ -26,7 +26,8 @@ import {
   Coins,
   History,
   RefreshCw,
-  Award
+  Award,
+  Snowflake
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact } from '../types';
 import ColdCallingScreen from './ColdCallingScreen';
@@ -592,12 +593,15 @@ export default function ComercialesPanelScreen({
             onClick={() => setActiveView('cold_calling')}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer relative ${
               activeView === 'cold_calling'
-                ? 'bg-violet-650/20 text-violet-400 border border-violet-500/30'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-400/30 shadow-[0_0_18px_rgba(34,211,238,0.08)]'
+                : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-950/20'
             }`}
           >
-            <Phone className="w-3.5 h-3.5" />
+            <Snowflake className="w-3.5 h-3.5" />
             <span>Cold Calling</span>
+            <span className="hidden sm:inline-flex text-[8px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-400/10 text-cyan-300 border border-cyan-400/20">
+              Frío
+            </span>
             {coldLeads.filter(l => !l.archived && l.assignedToEmail.toLowerCase() === comercial.email.toLowerCase() && l.callbackScheduled === 'Llamar más tarde' && l.callbackDate === new Date().toISOString().split('T')[0]).length > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-[9px] text-white font-extrabold flex items-center justify-center rounded-full animate-bounce">
                 {coldLeads.filter(l => !l.archived && l.assignedToEmail.toLowerCase() === comercial.email.toLowerCase() && l.callbackScheduled === 'Llamar más tarde' && l.callbackDate === new Date().toISOString().split('T')[0]).length}

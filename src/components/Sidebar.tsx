@@ -14,7 +14,8 @@ import {
   Receipt,
   Phone,
   Code,
-  Home
+  Home,
+  Snowflake
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -231,14 +232,19 @@ export default function Sidebar({
           onClick={() => onNavigate('cold_calling', 'none')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'cold_calling'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/25 shadow-[0_4px_12px_rgba(245,158,11,0.1)] font-semibold'
-              : 'text-slate-400 hover:text-amber-300 hover:bg-neutral-900 border border-transparent'
+              ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-400/25 shadow-[0_4px_14px_rgba(34,211,238,0.12)] font-semibold'
+              : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-950/20 border border-transparent'
           }`}
         >
-          <Phone className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-            currentScreen === 'cold_calling' ? 'text-amber-400' : 'text-slate-400 group-hover:text-amber-300'
+          <Snowflake className={`w-5 h-5 transition-transform duration-200 group-hover:rotate-12 ${
+            currentScreen === 'cold_calling' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-cyan-300'
           }`} />
-          <span className="font-sans text-sm">Call Calling</span>
+          <span className="font-sans text-sm flex items-center gap-2">
+            Call Calling
+            <span className="text-[8px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-cyan-400/10 text-cyan-300 border border-cyan-400/20">
+              Frío
+            </span>
+          </span>
         </button>
 
       </nav>

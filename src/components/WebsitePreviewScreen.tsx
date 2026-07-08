@@ -5,6 +5,8 @@ import { db } from '../supabaseClient';
 
 export type DemoWebsiteTemplate = 'peluqueria' | 'restaurante' | 'mantenimiento';
 export type DemoWebsiteVariant = 'luxury' | 'bold' | 'minimal';
+export type DemoWebsiteHeaderStyle = 'logo_title' | 'logo_only' | 'center_logo';
+export type DemoWebsiteHeaderBackground = 'solid' | 'hero_overlay';
 
 export interface DemoWebsiteConfig {
   template: DemoWebsiteTemplate;
@@ -20,19 +22,36 @@ export interface DemoWebsiteConfig {
   services: string[];
   featuredOffer: string;
   bookingLabel: string;
+  headerStyle: DemoWebsiteHeaderStyle;
+  headerSticky: boolean;
+  headerBackground: DemoWebsiteHeaderBackground;
 }
 
 const CONFIG_VERSION_DEFAULTS = {
   variant: 'luxury' as DemoWebsiteVariant,
   services: [] as string[],
   featuredOffer: '',
-  bookingLabel: 'Reservar ahora'
+  bookingLabel: 'Reservar ahora',
+  headerStyle: 'logo_title' as DemoWebsiteHeaderStyle,
+  headerSticky: true,
+  headerBackground: 'solid' as DemoWebsiteHeaderBackground
 };
 
 export const TEMPLATE_VARIANTS: { key: DemoWebsiteVariant; label: string; description: string }[] = [
   { key: 'luxury', label: 'Luxury editorial', description: 'Visual premium, elegante, aspiracional.' },
   { key: 'bold', label: 'Impacto urbano', description: 'Bloques grandes, contraste fuerte, venta directa.' },
   { key: 'minimal', label: 'Minimal claro', description: 'Limpio, corporativo y muy legible.' }
+];
+
+export const HEADER_STYLES: { key: DemoWebsiteHeaderStyle; label: string; description: string }[] = [
+  { key: 'logo_title', label: 'Logo + título', description: 'Marca completa a la izquierda y navegación clásica.' },
+  { key: 'logo_only', label: 'Solo logo', description: 'Header más limpio, sin nombre de negocio visible.' },
+  { key: 'center_logo', label: 'Logo centrado', description: 'Logo colocado entre los items del menú.' }
+];
+
+export const HEADER_BACKGROUNDS: { key: DemoWebsiteHeaderBackground; label: string; description: string }[] = [
+  { key: 'solid', label: 'Barra sólida', description: 'Header con fondo propio y separación visible.' },
+  { key: 'hero_overlay', label: 'Integrado hero', description: 'Header transparente encima del hero, sin color de barra.' }
 ];
 
 export const TEMPLATE_DEFAULTS: Record<DemoWebsiteTemplate, Omit<DemoWebsiteConfig, 'businessName' | 'brandColor' | 'logoUrl' | 'bannerUrl' | 'address' | 'phone'>> = {
@@ -43,7 +62,10 @@ export const TEMPLATE_DEFAULTS: Record<DemoWebsiteTemplate, Omit<DemoWebsiteConf
     subtitle: 'Una web premium para mostrar trabajos reales, capturar reservas y convertir visitantes en clientas recurrentes.',
     services: ['Corte y styling premium', 'Color, balayage y tratamientos', 'Reservas online 24/7', 'Bonos de mantenimiento'],
     featuredOffer: 'Diagnóstico capilar + propuesta de look personalizada',
-    bookingLabel: 'Reservar cita'
+    bookingLabel: 'Reservar cita',
+    headerStyle: 'logo_title',
+    headerSticky: true,
+    headerBackground: 'hero_overlay'
   },
   restaurante: {
     template: 'restaurante',
@@ -52,7 +74,10 @@ export const TEMPLATE_DEFAULTS: Record<DemoWebsiteTemplate, Omit<DemoWebsiteConf
     subtitle: 'Carta visual, reservas fluidas, eventos privados, reseñas destacadas y una presencia online preparada para vender cada servicio.',
     services: ['Carta digital editable', 'Reservas y eventos privados', 'Menú degustación destacado', 'Pedidos y WhatsApp conectable'],
     featuredOffer: 'Menú especial de temporada con reserva prioritaria',
-    bookingLabel: 'Reservar mesa'
+    bookingLabel: 'Reservar mesa',
+    headerStyle: 'center_logo',
+    headerSticky: true,
+    headerBackground: 'hero_overlay'
   },
   mantenimiento: {
     template: 'mantenimiento',
@@ -61,7 +86,10 @@ export const TEMPLATE_DEFAULTS: Record<DemoWebsiteTemplate, Omit<DemoWebsiteConf
     subtitle: 'Una web clara, rápida y profesional para generar llamadas, presupuestos y solicitudes desde cualquier dispositivo.',
     services: ['Urgencias con llamada directa', 'Presupuestos online', 'Seguimiento de trabajos', 'Contratos de mantenimiento'],
     featuredOffer: 'Revisión inicial y presupuesto en menos de 24h',
-    bookingLabel: 'Pedir presupuesto'
+    bookingLabel: 'Pedir presupuesto',
+    headerStyle: 'logo_only',
+    headerSticky: true,
+    headerBackground: 'solid'
   }
 };
 
@@ -134,6 +162,15 @@ const variantShell: Record<DemoWebsiteVariant, string> = {
   minimal: 'bg-slate-50 text-slate-950'
 };
 
+const LogoMark = ({ config }: { config: DemoWebsiteConfig }) => (
+  <div className="w-11 h-11 rounded-2xl bg-white text-neutral-950 flex items-center justify-center overflow-hidden font-black shrink-0 shadow-xl">
+    {config.logoUrl ? <img src={config.logoUrl} alt={config.businessName} className="w-full h-full object-cover" /> : config.businessName.slice(0, 2).toUpperCase()}
+  </div>
+);
+
+const menuLeft = ['Servicios', 'Galería'];
+const menuRight = ['Panel cliente', 'Contacto'];
+
 export default function WebsitePreviewScreen({ contactId, contacts = [], onBack }: WebsitePreviewScreenProps) {
   const [loadedContact, setLoadedContact] = useState<ClientContact | null>(contacts.find(c => c.id === contactId) || null);
   const [loading, setLoading] = useState(!loadedContact);
@@ -168,6 +205,13 @@ export default function WebsitePreviewScreen({ contactId, contacts = [], onBack 
   const shareUrl = `${window.location.origin}/web/${encodeURIComponent(contactId)}`;
   const editUrl = `${shareUrl}?edit=1`;
   const accentStyle = { '--accent': config.brandColor } as React.CSSProperties;
+  const headerIsOverlay = config.headerBackground === 'hero_overlay';
+  const headerPositionClass = headerIsOverlay
+    ? `${config.headerSticky ? 'fixed top-0 left-0 right-0' : 'absolute top-0 left-0 right-0'}`
+    : `${config.headerSticky ? 'sticky top-0' : 'relative'}`;
+  const headerChromeClass = headerIsOverlay
+    ? 'bg-transparent border-transparent text-white'
+    : 'bg-black/72 border-white/10 text-white backdrop-blur-xl';
 
   useEffect(() => {
     setDraft(savedConfig);
@@ -220,26 +264,47 @@ export default function WebsitePreviewScreen({ contactId, contacts = [], onBack 
         .accent-border { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
       `}</style>
 
-      <nav className="sticky top-0 z-50 flex items-center justify-between px-5 sm:px-10 py-4 border-b border-white/10 bg-black/72 text-white backdrop-blur-xl">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-2xl bg-white text-neutral-950 flex items-center justify-center overflow-hidden font-black shrink-0 shadow-xl">
-            {config.logoUrl ? <img src={config.logoUrl} alt={config.businessName} className="w-full h-full object-cover" /> : config.businessName.slice(0, 2).toUpperCase()}
+      <nav className={`${headerPositionClass} z-50 px-5 sm:px-10 py-4 border-b ${headerChromeClass}`}>
+        {config.headerStyle === 'center_logo' ? (
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+            <div className="hidden lg:flex justify-end items-center gap-7 text-xs font-bold text-white/80">
+              {menuLeft.map(item => <a key={item} href={`#${item === 'Servicios' ? 'servicios' : 'galeria'}`}>{item}</a>)}
+            </div>
+            <div className="flex items-center justify-center gap-3">
+              <LogoMark config={config} />
+              <span className="lg:hidden font-black text-sm truncate">{config.businessName}</span>
+            </div>
+            <div className="flex justify-end items-center gap-2">
+              <div className="hidden lg:flex items-center gap-7 text-xs font-bold text-white/80 mr-3">
+                {menuRight.map(item => <a key={item} href={`#${item === 'Panel cliente' ? 'panel' : 'contacto'}`}>{item}</a>)}
+              </div>
+              {onBack && <button onClick={onBack} className="hidden sm:flex items-center gap-2 text-xs bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-2 rounded-xl"><ArrowLeft className="w-4 h-4" />Volver</button>}
+              <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 text-xs bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-2 rounded-xl"><Edit3 className="w-4 h-4" />Editar</button>
+            </div>
           </div>
-          <div className="min-w-0">
-            <span className="font-black text-base truncate block">{config.businessName}</span>
-            <span className="text-[11px] text-white/55">Demo editable preparada por Althera</span>
+        ) : (
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <LogoMark config={config} />
+              {config.headerStyle !== 'logo_only' && (
+                <div className="min-w-0">
+                  <span className="font-black text-base truncate block">{config.businessName}</span>
+                  <span className="text-[11px] text-white/55">Demo editable preparada por Althera</span>
+                </div>
+              )}
+            </div>
+            <div className="hidden lg:flex items-center gap-6 text-xs font-bold text-white/80">
+              <a href="#servicios">Servicios</a>
+              <a href="#galeria">Galería</a>
+              <a href="#panel">Panel cliente</a>
+              <a href="#contacto">Contacto</a>
+            </div>
+            <div className="flex items-center gap-2">
+              {onBack && <button onClick={onBack} className="hidden sm:flex items-center gap-2 text-xs bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-2 rounded-xl"><ArrowLeft className="w-4 h-4" />Volver</button>}
+              <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 text-xs bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-2 rounded-xl"><Edit3 className="w-4 h-4" />Editar</button>
+            </div>
           </div>
-        </div>
-        <div className="hidden lg:flex items-center gap-6 text-xs font-bold text-white/80">
-          <a href="#servicios">Servicios</a>
-          <a href="#galeria">Galería</a>
-          <a href="#panel">Panel cliente</a>
-          <a href="#contacto">Contacto</a>
-        </div>
-        <div className="flex items-center gap-2">
-          {onBack && <button onClick={onBack} className="hidden sm:flex items-center gap-2 text-xs bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-2 rounded-xl"><ArrowLeft className="w-4 h-4" />Volver</button>}
-          <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 text-xs bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-2 rounded-xl"><Edit3 className="w-4 h-4" />Editar</button>
-        </div>
+        )}
       </nav>
 
       {isEditing && (
@@ -269,6 +334,47 @@ export default function WebsitePreviewScreen({ contactId, contacts = [], onBack 
               </button>
             ))}
           </div>
+
+          <label className="text-[9px] uppercase tracking-wider font-bold text-slate-500 font-mono">Menú superior</label>
+          <div className="grid gap-2 mt-2 mb-3">
+            {HEADER_STYLES.map(style => (
+              <button key={style.key} onClick={() => patchDraft({ headerStyle: style.key })} className={`text-left p-3 rounded-2xl border ${config.headerStyle === style.key ? 'bg-white/10 border-cyan-500/40' : 'bg-white/[0.03] border-white/10'}`}>
+                <span className="block text-xs font-black">{style.label}</span>
+                <span className="block text-[10px] text-slate-400 mt-1">{style.description}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {HEADER_BACKGROUNDS.map(background => (
+              <button
+                key={background.key}
+                type="button"
+                onClick={() => patchDraft({ headerBackground: background.key })}
+                className={`text-left p-3 rounded-2xl border ${
+                  config.headerBackground === background.key ? 'bg-white/10 border-fuchsia-500/40' : 'bg-white/[0.03] border-white/10'
+                }`}
+                title={background.description}
+              >
+                <span className="block text-xs font-black">{background.label}</span>
+                <span className="block text-[10px] text-slate-400 mt-1">{background.description}</span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => patchDraft({ headerSticky: !config.headerSticky })}
+            className={`mb-4 w-full flex items-center justify-between gap-3 rounded-2xl border p-3 text-left transition ${
+              config.headerSticky ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-white/[0.03] border-white/10 text-slate-300'
+            }`}
+          >
+            <span>
+              <span className="block text-xs font-black">Menú sticky</span>
+              <span className="block text-[10px] text-slate-400 mt-1">{config.headerSticky ? 'El menú se queda fijo arriba al hacer scroll.' : 'El menú queda normal y desaparece al bajar.'}</span>
+            </span>
+            <span className="text-[10px] font-mono uppercase">{config.headerSticky ? 'ON' : 'OFF'}</span>
+          </button>
 
           {[
             ['Nombre web', 'businessName'],
