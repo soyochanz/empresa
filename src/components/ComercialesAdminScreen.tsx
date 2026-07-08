@@ -50,6 +50,32 @@ export const getTieredCommission = (closures: number): number => {
   return 18; // 18 o más
 };
 
+const COMMISSION_TIERS = [
+  { name: 'Etapa 1', min: 1, max: 3, pct: 10 },
+  { name: 'Etapa 2', min: 4, max: 6, pct: 11 },
+  { name: 'Etapa 3', min: 7, max: 9, pct: 12 },
+  { name: 'Etapa 4', min: 10, max: 12, pct: 13.5 },
+  { name: 'Etapa 5', min: 13, max: 14, pct: 15 },
+  { name: 'Etapa 6', min: 15, max: 16, pct: 16 },
+  { name: 'Etapa 7', min: 17, max: 17, pct: 17 },
+  { name: 'Etapa Elite', min: 18, max: Infinity, pct: 18 }
+];
+
+const getCommissionTierInfo = (closures: number) => {
+  const normalizedClosures = Math.max(closures, 1);
+  const currentIndex = COMMISSION_TIERS.findIndex(t => normalizedClosures >= t.min && normalizedClosures <= t.max);
+  const current = COMMISSION_TIERS[currentIndex >= 0 ? currentIndex : 0];
+  const next = COMMISSION_TIERS[currentIndex + 1];
+  const range = current.max === Infinity ? 1 : current.max - current.min + 1;
+  const progress = current.max === Infinity ? 100 : Math.min(100, Math.max(8, ((normalizedClosures - current.min + 1) / range) * 100));
+  return {
+    current,
+    next,
+    progress,
+    missingToNext: next ? Math.max(0, next.min - closures) : 0
+  };
+};
+
 interface ComercialesAdminScreenProps {
   comercialesList: ComercialAccount[];
   leadsList: ComercialLead[];
@@ -1399,6 +1425,7 @@ export default function ComercialesAdminScreen({
                         const wonLeadsCount = (summary as any).wonLeads || 0;
                         const closuresForC = Math.max(wonLeadsCount, initialTxsForC.length);
                         const commissionPct = getTieredCommission(closuresForC);
+                        const tierInfo = getCommissionTierInfo(closuresForC);
                         const benefitsEarned = initialSalesVol * (commissionPct / 100);
 
                         return (
@@ -1429,12 +1456,18 @@ export default function ComercialesAdminScreen({
                               </span>
                             </td>
                             <td className="py-4 text-center">
-                              <div className="flex flex-col items-center justify-center">
+                              <div className="flex flex-col items-center justify-center min-w-[130px]">
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-mono font-bold text-amber-400 text-xs">{commissionPct}%</span>
-                                  <span className="text-[7px] font-mono px-1 py-0.5 rounded bg-amber-500/10 text-amber-400 font-bold uppercase tracking-widest border border-amber-500/10">Escalonada</span>
+                                  <span className="text-[7px] font-mono px-1 py-0.5 rounded bg-amber-500/10 text-amber-400 font-bold uppercase tracking-widest border border-amber-500/10">{tierInfo.current.name}</span>
                                 </div>
-                                <span className="text-[8px] font-mono text-slate-500 mt-0.5">({closuresForC} {closuresForC === 1 ? 'cierre' : 'cierres'})</span>
+                                <span className="text-[8px] font-mono text-slate-500 mt-0.5">
+                                  {closuresForC} {closuresForC === 1 ? 'cierre' : 'cierres'}
+                                  {tierInfo.next ? ` · faltan ${tierInfo.missingToNext}` : ' · elite'}
+                                </span>
+                                <div className="w-24 h-1.5 bg-black/30 border border-white/5 rounded-full overflow-hidden mt-1.5">
+                                  <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-cyan-300" style={{ width: `${tierInfo.progress}%` }} />
+                                </div>
                               </div>
                             </td>
                             <td className="py-4 text-right">

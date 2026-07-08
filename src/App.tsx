@@ -332,13 +332,13 @@ export default function App() {
 
   // Notifications states
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
-    const saved = sessionStorage.getItem('agency_read_notifications');
+    const saved = localStorage.getItem('agency_read_notifications');
     return saved ? JSON.parse(saved) : [];
   });
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   useEffect(() => {
-    sessionStorage.setItem('agency_read_notifications', JSON.stringify(readNotificationIds));
+    localStorage.setItem('agency_read_notifications', JSON.stringify(readNotificationIds));
   }, [readNotificationIds]);
 
   const mergeUsers = (dbProfiles: any[], activeUser: any) => {
@@ -710,7 +710,27 @@ export default function App() {
              tomorrow.getDate() === tDate.getDate();
     };
 
+    const isDatePastOrToday = (dateStr: string) => {
+      if (!dateStr) return false;
+      const tDate = new Date(dateStr);
+      tDate.setHours(0,0,0,0);
+      return tDate <= today;
+    };
+
     finTransactions.forEach(tx => {
+      const isStripeTx = Boolean(tx.stripePlanId || tx.stripeCheckoutSessionId || tx.stripeInvoiceId || String(tx.id || '').includes('stripe'));
+
+      if (tx.type === 'income' && tx.status === 'pending' && isStripeTx && isDatePastOrToday(tx.date)) {
+        list.push({
+          id: `alert_stripe_overdue_${tx.id}_${tx.date}`,
+          type: 'Deadline',
+          title: `Pago Stripe pendiente: ${tx.description || 'Cobro sin concepto'}`,
+          description: `No consta como liquidado un cobro Stripe de ${Number(tx.amount || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} con vencimiento ${tx.date}. Revisa el cliente y Stripe.`,
+          date: tx.date,
+          time: 'Stripe'
+        });
+      }
+
       // 1. Pending transaction scheduled for tomorrow
       if (tx.status === 'pending') {
         if (isDateTomorrow(tx.date)) {
@@ -760,8 +780,21 @@ export default function App() {
       }
     });
 
+    contacts
+      .filter(c => c.stripeSubscriptionStatus === 'past_due')
+      .forEach(c => {
+        list.push({
+          id: `alert_stripe_past_due_${c.id}_${c.stripeSubscriptionId || 'subscription'}`,
+          type: 'Deadline',
+          title: `Suscripcion Stripe con impago: ${c.name}`,
+          description: `${c.company || c.email} tiene una suscripcion en estado past_due. Revisa el pago, la factura abierta o contacta con el cliente.`,
+          date: new Date().toISOString().split('T')[0],
+          time: 'Stripe'
+        });
+      });
+
     return list;
-  }, [finTransactions, currentUser]);
+  }, [finTransactions, contacts, currentUser]);
 
   const hotLeadsNotifications = useMemo(() => {
     const list: any[] = [];

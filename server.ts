@@ -282,6 +282,17 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       console.log("Processed Stripe invoice.paid webhook:", result);
     }
 
+    if (event.type === "invoice.payment_failed") {
+      const invoice = event.data.object as Stripe.Invoice;
+      console.warn("Stripe invoice.payment_failed webhook:", {
+        invoiceId: invoice.id,
+        customer: invoice.customer,
+        subscription: (invoice as any).subscription,
+        amountDue: invoice.amount_due,
+        hostedInvoiceUrl: invoice.hosted_invoice_url,
+      });
+    }
+
     res.json({ received: true });
   } catch (error: any) {
     console.error("Error handling Stripe webhook:", error);

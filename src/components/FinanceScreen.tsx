@@ -1994,8 +1994,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         
         {/* Metric 1: Saldo Consolidado */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-emerald-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-emerald-500/[0.02]">
-          <div className="absolute top-5 right-5 bg-emerald-500/10 rounded-2xl p-3 border border-emerald-500/10 group-hover:scale-105 transition-transform duration-300">
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+          <div className="absolute top-4 right-4 bg-emerald-500/10 rounded-xl p-2 border border-emerald-500/10 group-hover:scale-105 transition-transform duration-300">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-all duration-500" />
           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Saldo Consolidado</span>
@@ -2010,8 +2010,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
         {/* Metric 2: Saldo Pendiente */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-amber-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-amber-500/[0.02]">
-          <div className="absolute top-5 right-5 bg-amber-500/10 rounded-2xl p-3 border border-amber-500/10 group-hover:scale-105 transition-transform duration-300">
-            <Clock className="w-5 h-5 text-amber-400" />
+          <div className="absolute top-4 right-4 bg-amber-500/10 rounded-xl p-2 border border-amber-500/10 group-hover:scale-105 transition-transform duration-300">
+            <Clock className="w-4 h-4 text-amber-400" />
           </div>
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl group-hover:bg-amber-500/10 transition-all duration-500" />
           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Saldo Pendiente</span>
@@ -2026,8 +2026,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
         {/* Metric 3: Ingresos Totales */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-blue-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-blue-500/[0.02]">
-          <div className="absolute top-5 right-5 bg-blue-500/10 rounded-2xl p-3 border border-blue-500/10 group-hover:scale-105 transition-transform duration-300">
-            <ArrowUpRight className="w-5 h-5 text-blue-400" />
+          <div className="absolute top-4 right-4 bg-blue-500/10 rounded-xl p-2 border border-blue-500/10 group-hover:scale-105 transition-transform duration-300">
+            <ArrowUpRight className="w-4 h-4 text-blue-400" />
           </div>
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-all duration-500" />
           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Ingresos Totales</span>
@@ -2042,8 +2042,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
         {/* Metric 4: Gastos Totales */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-rose-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-rose-500/[0.02]">
-          <div className="absolute top-5 right-5 bg-rose-500/10 rounded-2xl p-3 border border-rose-500/10 group-hover:scale-105 transition-transform duration-300">
-            <ArrowDownLeft className="w-5 h-5 text-rose-400" />
+          <div className="absolute top-4 right-4 bg-rose-500/10 rounded-xl p-2 border border-rose-500/10 group-hover:scale-105 transition-transform duration-300">
+            <ArrowDownLeft className="w-4 h-4 text-rose-400" />
           </div>
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl group-hover:bg-rose-500/10 transition-all duration-500" />
           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Gastos Totales</span>
@@ -2058,13 +2058,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
         {/* Metric 5: Sueldos Comerciales */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-violet-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-violet-500/[0.02]">
-          <div className="absolute top-5 right-5 bg-violet-500/10 rounded-2xl p-3 border border-violet-500/10 group-hover:scale-105 transition-transform duration-300">
-            <Briefcase className="w-5 h-5 text-violet-400" />
+          <div className="absolute top-4 right-4 bg-violet-500/10 rounded-xl p-2 border border-violet-500/10 group-hover:scale-105 transition-transform duration-300">
+            <Briefcase className="w-4 h-4 text-violet-400" />
           </div>
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-violet-500/5 rounded-full blur-2xl group-hover:bg-violet-500/10 transition-all duration-500" />
           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Sueldos Comerciales</span>
           <h3 className="text-3px font-black text-white mt-2 tracking-tight font-serif select-all text-3xl">
-            {commercialSalaries.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-violet-400 text-lg ml-1 font-sans">â‚¬</span>
+            {commercialSalaries.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-violet-400 text-lg ml-1 font-sans">€</span>
           </h3>
           <p className="text-[10px] text-violet-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
             <CreditCard className="w-3.5 h-3.5" />
@@ -2074,13 +2074,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
         {/* Metric 6: Saldo Neto */}
         <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-cyan-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-cyan-500/[0.02]">
-          <div className="absolute top-5 right-5 bg-cyan-500/10 rounded-2xl p-3 border border-cyan-500/10 group-hover:scale-105 transition-transform duration-300">
-            <ShieldCheck className="w-5 h-5 text-cyan-400" />
+          <div className="absolute top-4 right-4 bg-cyan-500/10 rounded-xl p-2 border border-cyan-500/10 group-hover:scale-105 transition-transform duration-300">
+            <ShieldCheck className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-cyan-500/5 rounded-full blur-2xl group-hover:bg-cyan-500/10 transition-all duration-500" />
           <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Saldo Neto</span>
           <h3 className="text-3px font-black text-white mt-2 tracking-tight font-serif select-all text-3xl">
-            {netCashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-cyan-400 text-lg ml-1 font-sans">â‚¬</span>
+            {netCashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-cyan-400 text-lg ml-1 font-sans">€</span>
           </h3>
           <p className="text-[10px] text-cyan-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
             <DollarSign className="w-3.5 h-3.5" />

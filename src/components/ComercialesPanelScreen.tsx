@@ -27,7 +27,8 @@ import {
   Coins,
   History,
   Lock,
-  RefreshCw
+  RefreshCw,
+  Award
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact } from '../types';
 import ColdCallingScreen from './ColdCallingScreen';
@@ -53,6 +54,32 @@ export const getTieredCommission = (closures: number): number => {
   if (closures >= 15 && closures <= 16) return 16;
   if (closures === 17) return 17;
   return 18; // 18 o más
+};
+
+const COMMISSION_TIERS = [
+  { name: 'Etapa 1', min: 1, max: 3, pct: 10 },
+  { name: 'Etapa 2', min: 4, max: 6, pct: 11 },
+  { name: 'Etapa 3', min: 7, max: 9, pct: 12 },
+  { name: 'Etapa 4', min: 10, max: 12, pct: 13.5 },
+  { name: 'Etapa 5', min: 13, max: 14, pct: 15 },
+  { name: 'Etapa 6', min: 15, max: 16, pct: 16 },
+  { name: 'Etapa 7', min: 17, max: 17, pct: 17 },
+  { name: 'Etapa Elite', min: 18, max: Infinity, pct: 18 }
+];
+
+const getCommissionTierInfo = (closures: number) => {
+  const normalizedClosures = Math.max(closures, 1);
+  const currentIndex = COMMISSION_TIERS.findIndex(t => normalizedClosures >= t.min && normalizedClosures <= t.max);
+  const current = COMMISSION_TIERS[currentIndex >= 0 ? currentIndex : 0];
+  const next = COMMISSION_TIERS[currentIndex + 1];
+  const range = current.max === Infinity ? 1 : current.max - current.min + 1;
+  const progress = current.max === Infinity ? 100 : Math.min(100, Math.max(8, ((normalizedClosures - current.min + 1) / range) * 100));
+  return {
+    current,
+    next,
+    progress,
+    missingToNext: next ? Math.max(0, next.min - closures) : 0
+  };
 };
 
 interface ComercialesPanelScreenProps {
@@ -367,6 +394,8 @@ export default function ComercialesPanelScreen({
   );
   const myInitialTxsPaid = myInitialTxs.filter(tx => tx.status === 'paid');
   const myCommissionPercentage = comercial.commissionPercentage ?? getTieredCommission(Math.max(wonLeads.length, myInitialTxs.length));
+  const myClosuresForTier = Math.max(wonLeads.length, myInitialTxs.length);
+  const myTierInfo = getCommissionTierInfo(myClosuresForTier);
   const myInitialSalesVolume = myInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const myTotalSalesVolume = myInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
   const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
@@ -521,6 +550,38 @@ export default function ComercialesPanelScreen({
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-white">¡Hola de nuevo, {comercial.name}!</h2>
             <p className="text-xs text-slate-400 mt-1">Este es tu panel centralizado de carteras de clientes rápidos. Sigue tus objetivos de conversión.</p>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-r from-amber-500/10 via-violet-500/10 to-cyan-500/10 border border-amber-500/15 rounded-2xl p-5 overflow-hidden relative">
+          <div className="absolute right-4 top-4 w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center text-amber-300">
+            <Award className="w-4 h-4" />
+          </div>
+          <div className="pr-12">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[9px] uppercase tracking-[0.22em] text-amber-300 font-mono font-black">Nivel comercial</span>
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/20 text-amber-200 text-[10px] font-mono font-black">
+                {myTierInfo.current.name}
+              </span>
+            </div>
+            <div className="mt-3 flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+              <div>
+                <p className="text-3xl font-black text-white font-mono leading-none">{myCommissionPercentage}%</p>
+                <p className="text-xs text-slate-400 mt-2">
+                  {myClosuresForTier} {myClosuresForTier === 1 ? 'cierre validado' : 'cierres validados'} este periodo.
+                  {myTierInfo.next ? ` Te faltan ${myTierInfo.missingToNext} para subir a ${myTierInfo.next.pct}%.` : ' Estas en el nivel maximo.'}
+                </p>
+              </div>
+              <div className="md:w-80">
+                <div className="flex justify-between text-[9px] font-mono text-slate-400 mb-1.5">
+                  <span>{myTierInfo.current.min} cierres</span>
+                  <span>{myTierInfo.next ? `${myTierInfo.next.min} cierres` : 'Elite'}</span>
+                </div>
+                <div className="h-2.5 bg-black/30 rounded-full overflow-hidden border border-white/5">
+                  <div className="h-full bg-gradient-to-r from-amber-400 to-cyan-300 rounded-full" style={{ width: `${myTierInfo.progress}%` }} />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
