@@ -22,11 +22,9 @@ import {
   Video,
   ExternalLink,
   Settings,
-  Landmark,
   CreditCard,
   Coins,
   History,
-  Lock,
   RefreshCw,
   Award
 } from 'lucide-react';
@@ -68,12 +66,11 @@ const COMMISSION_TIERS = [
 ];
 
 const getCommissionTierInfo = (closures: number) => {
-  const normalizedClosures = Math.max(closures, 1);
+  const normalizedClosures = Math.max(closures, 0);
   const currentIndex = COMMISSION_TIERS.findIndex(t => normalizedClosures >= t.min && normalizedClosures <= t.max);
   const current = COMMISSION_TIERS[currentIndex >= 0 ? currentIndex : 0];
   const next = COMMISSION_TIERS[currentIndex + 1];
-  const range = current.max === Infinity ? 1 : current.max - current.min + 1;
-  const progress = current.max === Infinity ? 100 : Math.min(100, Math.max(8, ((normalizedClosures - current.min + 1) / range) * 100));
+  const progress = next ? Math.min(98, Math.max(0, (normalizedClosures / next.min) * 100)) : 100;
   return {
     current,
     next,
@@ -133,20 +130,8 @@ export default function ComercialesPanelScreen({
 }: ComercialesPanelScreenProps) {
   // Local state
   const [activeView, setActiveView] = useState<'pipeline' | 'cold_calling' | 'settings'>('pipeline');
-  const [iban, setIban] = useState(comercial.iban || '');
-  const [bic, setBic] = useState(comercial.bic || '');
-  const [bankName, setBankName] = useState(comercial.bankName || '');
-  const [settingsSuccess, setSettingsSuccess] = useState(false);
   const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
   const [stripeConnectError, setStripeConnectError] = useState('');
-
-  React.useEffect(() => {
-    if (comercial) {
-      setIban(comercial.iban || '');
-      setBic(comercial.bic || '');
-      setBankName(comercial.bankName || '');
-    }
-  }, [comercial]);
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
@@ -484,6 +469,7 @@ export default function ComercialesPanelScreen({
 
   return (
     <div className="min-h-screen bg-[#030308] text-slate-100 flex flex-col font-sans relative overflow-x-hidden">
+      <style>{`@keyframes tierFlow { 0% { background-position: 0% 50%; } 100% { background-position: 220% 50%; } }`}</style>
       
       {/* Elegant glassmorphism and modern gradient overlays */}
       <div className="absolute top-[-20%] left-[-10%] w-[700px] h-[700px] rounded-full bg-violet-600/5 blur-[150px] pointer-events-none" />
@@ -578,7 +564,10 @@ export default function ComercialesPanelScreen({
                   <span>{myTierInfo.next ? `${myTierInfo.next.min} cierres` : 'Elite'}</span>
                 </div>
                 <div className="h-2.5 bg-black/30 rounded-full overflow-hidden border border-white/5">
-                  <div className="h-full bg-gradient-to-r from-amber-400 to-cyan-300 rounded-full" style={{ width: `${myTierInfo.progress}%` }} />
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(110deg,#fbbf24_0%,#fef08a_35%,#67e8f9_70%,#fbbf24_100%)] bg-[length:220%_100%] animate-[tierFlow_2.8s_linear_infinite] transition-[width] duration-700"
+                    style={{ width: `${myTierInfo.progress}%` }}
+                  />
                 </div>
               </div>
             </div>
@@ -649,98 +638,17 @@ export default function ComercialesPanelScreen({
           <div className="space-y-6 animate-fade-in font-sans">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
-              {/* LEFT COLUMN: BANK SETTINGS FORM */}
+              {/* LEFT COLUMN: STRIPE CONNECT SETTINGS */}
               <div className="lg:col-span-5 bg-slate-950/40 border border-white/5 rounded-2xl p-6 space-y-6">
                 <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-                  <div className="p-2.5 bg-violet-500/10 rounded-xl border border-violet-500/20 text-violet-400">
-                    <Landmark className="w-5 h-5" />
+                  <div className="p-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
+                    <CreditCard className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-white text-sm">Datos de Facturación y Banco</h3>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Configura tu cuenta bancaria de destino para liquidaciones con Stripe.</p>
+                    <h3 className="font-bold text-white text-sm">Cobros con Stripe Connect</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Conecta tu cuenta de cobro de forma segura. Althera no almacena datos bancarios.</p>
                   </div>
                 </div>
-
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  if (onUpdateComercial) {
-                    onUpdateComercial({
-                      ...comercial,
-                      iban: iban.trim(),
-                      bic: bic.trim(),
-                      bankName: bankName.trim()
-                    });
-                    setSettingsSuccess(true);
-                    setTimeout(() => setSettingsSuccess(false), 3000);
-                  }
-                }} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Código IBAN (Cuenta Bancaria)</label>
-                    <input
-                      type="text"
-                      required
-                      disabled={!!comercial.iban}
-                      placeholder="ES21 0000 0000 0000 0000 0000"
-                      value={iban}
-                      onChange={(e) => setIban(e.target.value)}
-                      className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-900/50 disabled:border-white/5"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Código BIC / SWIFT</label>
-                      <input
-                        type="text"
-                        required
-                        disabled={!!comercial.iban}
-                        placeholder="Ej. ESBRES2X"
-                        value={bic}
-                        onChange={(e) => setBic(e.target.value)}
-                        className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all font-mono disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-900/50 disabled:border-white/5"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-mono text-slate-400 font-bold">Nombre del Banco</label>
-                      <input
-                        type="text"
-                        required
-                        disabled={!!comercial.iban}
-                        placeholder="Ej. Santander, BBVA"
-                        value={bankName}
-                        onChange={(e) => setBankName(e.target.value)}
-                        className="w-full bg-[#030307] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-900/50 disabled:border-white/5"
-                      />
-                    </div>
-                  </div>
-
-                  {comercial.iban && (
-                    <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-400 font-medium leading-relaxed flex items-start gap-2.5">
-                      <Lock className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>Los datos bancarios solo se pueden configurar una vez para prevenir accesos no autorizados y fraudes en las liquidaciones de Stripe. Este panel está ahora <strong>BLOQUEADO</strong> de forma segura. Si necesitas actualizar tus datos, solicita un cambio formal con administración.</span>
-                    </div>
-                  )}
-
-                  {settingsSuccess && (
-                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-400 font-medium">
-                      ✓ Datos bancarios guardados con éxito.
-                    </div>
-                  )}
-
-                  {comercial.iban ? (
-                    <div className="w-full py-2.5 bg-slate-900/80 border border-white/5 text-slate-500 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed select-none">
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Configuración de Cobro Guardada</span>
-                    </div>
-                  ) : (
-                    <button
-                      type="submit"
-                      className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-lg shadow-violet-500/15"
-                    >
-                      Guardar Configuración
-                    </button>
-                  )}
-                </form>
 
                 {/* STRIPE INFO CARD */}
                 <div className="bg-[#050510]/50 border border-violet-500/10 rounded-xl p-4 space-y-2.5">
@@ -813,7 +721,7 @@ export default function ComercialesPanelScreen({
                     </div>
                   )}
                   <p className="text-[10px] text-slate-400 leading-normal">
-                    Tus comisiones acumuladas se liquidan de forma directa a esta cuenta bancaria. Stripe verifica la titularidad del IBAN. El tiempo estimado de transferencia es de 1-3 días laborables.
+                    Tus comisiones acumuladas se liquidan de forma directa mediante Stripe Connect. Stripe verifica identidad, datos fiscales y cuenta de cobro fuera de Althera.
                   </p>
                 </div>
               </div>

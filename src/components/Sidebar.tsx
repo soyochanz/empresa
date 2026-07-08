@@ -13,7 +13,8 @@ import {
   Mail,
   Receipt,
   Phone,
-  Code
+  Code,
+  Home
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -253,11 +254,19 @@ export default function Sidebar({
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-slate-200 truncate leading-snug">{currentUser.name}</p>
               <p className="text-[10px] text-slate-400 truncate leading-none mt-0.5">
-                {currentUser.id ? 'Real Account' : 'Demo Account'}
+                Cuenta Althera
               </p>
             </div>
           </div>
         )}
+
+        <button
+          onClick={() => onNavigate('landing', 'none')}
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 text-left cursor-pointer"
+        >
+          <Home className="w-5 h-5 text-slate-400" />
+          <span className="font-sans text-sm">Ir al Home</span>
+        </button>
 
         <button
           onClick={onOpenNotifications}

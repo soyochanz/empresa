@@ -128,7 +128,8 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
     const initialPath = window.location.pathname || '/';
     const savedUser = sessionStorage.getItem('agency_user');
-    const isLoggedIn = !!savedUser;
+    const parsedUser = savedUser ? JSON.parse(savedUser) : null;
+    const isLoggedIn = parsedUser?.id === null;
     const savedComercial = sessionStorage.getItem('agency_current_comercial');
     const isComercialLoggedIn = !!savedComercial;
 
@@ -154,7 +155,8 @@ export default function App() {
   // Authentication state
   const [currentUser, setCurrentUser] = useState<{ id: string | null; email: string; name: string } | null>(() => {
     const saved = sessionStorage.getItem('agency_user');
-    return saved ? JSON.parse(saved) : null;
+    const parsed = saved ? JSON.parse(saved) : null;
+    return parsed?.id === null ? parsed : null;
   });
 
    // Persistence Engine Database State (with standard fallback to empty arrays)
@@ -998,9 +1000,6 @@ export default function App() {
         if (savedUser && savedUser.id === null) {
           // Preserve demo/local session
           setCurrentUser(savedUser);
-        } else if (savedUser) {
-          setCurrentUser(savedUser);
-          syncWithSupabase(savedUser.id);
         } else {
           setCurrentUser(null);
           sessionStorage.removeItem('agency_user');

@@ -62,12 +62,11 @@ const COMMISSION_TIERS = [
 ];
 
 const getCommissionTierInfo = (closures: number) => {
-  const normalizedClosures = Math.max(closures, 1);
+  const normalizedClosures = Math.max(closures, 0);
   const currentIndex = COMMISSION_TIERS.findIndex(t => normalizedClosures >= t.min && normalizedClosures <= t.max);
   const current = COMMISSION_TIERS[currentIndex >= 0 ? currentIndex : 0];
   const next = COMMISSION_TIERS[currentIndex + 1];
-  const range = current.max === Infinity ? 1 : current.max - current.min + 1;
-  const progress = current.max === Infinity ? 100 : Math.min(100, Math.max(8, ((normalizedClosures - current.min + 1) / range) * 100));
+  const progress = next ? Math.min(98, Math.max(0, (normalizedClosures / next.min) * 100)) : 100;
   return {
     current,
     next,

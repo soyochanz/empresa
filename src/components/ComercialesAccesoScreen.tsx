@@ -14,6 +14,25 @@ export default function ComercialesAccesoScreen({
   onSignInComercial, 
   onBackToLanding 
 }: ComercialesAccesoScreenProps) {
+  const LOCK_KEY = 'althera_comercial_login_guard';
+  const MAX_ATTEMPTS = 5;
+  const LOCK_MS = 15 * 60 * 1000;
+  const getLoginGuard = () => {
+    try {
+      return JSON.parse(localStorage.getItem(LOCK_KEY) || '{"attempts":0,"lockedUntil":0}');
+    } catch {
+      return { attempts: 0, lockedUntil: 0 };
+    }
+  };
+  const recordFailedAttempt = () => {
+    const guard = getLoginGuard();
+    const attempts = (guard.attempts || 0) + 1;
+    const lockedUntil = attempts >= MAX_ATTEMPTS ? Date.now() + LOCK_MS : 0;
+    localStorage.setItem(LOCK_KEY, JSON.stringify({ attempts, lockedUntil }));
+    return { attempts, lockedUntil };
+  };
+  const clearLoginGuard = () => localStorage.removeItem(LOCK_KEY);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -23,6 +42,12 @@ export default function ComercialesAccesoScreen({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    const guard = getLoginGuard();
+    if (guard.lockedUntil && guard.lockedUntil > Date.now()) {
+      const minutes = Math.ceil((guard.lockedUntil - Date.now()) / 60000);
+      setErrorMsg(`Demasiados intentos fallidos. Vuelve a intentarlo en ${minutes} min.`);
+      return;
+    }
     setLoading(true);
 
     setTimeout(() => {
@@ -32,9 +57,16 @@ export default function ComercialesAccesoScreen({
       );
 
       if (found) {
+        clearLoginGuard();
         onSignInComercial(found);
       } else {
-        setErrorMsg('Credenciales incorrectas. Verifica tu correo y contraseña, o solicita un acceso al Administrador de Althera.');
+        const failed = recordFailedAttempt();
+        const remaining = Math.max(0, MAX_ATTEMPTS - failed.attempts);
+        setErrorMsg(
+          failed.lockedUntil
+            ? 'Demasiados intentos fallidos. Acceso bloqueado temporalmente durante 15 minutos.'
+            : `Credenciales incorrectas. Intentos restantes: ${remaining}.`
+        );
         setLoading(false);
       }
     }, 1000);
