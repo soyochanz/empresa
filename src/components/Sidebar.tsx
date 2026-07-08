@@ -16,6 +16,7 @@ import {
   Code,
   Home,
   Snowflake
+  ,X
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -27,6 +28,8 @@ interface SidebarProps {
   onLogout?: () => void;
   onOpenNotifications?: () => void;
   unreadCount?: number;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 export default function Sidebar({ 
@@ -37,13 +40,19 @@ export default function Sidebar({
   currentUser,
   onLogout,
   onOpenNotifications,
-  unreadCount
+  unreadCount,
+  mobileOpen = false,
+  onMobileClose
 }: SidebarProps) {
+  const navigate = (target: Screen, transition: 'none' | 'push' | 'push_back' = 'none') => {
+    onNavigate(target, transition);
+    onMobileClose?.();
+  };
   return (
-    <aside id="sidebar" className="fixed left-0 top-0 bottom-0 flex flex-col py-6 w-[260px] bg-[#020204] border-r border-violet-500/15 z-40 text-slate-200 shadow-2xl shadow-black">
+    <aside id="sidebar" className={`fixed left-0 top-0 bottom-0 flex flex-col py-6 w-[min(280px,86vw)] lg:w-[260px] bg-[#020204] border-r border-violet-500/15 z-[60] lg:z-40 text-slate-200 shadow-2xl shadow-black transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       
       {/* Brand Header */}
-      <div className="px-6 mb-8">
+      <div className="px-6 mb-8 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl border border-violet-500/25 p-1 shadow-[0_0_15px_rgba(139,92,246,0.15)]">
             <img 
@@ -57,6 +66,9 @@ export default function Sidebar({
             <h1 className="font-semibold text-base tracking-tight text-white font-display uppercase">Althera</h1>
           </div>
         </div>
+        <button onClick={onMobileClose} className="lg:hidden w-11 h-11 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" aria-label="Cerrar menú">
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Main Navigation - MUST be wrapped in <nav> for xpath targeting */}
@@ -64,7 +76,7 @@ export default function Sidebar({
         
         {/* Dashboard */}
         <button
-          onClick={() => onNavigate('dashboard', 'none')}
+          onClick={() => navigate('dashboard')}
           className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
             currentScreen === 'dashboard'
               ? 'bg-violet-500/10 text-violet-400 border border-violet-500/25 shadow-[0_4px_12px_rgba(139,92,246,0.1)] font-semibold'

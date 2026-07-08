@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, Calendar, CheckCircle2, Copy, Edit3, Image as ImageIcon, Instagram, LayoutDashboard, MapPin, MessageCircle, Phone, Save, ShieldCheck, Sparkles, Star, TrendingUp, Users, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, Calendar, CheckCircle2, Copy, Edit3, Image as ImageIcon, Instagram, LayoutDashboard, MapPin, Menu, MessageCircle, Phone, Save, ShieldCheck, Sparkles, Star, TrendingUp, Users, X } from 'lucide-react';
 import { ClientContact } from '../types';
 import { db } from '../supabaseClient';
 
@@ -178,6 +178,7 @@ export default function WebsitePreviewScreen({ contactId, contacts = [], onBack 
   const [isEditing, setIsEditing] = useState(new URLSearchParams(window.location.search).get('edit') === '1');
   const [saving, setSaving] = useState(false);
   const [savedLink, setSavedLink] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const existing = contacts.find(c => c.id === contactId);
@@ -264,7 +265,7 @@ export default function WebsitePreviewScreen({ contactId, contacts = [], onBack 
         .accent-border { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
       `}</style>
 
-      <nav className={`${headerPositionClass} z-50 px-5 sm:px-10 py-4 border-b ${headerChromeClass}`}>
+      <nav className={`${headerPositionClass} z-50 px-4 sm:px-10 py-3 sm:py-4 border-b ${headerChromeClass}`}>
         {config.headerStyle === 'center_logo' ? (
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
             <div className="hidden lg:flex justify-end items-center gap-7 text-xs font-bold text-white/80">
@@ -305,10 +306,17 @@ export default function WebsitePreviewScreen({ contactId, contacts = [], onBack 
             </div>
           </div>
         )}
+        <button onClick={() => setMobileMenuOpen(v => !v)} className="fixed right-4 top-3 lg:hidden w-11 h-11 rounded-xl bg-black/40 border border-white/15 flex items-center justify-center" aria-label="Abrir menú">{mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</button>
+        {mobileMenuOpen && (
+          <div className="lg:hidden mt-3 rounded-2xl border border-white/15 bg-black/90 backdrop-blur-xl p-2 grid gap-1">
+            {[['Servicios', 'servicios'], ['Galería', 'galeria'], ['Panel cliente', 'panel'], ['Contacto', 'contacto']].map(([label, id]) => <a key={id} href={`#${id}`} onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 rounded-xl text-sm font-bold hover:bg-white/10">{label}</a>)}
+            <button onClick={() => { setMobileMenuOpen(false); setIsEditing(true); }} className="px-4 py-3 rounded-xl accent-bg text-black text-sm font-black">Editar demo</button>
+          </div>
+        )}
       </nav>
 
       {isEditing && (
-        <aside className="fixed right-4 top-20 bottom-4 z-[60] w-[min(410px,calc(100vw-32px))] overflow-y-auto rounded-3xl border border-emerald-400/20 bg-[#050807]/95 text-white shadow-2xl backdrop-blur-xl p-4">
+        <aside className="fixed inset-0 sm:inset-auto sm:right-4 sm:top-20 sm:bottom-4 z-[60] w-full sm:w-[min(410px,calc(100vw-32px))] overflow-y-auto rounded-none sm:rounded-3xl border border-emerald-400/20 bg-[#050807]/95 text-white shadow-2xl backdrop-blur-xl p-4">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
               <p className="text-xs font-black text-emerald-300 flex items-center gap-2"><Sparkles className="w-4 h-4" />Editor en tiempo real</p>

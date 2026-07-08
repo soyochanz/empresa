@@ -489,7 +489,7 @@ export default function ComercialesPanelScreen({
       </div>
 
       {/* HEADER BAR */}
-      <header className="relative z-10 border-b border-white/5 bg-[#050505]/80 backdrop-blur-md px-8 py-5 flex items-center justify-between">
+      <header className="relative z-10 border-b border-white/5 bg-[#050505]/80 backdrop-blur-md px-4 sm:px-8 py-4 sm:py-5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl border border-violet-500/25 p-1">
             <img 
@@ -514,14 +514,14 @@ export default function ComercialesPanelScreen({
           </div>
           <button
             onClick={() => setShowDossierModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-xl text-xs font-bold transition duration-250 cursor-pointer shadow-lg shadow-amber-500/10"
+            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-xl text-xs font-bold transition duration-250 cursor-pointer shadow-lg shadow-amber-500/10"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span>Ver Dossier & PDF</span>
           </button>
           <button
             onClick={onLogout}
-            className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/25 text-red-400 border border-red-500/25 rounded-xl text-xs font-semibold hover:text-white transition duration-250 cursor-pointer"
+            className="flex items-center gap-2 min-w-11 min-h-11 px-3 sm:px-4 py-2 bg-red-500/10 hover:bg-red-500/25 text-red-400 border border-red-500/25 rounded-xl text-xs font-semibold hover:text-white transition duration-250 cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Cerrar Sesión</span>
@@ -530,7 +530,7 @@ export default function ComercialesPanelScreen({
       </header>
 
       {/* VIEWPORT CANVAS */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-8 relative z-10 overflow-y-auto">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 md:p-8 space-y-6 md:space-y-8 relative z-10 overflow-y-auto">
         
         {/* WELCOME BANNER WITH ANALYTICS BRIEF */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-4">
@@ -576,7 +576,7 @@ export default function ComercialesPanelScreen({
         </div>
 
         {/* VIEW MODE TABS FOR COMERCIAL (CRM vs COLD CALLING vs SETTINGS) */}
-        <div className="flex gap-1.5 p-1 bg-[#050510]/80 backdrop-blur-md rounded-2xl border border-white/5 max-w-md">
+        <div className="flex gap-1.5 p-1 bg-[#050510]/80 backdrop-blur-md rounded-2xl border border-white/5 w-full sm:max-w-md overflow-x-auto">
           <button
             onClick={() => setActiveView('pipeline')}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${

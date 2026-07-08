@@ -30,7 +30,7 @@ import WebsitePreviewScreen from './components/WebsitePreviewScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
-import { Bell, X, Calendar as CalendarAtom, Check } from 'lucide-react';
+import { Bell, X, Calendar as CalendarAtom, Check, Menu } from 'lucide-react';
 
 function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialLoggedIn: boolean): { screen: Screen; redirectedPath?: string } {
   let path = pathString || '/';
@@ -338,6 +338,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('agency_read_notifications', JSON.stringify(readNotificationIds));
@@ -1822,10 +1823,23 @@ export default function App() {
         onLogout={handleSignOutUser}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         unreadCount={unreadCount}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
       />
+      {mobileSidebarOpen && <button aria-label="Cerrar menú" onClick={() => setMobileSidebarOpen(false)} className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm lg:hidden" />}
 
       {/* Main Content Pane wrapper */}
-      <div className="flex-1 ml-[260px] flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 ml-0 lg:ml-[260px] flex flex-col h-screen min-w-0 overflow-hidden">
+        <div className="lg:hidden h-16 shrink-0 px-4 flex items-center justify-between border-b border-white/10 bg-[#050508]/95 backdrop-blur-xl z-30">
+          <button onClick={() => setMobileSidebarOpen(true)} className="w-11 h-11 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" aria-label="Abrir menú">
+            <Menu className="w-5 h-5" />
+          </button>
+          <span className="text-xs font-black uppercase tracking-[.2em]">Althera</span>
+          <button onClick={() => setIsNotificationsOpen(true)} className="relative w-11 h-11 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" aria-label="Notificaciones">
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-400" />}
+          </button>
+        </div>
 
         {/* Dynamic Screen viewport frames with slide/none transitions */}
         <div className="flex-1 relative overflow-hidden font-sans">
