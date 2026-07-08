@@ -3262,23 +3262,32 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                       </td>
                     </tr>
                   ) : (
-                    stripeTransactions.map(t => (
-                      <tr key={t.id} className="hover:bg-white/[0.01] transition-colors">
-                        <td className="p-3 font-mono text-[9px] text-slate-400 select-all">{t.id}</td>
-                        <td className="p-3 text-left">
-                          <span className="font-bold text-white">{t.description}</span>
-                          <span className="block text-[9px] text-slate-500 font-mono mt-0.5">{t.category}</span>
-                        </td>
-                        <td className="p-3 text-slate-350">{t.date}</td>
-                        <td className="p-3 font-mono font-bold text-emerald-450">{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</td>
-                        <td className="p-3 text-right">
-                          <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg select-none">
-                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                            <span>Liquidado en Cuenta</span>
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    stripeTransactions.map(t => {
+                      const isPaid = t.status === 'paid';
+                      return (
+                        <tr key={t.id} className="hover:bg-white/[0.01] transition-colors">
+                          <td className="p-3 font-mono text-[9px] text-slate-400 select-all">{t.id}</td>
+                          <td className="p-3 text-left">
+                            <span className="font-bold text-white">{t.description}</span>
+                            <span className="block text-[9px] text-slate-500 font-mono mt-0.5">{t.category}</span>
+                          </td>
+                          <td className="p-3 text-slate-350">{t.date}</td>
+                          <td className={`p-3 font-mono font-bold ${isPaid ? 'text-emerald-450' : 'text-amber-400'}`}>
+                            {t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+                          </td>
+                          <td className="p-3 text-right">
+                            <span className={`inline-flex items-center gap-1 text-[9px] font-mono font-bold px-2 py-0.5 rounded-lg select-none border ${
+                              isPaid
+                                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                            }`}>
+                              <ShieldCheck className={`w-3 h-3 ${isPaid ? 'text-emerald-400' : 'text-amber-400'}`} />
+                              <span>{isPaid ? 'Cobrado en Stripe' : 'Pendiente de cobro'}</span>
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

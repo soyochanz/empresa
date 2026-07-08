@@ -557,10 +557,10 @@ export default function App() {
               const matchedComercial = comercialesList.find(c =>
                 c.email.toLowerCase() === (client.contactedByComercialEmail || client.assignedUserEmail || '').toLowerCase()
               );
+              const firstPaymentDate = new Date(`${paidTx.date || todayStr}T00:00:00`);
               for (let i = 2; i <= numInstallments; i++) {
-                const daysAhead = (i - 1) * 30;
-                const d = new Date();
-                d.setDate(d.getDate() + daysAhead);
+                const d = new Date(firstPaymentDate);
+                d.setMonth(firstPaymentDate.getMonth() + (i - 1));
                 const futureDateStr = d.toISOString().split('T')[0];
                 
                 // Construct clean name for the installment

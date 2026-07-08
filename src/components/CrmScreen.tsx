@@ -361,8 +361,12 @@ export default function CrmScreen({
     
     // Create Invoice Items
     const invoiceItems: any[] = [];
+    const firstInstallmentDate = new Date();
+    firstInstallmentDate.setHours(0, 0, 0, 0);
     for (let i = 1; i <= convInstallments; i++) {
       const txId = 'tx_crm_' + Math.random().toString(36).substring(2, 9) + '_' + i;
+      const installmentDate = new Date(firstInstallmentDate);
+      installmentDate.setMonth(firstInstallmentDate.getMonth() + (i - 1));
       
       invoiceItems.push({
         id: 'item_' + i + '_' + Date.now(),
@@ -381,7 +385,7 @@ export default function CrmScreen({
         type: 'income',
         category: 'Ventas',
         amount: pricePerInstallment,
-        date: new Date(Date.now() + (i - 1) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // spaced by 30 days
+        date: installmentDate.toISOString().split('T')[0],
         description: `${convConcept} - Plazo ${i} de ${convInstallments} (Pendiente)`,
         status: 'pending',
         paymentMethod: 'transfer',
