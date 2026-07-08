@@ -548,6 +548,28 @@ app.post("/api/stripe/customer-overview", async (req, res) => {
   }
 });
 
+app.post("/api/stripe/cancel-subscription", async (req, res) => {
+  try {
+    const { subscriptionId } = req.body || {};
+    if (!subscriptionId || typeof subscriptionId !== "string") {
+      return res.status(400).json({ error: "subscriptionId is required" });
+    }
+
+    const stripe = getStripe();
+    const subscription = await stripe.subscriptions.cancel(subscriptionId);
+
+    res.json({
+      id: subscription.id,
+      status: subscription.status,
+      canceledAt: subscription.canceled_at,
+      dashboardUrl: `https://dashboard.stripe.com/subscriptions/${subscription.id}`,
+    });
+  } catch (error: any) {
+    console.error("Error canceling stripe subscription:", error);
+    res.status(500).json({ error: error?.message || "Internal Server Error" });
+  }
+});
+
 app.post("/api/stripe/create-connect-account", async (req, res) => {
   try {
     const { comercialId, comercialName, comercialEmail, existingAccountId } = req.body;

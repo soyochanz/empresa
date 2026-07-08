@@ -988,9 +988,9 @@ export default function ComercialesPanelScreen({
           <div className="bg-amber-500/[0.02] border border-amber-500/10 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-amber-500/30 transition duration-200 shadow-lg shadow-amber-500/5 relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none translate-x-12 -translate-y-12" />
             <div className="relative z-10 text-left">
-              <p className="text-amber-500/70 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Mis Comisiones (Cobradas)</p>
+              <p className="text-amber-500/70 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Mis Comisiones Listas para Cobrar</p>
               <h3 className="text-2xl font-bold text-amber-400 font-mono">
-                {myBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
+                {myBenefitsReadyToPayout.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
               </h3>
               <p className="text-[10px] text-slate-400 mt-1">
                 Comision fijada: <strong className="text-amber-400">{myCommissionPercentage}%</strong> | <span className="text-blue-300">{myBenefitsPendingOnClientPayment.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} pendiente al cobrar</span>

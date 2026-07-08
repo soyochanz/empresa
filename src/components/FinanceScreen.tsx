@@ -245,6 +245,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const [stripePortalLoading, setStripePortalLoading] = useState<string | null>(null);
   const [stripeOverviewByClient, setStripeOverviewByClient] = useState<Record<string, any>>({});
   const [stripeOverviewLoading, setStripeOverviewLoading] = useState<string | null>(null);
+  const [stripeCancelLoading, setStripeCancelLoading] = useState<string | null>(null);
+  const [locallyCanceledSubscriptionIds, setLocallyCanceledSubscriptionIds] = useState<string[]>([]);
   const [stripeOverviewError, setStripeOverviewError] = useState('');
 
   const handleCreateFinanceStripeCheckout = async () => {
@@ -323,6 +325,15 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   };
 
   const handleLoadFinanceStripeOverview = async (client: ClientContact) => {
+    if (stripeOverviewByClient[client.id]) {
+      setStripeOverviewByClient(prev => {
+        const next = { ...prev };
+        delete next[client.id];
+        return next;
+      });
+      return;
+    }
+
     setStripeOverviewLoading(client.id);
     setStripeOverviewError('');
     try {
@@ -344,6 +355,49 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
       setStripeOverviewError(err?.message || 'No se pudo consultar Stripe.');
     } finally {
       setStripeOverviewLoading(null);
+    }
+  };
+
+  const handleCancelFinanceSubscription = async (client: ClientContact, subscriptionId: string) => {
+    const ok = safeConfirm(`¿Seguro que quieres cancelar la suscripción Stripe de ${client.name}? Esta acción detendrá los próximos cobros.`);
+    if (!ok) return;
+
+    setStripeCancelLoading(subscriptionId);
+    setStripeOverviewError('');
+    try {
+      const response = await fetch('/api/stripe/cancel-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionId }),
+      });
+      const data = await readStripeJson(response);
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo cancelar la suscripción');
+      }
+
+      const updatedClient: ClientContact = {
+        ...client,
+        stripeSubscriptionStatus: 'canceled'
+      };
+      await db.updateContact(updatedClient);
+      setLocallyCanceledSubscriptionIds(prev => prev.includes(subscriptionId) ? prev : [...prev, subscriptionId]);
+      setStripeOverviewByClient(prev => {
+        const overview = prev[client.id];
+        if (!overview) return prev;
+        return {
+          ...prev,
+          [client.id]: {
+            ...overview,
+            subscriptions: (overview.subscriptions || []).map((sub: any) =>
+              sub.id === subscriptionId ? { ...sub, status: data.status || 'canceled', canceledAt: data.canceledAt } : sub
+            )
+          }
+        };
+      });
+    } catch (err: any) {
+      setStripeOverviewError(err?.message || 'No se pudo cancelar la suscripción.');
+    } finally {
+      setStripeCancelLoading(null);
     }
   };
 
@@ -585,7 +639,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   };
 
   // Stripe-specific calculations for automation
-  const activeSubs = contacts.filter(c => c.stripeSubscriptionStatus === 'active');
+  const activeSubs = contacts.filter(c =>
+    c.stripeSubscriptionStatus === 'active' &&
+    (!c.stripeSubscriptionId || !locallyCanceledSubscriptionIds.includes(c.stripeSubscriptionId))
+  );
   const mrr = activeSubs.reduce((sum, c) => {
     const price = parseFloat(c.stripeSubscriptionPrice || '0');
     if (isNaN(price)) return sum;
@@ -595,9 +652,33 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     return sum + price;
   }, 0);
   const stripeVolume = transactions
-    .filter(t => t.id && (t.id.startsWith('tx_stripe_') || t.id.startsWith('tx_auto_stripe_')))
+    .filter(t => t.type === 'income' && t.status === 'paid' && (t.stripePlanId || t.stripeCheckoutSessionId || t.stripeInvoiceId || t.id?.includes('stripe')))
     .reduce((sum, t) => sum + (t.amount || 0), 0);
-  const stripeTransactions = transactions.filter(t => t.id && (t.id.startsWith('tx_stripe_') || t.id.startsWith('tx_auto_stripe_')));
+  const stripeTransactions = transactions.filter(t =>
+    t.type === 'income' &&
+    (t.stripePlanId || t.stripeCheckoutSessionId || t.stripeInvoiceId || t.id?.includes('stripe'))
+  );
+
+  const getClientStripeMoneySummary = (client: ClientContact) => {
+    const clientTxs = transactions.filter(tx =>
+      tx.type === 'income' &&
+      (tx.clientId === client.id || tx.stripePlanId || tx.stripeCheckoutSessionId || tx.stripeInvoiceId) &&
+      (
+        tx.clientId === client.id ||
+        (tx.description || '').toLowerCase().includes(client.name.toLowerCase()) ||
+        (client.email && (tx.description || '').toLowerCase().includes(client.email.toLowerCase()))
+      )
+    );
+    const localPaid = clientTxs.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    const localOpen = clientTxs.filter(tx => tx.status === 'pending').reduce((sum, tx) => sum + (tx.amount || 0), 0);
+    const overview = stripeOverviewByClient[client.id];
+    const stripePaid = overview?.totals?.paidInvoices || 0;
+    const stripeOpen = overview?.totals?.openInvoices || 0;
+    return {
+      paid: Math.max(localPaid, stripePaid),
+      open: Math.max(localOpen, stripeOpen),
+    };
+  };
 
   // Filter transaction categories
   const categories = ['All', ...Array.from(new Set(transactions.map(t => t.category)))];
@@ -3088,7 +3169,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                             ) : (
                               <CreditCard className="w-3 h-3" />
                             )}
-                            <span>Info Stripe</span>
+                            <span>{stripeOverviewByClient[c.id] ? 'Ocultar info' : 'Info Stripe'}</span>
                           </button>
                         </div>
                         {stripeOverviewByClient[c.id] && (
@@ -3099,19 +3180,31 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                             </div>
                             <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
                               <span className="block text-[7px] text-slate-500 uppercase font-mono">Cobrado</span>
-                              <span className="text-[11px] text-emerald-400 font-black">{(stripeOverviewByClient[c.id].totals?.paidInvoices || 0).toFixed(2)} €</span>
+                              <span className="text-[11px] text-emerald-400 font-black">{getClientStripeMoneySummary(c).paid.toFixed(2)} €</span>
                             </div>
                             <div className="bg-black/20 rounded-lg p-2 border border-amber-500/10">
                               <span className="block text-[7px] text-slate-500 uppercase font-mono">Abierto</span>
-                              <span className="text-[11px] text-amber-400 font-black">{(stripeOverviewByClient[c.id].totals?.openInvoices || 0).toFixed(2)} €</span>
+                              <span className="text-[11px] text-amber-400 font-black">{getClientStripeMoneySummary(c).open.toFixed(2)} €</span>
                             </div>
                             <div className="col-span-3 space-y-1.5 text-left">
                               {(stripeOverviewByClient[c.id].subscriptions || []).slice(0, 1).map((sub: any) => (
-                                <div key={sub.id} className="flex justify-between gap-2 text-[9px] bg-black/20 border border-white/5 rounded-lg p-2">
+                                <div key={sub.id} className="flex flex-wrap items-center justify-between gap-2 text-[9px] bg-black/20 border border-white/5 rounded-lg p-2">
                                   <span className="text-slate-300 truncate">{sub.id}</span>
-                                  <span className={sub.status === 'active' ? 'text-emerald-400' : sub.status === 'canceled' ? 'text-rose-400' : 'text-amber-400'}>
-                                    {sub.cancelAtPeriodEnd ? 'cancela al final' : sub.status}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className={sub.status === 'active' ? 'text-emerald-400' : sub.status === 'canceled' ? 'text-rose-400' : 'text-amber-400'}>
+                                      {sub.cancelAtPeriodEnd ? 'cancela al final' : sub.status}
+                                    </span>
+                                    {sub.status !== 'canceled' && (
+                                      <button
+                                        type="button"
+                                        disabled={stripeCancelLoading === sub.id}
+                                        onClick={() => handleCancelFinanceSubscription(c, sub.id)}
+                                        className="px-2 py-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-300 font-bold disabled:opacity-50"
+                                      >
+                                        {stripeCancelLoading === sub.id ? 'Cancelando...' : 'Cancelar'}
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               ))}
                               {(stripeOverviewByClient[c.id].invoices || []).slice(0, 2).map((inv: any) => (
