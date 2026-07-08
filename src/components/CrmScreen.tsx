@@ -516,6 +516,7 @@ export default function CrmScreen({
   const [paymentDesc, setPaymentDesc] = useState('');
   const [paymentInvoiceId, setPaymentInvoiceId] = useState('general');
   const [paymentStatus, setPaymentStatus] = useState<'paid' | 'pending'>('paid');
+  const [paymentInstallments, setPaymentInstallments] = useState<1 | 2 | 3>(1);
 
   const fetchFinancials = async () => {
     setLoadingFinancials(true);
@@ -640,11 +641,32 @@ export default function CrmScreen({
         isRecurring: false,
         status: paymentStatus,
         paymentMethod: paymentMethod,
-        invoiceId: finalInvoiceId
+        invoiceId: finalInvoiceId,
+        clientId: selectedContact.id,
+        comercialId: (comercialesList || []).find(c => c.email.toLowerCase() === (selectedContact.contactedByComercialEmail || selectedContact.assignedUserEmail || '').toLowerCase())?.id,
+        comercialEmail: selectedContact.contactedByComercialEmail || selectedContact.assignedUserEmail,
+        isInitialSale: true
       };
 
-      // Insert transaction into DB
-      await db.insertFinanceTransaction(newTx);
+      // Create a manual installment plan when the client agreed to pay in 2 or 3 months.
+      if (paymentStatus === 'pending' && paymentInstallments > 1) {
+        const installmentAmount = Math.round((amt / paymentInstallments) * 100) / 100;
+        for (let index = 0; index < paymentInstallments; index++) {
+          const dueDate = new Date(`${paymentDate}T12:00:00`);
+          dueDate.setMonth(dueDate.getMonth() + index);
+          await db.insertFinanceTransaction({
+            ...newTx,
+            id: `${txId}_${index + 1}`,
+            amount: index === paymentInstallments - 1 ? Math.round((amt - installmentAmount * index) * 100) / 100 : installmentAmount,
+            date: dueDate.toISOString().split('T')[0],
+            description: `${newTx.description} · Cuota ${index + 1}/${paymentInstallments}`,
+            stripeInstallmentIndex: index + 1,
+            stripeInstallmentCount: paymentInstallments
+          });
+        }
+      } else {
+        await db.insertFinanceTransaction(newTx);
+      }
 
       // Sync/update ComercialLead status to 'Ganado' if this contact is a Client and a payment was registered
       if (selectedContact && selectedContact.status === 'Client') {
@@ -3773,6 +3795,20 @@ export default function CrmScreen({
                   Nota: Para cobrar un nuevo servicio, primero regístralo como "Pendiente". Así aparecerá por defecto en el panel de plazos y links de Stripe.
                 </p>
               </div>
+
+              {paymentStatus === 'pending' && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Plan acordado</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([1, 2, 3] as const).map(count => (
+                      <button type="button" key={count} onClick={() => setPaymentInstallments(count)} className={`py-2.5 rounded-xl border text-xs font-bold ${paymentInstallments === count ? 'bg-blue-500/20 border-blue-400 text-blue-300' : 'bg-white/5 border-white/10 text-slate-400'}`}>
+                        {count} {count === 1 ? 'pago' : 'meses'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-slate-500">Se crearán las cuotas pendientes con vencimiento mensual. La comisión se activa al marcar cada cuota como pagada.</p>
+                </div>
+              )}
 
               {/* Invoice to Settle */}
               <div className="space-y-1.5">

@@ -167,6 +167,7 @@ export interface PayoutTransaction {
   bankName?: string;
   stripeTransferId?: string;
   stripeConnectAccountId?: string;
+  paymentMethod?: 'stripe' | 'transfer' | 'cash';
 }
 
 export interface ComercialAccount {

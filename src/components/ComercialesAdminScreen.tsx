@@ -118,6 +118,7 @@ export default function ComercialesAdminScreen({
   const [showDossierModal, setShowDossierModal] = useState(false);
   const [stripePayoutLoading, setStripePayoutLoading] = useState(false);
   const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
+  const [payoutMethod, setPayoutMethod] = useState<'stripe' | 'transfer' | 'cash'>('stripe');
 
   // Dialog modal custom implementation to avoid sandboxed iframe native blockings
   const [customDialog, setCustomDialog] = useState<{
@@ -235,6 +236,21 @@ export default function ComercialesAdminScreen({
     } finally {
       setStripePayoutLoading(false);
     }
+  };
+
+  const handleManualLiquidation = (comercial: ComercialAccount, amount: number, method: 'transfer' | 'cash') => {
+    const newPayout = {
+      id: `pay_${method}_${Date.now()}`,
+      comercialId: comercial.id,
+      amount,
+      date: new Date().toISOString(),
+      status: 'completed' as const,
+      bankAccount: method === 'transfer' ? (comercial.iban || '') : 'Efectivo',
+      bankName: method === 'transfer' ? (comercial.bankName || 'Transferencia bancaria') : 'Cash',
+      paymentMethod: method
+    };
+    onUpdateComercial({ ...comercial, payouts: [...(comercial.payouts || []), newPayout] });
+    triggerAlert('Liquidación registrada', `${amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} marcados como liquidados por ${method === 'cash' ? 'cash' : 'transferencia bancaria'}.`);
   };
 
   // Auto-select first commercial if list changes and none selected
@@ -973,7 +989,7 @@ export default function ComercialesAdminScreen({
 
                   {(() => {
                     const indPaidCommissions = (currentComercial.payouts || [])
-                      .filter(p => p.status === 'completed' && p.stripeConnectAccountId && p.stripeTransferId?.startsWith('tr_'))
+                      .filter(p => p.status === 'completed')
                       .reduce((sum, p) => sum + p.amount, 0);
                     const indPendingCommission = Math.max(0, indBenefitsEarned - indPaidCommissions);
 
@@ -1043,6 +1059,14 @@ export default function ComercialesAdminScreen({
                           </button>
                         )}
 
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['stripe', 'transfer', 'cash'] as const).map(method => (
+                            <button key={method} type="button" onClick={() => setPayoutMethod(method)} className={`py-2 rounded-xl border text-[10px] font-black uppercase ${payoutMethod === method ? 'bg-indigo-500/20 border-indigo-400 text-indigo-300' : 'bg-white/5 border-white/10 text-slate-400'}`}>
+                              {method === 'transfer' ? 'Transferencia' : method}
+                            </button>
+                          ))}
+                        </div>
+
                         {/* LIQUIDATE BUTTON */}
                         <button
                           onClick={() => {
@@ -1054,7 +1078,11 @@ export default function ComercialesAdminScreen({
                               triggerAlert('Datos incompletos', 'No se puede procesar el pago porque el comercial no ha registrado sus datos bancarios todavía.');
                               return;
                             }
-                            if (!currentComercial.stripeConnectAccountId || !currentComercial.stripePayoutsEnabled) {
+                            if (payoutMethod === 'transfer' && !currentComercial.iban) {
+                              triggerAlert('Faltan datos bancarios', 'El comercial debe guardar su IBAN antes de liquidar por transferencia.');
+                              return;
+                            }
+                            if (payoutMethod === 'stripe' && (!currentComercial.stripeConnectAccountId || !currentComercial.stripePayoutsEnabled)) {
                               triggerAlert('Stripe Connect pendiente', 'No se puede liquidar con Stripe hasta conectar y activar la cuenta Stripe Connect del comercial.');
                               return;
                             }
@@ -1062,7 +1090,8 @@ export default function ComercialesAdminScreen({
                               'Confirmar Liquidación',
                               `¿Confirmas que deseas transferir ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a la cuenta de ${currentComercial.name} utilizando Stripe Direct?`,
                               () => {
-                                handleLiquidateComercialStripe(currentComercial, indPendingCommission);
+                                if (payoutMethod === 'stripe') handleLiquidateComercialStripe(currentComercial, indPendingCommission);
+                                else handleManualLiquidation(currentComercial, indPendingCommission, payoutMethod);
                                 return;
                                 const newPayout = {
                                   id: `pay_${Date.now()}`,
@@ -1087,15 +1116,15 @@ export default function ComercialesAdminScreen({
                               }
                             );
                           }}
-                          disabled={stripePayoutLoading || indPendingCommission <= 0 || !currentComercial.stripeConnectAccountId || !currentComercial.stripePayoutsEnabled}
+                          disabled={stripePayoutLoading || indPendingCommission <= 0}
                           className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md font-sans ${
-                            stripePayoutLoading || indPendingCommission <= 0 || !currentComercial.stripeConnectAccountId || !currentComercial.stripePayoutsEnabled
+                            stripePayoutLoading || indPendingCommission <= 0
                               ? 'bg-slate-900 text-slate-600 border border-white/5 cursor-not-allowed shadow-none'
                               : 'bg-[#635bff] hover:bg-[#5b52eb] text-white cursor-pointer active:scale-95 shadow-[#635bff]/25'
                           }`}
                         >
                           {stripePayoutLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Coins className="w-4 h-4" />}
-                          <span>{stripePayoutLoading ? 'Creando transferencia...' : `Liquidar ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} con Stripe`}</span>
+                          <span>{stripePayoutLoading ? 'Procesando...' : `Liquidar ${indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} · ${payoutMethod}`}</span>
                         </button>
                       </>
                     );

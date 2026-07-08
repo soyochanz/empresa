@@ -133,6 +133,7 @@ export default function ComercialesPanelScreen({
   const [activeView, setActiveView] = useState<'pipeline' | 'cold_calling' | 'settings'>('pipeline');
   const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
   const [stripeConnectError, setStripeConnectError] = useState('');
+  const [bankDraft, setBankDraft] = useState({ bankName: comercial.bankName || '', iban: comercial.iban || '', bic: comercial.bic || '' });
   
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
@@ -728,6 +729,26 @@ export default function ComercialesPanelScreen({
                     Tus comisiones acumuladas se liquidan de forma directa mediante Stripe Connect. Stripe verifica identidad, datos fiscales y cuenta de cobro fuera de Althera.
                   </p>
                 </div>
+              </div>
+
+              <div className="lg:col-span-5 bg-slate-950/40 border border-white/5 rounded-2xl p-6 space-y-4">
+                <div>
+                  <h3 className="font-bold text-white text-sm">Datos bancarios para transferencias</h3>
+                  <p className="text-[10px] text-slate-400 mt-1">La administración podrá usarlos para liquidarte fuera de Stripe.</p>
+                </div>
+                {[
+                  ['Banco', 'bankName'],
+                  ['IBAN', 'iban'],
+                  ['BIC / SWIFT', 'bic']
+                ].map(([label, key]) => (
+                  <label key={key} className="block space-y-1.5">
+                    <span className="text-[9px] uppercase font-mono text-slate-500 font-bold">{label}</span>
+                    <input value={bankDraft[key as keyof typeof bankDraft]} onChange={e => setBankDraft(prev => ({ ...prev, [key]: e.target.value }))} className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-emerald-500" />
+                  </label>
+                ))}
+                <button type="button" onClick={() => onUpdateComercial?.({ ...comercial, ...bankDraft })} className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black">
+                  Guardar datos bancarios
+                </button>
               </div>
 
               {/* RIGHT COLUMN: PENDING COMISION & PAYOUTS HISTORY */}
