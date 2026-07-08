@@ -31,7 +31,7 @@ import {
   Palette,
   Image
 } from 'lucide-react';
-import { DemoWebsiteConfig, DemoWebsiteTemplate, parseDemoWebsiteConfig, TEMPLATE_BANNERS, TEMPLATE_DEFAULTS } from './WebsitePreviewScreen';
+import { DemoWebsiteConfig, DemoWebsiteTemplate, parseDemoWebsiteConfig, TEMPLATE_BANNERS, TEMPLATE_DEFAULTS, TEMPLATE_VARIANTS } from './WebsitePreviewScreen';
 
 interface DeveloperHubScreenProps {
   contacts: ClientContact[];
@@ -769,6 +769,7 @@ export default function DeveloperHubScreen({
               {(() => {
                 const websiteConfig = parseDemoWebsiteConfig(selectedContact);
                 const shareUrl = getWebsiteShareUrl(selectedContact);
+                const editUrl = `${shareUrl}?edit=1`;
                 return (
                   <div className="p-4 bg-emerald-500/[0.035] border border-emerald-500/10 rounded-2xl space-y-4">
                     <div className="flex items-start justify-between gap-3">
@@ -778,18 +779,39 @@ export default function DeveloperHubScreen({
                           <span>Generador de Web Demo</span>
                         </div>
                         <p className="text-[9px] text-slate-500 leading-relaxed mt-1">
-                          Asocia una plantilla al cliente y comparte este enlace con el call caller.
+                          Asocia una plantilla al cliente, elige un diseño y edítalo en tiempo real antes de compartirlo.
                         </p>
                       </div>
                       <a
-                        href={shareUrl}
+                        href={editUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/20 text-[9px] rounded-lg text-emerald-300 font-bold flex items-center gap-1 transition"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        Ver
+                        Editar
                       </a>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {TEMPLATE_VARIANTS.map(item => {
+                        const active = websiteConfig.variant === item.key;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            title={item.description}
+                            onClick={() => updateDemoWebsite(selectedContact, { variant: item.key })}
+                            className={`py-2 rounded-xl text-[8px] font-bold border transition cursor-pointer ${
+                              active
+                                ? 'bg-cyan-500/15 border-cyan-500/35 text-cyan-300'
+                                : 'bg-black/25 border-white/5 text-slate-450 hover:text-slate-200 hover:bg-white/5'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <div className="grid grid-cols-3 gap-1.5">
