@@ -83,28 +83,12 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
   // High-fidelity real projects carried out by the digital boutique agency
   const displayProjects = React.useMemo(() => {
     const rawProjects = (projects && projects.length > 0) ? projects : [];
-    const kapselyProject = {
-      id: 'featured-kapsely',
-      title: 'Kapsely',
-      category: 'Apps',
-      tag: 'Disponible en App Store',
-      description: 'Una app social para crear cápsulas, compartir momentos y conservar recuerdos con las personas que importan.',
-      detailText: 'Kapsely convierte recuerdos y experiencias en cápsulas digitales personalizables que pueden compartirse, abrirse y revivirse desde iPhone.',
-      performanceScore: 100,
-      seoScore: 100,
-      image: 'https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/3b/d4/7c/3bd47c7c-db8c-9413-ea40-40940dc34cc5/Placeholder.mill/200x200bb-75.webp',
-      imageFit: 'contain',
-      url: 'apps.apple.com/es/app/kapsely/id6759984193',
-      tech: ['iOS', 'App Store', 'Social App', 'Mobile UX'],
-      tools: ['iOS', 'Mobile UX'],
-      addons: ['App Store']
-    };
 
     if (rawProjects.length > 0) {
       // Filter projects that are marked to show on landing page
       const activeOnLanding = rawProjects.filter((p: any) => p.showOnLanding !== false);
       if (activeOnLanding.length > 0) {
-        return [kapselyProject, ...activeOnLanding.map((p: any) => ({
+        return activeOnLanding.map((p: any) => ({
           id: p.id,
           title: p.title,
           category: p.category,
@@ -119,11 +103,11 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
           tech: [...(p.tools || []), ...(p.addons || [])].slice(0, 5), // combine tools and addons as tech
           tools: p.tools || ['React', 'TypeScript'],
           addons: p.addons || ['Tailwind CSS']
-        }))];
+        }));
       }
     }
 
-    return [kapselyProject];
+    return [];
   }, [projects]);
 
   const CAPABILITIES = [
@@ -439,6 +423,67 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
           })}
         </section>
 
+        {/* FEATURED MOBILE APP */}
+        <motion.section
+          initial={{ opacity: 0, y: 28 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.7 }}
+          className="relative overflow-hidden rounded-[2rem] border border-white/[0.07] bg-gradient-to-br from-[#08070e] via-[#09070f] to-[#050508] px-6 py-10 sm:px-12 sm:py-14"
+        >
+          <div className="absolute -right-24 -top-32 h-80 w-80 rounded-full bg-fuchsia-600/10 blur-[90px]" />
+          <div className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-violet-600/10 blur-[90px]" />
+
+          <div className="relative z-10 flex flex-col items-center gap-8 text-center md:flex-row md:text-left">
+            <motion.a
+              href="https://apps.apple.com/es/app/kapsely/id6759984193"
+              target="_blank"
+              rel="noopener noreferrer"
+              whileHover={{ scale: 1.04, rotate: -1 }}
+              whileTap={{ scale: 0.98 }}
+              className="shrink-0"
+              aria-label="Ver Kapsely en el App Store"
+            >
+              <img
+                src="https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/3b/d4/7c/3bd47c7c-db8c-9413-ea40-40940dc34cc5/Placeholder.mill/200x200bb-75.webp"
+                alt="Icono de Kapsely"
+                referrerPolicy="no-referrer"
+                className="h-32 w-32 rounded-[2rem] object-cover shadow-[0_24px_60px_-20px_rgba(168,85,247,0.65)] sm:h-40 sm:w-40 sm:rounded-[2.4rem]"
+              />
+            </motion.a>
+
+            <div className="max-w-2xl flex-1 space-y-5">
+              <div className="space-y-2">
+                <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.22em] text-fuchsia-400">Una app desarrollada por Althera</span>
+                <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">Kapsely</h2>
+                <p className="text-base font-semibold text-violet-300">The future of sharing.</p>
+              </div>
+              <p className="max-w-xl text-sm font-light leading-relaxed text-slate-400">
+                Crea cápsulas digitales, comparte momentos y conserva recuerdos con las personas que importan. Una experiencia social diseñada de principio a fin para iPhone.
+              </p>
+
+              <div className="flex flex-col items-center gap-3 sm:flex-row md:justify-start">
+                <motion.a
+                  href="https://apps.apple.com/es/app/kapsely/id6759984193"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  whileHover={{ scale: 1.03, y: -2 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="inline-flex min-w-[190px] items-center justify-center gap-3 rounded-xl border border-white/20 bg-black px-4 py-2.5 text-white shadow-xl transition hover:border-white/40"
+                  aria-label="Descargar Kapsely en el App Store"
+                >
+                  <span className="text-3xl leading-none"></span>
+                  <span className="text-left leading-none">
+                    <span className="block text-[9px] font-medium tracking-wide">Descárgalo en el</span>
+                    <span className="mt-1 block text-lg font-semibold tracking-tight">App Store</span>
+                  </span>
+                </motion.a>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Disponible para iPhone</span>
+              </div>
+            </div>
+          </div>
+        </motion.section>
+
         {/* PORTFOLIO / PROJECTS SECTION: Rediseñado con Filtros, Animaciones y Modal de Detalles Interactivos */}
         <section id="proyectos" className="space-y-12 scroll-mt-24 font-sans">
           
@@ -463,7 +508,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
 
             {/* Filter Tabs with sliding active background */}
             <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-[#040409]/80 border border-white/5 rounded-2xl self-start lg:self-end">
-              {['Todos', 'Apps', 'SaaS', 'Luxury Portals', 'E-Commerce'].map((cat) => {
+              {['Todos', 'SaaS', 'Luxury Portals', 'E-Commerce'].map((cat) => {
                 const isActive = selectedCategory === cat;
                 return (
                   <button
