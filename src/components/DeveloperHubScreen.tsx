@@ -31,6 +31,7 @@ import {
   Palette,
   Image
 } from 'lucide-react';
+import DemoSitesCatalog from './DemoSitesCatalog';
 import { DemoWebsiteConfig, DemoWebsiteTemplate, parseDemoWebsiteConfig, TEMPLATE_BANNERS, TEMPLATE_DEFAULTS, TEMPLATE_VARIANTS, HEADER_STYLES, HEADER_BACKGROUNDS } from './WebsitePreviewScreen';
 
 interface DeveloperHubScreenProps {
@@ -204,23 +205,11 @@ export default function DeveloperHubScreen({
 
   const updateDemoWebsite = (contact: ClientContact, patch: Partial<DemoWebsiteConfig>) => {
     const current = parseDemoWebsiteConfig(contact);
-    const next = { ...current, ...patch };
-    onUpdateContact({
-      ...contact,
-      devWebsiteConfig: JSON.stringify(next),
-      website: `${window.location.origin}/web/${encodeURIComponent(contact.id)}`
-    });
+    onUpdateContact({ ...contact, devWebsiteConfig: JSON.stringify({ ...current, ...patch }) });
   };
+  const handleSelectWebsiteTemplate = (contact: ClientContact, template: DemoWebsiteTemplate) => updateDemoWebsite(contact, { ...TEMPLATE_DEFAULTS[template], template, bannerUrl: TEMPLATE_BANNERS[template] });
+  const getWebsiteShareUrl = (contact: ClientContact) => contact.website || '';
 
-  const handleSelectWebsiteTemplate = (contact: ClientContact, template: DemoWebsiteTemplate) => {
-    updateDemoWebsite(contact, {
-      ...TEMPLATE_DEFAULTS[template],
-      template,
-      bannerUrl: TEMPLATE_BANNERS[template]
-    });
-  };
-
-  const getWebsiteShareUrl = (contact: ClientContact) => `${window.location.origin}/web/${encodeURIComponent(contact.id)}`;
 
   // Generate automated stack blueprint recommendation
   const handleApplyAIPreset = (contact: ClientContact, type: 'saas' | 'ecommerce' | 'corporate' | 'mobile') => {
@@ -405,6 +394,8 @@ export default function DeveloperHubScreen({
       </div>
 
       {/* Bento Stats Panels */}
+      <DemoSitesCatalog />
+
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         
         <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4.5 flex flex-col justify-between relative shadow-sm">
@@ -765,8 +756,8 @@ export default function DeveloperHubScreen({
                 </div>
               </div>
 
-              {/* Demo Website Generator */}
-              {(() => {
+              {/* Legacy generator removed: demos are now managed in the global Vercel catalog. */}
+              {false && (() => {
                 const websiteConfig = parseDemoWebsiteConfig(selectedContact);
                 const shareUrl = getWebsiteShareUrl(selectedContact);
                 const editUrl = `${shareUrl}?edit=1`;

@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { ColdCallingLead, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
+import { readDemoSites } from './DemoSitesCatalog';
 
 const HOURLY_SLOTS = [
   '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
@@ -397,6 +398,8 @@ export default function ColdCallingScreen({
   const [newCallDate, setNewCallDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [newAssignedEmail, setNewAssignedEmail] = useState('unassigned');
   const [newNotes, setNewNotes] = useState('');
+  const [newDemoWebsiteId, setNewDemoWebsiteId] = useState('');
+  const demoSites = readDemoSites();
 
   // Call Logging form state (For Comerciales working the lead)
   const [callContacted, setCallContacted] = useState<'Sí' | 'No'>('Sí');
@@ -697,7 +700,8 @@ export default function ColdCallingScreen({
       assignedToEmail: newAssignedEmail,
       assignedToName: matchedComercial ? matchedComercial.name : 'Sin asignar',
       archived: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      demoWebsiteId: newDemoWebsiteId || undefined
     };
 
     onAddColdLead(newLead);
@@ -709,6 +713,7 @@ export default function ColdCallingScreen({
     setNewCallDate(new Date().toISOString().split('T')[0]);
     setNewAssignedEmail('unassigned');
     setNewNotes('');
+    setNewDemoWebsiteId('');
     setShowAddModal(false);
   };
 
@@ -1190,6 +1195,12 @@ export default function ColdCallingScreen({
                           📞 {lead.callsCount || 0} {lead.callsCount === 1 ? 'llamada' : 'llamadas'}
                         </button>
                       </div>
+                      {isAdmin && (
+                        <select value={lead.demoWebsiteId || ''} onChange={e => onUpdateColdLead({ ...lead, demoWebsiteId: e.target.value || undefined })} className="mt-2 max-w-full bg-cyan-950/20 border border-cyan-500/20 text-cyan-300 rounded-lg px-2 py-1 text-[9px] outline-none">
+                          <option value="">Asignar web demo…</option>
+                          {demoSites.map(site => <option key={site.id} value={site.id}>{site.name}</option>)}
+                        </select>
+                      )}
                     </div>
 
                     {/* Contact Person Column */}
@@ -1250,6 +1261,13 @@ export default function ColdCallingScreen({
 
                     {/* Action Column */}
                     <div className="col-span-2 text-right flex items-center lg:justify-end justify-between gap-1.5 mt-2 lg:mt-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-white/5">
+                      {(() => {
+                        const site = demoSites.find(item => item.id === lead.demoWebsiteId);
+                        return site ? <>
+                          <a href={site.publicUrl} target="_blank" rel="noreferrer" className="py-1.5 px-2 bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 text-[10px] font-bold rounded-xl whitespace-nowrap">Ver web</a>
+                          {isAdmin && site.adminUrl && <a href={site.adminUrl} target="_blank" rel="noreferrer" className="py-1.5 px-2 bg-fuchsia-500/10 border border-fuchsia-400/20 text-fuchsia-300 text-[10px] font-bold rounded-xl whitespace-nowrap">Panel admin</a>}
+                        </> : null;
+                      })()}
                       <button
                         onClick={() => handleOpenCallLog(lead)}
                         className="py-1.5 px-3 bg-violet-600/10 hover:bg-violet-600/30 border border-violet-500/20 text-violet-305 font-bold text-xs rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer"
@@ -2955,6 +2973,14 @@ export default function ColdCallingScreen({
                   onChange={e => setNewNotes(e.target.value)}
                   className="w-full bg-[#050508] border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none placeholder:text-slate-600"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider font-bold">Web demo para mostrar</label>
+                <select value={newDemoWebsiteId} onChange={e => setNewDemoWebsiteId(e.target.value)} className="w-full bg-[#050508] border border-cyan-500/20 focus:border-cyan-400 rounded-xl px-3 py-2.5 text-xs text-white outline-none">
+                  <option value="">Sin demo asignada</option>
+                  {demoSites.map(site => <option key={site.id} value={site.id}>{site.name} · {site.businessType || 'General'}</option>)}
+                </select>
               </div>
 
               <div className="flex gap-3 justify-end pt-3 border-t border-white/5">

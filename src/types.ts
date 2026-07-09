@@ -1,4 +1,18 @@
-export type Screen = 'landing' | 'website_preview' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub';
+export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub';
+
+export interface DemoSite {
+  id: string;
+  name: string;
+  businessType: string;
+  publicUrl: string;
+  adminUrl: string;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  stripePublishableKey?: string;
+  adminUser?: string;
+  adminPassword?: string;
+  notes?: string;
+}
 
 export interface InquiryMessage {
   id: string;
@@ -237,6 +251,7 @@ export interface ColdCallingLead {
   archived?: boolean;              // archived flag
   isDone?: boolean;                // Done (tick) flag for comercial organization
   createdAt: string;
+  demoWebsiteId?: string;
 
   // New fields for tracking calls history and count
   callsCount?: number;             // Veces que se le ha llamado

@@ -26,7 +26,6 @@ import ComercialesPanelScreen from './components/ComercialesPanelScreen';
 import ComercialesAdminScreen from './components/ComercialesAdminScreen';
 import ColdCallingScreen from './components/ColdCallingScreen';
 import DeveloperHubScreen from './components/DeveloperHubScreen';
-import WebsitePreviewScreen from './components/WebsitePreviewScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
@@ -43,10 +42,6 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
     return { screen: 'landing' };
   }
 
-  if (path.startsWith('/web/')) {
-    return { screen: 'website_preview' };
-  }
-  
   if (path === '/acceso' || path === '/login') {
     if (isLoggedIn) {
       return { screen: 'dashboard', redirectedPath: '/admin/dashboard' };
@@ -103,7 +98,6 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
 function getPathFromScreen(screen: Screen): string {
   switch (screen) {
     case 'landing': return '/';
-    case 'website_preview': return window.location.pathname;
     case 'acceso': return '/acceso';
     case 'comerciales_acceso': return '/comerciales/acceso';
     case 'comerciales_panel': return '/comerciales/panel';
@@ -1700,17 +1694,6 @@ export default function App() {
           <LandingScreen onNavigate={navigateTo} projects={projects} />
         </motion.div>
       </AnimatePresence>
-    );
-  }
-
-  if (currentScreen === 'website_preview') {
-    const contactId = decodeURIComponent((window.location.pathname.split('/web/')[1] || '').split('/')[0]);
-    return (
-      <WebsitePreviewScreen
-        contactId={contactId}
-        contacts={contacts}
-        onBack={() => navigateTo('developer_hub', 'push_back')}
-      />
     );
   }
 
