@@ -253,6 +253,13 @@ export interface ColdCallingLead {
   isDone?: boolean;                // Done (tick) flag for comercial organization
   createdAt: string;
   demoWebsiteId?: string;
+  position?: number;
+  rating?: number;
+  reviews?: number;
+  website?: string;
+  sourceStatus?: string;
+  info?: string;
+  mapsUrl?: string;
 
   // New fields for tracking calls history and count
   callsCount?: number;             // Veces que se le ha llamado

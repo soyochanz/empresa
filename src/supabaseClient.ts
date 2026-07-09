@@ -340,8 +340,24 @@ CREATE TABLE IF NOT EXISTS cold_calling_leads (
   "assignedToName" TEXT,
   archived BOOLEAN DEFAULT false,
   "isDone" BOOLEAN DEFAULT false,
+  position INTEGER,
+  rating DOUBLE PRECISION,
+  reviews INTEGER,
+  website TEXT,
+  "sourceStatus" TEXT,
+  info TEXT,
+  "mapsUrl" TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+ALTER TABLE cold_calling_leads
+  ADD COLUMN IF NOT EXISTS position INTEGER,
+  ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS reviews INTEGER,
+  ADD COLUMN IF NOT EXISTS website TEXT,
+  ADD COLUMN IF NOT EXISTS "sourceStatus" TEXT,
+  ADD COLUMN IF NOT EXISTS info TEXT,
+  ADD COLUMN IF NOT EXISTS "mapsUrl" TEXT;
 
 ALTER TABLE cold_calling_leads ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Read Access" ON cold_calling_leads;
@@ -1735,7 +1751,14 @@ export const db = {
       assignedToEmail: serialized.assignedToEmail || null,
       assignedToName: serialized.assignedToName || null,
       archived: serialized.archived ?? false,
-      isDone: serialized.isDone ?? false
+      isDone: serialized.isDone ?? false,
+      position: serialized.position ?? null,
+      rating: serialized.rating ?? null,
+      reviews: serialized.reviews ?? null,
+      website: serialized.website || null,
+      sourceStatus: serialized.sourceStatus || null,
+      info: serialized.info || null,
+      mapsUrl: serialized.mapsUrl || null
     };
     const { error } = await supabase.from('cold_calling_leads').insert(payload);
     if (error) throw error;
@@ -1760,7 +1783,14 @@ export const db = {
       assignedToEmail: serialized.assignedToEmail || null,
       assignedToName: serialized.assignedToName || null,
       archived: serialized.archived ?? false,
-      isDone: serialized.isDone ?? false
+      isDone: serialized.isDone ?? false,
+      position: serialized.position ?? null,
+      rating: serialized.rating ?? null,
+      reviews: serialized.reviews ?? null,
+      website: serialized.website || null,
+      sourceStatus: serialized.sourceStatus || null,
+      info: serialized.info || null,
+      mapsUrl: serialized.mapsUrl || null
     };
     const { error } = await supabase.from('cold_calling_leads').update(payload).eq('id', lead.id);
     if (error) throw error;

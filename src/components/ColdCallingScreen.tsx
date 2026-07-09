@@ -29,7 +29,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Video
+  Video,
+  Upload
 } from 'lucide-react';
 import { ColdCallingLead, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
@@ -43,7 +44,7 @@ interface ColdCallingScreenProps {
   coldLeads: ColdCallingLead[];
   comercialesList: ComercialAccount[];
   usersList?: { id: string; name: string; email: string }[];
-  onAddColdLead: (lead: ColdCallingLead) => void;
+  onAddColdLead: (lead: ColdCallingLead) => void | Promise<void>;
   onUpdateColdLead: (lead: ColdCallingLead) => void;
   onDeleteColdLead: (id: string) => void;
   currentUser?: { name: string; email: string; id: string | null } | null; // present if Admin
@@ -124,6 +125,11 @@ export default function ColdCallingScreen({
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importingCsv, setImportingCsv] = useState(false);
+  const [csvFileName, setCsvFileName] = useState('');
+  const [csvRows, setCsvRows] = useState<Record<string, string>[]>([]);
+  const [csvError, setCsvError] = useState('');
   const [selectedLeadForCall, setSelectedLeadForCall] = useState<ColdCallingLead | null>(null);
   const [deleteConfirmLeadId, setDeleteConfirmLeadId] = useState<string | null>(null);
 
@@ -400,6 +406,123 @@ export default function ColdCallingScreen({
   const [newNotes, setNewNotes] = useState('');
   const [newDemoWebsiteId, setNewDemoWebsiteId] = useState('');
   const demoSites = readDemoSites();
+
+  const parseCsv = (text: string) => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let cell = '';
+    let quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"') {
+        if (quoted && text[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char === ',' && !quoted) {
+        row.push(cell.trim());
+        cell = '';
+      } else if ((char === '\n' || char === '\r') && !quoted) {
+        if (char === '\r' && text[i + 1] === '\n') i++;
+        row.push(cell.trim());
+        if (row.some(value => value !== '')) rows.push(row);
+        row = [];
+        cell = '';
+      } else {
+        cell += char;
+      }
+    }
+    row.push(cell.trim());
+    if (row.some(value => value !== '')) rows.push(row);
+    if (quoted) throw new Error('El CSV contiene una comilla sin cerrar.');
+    if (rows.length < 2) throw new Error('El CSV no contiene filas de datos.');
+
+    const headers = rows[0].map((header, index) =>
+      (index === 0 ? header.replace(/^\uFEFF/, '') : header).trim()
+    );
+    const requiredHeaders = ['position', 'name', 'rating', 'reviews', 'phone', 'website', 'status', 'info', 'mapsUrl'];
+    const missing = requiredHeaders.filter(header => !headers.includes(header));
+    if (missing.length) throw new Error(`Faltan columnas: ${missing.join(', ')}`);
+
+    return rows.slice(1).map(values =>
+      headers.reduce<Record<string, string>>((result, header, index) => {
+        result[header] = values[index]?.trim() || '';
+        return result;
+      }, {})
+    );
+  };
+
+  const handleCsvFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    setCsvError('');
+    setCsvRows([]);
+    setCsvFileName(file?.name || '');
+    if (!file) return;
+    try {
+      setCsvRows(parseCsv(await file.text()));
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : 'No se pudo leer el CSV.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const optionalNumber = (value: string) => {
+    if (!value.trim()) return undefined;
+    const parsed = Number(value.replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  const optionalInteger = (value: string) => {
+    const parsed = optionalNumber(value);
+    return parsed === undefined ? undefined : Math.trunc(parsed);
+  };
+
+  const handleImportCsv = async () => {
+    if (!csvRows.length) return;
+    setImportingCsv(true);
+    setCsvError('');
+    try {
+      const now = new Date().toISOString();
+      for (const [index, row] of csvRows.entries()) {
+        await onAddColdLead({
+          id: `cold_csv_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`,
+          businessName: row.name || 'Sin nombre',
+          contactPerson: 'Sin especificar',
+          phone: row.phone || '',
+          callDate: now.slice(0, 10),
+          contacted: 'No',
+          isOwner: 'No',
+          answered: 'No',
+          temperature: 'Frío',
+          callbackScheduled: 'No',
+          notes: row.info || 'Importado desde CSV.',
+          assignedToEmail: 'unassigned',
+          assignedToName: 'Sin asignar',
+          archived: false,
+          createdAt: now,
+          position: optionalInteger(row.position),
+          rating: optionalNumber(row.rating),
+          reviews: optionalInteger(row.reviews),
+          website: row.website || undefined,
+          sourceStatus: row.status || undefined,
+          info: row.info || undefined,
+          mapsUrl: row.mapsUrl || undefined
+        });
+      }
+      const importedCount = csvRows.length;
+      setShowImportModal(false);
+      setCsvRows([]);
+      setCsvFileName('');
+      alert(`Se han importado ${importedCount} prospectos correctamente.`);
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : 'La importación no pudo completarse.');
+    } finally {
+      setImportingCsv(false);
+    }
+  };
 
   // Call Logging form state (For Comerciales working the lead)
   const [callContacted, setCallContacted] = useState<'Sí' | 'No'>('Sí');
@@ -902,13 +1025,22 @@ export default function ColdCallingScreen({
         
         {/* Actions for Admin */}
         {isAdmin && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-4.5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold transition duration-200 text-xs shadow-lg shadow-violet-500/15 cursor-pointer active:scale-95"
-          >
-            <PlusCircle className="w-4 h-4 text-white" />
-            <span>Pre-cargar Lead</span>
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 rounded-xl font-bold transition text-xs cursor-pointer active:scale-95"
+            >
+              <Upload className="w-4 h-4 text-cyan-400" />
+              <span>Importar CSV</span>
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-1.5 px-4.5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-bold transition duration-200 text-xs shadow-lg shadow-violet-500/15 cursor-pointer active:scale-95"
+            >
+              <PlusCircle className="w-4 h-4 text-white" />
+              <span>Pre-cargar Lead</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -2869,6 +3001,49 @@ export default function ColdCallingScreen({
       )}
 
       {/* MODAL 1: PRE-CARGAR NUEVO LEAD DE COLD CALLING (ADMIN EXCLUSIVE) */}
+      {showImportModal && isAdmin && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-lg w-full p-6 text-left shadow-2xl">
+            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-white uppercase flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-cyan-400" />
+                  Importar prospectos CSV
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-1">Las filas se crearán sin asignar y listas para gestionar.</p>
+              </div>
+              <button onClick={() => setShowImportModal(false)} disabled={importingCsv} className="text-slate-400 hover:text-white p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <label className="mt-5 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-cyan-500/30 bg-cyan-500/5 p-7 cursor-pointer hover:bg-cyan-500/10 transition">
+              <Upload className="w-7 h-7 text-cyan-400" />
+              <span className="text-xs font-bold text-white">{csvFileName || 'Seleccionar archivo .csv'}</span>
+              <span className="text-[10px] text-slate-500">position, name, rating, reviews, phone, website, status, info, mapsUrl</span>
+              <input type="file" accept=".csv,text/csv" onChange={handleCsvFile} className="hidden" />
+            </label>
+
+            {csvError && <p className="mt-3 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-3">{csvError}</p>}
+            {csvRows.length > 0 && (
+              <div className="mt-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3">
+                <p className="text-xs font-bold text-emerald-400">{csvRows.length} filas listas para importar</p>
+                <p className="text-[10px] text-slate-400 mt-1">Ejemplo: {csvRows[0].name || 'Sin nombre'} · {csvRows[0].phone || 'Sin teléfono'}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setShowImportModal(false)} disabled={importingCsv} className="px-4 py-2 text-xs font-bold text-slate-300 hover:text-white">
+                Cancelar
+              </button>
+              <button onClick={handleImportCsv} disabled={!csvRows.length || importingCsv} className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-xs font-bold">
+                {importingCsv ? 'Importando…' : `Importar ${csvRows.length || ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAddModal && isAdmin && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2.5xl max-w-lg w-full p-6 text-left relative overflow-hidden animate-scale-in">
