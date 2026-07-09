@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead, Invoice, FinanceTransaction } from './types';
 import { 
   initialContacts, 
@@ -16,7 +16,7 @@ import DashboardScreen from './components/DashboardScreen';
 import CalendarScreen from './components/CalendarScreen';
 import CrmScreen from './components/CrmScreen';
 import NotesScreen from './components/NotesScreen';
-import ProjectsScreen, { INITIAL_PROJECTS } from './components/ProjectsScreen';
+import ProjectsScreen, { INITIAL_PROJECTS, AgencyProject } from './components/ProjectsScreen';
 import ContactosScreen from './components/ContactosScreen';
 import FinanceScreen from './components/FinanceScreen';
 import CitasScreen from './components/CitasScreen';
@@ -154,7 +154,10 @@ export default function App() {
   });
 
    // Persistence Engine Database State (with standard fallback to empty arrays)
-  const [contacts, setContacts] = useState<ClientContact[]>([]);
+  const [contacts, setContacts] = useState<ClientContact[]>(() => {
+    try { return JSON.parse(localStorage.getItem('althera_contacts_cache') || '[]'); }
+    catch { return []; }
+  });
 
   const [events, setEvents] = useState<CalendarEvent[]>([]);
 
@@ -853,9 +856,14 @@ export default function App() {
     setReadNotificationIds(allIds);
   };
 
-  // Verify and hydrate state from Supabase
+  const syncInFlightRef = useRef<Promise<void> | null>(null);
+
+  // Verify and hydrate state from Supabase. All independent tables load in parallel,
+  // and concurrent auth/mount/interval requests share the same in-flight operation.
   const syncWithSupabase = async (userIdToSync?: string, silent = false) => {
-    try {
+    if (syncInFlightRef.current) return syncInFlightRef.current;
+    const operation = (async () => {
+      try {
       if (!silent) {
         setSupabaseStatus(prev => ({ ...prev, loading: true }));
       }
@@ -867,59 +875,44 @@ export default function App() {
       }
 
       if (status.connected && status.tablesExist) {
-        // Sync CRM / Commercial calling lists from Supabase individually to prevent single table failure from stopping other tables
-        try {
-          const fetchedCold = await db.getColdLeads().catch(err => {
-            console.warn('Could not load cold_calling_leads from Supabase:', err);
-            return null;
-          });
-          if (fetchedCold) setColdLeads(fetchedCold);
-        } catch (err) {}
-
-        try {
-          const fetchedComercialLeads = await db.getComercialLeads().catch(err => {
-            console.warn('Could not load comercial_leads from Supabase:', err);
-            return null;
-          });
-          if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
-        } catch (err) {}
-
-        try {
-          const fetchedComercialAccs = await db.getComercialesAccounts().catch(err => {
-            console.warn('Could not load comerciales_accounts from Supabase:', err);
-            return null;
-          });
-          if (fetchedComercialAccs) setComercialesList(fetchedComercialAccs);
-        } catch (err) {}
-
-        try {
-          const fetchedProjects = await db.getProjects();
-          if (fetchedProjects) {
-            setProjects(fetchedProjects);
-          }
-        } catch (projErr) {
-          console.warn('Could not sync projects table from Supabase:', projErr);
-        }
-
         const activeUid = userIdToSync || currentUser?.id;
-        if (activeUid) {
-          const [fetchedContacts, fetchedEvents, fetchedNotes, fetchedActivities] = await Promise.all([
-            db.getContacts(),
-            db.getEvents(),
-            db.getNotes(),
-            db.getActivities()
-          ]);
+        const results = await Promise.allSettled([
+          db.getColdLeads(),
+          db.getComercialLeads(),
+          db.getComercialesAccounts(),
+          db.getProjects(),
+          activeUid ? db.getContacts() : Promise.resolve(null),
+          activeUid ? db.getEvents() : Promise.resolve(null),
+          activeUid ? db.getNotes() : Promise.resolve(null),
+          activeUid ? db.getActivities() : Promise.resolve(null),
+          activeUid ? db.getProfiles() : Promise.resolve(null)
+        ]);
+        const value = <T,>(index: number): T | null => results[index].status === 'fulfilled' ? results[index].value as T : null;
 
-          // Always update state blocks to allow deletions leading to zero records to persist correctly
-          setContacts(fetchedContacts || []);
-          setEvents(fetchedEvents || []);
-          setNotes(fetchedNotes || []);
-          setActivities(fetchedActivities || []);
+        const fetchedCold = value<ColdCallingLead[]>(0);
+        const fetchedComercialLeads = value<ComercialLead[]>(1);
+        const fetchedComercialAccs = value<ComercialAccount[]>(2);
+        const fetchedProjects = value<AgencyProject[]>(3);
+        const fetchedContacts = value<ClientContact[]>(4);
+        const fetchedEvents = value<CalendarEvent[]>(5);
+        const fetchedNotes = value<Note[]>(6);
+        const fetchedActivities = value<Activity[]>(7);
+        const fetchedProfiles = value<any[]>(8);
 
-          await fetchAndSetProfiles();
+        if (fetchedCold) setColdLeads(fetchedCold);
+        if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
+        if (fetchedComercialAccs) setComercialesList(fetchedComercialAccs);
+        if (fetchedProjects) setProjects(fetchedProjects);
+        if (fetchedContacts) {
+          setContacts(fetchedContacts);
+          localStorage.setItem('althera_contacts_cache', JSON.stringify(fetchedContacts));
         }
+        if (fetchedEvents) setEvents(fetchedEvents);
+        if (fetchedNotes) setNotes(fetchedNotes);
+        if (fetchedActivities) setActivities(fetchedActivities);
+        if (fetchedProfiles) setUsersList(mergeUsers(fetchedProfiles, activeUid ? currentUser : undefined));
       }
-    } catch (err: any) {
+      } catch (err: any) {
       console.error('Failed to sync state with Supabase:', err);
       if (!silent) {
         setSupabaseStatus(prev => ({ 
@@ -928,6 +921,13 @@ export default function App() {
           error: err?.message || 'Database link error' 
         }));
       }
+      }
+    })();
+    syncInFlightRef.current = operation;
+    try {
+      await operation;
+    } finally {
+      syncInFlightRef.current = null;
     }
   };
 
