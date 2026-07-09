@@ -45,8 +45,8 @@ interface ColdCallingScreenProps {
   comercialesList: ComercialAccount[];
   usersList?: { id: string; name: string; email: string }[];
   onAddColdLead: (lead: ColdCallingLead) => void | Promise<void>;
-  onUpdateColdLead: (lead: ColdCallingLead) => void;
-  onDeleteColdLead: (id: string) => void;
+  onUpdateColdLead: (lead: ColdCallingLead) => void | Promise<void>;
+  onDeleteColdLead: (id: string) => void | Promise<void>;
   currentUser?: { name: string; email: string; id: string | null } | null; // present if Admin
   currentComercial?: ComercialAccount | null; // present if Comercial
   onNavigate?: (target: any, transition: any) => void;
@@ -132,6 +132,9 @@ export default function ColdCallingScreen({
   const [csvError, setCsvError] = useState('');
   const [selectedLeadForCall, setSelectedLeadForCall] = useState<ColdCallingLead | null>(null);
   const [deleteConfirmLeadId, setDeleteConfirmLeadId] = useState<string | null>(null);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [bulkAssigneeEmail, setBulkAssigneeEmail] = useState('unassigned');
+  const [bulkActionRunning, setBulkActionRunning] = useState(false);
 
   // Dedicated modal state for scheduling in-person meetings (Cita Presencial)
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -754,6 +757,8 @@ export default function ColdCallingScreen({
       lead.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lead.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lead.phone.includes(searchQuery) ||
+      (lead.website || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (lead.mapsUrl || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       lead.notes.toLowerCase().includes(searchQuery.toLowerCase());
 
     // Temperature filter
@@ -767,6 +772,43 @@ export default function ColdCallingScreen({
 
     return matchesSearch && matchesTemp && matchesAssigned;
   });
+
+  const visibleLeadIds = visibleLeads.map(lead => lead.id);
+  const allVisibleSelected = visibleLeadIds.length > 0 && visibleLeadIds.every(id => selectedLeadIds.includes(id));
+  const toggleLeadSelection = (id: string) => setSelectedLeadIds(current =>
+    current.includes(id) ? current.filter(item => item !== id) : [...current, id]
+  );
+  const toggleAllVisible = () => setSelectedLeadIds(current =>
+    allVisibleSelected
+      ? current.filter(id => !visibleLeadIds.includes(id))
+      : Array.from(new Set([...current, ...visibleLeadIds]))
+  );
+  const handleBulkAssign = async () => {
+    const selected = coldLeads.filter(lead => selectedLeadIds.includes(lead.id));
+    if (!selected.length) return;
+    const assignee = allAssignees.find(item => item.email === bulkAssigneeEmail);
+    setBulkActionRunning(true);
+    try {
+      await Promise.all(selected.map(lead => onUpdateColdLead({
+        ...lead,
+        assignedToEmail: bulkAssigneeEmail,
+        assignedToName: assignee?.name || 'Sin asignar'
+      })));
+      setSelectedLeadIds([]);
+    } finally {
+      setBulkActionRunning(false);
+    }
+  };
+  const handleBulkDelete = async () => {
+    if (!selectedLeadIds.length || !confirm(`¿Eliminar definitivamente ${selectedLeadIds.length} prospectos?`)) return;
+    setBulkActionRunning(true);
+    try {
+      await Promise.all(selectedLeadIds.map(id => onDeleteColdLead(id)));
+      setSelectedLeadIds([]);
+    } finally {
+      setBulkActionRunning(false);
+    }
+  };
 
   // Calculate Metrics based on current filter preferences (All vs Solo Míos)
   const relevantLeads = coldLeads.filter(l => {
@@ -1235,6 +1277,30 @@ export default function ColdCallingScreen({
 
           </div>
 
+          {isAdmin && (
+            <div className="bg-[#050508]/90 border border-violet-500/20 rounded-2xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} className="accent-violet-500 w-4 h-4" />
+                  Seleccionar visibles
+                </label>
+                <span className="text-[10px] font-mono text-violet-400">{selectedLeadIds.length} seleccionados</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={bulkAssigneeEmail} onChange={event => setBulkAssigneeEmail(event.target.value)} disabled={bulkActionRunning} className="bg-slate-950 border border-white/10 text-xs text-slate-300 px-3 py-2 rounded-xl outline-none focus:border-violet-500">
+                  <option value="unassigned">Sin asignar</option>
+                  {allAssignees.map(assignee => <option key={assignee.id} value={assignee.email}>{assignee.name} ({assignee.role})</option>)}
+                </select>
+                <button onClick={handleBulkAssign} disabled={!selectedLeadIds.length || bulkActionRunning} className="px-3 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-bold">
+                  Asignar selección
+                </button>
+                <button onClick={handleBulkDelete} disabled={!selectedLeadIds.length || bulkActionRunning} className="px-3 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/30 border border-rose-500/25 disabled:opacity-40 text-rose-400 text-xs font-bold flex items-center gap-1.5">
+                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* LEADS LIST / CARDS CONTAINER */}
           {visibleLeads.length === 0 ? (
             <div className="text-center py-16 bg-[#030306]/40 rounded-2.5xl border border-white/5">
@@ -1252,10 +1318,11 @@ export default function ColdCallingScreen({
               
               {/* TABLE HEADER (hidden on mobile) */}
               <div className="hidden lg:grid lg:grid-cols-12 gap-4 px-6 py-3.5 bg-slate-950/80 text-[10px] font-mono text-slate-400 uppercase tracking-widest font-extrabold items-center">
-                <div className="col-span-3">Negocio / Cliente</div>
-                <div className="col-span-2">Contacto Principal</div>
-                <div className="col-span-2">Teléfono de Contacto</div>
-                <div className="col-span-1 text-center">Temp</div>
+                <div className="col-span-1">Posición</div>
+                <div className="col-span-2">Nombre</div>
+                <div className="col-span-2">Teléfono</div>
+                <div className="col-span-1 text-center">Tiene web</div>
+                <div className="col-span-2">Website / Maps</div>
                 <div className="col-span-2 text-center">Asignado a</div>
                 <div className="col-span-2 text-right">Acciones</div>
               </div>
@@ -1282,8 +1349,13 @@ export default function ColdCallingScreen({
                     key={lead.id}
                     className={`grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 px-5 py-4 sm:px-6 items-center text-left transition duration-200 ${bgStyle} ${lead.archived ? 'opacity-65 border-dashed border-red-500/10' : ''}`}
                   >
+                    <div className="col-span-1 flex items-center gap-2">
+                      {isAdmin && <input type="checkbox" checked={selectedLeadIds.includes(lead.id)} onChange={() => toggleLeadSelection(lead.id)} className="accent-violet-500 w-4 h-4 shrink-0" />}
+                      <span className="text-xs font-mono font-bold text-slate-300">{lead.position ?? '—'}</span>
+                    </div>
+
                     {/* Business Column */}
-                    <div className="col-span-3 space-y-1">
+                    <div className="col-span-2 space-y-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button
                           onClick={(e) => {
@@ -1335,14 +1407,6 @@ export default function ColdCallingScreen({
                       )}
                     </div>
 
-                    {/* Contact Person Column */}
-                    <div className="col-span-2">
-                      <div className="text-slate-300 text-xs flex items-center gap-1.5 font-sans">
-                        <span className="text-slate-500 size-4 flex items-center justify-center bg-slate-950 rounded-md text-[10px]">👩‍💼</span>
-                        <span className="font-semibold text-slate-200 leading-snug">{lead.contactPerson || 'Sin registrar'}</span>
-                      </div>
-                    </div>
-
                     {/* Phone Link Column */}
                     <div className="col-span-2">
                       <a 
@@ -1354,12 +1418,15 @@ export default function ColdCallingScreen({
                       </a>
                     </div>
 
-                    {/* Temp Column */}
                     <div className="col-span-1 lg:text-center">
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${tempBadge}`}>
-                        {lead.temperature === 'Caliente' ? '🔥' : lead.temperature === 'Templado' ? '⚡' : '❄️'}
-                        <span>{lead.temperature}</span>
+                      <span className={`inline-flex text-[10px] font-bold px-2 py-1 rounded-full border ${lead.website ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-slate-500/10 border-white/10 text-slate-500'}`}>
+                        {lead.website ? 'Sí' : 'No'}
                       </span>
+                    </div>
+
+                    <div className="col-span-2 min-w-0 space-y-1">
+                      {lead.website ? <a href={lead.website} target="_blank" rel="noreferrer" className="block truncate text-[10px] text-cyan-400 hover:underline" title={lead.website}>{lead.website}</a> : <span className="text-[10px] text-slate-600">Sin website</span>}
+                      {lead.mapsUrl ? <a href={lead.mapsUrl} target="_blank" rel="noreferrer" className="block truncate text-[10px] text-violet-400 hover:underline" title={lead.mapsUrl}>Abrir en Maps</a> : <span className="block text-[10px] text-slate-600">Sin Maps</span>}
                     </div>
 
                     {/* Assignee Column (Clickable dropdown for admin) */}
