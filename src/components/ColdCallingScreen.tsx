@@ -40,6 +40,22 @@ const HOURLY_SLOTS = [
   '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
 ];
 
+const isOwnWebsite = (website?: string) => {
+  if (!website?.trim()) return false;
+  try {
+    const hostname = new URL(website.startsWith('http') ? website : `https://${website}`).hostname
+      .toLowerCase()
+      .replace(/^www\./, '');
+    return ![
+      'facebook.com',
+      'fb.com',
+      'instagram.com'
+    ].some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
+  } catch {
+    return false;
+  }
+};
+
 interface ColdCallingScreenProps {
   coldLeads: ColdCallingLead[];
   comercialesList: ComercialAccount[];
@@ -479,7 +495,9 @@ export default function ColdCallingScreen({
     try {
       const now = new Date().toISOString();
       for (const [index, row] of csvRows.entries()) {
-        const hasWebsite = ['true', '1', 'yes', 'sí', 'si'].includes(row.hasWebsite.trim().toLowerCase());
+        const hasWebsite =
+          ['true', '1', 'yes', 'sí', 'si'].includes(row.hasWebsite.trim().toLowerCase()) &&
+          isOwnWebsite(row.website);
         await onAddColdLead({
           id: `cold_csv_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`,
           businessName: row.name || 'Sin nombre',
@@ -1405,8 +1423,8 @@ export default function ColdCallingScreen({
                     </div>
 
                     <div className="col-span-1 lg:text-center">
-                      <span className={`inline-flex text-[10px] font-bold px-2 py-1 rounded-full border ${(lead.hasWebsite ?? !!lead.website) ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-slate-500/10 border-white/10 text-slate-500'}`}>
-                        {(lead.hasWebsite ?? !!lead.website) ? 'Sí' : 'No'}
+                      <span className={`inline-flex text-[10px] font-bold px-2 py-1 rounded-full border ${(lead.hasWebsite !== false && isOwnWebsite(lead.website)) ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-slate-500/10 border-white/10 text-slate-500'}`}>
+                        {(lead.hasWebsite !== false && isOwnWebsite(lead.website)) ? 'Sí' : 'No'}
                       </span>
                     </div>
 

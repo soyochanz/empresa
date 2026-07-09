@@ -83,12 +83,28 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
   // High-fidelity real projects carried out by the digital boutique agency
   const displayProjects = React.useMemo(() => {
     const rawProjects = (projects && projects.length > 0) ? projects : [];
+    const kapselyProject = {
+      id: 'featured-kapsely',
+      title: 'Kapsely',
+      category: 'Apps',
+      tag: 'Disponible en App Store',
+      description: 'Una app social para crear cápsulas, compartir momentos y conservar recuerdos con las personas que importan.',
+      detailText: 'Kapsely convierte recuerdos y experiencias en cápsulas digitales personalizables que pueden compartirse, abrirse y revivirse desde iPhone.',
+      performanceScore: 100,
+      seoScore: 100,
+      image: 'https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/3b/d4/7c/3bd47c7c-db8c-9413-ea40-40940dc34cc5/Placeholder.mill/200x200bb-75.webp',
+      imageFit: 'contain',
+      url: 'apps.apple.com/es/app/kapsely/id6759984193',
+      tech: ['iOS', 'App Store', 'Social App', 'Mobile UX'],
+      tools: ['iOS', 'Mobile UX'],
+      addons: ['App Store']
+    };
 
     if (rawProjects.length > 0) {
       // Filter projects that are marked to show on landing page
       const activeOnLanding = rawProjects.filter((p: any) => p.showOnLanding !== false);
       if (activeOnLanding.length > 0) {
-        return activeOnLanding.map((p: any) => ({
+        return [kapselyProject, ...activeOnLanding.map((p: any) => ({
           id: p.id,
           title: p.title,
           category: p.category,
@@ -98,15 +114,16 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
           performanceScore: p.performanceScore || 98,
           seoScore: p.seoScore || 100,
           image: p.image || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80",
+          imageFit: p.imageFit || 'cover',
           url: p.url || "demo.agencyflow.com",
           tech: [...(p.tools || []), ...(p.addons || [])].slice(0, 5), // combine tools and addons as tech
           tools: p.tools || ['React', 'TypeScript'],
           addons: p.addons || ['Tailwind CSS']
-        }));
+        }))];
       }
     }
 
-    return [];
+    return [kapselyProject];
   }, [projects]);
 
   const CAPABILITIES = [
@@ -446,7 +463,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
 
             {/* Filter Tabs with sliding active background */}
             <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-[#040409]/80 border border-white/5 rounded-2xl self-start lg:self-end">
-              {['Todos', 'SaaS', 'Luxury Portals', 'E-Commerce'].map((cat) => {
+              {['Todos', 'Apps', 'SaaS', 'Luxury Portals', 'E-Commerce'].map((cat) => {
                 const isActive = selectedCategory === cat;
                 return (
                   <button
@@ -532,7 +549,7 @@ export default function LandingScreen({ onNavigate, projects }: LandingScreenPro
                             referrerPolicy="no-referrer"
                             whileHover={{ scale: 1.05 }}
                             transition={{ duration: 0.5 }}
-                            className="w-full h-full object-cover object-top filter contrast-[1.03] brightness-[0.95]"
+                            className={`w-full h-full ${proj.imageFit === 'contain' ? 'object-contain p-10 bg-gradient-to-br from-violet-950 via-fuchsia-950/70 to-slate-950' : 'object-cover object-top'} filter contrast-[1.03] brightness-[0.95]`}
                           />
                           {/* Visual Gradient Mesh Overlay */}
                           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent pointer-events-none" />
