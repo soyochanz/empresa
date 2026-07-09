@@ -38,6 +38,13 @@ export default function DemoSitesCatalog() {
       {sites.length === 0 ? <p className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Todavía no hay webs demo. Añade la primera URL de Vercel.</p> : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
           {sites.map(site => <article key={site.id} className="rounded-2xl border border-white/10 bg-white/[.025] p-4 space-y-3">
+            {site.imageUrl ? (
+              <div className="aspect-[16/9] rounded-xl overflow-hidden border border-white/10 bg-black/30">
+                <img src={site.imageUrl} alt={`Vista previa de ${site.name}`} className="w-full h-full object-cover" />
+              </div>
+            ) : (
+              <div className="aspect-[16/9] rounded-xl border border-dashed border-white/10 bg-black/20 flex items-center justify-center text-[10px] text-slate-600">Sin imagen de portada</div>
+            )}
             <div><span className="text-[9px] uppercase text-cyan-400 font-mono">{site.businessType || 'General'}</span><h4 className="font-bold text-white">{site.name}</h4></div>
             <div className="flex gap-2">
               <a href={site.publicUrl} target="_blank" rel="noreferrer" className="flex-1 py-2 rounded-xl bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 text-xs font-bold flex justify-center gap-2"><ExternalLink className="w-4 h-4" />Web</a>
@@ -52,10 +59,31 @@ export default function DemoSitesCatalog() {
           <div className="flex justify-between"><div><h3 className="font-black text-white">Ficha de web demo</h3><p className="text-[11px] text-amber-300 mt-1">Las credenciales son internas y nunca se muestran al comercial.</p></div><button onClick={() => setShowSecrets(v => !v)} className="w-10 h-10 rounded-xl bg-white/5">{showSecrets ? <EyeOff className="w-4 h-4 mx-auto" /> : <Eye className="w-4 h-4 mx-auto" />}</button></div>
           <div className="grid sm:grid-cols-2 gap-3">
             {[
-              ['Nombre de la demo','name','text'],['Tipo de negocio','businessType','text'],['URL pública Vercel','publicUrl','url'],['URL panel admin','adminUrl','url'],
+              ['Nombre de la demo','name','text'],['Tipo de negocio','businessType','text'],['URL pública Vercel','publicUrl','url'],['URL panel admin','adminUrl','url'],['URL imagen de portada','imageUrl','url'],
               ['Supabase URL','supabaseUrl','text'],['Supabase anon key','supabaseAnonKey','secret'],['Stripe publishable key','stripePublishableKey','secret'],['Usuario admin','adminUser','text'],['Contraseña admin','adminPassword','secret']
             ].map(([label,key,type]) => <label key={key} className="space-y-1"><span className="text-[9px] uppercase font-bold text-slate-500">{label}</span><input type={type === 'secret' && !showSecrets ? 'password' : 'text'} value={(editing as any)[key] || ''} onChange={e => setEditing({...editing,[key]:e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-cyan-400" /></label>)}
           </div>
+          <label className="block rounded-2xl border border-dashed border-cyan-500/20 bg-cyan-500/[.04] p-4 text-center cursor-pointer hover:bg-cyan-500/[.08]">
+            <span className="block text-xs font-bold text-cyan-300">Subir imagen desde el dispositivo</span>
+            <span className="block text-[10px] text-slate-500 mt-1">JPG, PNG o WebP. Se guardará con la ficha de la demo.</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={event => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                if (file.size > 1_500_000) {
+                  alert('La imagen es demasiado grande. Usa una imagen de menos de 1,5 MB.');
+                  return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => setEditing(current => current ? { ...current, imageUrl: String(reader.result || '') } : current);
+                reader.readAsDataURL(file);
+              }}
+            />
+          </label>
+          {editing.imageUrl && <img src={editing.imageUrl} alt="Vista previa" className="w-full aspect-[16/7] object-cover rounded-2xl border border-white/10" />}
           <textarea value={editing.notes || ''} onChange={e => setEditing({...editing,notes:e.target.value})} placeholder="Notas internas…" className="w-full min-h-20 bg-black/40 border border-white/10 rounded-xl p-3 text-xs" />
           <div className="flex gap-2"><button onClick={() => setEditing(null)} className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-bold">Cancelar</button><button onClick={save} className="flex-1 py-3 rounded-xl bg-cyan-500 text-black text-xs font-black flex justify-center gap-2"><Save className="w-4 h-4" />Guardar</button></div>
         </div>

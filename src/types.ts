@@ -6,6 +6,7 @@ export interface DemoSite {
   businessType: string;
   publicUrl: string;
   adminUrl: string;
+  imageUrl?: string;
   supabaseUrl?: string;
   supabaseAnonKey?: string;
   stripePublishableKey?: string;
