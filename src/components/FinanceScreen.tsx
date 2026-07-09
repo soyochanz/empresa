@@ -27,7 +27,9 @@ import {
   CreditCard,
   Copy,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  LayoutDashboard,
+  Activity
 } from 'lucide-react';
 
 const safeConfirm = (msg: string): boolean => {
@@ -443,6 +445,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [txCategoryFilter, setTxCategoryFilter] = useState<string>('All');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'draft' | 'sent' | 'paid' | 'overdue'>('all');
+  const [adminMessage, setAdminMessage] = useState('');
+  const [adminMessages, setAdminMessages] = useState<{ id: string; text: string; time: string }[]>([]);
 
   // Active list searches
   const [txSearch, setTxSearch] = useState('');
@@ -1909,7 +1913,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const recurringExpenses = transactions.filter(t => !!t.isRecurring);
 
   return (
-    <div className="w-full h-full overflow-y-auto p-8 scrollbar-thin @container" id="finance-module-root">
+    <div className="w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin @container" id="finance-module-root">
       <div className="space-y-6 max-w-7xl mx-auto pb-12">
       
       {/* Page Header */}
@@ -1975,7 +1979,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
               className="bg-blue-600 hover:bg-blue-500 active:scale-95 text-xs text-white font-extrabold py-2.5 px-5 rounded-xl transition-all shadow-lg hover:shadow-blue-500/15 cursor-pointer flex items-center gap-1.5 border border-blue-400/20"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Generar Factura</span>
+              <span>Nueva factura</span>
             </button>
           )}
         </div>
@@ -2198,7 +2202,6 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
             </span>
           </button>
           <button
-            hidden
             onClick={() => setActiveTab('invoices')}
             className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
               activeTab === 'invoices' 
@@ -2206,7 +2209,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
                 : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
             }`}
           >
-            <span>Facturación y Cobros</span>
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Centro Admin</span>
             <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold ${activeTab === 'invoices' ? 'bg-blue-500/20 text-blue-300' : 'bg-white/5 text-slate-400'}`}>
               {invoices.length}
             </span>
@@ -2723,8 +2727,105 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       {/* Tab Content 3: Invoices Screen */}
       {activeTab === 'invoices' && (
         <div className="space-y-5">
+          <div className="grid grid-cols-1 xl:grid-cols-[220px_minmax(0,1fr)] gap-5">
+            <aside className="bg-[#080b16]/90 border border-white/7 rounded-3xl p-3 h-fit xl:sticky xl:top-3">
+              <div className="p-3 border-b border-white/5 mb-2">
+                <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-blue-400">Admin panel</span>
+                <h3 className="text-sm font-black text-white mt-1">Control de facturación</h3>
+              </div>
+              <nav className="flex xl:flex-col gap-1 overflow-x-auto pb-1 xl:pb-0">
+                <button onClick={() => document.getElementById('invoice-admin-overview')?.scrollIntoView({ behavior: 'smooth' })} className="shrink-0 flex items-center gap-2 rounded-xl bg-blue-600 text-white px-3 py-2.5 text-[11px] font-bold">
+                  <LayoutDashboard className="w-3.5 h-3.5" /> Overview
+                </button>
+                <button onClick={() => { setInvoiceStatusFilter('all'); document.getElementById('invoice-admin-list')?.scrollIntoView({ behavior: 'smooth' }); }} className="shrink-0 flex items-center gap-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 px-3 py-2.5 text-[11px] font-bold">
+                  <FileText className="w-3.5 h-3.5" /> Facturas
+                </button>
+                <button onClick={() => { setInvoiceStatusFilter('sent'); document.getElementById('invoice-admin-list')?.scrollIntoView({ behavior: 'smooth' }); }} className="shrink-0 flex items-center gap-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 px-3 py-2.5 text-[11px] font-bold">
+                  <Clock className="w-3.5 h-3.5" /> Pendientes
+                </button>
+                <button onClick={() => { setInvoiceStatusFilter('paid'); document.getElementById('invoice-admin-list')?.scrollIntoView({ behavior: 'smooth' }); }} className="shrink-0 flex items-center gap-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 px-3 py-2.5 text-[11px] font-bold">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Cobradas
+                </button>
+              </nav>
+              <button onClick={() => { resetInvForm(); setIsInvModalOpen(true); }} className="mt-3 w-full rounded-xl bg-white text-slate-950 px-3 py-2.5 text-[11px] font-black flex items-center justify-center gap-2 active:scale-95 transition">
+                <Plus className="w-3.5 h-3.5" /> Nueva factura
+              </button>
+            </aside>
+
+            <div id="invoice-admin-overview" className="space-y-5 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                <div>
+                  <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-slate-500">Estado global</span>
+                  <h3 className="text-2xl font-black text-white">Centro de operaciones</h3>
+                  <p className="text-xs text-slate-400 mt-1">Control en tiempo real de clientes, facturas y cobros.</p>
+                </div>
+                <span className="inline-flex self-start sm:self-auto items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-[10px] font-mono text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Sistema operativo
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  { label: 'Clientes', value: contacts.length, note: 'registrados', icon: User, color: 'text-violet-400' },
+                  { label: 'Facturas', value: invoices.length, note: 'totales', icon: FileText, color: 'text-blue-400' },
+                  { label: 'Pendientes', value: invoices.filter(inv => inv.status === 'sent' || inv.status === 'overdue').length, note: 'por cobrar', icon: Clock, color: 'text-amber-400' },
+                  { label: 'Cobradas', value: invoices.filter(inv => inv.status === 'paid').length, note: 'completadas', icon: CheckCircle2, color: 'text-emerald-400' }
+                ].map(metric => (
+                  <button key={metric.label} onClick={() => { if (metric.label === 'Pendientes') setInvoiceStatusFilter('sent'); else if (metric.label === 'Cobradas') setInvoiceStatusFilter('paid'); else setInvoiceStatusFilter('all'); document.getElementById('invoice-admin-list')?.scrollIntoView({ behavior: 'smooth' }); }} className="text-left bg-[#0b1329]/35 hover:bg-[#0b1329]/60 border border-white/5 hover:border-white/10 rounded-2xl p-4 transition group">
+                    <div className="flex items-center justify-between">
+                      <metric.icon className={`w-4 h-4 ${metric.color}`} />
+                      <ArrowUpRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-white transition" />
+                    </div>
+                    <span className="block text-[9px] uppercase font-mono text-slate-500 mt-5">{metric.label}</span>
+                    <strong className="text-2xl text-white">{metric.value}</strong>
+                    <span className="text-[9px] text-slate-500 ml-1">{metric.note}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,.75fr)] gap-4">
+                <div className="bg-[#080b16]/70 border border-white/5 rounded-3xl p-5 min-h-[300px]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-base font-black text-white">Pulso financiero</h4>
+                      <span className="text-[9px] font-mono text-slate-500 uppercase">Últimos movimientos</span>
+                    </div>
+                    <TrendingUp className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="h-44 mt-8 flex items-end gap-2 border-b border-white/10 px-2">
+                    {(transactions.slice(0, 12).reverse().length ? transactions.slice(0, 12).reverse() : [{ amount: 1, type: 'income' } as FinanceTransaction]).map((tx, index, list) => {
+                      const max = Math.max(...list.map(item => Math.abs(Number(item.amount)) || 1));
+                      return <div key={tx.id || index} title={`${tx.description || 'Sin movimientos'}: ${tx.amount} €`} className={`flex-1 min-w-2 rounded-t-md transition hover:opacity-80 ${tx.type === 'expense' ? 'bg-rose-500/70' : 'bg-gradient-to-t from-violet-600 to-blue-400'}`} style={{ height: `${Math.max(8, (Math.abs(Number(tx.amount)) / max) * 100)}%` }} />;
+                    })}
+                  </div>
+                  <div className="flex justify-between mt-3 text-[9px] font-mono text-slate-600"><span>Anterior</span><span>Ahora</span></div>
+                </div>
+
+                <div className="bg-[#080b16]/70 border border-white/5 rounded-3xl p-5 flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <h4 className="text-base font-black text-white">Ops Stream</h4>
+                  </div>
+                  <div className="mt-5 space-y-4 flex-1">
+                    {[...adminMessages, ...invoices.slice(0, 4).map(inv => ({ id: inv.id, text: `${inv.clientName} · ${inv.status === 'paid' ? 'factura cobrada' : 'factura actualizada'}`, time: inv.date }))].slice(0, 5).map((event, index) => (
+                      <div key={`${event.id}-${index}`} className="flex gap-3">
+                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${index === 0 ? 'bg-violet-500' : 'bg-blue-500'}`} />
+                        <div className="min-w-0"><p className="text-[11px] text-slate-200 truncate">{event.text}</p><span className="text-[9px] font-mono text-slate-600">{event.time}</span></div>
+                      </div>
+                    ))}
+                    {!adminMessages.length && !invoices.length && <p className="text-[10px] text-slate-600">Sin actividad reciente.</p>}
+                  </div>
+                  <div className="mt-5 pt-4 border-t border-white/5 flex gap-2">
+                    <input value={adminMessage} onChange={event => setAdminMessage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && adminMessage.trim()) { setAdminMessages(current => [{ id: String(Date.now()), text: adminMessage.trim(), time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }, ...current]); setAdminMessage(''); } }} placeholder="Nota administrativa…" className="min-w-0 flex-1 bg-slate-950 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white outline-none focus:border-violet-500" />
+                    <button onClick={() => { if (!adminMessage.trim()) return; setAdminMessages(current => [{ id: String(Date.now()), text: adminMessage.trim(), time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) }, ...current]); setAdminMessage(''); }} className="p-2 rounded-xl bg-violet-600 text-white"><ArrowUpRight className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Top filter and search for invoices */}
-          <div className="bg-[#0b1329]/20 backdrop-blur-md border border-white/5 p-4 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center gap-4 justify-between">
+          <div id="invoice-admin-list" className="bg-[#0b1329]/20 backdrop-blur-md border border-white/5 p-4 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center gap-4 justify-between scroll-mt-5">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setInvoiceStatusFilter('all')}
