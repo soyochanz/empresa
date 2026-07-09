@@ -445,7 +445,7 @@ export default function ColdCallingScreen({
     const headers = rows[0].map((header, index) =>
       (index === 0 ? header.replace(/^\uFEFF/, '') : header).trim()
     );
-    const requiredHeaders = ['position', 'name', 'rating', 'reviews', 'phone', 'website', 'status', 'info', 'mapsUrl'];
+    const requiredHeaders = ['name', 'phone', 'hasWebsite', 'website', 'mapsUrl'];
     const missing = requiredHeaders.filter(header => !headers.includes(header));
     if (missing.length) throw new Error(`Faltan columnas: ${missing.join(', ')}`);
 
@@ -472,17 +472,6 @@ export default function ColdCallingScreen({
     }
   };
 
-  const optionalNumber = (value: string) => {
-    if (!value.trim()) return undefined;
-    const parsed = Number(value.replace(',', '.'));
-    return Number.isFinite(parsed) ? parsed : undefined;
-  };
-
-  const optionalInteger = (value: string) => {
-    const parsed = optionalNumber(value);
-    return parsed === undefined ? undefined : Math.trunc(parsed);
-  };
-
   const handleImportCsv = async () => {
     if (!csvRows.length) return;
     setImportingCsv(true);
@@ -490,6 +479,7 @@ export default function ColdCallingScreen({
     try {
       const now = new Date().toISOString();
       for (const [index, row] of csvRows.entries()) {
+        const hasWebsite = ['true', '1', 'yes', 'sí', 'si'].includes(row.hasWebsite.trim().toLowerCase());
         await onAddColdLead({
           id: `cold_csv_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 7)}`,
           businessName: row.name || 'Sin nombre',
@@ -501,17 +491,13 @@ export default function ColdCallingScreen({
           answered: 'No',
           temperature: 'Frío',
           callbackScheduled: 'No',
-          notes: row.info || 'Importado desde CSV.',
+          notes: 'Importado desde CSV.',
           assignedToEmail: 'unassigned',
           assignedToName: 'Sin asignar',
           archived: false,
           createdAt: now,
-          position: optionalInteger(row.position),
-          rating: optionalNumber(row.rating),
-          reviews: optionalInteger(row.reviews),
+          hasWebsite,
           website: row.website || undefined,
-          sourceStatus: row.status || undefined,
-          info: row.info || undefined,
           mapsUrl: row.mapsUrl || undefined
         });
       }
@@ -1419,8 +1405,8 @@ export default function ColdCallingScreen({
                     </div>
 
                     <div className="col-span-1 lg:text-center">
-                      <span className={`inline-flex text-[10px] font-bold px-2 py-1 rounded-full border ${lead.website ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-slate-500/10 border-white/10 text-slate-500'}`}>
-                        {lead.website ? 'Sí' : 'No'}
+                      <span className={`inline-flex text-[10px] font-bold px-2 py-1 rounded-full border ${(lead.hasWebsite ?? !!lead.website) ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-slate-500/10 border-white/10 text-slate-500'}`}>
+                        {(lead.hasWebsite ?? !!lead.website) ? 'Sí' : 'No'}
                       </span>
                     </div>
 
@@ -3087,7 +3073,7 @@ export default function ColdCallingScreen({
             <label className="mt-5 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-cyan-500/30 bg-cyan-500/5 p-7 cursor-pointer hover:bg-cyan-500/10 transition">
               <Upload className="w-7 h-7 text-cyan-400" />
               <span className="text-xs font-bold text-white">{csvFileName || 'Seleccionar archivo .csv'}</span>
-              <span className="text-[10px] text-slate-500">position, name, rating, reviews, phone, website, status, info, mapsUrl</span>
+              <span className="text-[10px] text-slate-500">name, phone, hasWebsite, website, mapsUrl</span>
               <input type="file" accept=".csv,text/csv" onChange={handleCsvFile} className="hidden" />
             </label>
 

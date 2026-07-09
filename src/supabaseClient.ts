@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   location TEXT,
   "addedDate" TEXT,
   website TEXT,
+  "hasWebsite" BOOLEAN,
   "githubRepo" TEXT,
   "hostingCredentials" TEXT,
   initials TEXT,
@@ -355,6 +356,7 @@ ALTER TABLE cold_calling_leads
   ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION,
   ADD COLUMN IF NOT EXISTS reviews INTEGER,
   ADD COLUMN IF NOT EXISTS website TEXT,
+  ADD COLUMN IF NOT EXISTS "hasWebsite" BOOLEAN,
   ADD COLUMN IF NOT EXISTS "sourceStatus" TEXT,
   ADD COLUMN IF NOT EXISTS info TEXT,
   ADD COLUMN IF NOT EXISTS "mapsUrl" TEXT;
@@ -1756,6 +1758,7 @@ export const db = {
       rating: serialized.rating ?? null,
       reviews: serialized.reviews ?? null,
       website: serialized.website || null,
+      hasWebsite: serialized.hasWebsite ?? null,
       sourceStatus: serialized.sourceStatus || null,
       info: serialized.info || null,
       mapsUrl: serialized.mapsUrl || null
@@ -1788,6 +1791,7 @@ export const db = {
       rating: serialized.rating ?? null,
       reviews: serialized.reviews ?? null,
       website: serialized.website || null,
+      hasWebsite: serialized.hasWebsite ?? null,
       sourceStatus: serialized.sourceStatus || null,
       info: serialized.info || null,
       mapsUrl: serialized.mapsUrl || null

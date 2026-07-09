@@ -257,6 +257,7 @@ export interface ColdCallingLead {
   rating?: number;
   reviews?: number;
   website?: string;
+  hasWebsite?: boolean;
   sourceStatus?: string;
   info?: string;
   mapsUrl?: string;
