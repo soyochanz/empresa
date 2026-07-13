@@ -365,12 +365,14 @@ export default function CrmScreen({
  const invoiceId = 'inv_crm_' + Math.random().toString(36).substring(2, 9);
  const stripePlanId = 'plan_crm_' + Math.random().toString(36).substring(2, 9);
  const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
+ const todayKey = new Date().toISOString().split('T')[0];
+ const safeClientEmail = convertingLead.email?.trim() || `${convertingLead.id}@clientes.althera.local`;
  
  // Create Invoice Items
  const invoiceItems: any[] = [];
  const createdTransactions: FinanceTransaction[] = [];
- const firstInstallmentDate = new Date();
- firstInstallmentDate.setHours(0, 0, 0, 0);
+  const firstInstallmentDate = new Date();
+  firstInstallmentDate.setHours(0, 0, 0, 0);
  for (let i = 1; i <= convInstallments; i++) {
   const txId = 'tx_crm_' + Math.random().toString(36).substring(2, 9) + '_' + i;
   const installmentDate = new Date(firstInstallmentDate);
@@ -393,7 +395,7 @@ export default function CrmScreen({
   type: 'income',
   category: 'Ventas',
   amount: pricePerInstallment,
-  date: installmentDate.toISOString().split('T')[0],
+  date: todayKey,
   description: `${convConcept} - Cuota ${i} de ${convInstallments} (Pendiente)`,
   status: 'pending',
   paymentMethod: convPaymentMethod,
@@ -420,8 +422,8 @@ export default function CrmScreen({
   id: invoiceId,
   clientId: convertingLead.id,
   clientName: convertingLead.name,
-  clientEmail: convertingLead.email,
-  date: new Date().toISOString().split('T')[0],
+  clientEmail: safeClientEmail,
+  date: todayKey,
   dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   status: 'sent',
   items: invoiceItems,
@@ -452,7 +454,7 @@ export default function CrmScreen({
    body: JSON.stringify({
    clientId: convertingLead.id,
    clientName: convertingLead.name,
-   clientEmail: convertingLead.email,
+    clientEmail: safeClientEmail,
    amount: pricePerInstallment.toFixed(2),
    interval: convInstallments > 1 ? 'month' : 'once',
    installments: convInstallments.toString(),

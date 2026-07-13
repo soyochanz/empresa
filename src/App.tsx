@@ -846,16 +846,27 @@ export default function App() {
 
  // Notifications computation
  const userNotifications = useMemo(() => {
- const dbNotifications = events.filter(e => {
+  const dbNotifications = events.filter(e => {
   if (!currentUser) return false;
   if (e.isAdminNotification || e.assignedUserEmail === 'todos-admins') return true;
   const assignedEmails = e.assignedUserEmails || [];
   if (assignedEmails.includes('todos-comerciales')) return true;
   if (assignedEmails.some(email => email.toLowerCase() === currentUser.email.toLowerCase())) return true;
   return !!e.assignedUserEmail && e.assignedUserEmail.toLowerCase() === currentUser.email.toLowerCase();
- });
- return [...financeNotifications, ...hotLeadsNotifications, ...dbNotifications];
- }, [events, financeNotifications, hotLeadsNotifications, currentUser]);
+  });
+  const notificationTime = (notification: any) => {
+  const rawDate = notification.date || new Date().toISOString().split('T')[0];
+  const rawTime = /^\d{2}:\d{2}/.test(notification.time || '') ? notification.time : '23:59';
+  const parsed = new Date(`${rawDate}T${rawTime}`);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  };
+  return [...financeNotifications, ...hotLeadsNotifications, ...dbNotifications]
+  .sort((a, b) => {
+   const unreadDelta = Number(!readNotificationIds.includes(b.id)) - Number(!readNotificationIds.includes(a.id));
+   if (unreadDelta !== 0) return unreadDelta;
+   return notificationTime(b) - notificationTime(a);
+  });
+  }, [events, financeNotifications, hotLeadsNotifications, currentUser, readNotificationIds]);
 
  const unreadNotifications = useMemo(() => {
  return userNotifications.filter(e => !readNotificationIds.includes(e.id));
@@ -1161,12 +1172,18 @@ export default function App() {
 
  // State handles to modify database items dynamically with Optimistic UI updates
  const handleAddContact = async (contact: ClientContact) => {
- const alreadyExists = contacts.some(c => c.id === contact.id);
+ const existingContact = contacts.find(c =>
+  c.id === contact.id ||
+  (!!contact.closingSourceLeadId && c.closingSourceLeadId === contact.closingSourceLeadId) ||
+  (!!contact.phone && c.phone === contact.phone && c.company?.toLowerCase() === contact.company?.toLowerCase())
+ );
+ const alreadyExists = !!existingContact;
+ const contactToSave = existingContact ? { ...existingContact, ...contact, id: existingContact.id } : contact;
 
  // 1. Optimistic UI update
- setContacts(prev => prev.some(c => c.id === contact.id) ?
-  prev.map(c => c.id === contact.id ? contact : c)
-  : [contact, ...prev]
+ setContacts(prev => prev.some(c => c.id === contactToSave.id) ?
+  prev.map(c => c.id === contactToSave.id ? contactToSave : c)
+  : [contactToSave, ...prev]
  );
  
  // 2. Add activity locally
@@ -1174,8 +1191,8 @@ export default function App() {
   id: 'a_' + Date.now(),
   type: 'CRM',
   timestamp: 'Just now',
-  title: contact.name,
-  subtitle: `added to ${contact.company}`,
+  title: contactToSave.name,
+  subtitle: `added to ${contactToSave.company}`,
   accentColor: 'primary'
  };
  if (!alreadyExists) {
@@ -1185,10 +1202,10 @@ export default function App() {
  // 3. Persistent Supabase write
  if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
   try {
-  if (alreadyExists) {
-   await db.updateContact(contact, currentUser.id);
-  } else {
-   await db.insertContact(contact, currentUser.id);
+   if (alreadyExists) {
+    await db.updateContact(contactToSave, currentUser.id);
+   } else {
+    await db.insertContact(contactToSave, currentUser.id);
    await db.insertActivity(activity, currentUser.id);
   }
   } catch (err) {

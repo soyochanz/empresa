@@ -183,6 +183,7 @@ export default function ColdCallingScreen({
  mapsUrl?: string;
  website?: string;
  }>>({});
+ const [showClosedClosingLeads, setShowClosedClosingLeads] = useState(false);
  const [deleteConfirmLeadId, setDeleteConfirmLeadId] = useState<string | null>(null);
  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
  const [bulkAssigneeEmail, setBulkAssigneeEmail] = useState('unassigned');
@@ -282,6 +283,29 @@ export default function ColdCallingScreen({
  setConvConcept('Servicio de Consultoría Althera');
  };
 
+ const handleOpenClosingConversion = (lead: ColdCallingLead) => {
+ const draft = getClosingDraft(lead);
+ const cleanName = draft.name?.trim() || lead.contactPerson || lead.businessName;
+ const defaultEmail = draft.email?.trim() || `${lead.id}@clientes.althera.local`;
+ setConvertingLead({
+  ...lead,
+  businessName: draft.company?.trim() || lead.businessName,
+  contactPerson: cleanName,
+  phone: draft.phone?.trim() || lead.phone,
+  notes: [lead.notes, draft.notes ? `[Closing] ${draft.notes}` : ''].filter(Boolean).join('\n'),
+  website: draft.website?.trim() || lead.website,
+  mapsUrl: draft.mapsUrl?.trim() || lead.mapsUrl
+ });
+ setConvType('Client');
+ setConvName(cleanName);
+ setConvCompany(draft.company?.trim() || lead.businessName);
+ setConvEmail(defaultEmail);
+ setConvPhone(draft.phone?.trim() || lead.phone);
+ setConvSalePrice(1500);
+ setConvInstallments(1);
+ setConvConcept('Servicio web Althera');
+ };
+
  const handleConfirmConvertToClient = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!convertingLead || !onAddContact) return;
@@ -332,6 +356,7 @@ export default function ColdCallingScreen({
   const invoiceId = 'inv_cc_' + Math.random().toString(36).substring(2, 9);
   const stripePlanId = 'plan_cc_' + Math.random().toString(36).substring(2, 9);
   const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
+  const todayKey = new Date().toISOString().split('T')[0];
   
   // Create Invoice Items
   const invoiceItems: InvoiceItem[] = [];
@@ -359,7 +384,7 @@ export default function ColdCallingScreen({
    type: 'income',
    category: 'Ventas',
    amount: pricePerInstallment,
-   date: installmentDate.toISOString().split('T')[0],
+    date: todayKey,
    description: `${convConcept} - Plazo ${i} de ${convInstallments} (Pendiente)`,
    status: 'pending',
    paymentMethod: 'transfer',
@@ -1123,6 +1148,7 @@ export default function ColdCallingScreen({
   linkedContactIds: [crmLead.id],
   assignedUserId: carlosAdmin?.id,
   assignedUserEmail: carlosAdmin?.email || 'todos-admins',
+  assignedUserEmails: carlosAdmin?.email ? [carlosAdmin.email] : ['todos-admins'],
   status: 'pending',
   color: '#F59E0B',
   alias: 'Cita Cold Calling',
@@ -1213,8 +1239,15 @@ export default function ColdCallingScreen({
  };
 
  const closingLeads = React.useMemo(() => {
+ const seen = new Set<string>();
  return coldLeads
   .filter(lead => lead.callbackScheduled === 'Sí')
+  .filter(lead => {
+   const key = lead.id || `${lead.businessName}-${lead.phone}`;
+   if (seen.has(key)) return false;
+   seen.add(key);
+   return true;
+  })
   .sort((a, b) => `${a.callbackDate || ''}${a.callbackTime || ''}`.localeCompare(`${b.callbackDate || ''}${b.callbackTime || ''}`));
  }, [coldLeads]);
 
@@ -1239,6 +1272,12 @@ export default function ColdCallingScreen({
   ...(closingDrafts[lead.id] || {})
  };
  };
+
+ const visibleClosingLeads = closingLeads.filter(lead => {
+ const contact = getClosingContact(lead);
+ const status = closingDrafts[lead.id]?.status || contact?.closingStatus || 'Pendiente';
+ return showClosedClosingLeads || status !== 'Cerrado';
+ });
 
  const updateClosingDraft = (leadId: string, patch: Partial<ReturnType<typeof getClosingDraft>>) => {
  setClosingDrafts(prev => ({ ...prev, [leadId]: { ...(prev[leadId] || {}), ...patch } }));
@@ -1308,7 +1347,7 @@ export default function ColdCallingScreen({
   onAddEvent?.({
   id: `web_needed_${updatedContact.id}_${Date.now()}`,
   title: `Web pendiente: ${updatedContact.company}`,
-  date: new Date().toISOString().split('T')[0],
+  date: todayKey,
   time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
   duration: '15m',
   type: 'Deadline',
@@ -1318,6 +1357,7 @@ export default function ColdCallingScreen({
   linkedContactIds: [updatedContact.id],
   assignedUserId: nachoAdmin?.id,
   assignedUserEmail: nachoAdmin?.email || 'todos-admins',
+  assignedUserEmails: nachoAdmin?.email ? [nachoAdmin.email] : ['todos-admins'],
   status: 'pending',
   color: '#F59E0B',
   alias: 'Falta Web',
@@ -3288,26 +3328,33 @@ export default function ColdCallingScreen({
   {activeTab === 'closing' && (
   <div className="space-y-5">
    <div className="rounded-3xl border border-cyan-400/15 bg-cyan-400/[0.035] p-5 flex items-center justify-between gap-4">
-   <div>
-    <p className="text-[10px] uppercase tracking-[0.24em] font-mono font-bold text-cyan-300">Closing Pipeline</p>
-    <h3 className="text-xl font-black text-white mt-1">Citas pasadas a closer</h3>
-    <p className="text-xs text-slate-400 mt-1">Clientes potenciales generados desde Call Calling y asignados a Carlos.</p>
-   </div>
-   <div className="text-right">
-    <p className="text-3xl font-black text-cyan-200 font-mono">{closingLeads.length}</p>
-    <p className="text-[10px] text-slate-500 font-mono uppercase">oportunidades</p>
-   </div>
+    <div>
+     <p className="text-[10px] uppercase tracking-[0.24em] font-mono font-bold text-cyan-300">Closing Pipeline</p>
+     <h3 className="text-xl font-black text-white mt-1">Citas pasadas a closer</h3>
+     <p className="text-xs text-slate-400 mt-1">Clientes potenciales generados desde Call Calling y asignados a Carlos.</p>
+    </div>
+    <div className="text-right space-y-2">
+     <p className="text-3xl font-black text-cyan-200 font-mono">{visibleClosingLeads.length}</p>
+     <p className="text-[10px] text-slate-500 font-mono uppercase">{showClosedClosingLeads ? 'oportunidades totales' : 'abiertas'}</p>
+     <button
+      type="button"
+      onClick={() => setShowClosedClosingLeads(prev => !prev)}
+      className="px-3 py-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-[10px] font-black text-cyan-200 hover:bg-cyan-400/20"
+     >
+      {showClosedClosingLeads ? 'Ocultar cerradas' : 'Ver cerradas'}
+     </button>
+    </div>
    </div>
 
-   {closingLeads.length === 0 ? (
+   {visibleClosingLeads.length === 0 ? (
    <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-12 text-center">
     <Briefcase className="w-10 h-10 text-slate-500 mx-auto mb-3" />
-    <p className="text-sm font-bold text-slate-200">AÃºn no hay citas para closing.</p>
-    <p className="text-xs text-slate-500 mt-1">Cuando un caller marque una cita agendada aparecerÃ¡ aquÃ­.</p>
+    <p className="text-sm font-bold text-slate-200">{closingLeads.length === 0 ? 'Aún no hay citas para closing.' : 'No hay citas abiertas para closing.'}</p>
+    <p className="text-xs text-slate-500 mt-1">{closingLeads.length === 0 ? 'Cuando un caller marque una cita agendada aparecerá aquí.' : 'Pulsa Ver cerradas para revisar las oportunidades ya cerradas.'}</p>
    </div>
    ) : (
    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-    {closingLeads.map(lead => {
+    {visibleClosingLeads.map(lead => {
     const draft = getClosingDraft(lead);
     const contact = getClosingContact(lead);
     const status = draft.status || 'Pendiente';
@@ -3356,11 +3403,11 @@ export default function ColdCallingScreen({
       <div className="flex gap-2">
       <button onClick={() => saveClosingLead(lead, 'Perdido')} className="px-3 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[10px] font-black text-rose-300 hover:bg-rose-500/20">Perdido</button>
       <button onClick={() => saveClosingLead(lead, 'Pendiente')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-500/10 border border-white/10 text-[10px] font-black text-slate-200 hover:bg-white/10"><Save className="w-3.5 h-3.5" /> Guardar</button>
-      <button onClick={() => saveClosingLead(lead, 'Cerrado')} className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/25">Cerrado + pedir web</button>
+      <button onClick={() => { saveClosingLead(lead, 'Cerrado'); handleOpenClosingConversion(lead); }} className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/25">Cerrado + pedir web</button>
       </div>
      </div>
      {contact?.needsWebsite && !contact.websiteReady && (
-      <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-[10px] font-bold text-amber-300">Marcado en GestiÃ³n Dev como falta web.</div>
+      <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-[10px] font-bold text-amber-300">Marcado en Gestión Dev como falta web.</div>
      )}
      </div>
     );
