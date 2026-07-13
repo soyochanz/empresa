@@ -253,6 +253,31 @@
   -webkit-backdrop-filter: blur(12px);
 }
 
+.is-mac .admin-shell [class*="backdrop-blur"],
+.is-mac .admin-workspace [class*="backdrop-blur"],
+.is-mac .admin-shell .fixed.inset-0 > .relative,
+.is-mac #supabase-modal-root > .relative {
+  backdrop-filter: blur(6px) saturate(115%) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(115%) !important;
+}
+
+.is-mac .admin-shell [class*="blur-["],
+.is-mac .admin-workspace [class*="blur-["],
+.is-mac .admin-shell [class*="blur-3xl"],
+.is-mac .admin-workspace [class*="blur-3xl"] {
+  display: none !important;
+}
+
+.is-mac .admin-workspace div[class*="rounded-3xl"][class*="border"]::before,
+.is-mac .admin-workspace div[class*="rounded-2xl"][class*="border"]::before {
+  opacity: 0.18;
+}
+
+.is-mac .admin-shell [class*="animate-pulse"],
+.is-mac .admin-workspace [class*="animate-pulse"] {
+  animation: none !important;
+}
+
 .admin-shell code,
 #supabase-modal-root code {
   background: rgba(34, 211, 238, 0.09) !important;

@@ -3,6 +3,10 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
+if (typeof window !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)) {
+ document.documentElement.classList.add('is-mac');
+}
+
 // Unregister any stale service workers that might be intercepting API calls from previous sessions on this shared domain
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
  navigator.serviceWorker.getRegistrations().then((registrations) => {

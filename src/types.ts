@@ -286,6 +286,8 @@ export interface ColdCallingLead {
  // Control fields
  assignedToEmail: string;   // Assigned comercial's email, or 'unassigned'
  assignedToName?: string;   // Assigned comercial's name
+ closingOriginComercialEmail?: string;
+ closingOriginComercialName?: string;
  archived?: boolean;    // archived flag
  isDone?: boolean;    // Done (tick) flag for comercial organization
  createdAt: string;

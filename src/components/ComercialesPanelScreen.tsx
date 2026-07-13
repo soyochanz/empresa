@@ -59,7 +59,7 @@ export const getTieredCommission = (closures: number): number => {
 };
 
 const COMMISSION_TIERS = [
- { name: 'Etapa 1', min: 1, max: 3, pct: 10 },
+ { name: 'Etapa 1', min: 0, max: 3, pct: 10 },
  { name: 'Etapa 2', min: 4, max: 6, pct: 11 },
  { name: 'Etapa 3', min: 7, max: 9, pct: 12 },
  { name: 'Etapa 4', min: 10, max: 12, pct: 13.5 },

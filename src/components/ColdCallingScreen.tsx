@@ -207,6 +207,7 @@ export default function ColdCallingScreen({
  const [convPhone, setConvPhone] = useState('');
  const [convSalePrice, setConvSalePrice] = useState(1500);
  const [convInstallments, setConvInstallments] = useState(1);
+ const [convPaymentMethod, setConvPaymentMethod] = useState<'cash' | 'transfer' | 'stripe'>('transfer');
  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
 
  const normalizeTime = (time?: string) => {
@@ -280,6 +281,7 @@ export default function ColdCallingScreen({
  setConvPhone(lead.phone);
  setConvSalePrice(1500);
  setConvInstallments(1);
+ setConvPaymentMethod('transfer');
  setConvConcept('Servicio de Consultoría Althera');
  };
 
@@ -303,6 +305,7 @@ export default function ColdCallingScreen({
  setConvPhone(draft.phone?.trim() || lead.phone);
  setConvSalePrice(1500);
  setConvInstallments(1);
+ setConvPaymentMethod('transfer');
  setConvConcept('Servicio web Althera');
  };
 
@@ -355,8 +358,9 @@ export default function ColdCallingScreen({
   // 4. Generate the Invoice (Factura) and Transactions (Cobros) - only for Client
   const invoiceId = 'inv_cc_' + Math.random().toString(36).substring(2, 9);
   const stripePlanId = 'plan_cc_' + Math.random().toString(36).substring(2, 9);
-  const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
+ const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
   const todayKey = new Date().toISOString().split('T')[0];
+  const safeClientEmail = convEmail.trim() || `${newContact.id}@clientes.althera.local`;
   
   // Create Invoice Items
   const invoiceItems: InvoiceItem[] = [];
@@ -375,7 +379,7 @@ export default function ColdCallingScreen({
    total: pricePerInstallment,
    isPending: true,
    pendingTxId: txId,
-   paymentMethod: 'transfer'
+    paymentMethod: convPaymentMethod
   });
 
   // Insert matching FinanceTransaction in DB
@@ -387,7 +391,7 @@ export default function ColdCallingScreen({
     date: todayKey,
    description: `${convConcept} - Plazo ${i} de ${convInstallments} (Pendiente)`,
    status: 'pending',
-   paymentMethod: 'transfer',
+    paymentMethod: convPaymentMethod,
    clientId: newContact.id,
    stripePlanId,
    stripeInstallmentIndex: i,
@@ -410,7 +414,7 @@ export default function ColdCallingScreen({
   id: invoiceId,
   clientId: newContact.id,
   clientName: convName.trim(),
-  clientEmail: convEmail.trim(),
+  clientEmail: safeClientEmail,
   date: new Date().toISOString().split('T')[0],
   dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   status: 'sent',
@@ -426,9 +430,35 @@ export default function ColdCallingScreen({
   };
 
   try {
-  await db.insertFinanceInvoice(newInvoice);
+   await db.insertFinanceInvoice(newInvoice);
   } catch (err) {
-  console.error('Error inserting invoice:', err);
+   console.error('Error inserting invoice:', err);
+  }
+
+  if (convPaymentMethod === 'stripe') {
+   try {
+   const response = await fetch('/api/stripe/create-checkout-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+    clientId: newContact.id,
+    clientName: convName.trim(),
+    clientEmail: safeClientEmail,
+    amount: pricePerInstallment.toFixed(2),
+    interval: convInstallments > 1 ? 'month' : 'once',
+    installments: String(convInstallments),
+    concept: `${convConcept} - ${convInstallments > 1 ? `${convInstallments} cuotas mensuales` : 'pago unico'}`,
+    pendingTxId: invoiceItems[0]?.pendingTxId || '',
+    stripePlanId,
+    installmentIndex: '1',
+    }),
+   });
+   const data = await response.json();
+   if (!response.ok) throw new Error(data.error || 'No se pudo generar el link de Stripe');
+   alert(`Link Stripe generado:\n${data.url}`);
+   } catch (err: any) {
+   alert(`El cliente se ha convertido, pero Stripe no pudo generar el link: ${err?.message || 'error desconocido'}`);
+   }
   }
  }
 
@@ -1114,6 +1144,8 @@ export default function ColdCallingScreen({
   archived: shouldSendToClosing ? true : selectedLeadForCall.archived,
   assignedToEmail: shouldSendToClosing ? closerAssigneeEmail : selectedLeadForCall.assignedToEmail,
   assignedToName: shouldSendToClosing ? closerAssigneeName : selectedLeadForCall.assignedToName,
+  closingOriginComercialEmail: shouldSendToClosing ? selectedLeadForCall.assignedToEmail : selectedLeadForCall.closingOriginComercialEmail,
+  closingOriginComercialName: shouldSendToClosing ? selectedLeadForCall.assignedToName : selectedLeadForCall.closingOriginComercialName,
   notes: currentNotes,
   callDate: new Date().toISOString().split('T')[0],
   callsCount: updatedLogs.length,
@@ -1243,13 +1275,18 @@ export default function ColdCallingScreen({
  return coldLeads
   .filter(lead => lead.callbackScheduled === 'Sí')
   .filter(lead => {
+   if (!currentComercial) return true;
+   return lead.closingOriginComercialEmail?.toLowerCase() === currentComercial.email.toLowerCase() ||
+    lead.closingOriginComercialName?.toLowerCase() === currentComercial.name.toLowerCase();
+  })
+  .filter(lead => {
    const key = lead.id || `${lead.businessName}-${lead.phone}`;
    if (seen.has(key)) return false;
    seen.add(key);
    return true;
   })
   .sort((a, b) => `${a.callbackDate || ''}${a.callbackTime || ''}`.localeCompare(`${b.callbackDate || ''}${b.callbackTime || ''}`));
- }, [coldLeads]);
+ }, [coldLeads, currentComercial]);
 
  const getClosingContact = (lead: ColdCallingLead) => contacts.find(contact =>
  contact.closingSourceLeadId === lead.id || contact.id === `crm_from_${lead.id}`
@@ -1278,6 +1315,7 @@ export default function ColdCallingScreen({
  const status = closingDrafts[lead.id]?.status || contact?.closingStatus || 'Pendiente';
  return showClosedClosingLeads || status !== 'Cerrado';
  });
+ const isClosingReadOnly = !!currentComercial;
 
  const updateClosingDraft = (leadId: string, patch: Partial<ReturnType<typeof getClosingDraft>>) => {
  setClosingDrafts(prev => ({ ...prev, [leadId]: { ...(prev[leadId] || {}), ...patch } }));
@@ -3376,26 +3414,27 @@ export default function ColdCallingScreen({
       </div>
      </div>
 
-     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <input value={draft.name} onChange={(e) => updateClosingDraft(lead.id, { name: e.target.value })} placeholder="Persona de contacto" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400" />
-      <input value={draft.company} onChange={(e) => updateClosingDraft(lead.id, { company: e.target.value })} placeholder="Empresa" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400" />
-      <input value={draft.phone} onChange={(e) => updateClosingDraft(lead.id, { phone: e.target.value })} placeholder="TelÃ©fono" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400" />
-      <input value={draft.email} onChange={(e) => updateClosingDraft(lead.id, { email: e.target.value })} placeholder="Email" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400" />
-      <input type="date" value={draft.date} onChange={(e) => updateClosingDraft(lead.id, { date: e.target.value })} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400" />
-      <select value={draft.time} onChange={(e) => updateClosingDraft(lead.id, { time: e.target.value })} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+       <input readOnly={isClosingReadOnly} value={draft.name} onChange={(e) => updateClosingDraft(lead.id, { name: e.target.value })} placeholder="Persona de contacto" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+       <input readOnly={isClosingReadOnly} value={draft.company} onChange={(e) => updateClosingDraft(lead.id, { company: e.target.value })} placeholder="Empresa" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+       <input readOnly={isClosingReadOnly} value={draft.phone} onChange={(e) => updateClosingDraft(lead.id, { phone: e.target.value })} placeholder="TelÃ©fono" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+       <input readOnly={isClosingReadOnly} value={draft.email} onChange={(e) => updateClosingDraft(lead.id, { email: e.target.value })} placeholder="Email" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+       <input readOnly={isClosingReadOnly} type="date" value={draft.date} onChange={(e) => updateClosingDraft(lead.id, { date: e.target.value })} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+       <select disabled={isClosingReadOnly} value={draft.time} onChange={(e) => updateClosingDraft(lead.id, { time: e.target.value })} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 disabled:opacity-70">
        <option value="">Sin hora</option>
        {HOURLY_SLOTS.map(slot => {
        const busy = draft.date && isSlotBusy(draft.date, slot) && !(draft.date === lead.callbackDate && slot === lead.callbackTime);
        return <option key={slot} value={slot} disabled={!!busy}>{slot}{busy ? ' - ocupado' : ''}</option>;
        })}
       </select>
-      <input value={draft.socials} onChange={(e) => updateClosingDraft(lead.id, { socials: e.target.value })} placeholder="Redes sociales" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-400" />
-      <input value={draft.mapsUrl} onChange={(e) => updateClosingDraft(lead.id, { mapsUrl: e.target.value })} placeholder="URL Google Maps" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-400" />
-      <input value={draft.website} onChange={(e) => updateClosingDraft(lead.id, { website: e.target.value })} placeholder="Web actual o futura" className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400" />
-      <textarea value={draft.notes} onChange={(e) => updateClosingDraft(lead.id, { notes: e.target.value })} placeholder="Notas del closer, objeciones, presupuesto, prÃ³ximos pasos..." rows={3} className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400" />
-     </div>
+       <input readOnly={isClosingReadOnly} value={draft.socials} onChange={(e) => updateClosingDraft(lead.id, { socials: e.target.value })} placeholder="Redes sociales" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-400 read-only:opacity-70" />
+       <input readOnly={isClosingReadOnly} value={draft.mapsUrl} onChange={(e) => updateClosingDraft(lead.id, { mapsUrl: e.target.value })} placeholder="URL Google Maps" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-400 read-only:opacity-70" />
+       <input readOnly={isClosingReadOnly} value={draft.website} onChange={(e) => updateClosingDraft(lead.id, { website: e.target.value })} placeholder="Web actual o futura" className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400 read-only:opacity-70" />
+       <textarea readOnly={isClosingReadOnly} value={draft.notes} onChange={(e) => updateClosingDraft(lead.id, { notes: e.target.value })} placeholder="Notas del closer, objeciones, presupuesto, prÃ³ximos pasos..." rows={3} className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+      </div>
 
-     <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
+      {!isClosingReadOnly && (
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
       <div className="flex gap-2">
       {draft.mapsUrl && <a href={draft.mapsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-[10px] font-bold text-slate-300 hover:text-white"><MapPin className="w-3.5 h-3.5" /> Maps</a>}
       {buildWhatsAppUrl(draft.phone, `Hola ${draft.name}, te escribo de Althera sobre tu cita.`) && <a href={buildWhatsAppUrl(draft.phone, `Hola ${draft.name}, te escribo de Althera sobre tu cita.`)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-300 hover:text-white"><MessageCircle className="w-3.5 h-3.5" /> WhatsApp</a>}
@@ -3406,6 +3445,7 @@ export default function ColdCallingScreen({
       <button onClick={() => { saveClosingLead(lead, 'Cerrado'); handleOpenClosingConversion(lead); }} className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/25">Cerrado + pedir web</button>
       </div>
      </div>
+      )}
      {contact?.needsWebsite && !contact.websiteReady && (
       <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-[10px] font-bold text-amber-300">Marcado en Gestión Dev como falta web.</div>
      )}
@@ -4068,6 +4108,29 @@ export default function ColdCallingScreen({
        )}
       </div>
       </div>
+      <div className="space-y-1.5">
+      <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Pagar con</label>
+      <div className="grid grid-cols-3 gap-2">
+       {(['cash', 'transfer', 'stripe'] as const).map(method => (
+       <button
+        key={method}
+        type="button"
+        onClick={() => setConvPaymentMethod(method)}
+        className={`py-2.5 rounded-xl border text-[10px] font-extrabold uppercase tracking-wider transition-all ${
+        convPaymentMethod === method
+         ? method === 'stripe'
+          ? 'bg-violet-500/20 border-violet-400 text-violet-200'
+          : method === 'cash'
+           ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+           : 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+         : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-white/20'
+        }`}
+       >
+        {method === 'cash' ? 'Efectivo' : method === 'transfer' ? 'Transferencia' : 'Stripe'}
+       </button>
+       ))}
+      </div>
+      </div>
      </div>
      )}
 
@@ -4542,71 +4605,30 @@ export default function ColdCallingScreen({
 
   {/* CONVERT TO CLIENT MODAL & FINANCIAL PLANNER */}
   {convertingLead && (
-  <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-   <div className="bg-[#0b1329]/95 border border-white/10 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 my-8 text-left relative overflow-hidden">
-   {/* Background elements */}
-   <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-   <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
-   <div className="flex items-center gap-3 border-b border-white/5 pb-4">
-    <div className={`p-3 rounded-2xl border transition-colors ${
-    convType === 'Client' ?
-     'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-     : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
-    }`}>
-    {convType === 'Client' ? (
-     <CheckCircle2 className="w-6 h-6" />
-    ) : (
-     <UserPlus className="w-6 h-6" />
-    )}
-    </div>
-    <div>
-    <h3 className="text-base font-black text-white font-sans tracking-wide">
-     {convType === 'Client' ? 'Convertir en Cliente y Liquidar Venta' : 'Traspasar Contacto como Lead CRM'}
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+   <div className="w-full max-w-lg bg-[#0a0a14] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 max-h-[90vh] flex flex-col my-8 text-left">
+   <div className="bg-gradient-to-tr from-emerald-600/20 via-emerald-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
+    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+    <Check className="w-5 h-5 text-emerald-400" />
+    <span>Cerrar Venta / Convertir Lead en Cliente 🎯</span>
     </h3>
-    <p className="text-[11px] text-slate-400 font-sans mt-0.5">
-     {convType === 'Client' ?
-     'Establece los parámetros del contrato para registrar la venta en Finanzas y calcular comisiones.'
-     : 'Traspasa el prospecto de Call Calling al CRM global para que sea gestionado formalmente.'}
+    <p className="text-[11px] text-slate-400 mt-1 font-sans">
+    Asocia el servicio principal, precio y número de plazos. La comisión solo se calculará para esta venta principal, no para servicios futuros.
     </p>
-    </div>
+    <button
+    type="button"
+    onClick={() => setConvertingLead(null)}
+    className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg bg-slate-955/60 border border-white/5 cursor-pointer transition-colors"
+    >
+    <X className="w-4 h-4" />
+    </button>
    </div>
 
-   <form onSubmit={handleConfirmConvertToClient} className="space-y-4">
-    {/* Traspaso Choice Button Group */}
-    <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
-    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Tipo de Traspaso</span>
-    <div className="grid grid-cols-2 gap-3">
-     <button
-     type="button"
-     onClick={() => setConvType('Client')}
-     className={`py-2.5 px-4 rounded-xl text-xs font-bold font-sans transition-all flex items-center justify-center gap-2 border cursor-pointer ${
-      convType === 'Client' ?
-      'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.1)]'
-      : 'bg-slate-900/50 text-slate-400 border-white/5 hover:text-white'
-     }`}
-     >
-     <CheckCircle2 className="w-4 h-4" />
-     <span>Cliente Activo</span>
-     </button>
-     <button
-     type="button"
-     onClick={() => setConvType('Lead')}
-     className={`py-2.5 px-4 rounded-xl text-xs font-bold font-sans transition-all flex items-center justify-center gap-2 border cursor-pointer ${
-      convType === 'Lead' ?
-      'bg-blue-500/15 text-blue-400 border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.1)]'
-      : 'bg-slate-900/50 text-slate-400 border-white/5 hover:text-white'
-     }`}
-     >
-     <UserPlus className="w-4 h-4" />
-     <span>Prospecto (Lead)</span>
-     </button>
-    </div>
-    <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
-     {convType === 'Client' ?
-     '✓ El contacto se crea como Cliente. Generará facturas y comisiones automáticas asociadas.'
-     : '✓ El contacto se crea en la columna de Prospectos (Leads) del CRM. El comercial conserva su autoría, pero pierde acceso de llamada fría.'}
-    </p>
+   <form onSubmit={handleConfirmConvertToClient} className="p-6 overflow-y-auto space-y-4">
+    <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-1">
+    <span className="block text-[8px] font-mono text-slate-500 uppercase">Lead a convertir</span>
+    <span className="text-xs font-semibold text-slate-200">{convCompany || 'Sin especificar'}</span>
+    <span className="text-[10px] text-slate-400 block font-sans">{convName} {convEmail ? `• ${convEmail}` : ''}</span>
     </div>
 
     {/* Client Info Grid */}
