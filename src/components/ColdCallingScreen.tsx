@@ -1072,6 +1072,10 @@ export default function ColdCallingScreen({
  const existingLogs = selectedLeadForCall.callsLog || [];
  const updatedLogs = [newLogItem, ...existingLogs];
 
+ const shouldSendToClosing = callScheduled === 'Sí';
+ const closerAssigneeEmail = carlosAdmin?.email || selectedLeadForCall.assignedToEmail;
+ const closerAssigneeName = carlosAdmin?.name || 'Carlos';
+
  const updatedLead: ColdCallingLead = {
   ...selectedLeadForCall,
   contacted: callContacted,
@@ -1082,7 +1086,9 @@ export default function ColdCallingScreen({
   callbackScheduled: callScheduled,
   callbackDate: (callScheduled === 'Llamar más tarde' || callScheduled === 'Sí') ? callCallbackDate : undefined,
   callbackTime: (callScheduled === 'Llamar más tarde' || callScheduled === 'Sí') ? callCallbackTime : undefined,
-  archived: callScheduled === 'Sí' ? true : selectedLeadForCall.archived,
+  archived: shouldSendToClosing ? true : selectedLeadForCall.archived,
+  assignedToEmail: shouldSendToClosing ? closerAssigneeEmail : selectedLeadForCall.assignedToEmail,
+  assignedToName: shouldSendToClosing ? closerAssigneeName : selectedLeadForCall.assignedToName,
   notes: currentNotes,
   callDate: new Date().toISOString().split('T')[0],
   callsCount: updatedLogs.length,
@@ -1092,7 +1098,11 @@ export default function ColdCallingScreen({
  onUpdateColdLead(updatedLead);
 
  if (callScheduled === 'Sí') {
-  const crmLead = buildLeadContactFromColdLead(updatedLead, currentNotes);
+  const crmLead = buildLeadContactFromColdLead({
+  ...updatedLead,
+  assignedToEmail: selectedLeadForCall.assignedToEmail,
+  assignedToName: selectedLeadForCall.assignedToName
+  }, currentNotes);
   onAddContact?.(crmLead);
 
   const adminAppointment: CalendarEvent = {
@@ -1204,7 +1214,7 @@ export default function ColdCallingScreen({
 
  const closingLeads = React.useMemo(() => {
  return coldLeads
-  .filter(lead => lead.callbackScheduled === 'SÃ­')
+  .filter(lead => lead.callbackScheduled === 'Sí')
   .sort((a, b) => `${a.callbackDate || ''}${a.callbackTime || ''}`.localeCompare(`${b.callbackDate || ''}${b.callbackTime || ''}`));
  }, [coldLeads]);
 
