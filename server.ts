@@ -53,9 +53,30 @@ function resolveSupabaseKey(): string {
 
 const supabaseAdmin = createClient(resolveSupabaseUrl(), resolveSupabaseKey());
 
+app.disable("x-powered-by");
+
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
+
+function redactHeaders(headers: express.Request["headers"]) {
+  const safeHeaders = { ...headers };
+  for (const key of ["authorization", "cookie", "set-cookie", "x-supabase-auth", "stripe-signature"]) {
+    if (safeHeaders[key]) safeHeaders[key] = "[redacted]";
+  }
+  return safeHeaders;
+}
+
 // Request logging middleware for debugging API calls
 app.use((req, res, next) => {
-  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.url} - Headers: ${JSON.stringify(req.headers)}\n`;
+  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.url} - Headers: ${JSON.stringify(redactHeaders(req.headers))}\n`;
   console.log(logMsg.trim());
   try {
     fs.appendFileSync(path.join(process.cwd(), "server.log"), logMsg);
@@ -138,6 +159,45 @@ function getStripePaidDate(invoice: Stripe.Invoice): string {
   return new Date(paidAt).toISOString().split("T")[0];
 }
 
+async function ensureFiniteInstallmentSubscription(
+  subscriptionId: string | undefined,
+  installmentsValue: string | number | undefined,
+): Promise<{ updated: boolean; reason?: string; cancelAt?: number }> {
+  if (!subscriptionId) return { updated: false, reason: "missing_subscription_id" };
+  const installmentCount = Number.parseInt(String(installmentsValue || ""), 10);
+  if (!Number.isFinite(installmentCount) || installmentCount <= 1) {
+    return { updated: false, reason: "not_finite_installment_plan" };
+  }
+
+  const stripe = getStripe();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const existingInstallments = Number.parseInt(subscription.metadata?.installments || "", 10);
+  const effectiveInstallments = Number.isFinite(existingInstallments) && existingInstallments > 1
+    ? existingInstallments
+    : installmentCount;
+
+  const startAt = (subscription.start_date || Math.floor(Date.now() / 1000)) * 1000;
+  const cancelAtDate = new Date(startAt);
+  cancelAtDate.setMonth(cancelAtDate.getMonth() + effectiveInstallments);
+  const cancelAt = Math.floor(cancelAtDate.getTime() / 1000);
+
+  if (subscription.cancel_at && subscription.cancel_at <= cancelAt) {
+    return { updated: false, reason: "already_finite", cancelAt: subscription.cancel_at };
+  }
+
+  await stripe.subscriptions.update(subscriptionId, {
+    cancel_at: cancelAt,
+    metadata: {
+      ...(subscription.metadata || {}),
+      installments: String(effectiveInstallments),
+      althera_finite_installment_plan: "true",
+      althera_cancel_after_installments: String(effectiveInstallments),
+    },
+  });
+
+  return { updated: true, cancelAt };
+}
+
 async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updated: boolean; reason?: string; txId?: string }> {
   const stripe = getStripe();
   const invoiceId = invoice.id;
@@ -158,6 +218,13 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
     invoiceMetadata.pendingTxId ||
     invoice.metadata?.pendingTxId ||
     "";
+  const installments =
+    subscription.metadata?.installments ||
+    invoiceMetadata.installments ||
+    invoice.metadata?.installments ||
+    "";
+
+  await ensureFiniteInstallmentSubscription(subscriptionId, installments);
 
   const { data: transactions, error: txError } = await supabaseAdmin
     .from("finance_transactions")
@@ -280,6 +347,13 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     if (event.type === "invoice.paid") {
       const result = await markStripeInvoiceAsPaid(event.data.object as Stripe.Invoice);
       console.log("Processed Stripe invoice.paid webhook:", result);
+    }
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+      const result = await ensureFiniteInstallmentSubscription(subscriptionId, session.metadata?.installments);
+      console.log("Processed Stripe checkout.session.completed webhook:", result);
     }
 
     if (event.type === "invoice.payment_failed") {
@@ -689,23 +763,7 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
-    const installmentCount = Number.parseInt(session.metadata?.installments || "", 10);
-
-    if (subscriptionId && Number.isFinite(installmentCount) && installmentCount > 1) {
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-      if (!subscription.cancel_at) {
-        const cancelAt = new Date((subscription.start_date || Math.floor(Date.now() / 1000)) * 1000);
-        cancelAt.setMonth(cancelAt.getMonth() + installmentCount);
-        await stripe.subscriptions.update(subscriptionId, {
-          cancel_at: Math.floor(cancelAt.getTime() / 1000),
-          metadata: {
-            ...(subscription.metadata || {}),
-            installments: String(installmentCount),
-            althera_finite_installment_plan: "true",
-          },
-        });
-      }
-    }
+    await ensureFiniteInstallmentSubscription(subscriptionId, session.metadata?.installments);
     
     res.json({
       customerId: session.customer,
