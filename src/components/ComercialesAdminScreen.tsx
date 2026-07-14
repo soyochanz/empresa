@@ -35,8 +35,9 @@ import {
  Globe,
  RefreshCw
 } from 'lucide-react';
-import { ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen } from '../types';
+import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen } from '../types';
 import DossierModal from './DossierModal';
+import AdminRewardsPanel from './AdminRewardsPanel';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -81,13 +82,14 @@ interface ComercialesAdminScreenProps {
  coldLeads?: ColdCallingLead[];
  finTransactions?: any[];
  contacts?: ClientContact[];
+ events?: CalendarEvent[];
  onAddComercial: (comercial: ComercialAccount) => void;
  onUpdateComercial: (account: ComercialAccount) => void;
  onDeleteComercial: (id: string) => void;
  onNavigate?: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
 }
 
-type TabType = 'general' | 'individual' | 'gestion';
+type TabType = 'general' | 'individual' | 'rewards' | 'gestion';
 
 export default function ComercialesAdminScreen({
  comercialesList,
@@ -95,6 +97,7 @@ export default function ComercialesAdminScreen({
  coldLeads = [],
  finTransactions = [],
  contacts = [],
+ events = [],
  onAddComercial,
  onUpdateComercial,
  onDeleteComercial,
@@ -124,7 +127,7 @@ export default function ComercialesAdminScreen({
  const [extraCommissionAmount, setExtraCommissionAmount] = useState('100');
  const [extraCommissionPercent, setExtraCommissionPercent] = useState('10');
  const [extraCommissionTxId, setExtraCommissionTxId] = useState('');
- const [extraCommissionReason, setExtraCommissionReason] = useState('Comisión extra puntual');
+ const [extraCommissionReason, setExtraCommissionReason] = useState('');
 
  // Dialog modal custom implementation to avoid sandboxed iframe native blockings
  const [customDialog, setCustomDialog] = useState<{
@@ -260,11 +263,21 @@ export default function ComercialesAdminScreen({
  triggerAlert('Liquidación registrada', `${amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} marcados como liquidados por ${method === 'cash' ? 'cash' : 'transferencia bancaria'}.`);
  };
 
- const incomeTransactions = finTransactions.filter(tx => tx.type === 'income');
+ const incomeTransactions = finTransactions.filter(tx => tx.type === 'income' && tx.status === 'paid');
  const handleAddExtraCommission = () => {
- const comercial = comercialesList.find(c => c.id === extraCommissionComercialId);
- if (!comercial) {
+ const targets = extraCommissionComercialId === 'all'
+  ? comercialesList
+  : comercialesList.filter(c => c.id === extraCommissionComercialId);
+ if (targets.length === 0) {
   triggerAlert('Selecciona comercial', 'Elige un comercial para asignarle la comisión extra.');
+  return;
+ }
+ if (!extraCommissionReason.trim()) {
+  triggerAlert('Concepto obligatorio', 'Escribe el concepto del bonus para mantener un historial contable claro y verificable.');
+  return;
+ }
+ if (extraCommissionComercialId === 'all' && extraCommissionMode === 'income') {
+  triggerAlert('Selecciona un comercial', 'El porcentaje sobre un ingreso solo puede vincularse al comercial responsable de esa operación. Para todo el equipo utiliza un importe manual en euros.');
   return;
  }
  const linkedTx = incomeTransactions.find(tx => tx.id === extraCommissionTxId);
@@ -275,23 +288,25 @@ export default function ComercialesAdminScreen({
   triggerAlert('Importe no válido', 'Introduce un importe en euros o un porcentaje válido sobre un ingreso.');
   return;
  }
- const extra = {
-  id: `extra_${Date.now()}`,
-  amount,
-  date: new Date().toISOString(),
-  reason: extraCommissionReason.trim() || 'Comisión extra',
-  linkedTransactionId: linkedTx?.id,
-  linkedTransactionDescription: linkedTx?.description,
-  linkedTransactionAmount: linkedTx?.amount,
-  percentage: extraCommissionMode === 'income' ? Number(extraCommissionPercent || 0) : undefined,
-  status: 'pending' as const
- };
- onUpdateComercial({
-  ...comercial,
-  extraCommissions: [extra, ...(comercial.extraCommissions || [])]
+ const timestamp = Date.now();
+ targets.forEach((comercial, index) => {
+  const extra = {
+   id: `extra_${timestamp}_${index}`,
+   amount,
+   date: new Date().toISOString(),
+   reason: extraCommissionReason.trim(),
+   linkedTransactionId: linkedTx?.id,
+   linkedTransactionDescription: linkedTx?.description,
+   linkedTransactionAmount: linkedTx?.amount,
+   percentage: extraCommissionMode === 'income' ? Number(extraCommissionPercent || 0) : undefined,
+   status: 'pending' as const
+  };
+  onUpdateComercial({ ...comercial, extraCommissions: [extra, ...(comercial.extraCommissions || [])] });
  });
- setExtraCommissionReason('Comisión extra puntual');
- triggerAlert('Comisión extra asignada', `${comercial.name} tiene una comisión extra de ${amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}.`);
+ setExtraCommissionReason('');
+ triggerAlert('Bonus extra asignado', extraCommissionComercialId === 'all'
+  ? `Se han asignado ${amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} a cada uno de los ${targets.length} comerciales. Concepto: ${extraCommissionReason.trim()}.`
+  : `${targets[0].name} tiene un bonus extra de ${amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}.`);
  };
 
  // Auto-select first commercial if list changes and none selected
@@ -299,7 +314,7 @@ export default function ComercialesAdminScreen({
  if (comercialesList.length > 0 && (!selectedComercialId || !comercialesList.some(c => c.id === selectedComercialId))) {
   setSelectedComercialId(comercialesList[0].id);
  }
- if (comercialesList.length > 0 && (!extraCommissionComercialId || !comercialesList.some(c => c.id === extraCommissionComercialId))) {
+ if (comercialesList.length > 0 && extraCommissionComercialId !== 'all' && (!extraCommissionComercialId || !comercialesList.some(c => c.id === extraCommissionComercialId))) {
   setExtraCommissionComercialId(comercialesList[0].id);
  }
  }, [comercialesList, selectedComercialId, extraCommissionComercialId]);
@@ -630,7 +645,7 @@ export default function ComercialesAdminScreen({
   </div>
   
   {/* Navigation Tabs */}
-  <div className="flex bg-slate-950/80 p-1 rounded-xl border border-white/10 select-none">
+  <div className="grid grid-cols-2 lg:grid-cols-4 bg-slate-950/80 p-1 rounded-xl border border-white/10 select-none">
    <button
    onClick={() => setActiveTab('general')}
    className={`px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all cursor-pointer ${
@@ -650,6 +665,14 @@ export default function ComercialesAdminScreen({
    }`}
    >
    Métricas Individuales
+   </button>
+   <button
+   onClick={() => setActiveTab('rewards')}
+   className={`px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all cursor-pointer ${
+    activeTab === 'rewards' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white hover:bg-white/5'
+   }`}
+   >
+   Recompensas
    </button>
    <button
    onClick={() => setActiveTab('gestion')}
@@ -1428,6 +1451,10 @@ export default function ComercialesAdminScreen({
   )}
 
   {/* TAB 3: MANAGEMENT (AUTHORIZED ACCOUNTS TABLE + CREATION FORM) */}
+  {activeTab === 'rewards' && (
+   <AdminRewardsPanel comercialesList={comercialesList} finTransactions={finTransactions} events={events} coldLeads={coldLeads} contacts={contacts} onUpdateComercial={onUpdateComercial} />
+  )}
+
   {activeTab === 'gestion' && (
   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fade-in">
    
@@ -1543,6 +1570,7 @@ export default function ComercialesAdminScreen({
     </div>
     <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
     <select value={extraCommissionComercialId} onChange={e => setExtraCommissionComercialId(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500">
+     <option value="all">Todo el equipo</option>
      {comercialesList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
     </select>
     {extraCommissionMode === 'manual' ? (
@@ -1550,13 +1578,13 @@ export default function ComercialesAdminScreen({
     ) : (
      <>
      <select value={extraCommissionTxId} onChange={e => setExtraCommissionTxId(e.target.value)} className="md:col-span-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500">
-      <option value="">Seleccionar ingreso...</option>
+      <option value="">Seleccionar ingreso cobrado...</option>
       {incomeTransactions.map(tx => <option key={tx.id} value={tx.id}>{tx.date} {tx.description} {Number(tx.amount || 0).toLocaleString('es-ES')} EUR</option>)}
      </select>
      <input type="number" min="0" max="100" step="0.1" value={extraCommissionPercent} onChange={e => setExtraCommissionPercent(e.target.value)} placeholder="%" className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500" />
      </>
     )}
-    <input value={extraCommissionReason} onChange={e => setExtraCommissionReason(e.target.value)} placeholder="Motivo" className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500" />
+    <input value={extraCommissionReason} onChange={e => setExtraCommissionReason(e.target.value)} placeholder="Concepto obligatorio" className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500" />
     <button type="button" onClick={handleAddExtraCommission} className="rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-black px-3 py-2">
      Asignar extra
     </button>

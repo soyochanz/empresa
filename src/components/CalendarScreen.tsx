@@ -927,7 +927,7 @@ export default function CalendarScreen({
       </div>
       <p className="text-xs font-semibold text-white truncate">
       {selectedEvent.assignedUserEmail  ?
-       (usersList.find(u => u.email === selectedEvent.assignedUserEmail)?.name || selectedEvent.assignedUserEmail) 
+       (selectedEvent.assignedUserEmail === 'todos-comerciales' ? 'Todos los comerciales' : usersList.find(u => u.email === selectedEvent.assignedUserEmail)?.name || selectedEvent.assignedUserEmail)
        : 'Unassigned'}
       </p>
      </div>
@@ -942,7 +942,9 @@ export default function CalendarScreen({
       onUpdateEvent({
       ...selectedEvent,
       assignedUserEmail: val || undefined,
+      assignedUserEmails: val ? [val] : [],
       assignedUserId: matched ? matched.id : undefined,
+      isAllComerciales: val === 'todos-comerciales',
       });
       const toast = document.getElementById('toast-msg');
       if (toast) {
@@ -954,6 +956,7 @@ export default function CalendarScreen({
      className="bg-slate-900 border border-white/10 text-[10px] rounded-lg py-1 px-1.5 text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer max-w-[120px]"
      >
      <option value="">-- Unassigned --</option>
+     <option value="todos-comerciales">Todos los comerciales</option>
      {usersList.map(u => (
       <option key={u.id} value={u.email}>{u.name} ({u.email})</option>
      ))}

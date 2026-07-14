@@ -497,8 +497,12 @@ export async function checkSupabaseConnection(): Promise<ConnectionStatus> {
   'marketing_items'
  ];
 
- for (const table of requiredTables) {
-  const { error } = await supabase.from(table).select('id').limit(1);
+ const checks = await Promise.all(requiredTables.map(async table => ({
+  table,
+  result: await supabase.from(table).select('id').limit(1)
+ })));
+ for (const { table, result } of checks) {
+  const { error } = result;
   if (error) {
   const missingOrHidden = error.code === '42P01' || error.code === 'PGRST205' || error.message?.toLowerCase().includes('could not find the table');
   if (missingOrHidden) {
@@ -574,7 +578,7 @@ export async function seedSupabaseDatabase(
 // ==========================================
 // DB Caching Layer to minimize Supabase Egress
 // ==========================================
-const CACHE_TTL_MS = 25000; // Cache GET requests for 25 seconds
+const CACHE_TTL_MS = 10000; // Keep reads snappy without hiding cross-session changes for long.
 const _queryCache: Record<string, { data: any; timestamp: number }> = {};
 
 function getCached<T>(key: string): T | null {
@@ -637,6 +641,7 @@ export const db = {
  let closerName: string | undefined = undefined;
  let closerEmail: string | undefined = undefined;
  let closingStatus: ClientContact['closingStatus'] = undefined;
+ let closingAnswered: boolean | undefined = undefined;
  let closingNotes: string | undefined = undefined;
  let closingSocials: string | undefined = undefined;
  let googleMapsUrl: string | undefined = undefined;
@@ -704,6 +709,7 @@ export const db = {
    const v = val.trim();
    if (['Pendiente', 'Cerrado', 'Perdido'].includes(v)) closingStatus = v as ClientContact['closingStatus'];
    }
+   if (key === 'closingAnswered') closingAnswered = val === 'true';
    if (key === 'needsWebsite') needsWebsite = val === 'true';
    if (key === 'websiteReady') websiteReady = val === 'true';
    if (key === 'webReadyNotifiedAt') webReadyNotifiedAt = val || undefined;
@@ -782,6 +788,7 @@ export const db = {
   closerName,
   closerEmail,
   closingStatus,
+  closingAnswered,
   closingNotes,
   closingSocials,
   googleMapsUrl,
@@ -831,6 +838,7 @@ export const db = {
   contact.closerName ||
   contact.closerEmail ||
   contact.closingStatus ||
+  contact.closingAnswered !== undefined ||
   contact.closingNotes ||
   contact.closingSocials ||
   contact.googleMapsUrl ||
@@ -874,6 +882,7 @@ export const db = {
   if (contact.closerName) metadataStr += `\ncloserName: ${encodeURIComponent(contact.closerName)}`;
   if (contact.closerEmail) metadataStr += `\ncloserEmail: ${contact.closerEmail}`;
   if (contact.closingStatus) metadataStr += `\nclosingStatus: ${contact.closingStatus}`;
+  if (contact.closingAnswered !== undefined) metadataStr += `\nclosingAnswered: ${contact.closingAnswered}`;
   if (contact.closingNotes) metadataStr += `\nclosingNotes: ${encodeURIComponent(contact.closingNotes)}`;
   if (contact.closingSocials) metadataStr += `\nclosingSocials: ${encodeURIComponent(contact.closingSocials)}`;
   if (contact.googleMapsUrl) metadataStr += `\ngoogleMapsUrl: ${encodeURIComponent(contact.googleMapsUrl)}`;
@@ -2222,8 +2231,60 @@ export const db = {
   }
   phone = phone.replace(payoutsRegex, '').trim();
 
+  let monthlyPerformance: Record<string, any> = {};
+  const performanceRegex = /\s*\[PERF:([^\]]+)\]/g;
+  const performanceMatch = performanceRegex.exec(phone);
+  if (performanceMatch) {
+  try {
+   monthlyPerformance = JSON.parse(decodeURIComponent(performanceMatch[1]));
+  } catch (e) {
+   console.error('Error parsing commercial monthly performance metadata', e);
+  }
+  }
+  phone = phone.replace(performanceRegex, '').trim();
+
+  let legacyBonuses: any[] = [];
+  const legacyRegex = /\s*\[LEGACY:([^\]]+)\]/g;
+  const legacyMatch = legacyRegex.exec(phone);
+  if (legacyMatch) {
+  try {
+   legacyBonuses = JSON.parse(decodeURIComponent(legacyMatch[1]));
+  } catch (e) {
+   console.error('Error parsing commercial legacy bonuses metadata', e);
+  }
+  }
+  phone = phone.replace(legacyRegex, '').trim();
+
+  let extraCommissions: any[] = [];
+  const extrasRegex = /\s*\[EXTRAS:([^\]]+)\]/g;
+  const extrasMatch = extrasRegex.exec(phone);
+  if (extrasMatch) {
+  try {
+   extraCommissions = JSON.parse(decodeURIComponent(extrasMatch[1]));
+  } catch (e) {
+   console.error('Error parsing commercial extra commissions metadata', e);
+  }
+  }
+  phone = phone.replace(extrasRegex, '').trim();
+
+  let avatarUrl = '';
+  const avatarRegex = /\s*\[AVATAR:([^\]]+)\]/g;
+  const avatarMatch = avatarRegex.exec(phone);
+  if (avatarMatch) {
+  try {
+   const decodedAvatar = decodeURIComponent(avatarMatch[1]);
+   if (decodedAvatar.length <= 410_000 && /^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(decodedAvatar)) {
+    avatarUrl = decodedAvatar;
+   }
+  } catch (e) {
+   console.error('Error parsing commercial avatar metadata', e);
+  }
+  }
+  phone = phone.replace(avatarRegex, '').trim();
+
   return {
   ...row,
+  avatarUrl: avatarUrl || undefined,
   phone: phone || undefined,
   commissionPercentage,
   iban: iban || undefined,
@@ -2234,6 +2295,9 @@ export const db = {
   stripePayoutsEnabled,
   stripeChargesEnabled,
   payouts,
+  monthlyPerformance,
+  legacyBonuses,
+  extraCommissions,
   createdAt: row.created_at || new Date().toISOString()
   };
  }) as ComercialAccount[];
@@ -2269,6 +2333,18 @@ export const db = {
  }
  if (account.payouts && account.payouts.length > 0) {
   phone += ` [PAYOUTS:${encodeURIComponent(JSON.stringify(account.payouts))}]`;
+ }
+ if (account.monthlyPerformance && Object.keys(account.monthlyPerformance).length > 0) {
+  phone += ` [PERF:${encodeURIComponent(JSON.stringify(account.monthlyPerformance))}]`;
+ }
+ if (account.legacyBonuses && account.legacyBonuses.length > 0) {
+  phone += ` [LEGACY:${encodeURIComponent(JSON.stringify(account.legacyBonuses))}]`;
+ }
+ if (account.extraCommissions && account.extraCommissions.length > 0) {
+  phone += ` [EXTRAS:${encodeURIComponent(JSON.stringify(account.extraCommissions))}]`;
+ }
+ if (account.avatarUrl) {
+  phone += ` [AVATAR:${encodeURIComponent(account.avatarUrl)}]`;
  }
 
  const payload = {
@@ -2312,6 +2388,18 @@ export const db = {
  }
  if (account.payouts && account.payouts.length > 0) {
   phone += ` [PAYOUTS:${encodeURIComponent(JSON.stringify(account.payouts))}]`;
+ }
+ if (account.monthlyPerformance && Object.keys(account.monthlyPerformance).length > 0) {
+  phone += ` [PERF:${encodeURIComponent(JSON.stringify(account.monthlyPerformance))}]`;
+ }
+ if (account.legacyBonuses && account.legacyBonuses.length > 0) {
+  phone += ` [LEGACY:${encodeURIComponent(JSON.stringify(account.legacyBonuses))}]`;
+ }
+ if (account.extraCommissions && account.extraCommissions.length > 0) {
+  phone += ` [EXTRAS:${encodeURIComponent(JSON.stringify(account.extraCommissions))}]`;
+ }
+ if (account.avatarUrl) {
+  phone += ` [AVATAR:${encodeURIComponent(account.avatarUrl)}]`;
  }
 
  const payload = {

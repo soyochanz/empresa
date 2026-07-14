@@ -175,6 +175,8 @@ export default function DeveloperHubScreen({
  onUpdateContact({
   ...contact,
   devStatus: status,
+  needsWebsite: isCompleted ? false : contact.needsWebsite,
+  websiteReady: isCompleted ? true : contact.websiteReady,
   devCompletedAt: isCompleted ? (wasCompleted ? contact.devCompletedAt || new Date().toISOString() : new Date().toISOString()) : undefined
  });
  };
@@ -372,15 +374,8 @@ export default function DeveloperHubScreen({
   setTimeout(() => toast.classList.add('opacity-0'), 3000);
  }
  };
- const devHubContacts = contacts.filter(contact => {
- const isCompleted = contact.devStatus === 'completed';
- if (isCompleted && contact.devCompletedAt) {
-  const completedAt = new Date(contact.devCompletedAt).getTime();
-  const hoursSinceCompleted = (Date.now() - completedAt) / (1000 * 60 * 60);
-  if (Number.isFinite(hoursSinceCompleted) && hoursSinceCompleted >= 48) return false;
- }
- return !isCompleted || hasAssignedWebsite(contact);
- });
+ // Completed work remains visible and editable; completion never archives a client.
+ const devHubContacts = contacts;
 
  const filteredDevWorks = devHubContacts.filter(contact => {
  const query = searchQuery.toLowerCase();
@@ -864,7 +859,7 @@ export default function DeveloperHubScreen({
      rows={2}
      className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-violet-500"
     />
-    {!hasAssignedWebsite(selectedContact) && (
+    {selectedContact.needsWebsite && !selectedContact.websiteReady && !hasAssignedWebsite(selectedContact) && (
      <div className="md:col-span-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[10px] font-bold text-amber-300">
      Le falta web
      </div>

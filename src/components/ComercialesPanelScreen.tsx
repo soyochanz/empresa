@@ -17,7 +17,6 @@ import {
  Briefcase,
  TrendingDown,
  CheckCircle,
- FileSpreadsheet,
  Phone,
  Video,
  ExternalLink,
@@ -27,14 +26,22 @@ import {
  History,
  RefreshCw,
  Award,
+ Trophy,
  Snowflake,
  Lock,
  Eye,
- EyeOff
+ EyeOff,
+ GraduationCap
+ ,Camera
+ ,Upload
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact } from '../types';
 import ColdCallingScreen from './ColdCallingScreen';
 import DossierModal from './DossierModal';
+import { calculateLegacyPoints } from '../utils/salesRewards';
+import CommercialAnalyticsDashboard from './CommercialAnalyticsDashboard';
+import CommercialTrainingCenter from './CommercialTrainingCenter';
+import CommercialCalendarWorkspace from './CommercialCalendarWorkspace';
 
 const safeConfirm = (msg: string): boolean => {
  const isIframe = window.self !== window.top;
@@ -43,6 +50,89 @@ const safeConfirm = (msg: string): boolean => {
  return window.confirm(msg);
  } catch (e) {
  return true;
+ }
+};
+
+const STRIPE_CONNECT_TEMPORARILY_DISABLED = true;
+type CommercialView = 'pipeline' | 'calendar' | 'cold_calling' | 'rewards' | 'training' | 'settings';
+const COMMERCIAL_VIEW_PATHS: Record<CommercialView, string> = {
+ pipeline: '/comerciales/panel',
+ calendar: '/comerciales/panel/calendario',
+ cold_calling: '/comerciales/panel/cold-calling',
+ rewards: '/comerciales/panel/recompensas',
+ training: '/comerciales/panel/formacion',
+ settings: '/comerciales/panel/ajustes',
+};
+const getCommercialViewFromPath = (path: string): CommercialView => {
+ const normalized = path.replace(/\/+$/, '');
+ const match = (Object.entries(COMMERCIAL_VIEW_PATHS) as Array<[CommercialView, string]>).find(([, route]) => route === normalized);
+ return match?.[0] || 'pipeline';
+};
+const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const PROFILE_IMAGE_MAX_PIXELS = 24_000_000;
+const PROFILE_IMAGE_SIZE = 384;
+
+const inspectSafeRaster = (bytes: Uint8Array): { mime: 'image/png' | 'image/jpeg'; width: number; height: number } => {
+ const isPng = bytes.length >= 24 && [137,80,78,71,13,10,26,10].every((value, index) => bytes[index] === value);
+ if (isPng) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return { mime: 'image/png', width: view.getUint32(16), height: view.getUint32(20) };
+ }
+
+ const isJpeg = bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+ if (isJpeg) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 2;
+  const startOfFrame = new Set([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf]);
+  while (offset + 8 < bytes.length) {
+   if (bytes[offset] !== 0xff) { offset += 1; continue; }
+   while (offset < bytes.length && bytes[offset] === 0xff) offset += 1;
+   const marker = bytes[offset++];
+   if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+   if (offset + 2 > bytes.length) break;
+   const segmentLength = view.getUint16(offset);
+   if (segmentLength < 2 || offset + segmentLength > bytes.length) break;
+   if (startOfFrame.has(marker) && segmentLength >= 7) {
+    return { mime: 'image/jpeg', height: view.getUint16(offset + 3), width: view.getUint16(offset + 5) };
+   }
+   offset += segmentLength;
+  }
+ }
+ throw new Error('El archivo no es un JPEG o PNG válido.');
+};
+
+const sanitizeProfileImage = async (file: File): Promise<string> => {
+ if (!['image/jpeg', 'image/png'].includes(file.type)) throw new Error('Solo se permiten imágenes JPEG o PNG.');
+ if (file.size <= 0 || file.size > PROFILE_IMAGE_MAX_BYTES) throw new Error('La imagen debe ocupar menos de 5 MB.');
+ const bytes = new Uint8Array(await file.arrayBuffer());
+ const inspected = inspectSafeRaster(bytes);
+ if (!inspected.width || !inspected.height || inspected.width > 8192 || inspected.height > 8192 || inspected.width * inspected.height > PROFILE_IMAGE_MAX_PIXELS) {
+  throw new Error('La imagen supera el límite seguro de dimensiones.');
+ }
+ const bitmap = await createImageBitmap(new Blob([bytes], { type: inspected.mime }));
+ try {
+  if (bitmap.width !== inspected.width || bitmap.height !== inspected.height) throw new Error('La estructura interna de la imagen no es coherente.');
+  const canvas = document.createElement('canvas');
+  canvas.width = PROFILE_IMAGE_SIZE;
+  canvas.height = PROFILE_IMAGE_SIZE;
+  const context = canvas.getContext('2d', { alpha: false });
+  if (!context) throw new Error('No se pudo procesar la imagen.');
+  context.fillStyle = '#0b1017';
+  context.fillRect(0, 0, PROFILE_IMAGE_SIZE, PROFILE_IMAGE_SIZE);
+  const sourceSize = Math.min(bitmap.width, bitmap.height);
+  const sourceX = (bitmap.width - sourceSize) / 2;
+  const sourceY = (bitmap.height - sourceSize) / 2;
+  context.drawImage(bitmap, sourceX, sourceY, sourceSize, sourceSize, 0, 0, PROFILE_IMAGE_SIZE, PROFILE_IMAGE_SIZE);
+  const output = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo optimizar la imagen.')), 'image/webp', 0.82));
+  if (output.type !== 'image/webp' || output.size > 300_000) throw new Error('No se pudo generar una versión optimizada segura.');
+  return await new Promise<string>((resolve, reject) => {
+   const reader = new FileReader();
+   reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('No se pudo leer la imagen optimizada.'));
+   reader.onerror = () => reject(new Error('No se pudo leer la imagen optimizada.'));
+   reader.readAsDataURL(output);
+  });
+ } finally {
+  bitmap.close();
  }
 };
 
@@ -135,7 +225,18 @@ export default function ComercialesPanelScreen({
  onAddContact
 }: ComercialesPanelScreenProps) {
  // Local state
- const [activeView, setActiveView] = useState<'pipeline' | 'cold_calling' | 'settings'>('pipeline');
+ const [activeView, setActiveView] = useState<CommercialView>(() => getCommercialViewFromPath(window.location.pathname));
+ const navigateCommercialView = (view: CommercialView) => {
+  setActiveView(view);
+  const nextPath = COMMERCIAL_VIEW_PATHS[view];
+  if (window.location.pathname !== nextPath) window.history.pushState({}, '', nextPath);
+ };
+
+ useEffect(() => {
+  const restoreViewFromPath = () => setActiveView(getCommercialViewFromPath(window.location.pathname));
+  window.addEventListener('popstate', restoreViewFromPath);
+  return () => window.removeEventListener('popstate', restoreViewFromPath);
+ }, []);
  const [showMonthlyRecap, setShowMonthlyRecap] = useState(false);
  const [recapStep, setRecapStep] = useState(0);
  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
@@ -144,6 +245,8 @@ export default function ComercialesPanelScreen({
  const [passwordDraft, setPasswordDraft] = useState({ current: '', next: '', confirm: '' });
  const [showPasswords, setShowPasswords] = useState(false);
  const [passwordFeedback, setPasswordFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+ const [avatarProcessing, setAvatarProcessing] = useState(false);
+ const [avatarFeedback, setAvatarFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
  
  const [search, setSearch] = useState('');
  const [statusFilter, setStatusFilter] = useState<string>('todos');
@@ -165,6 +268,7 @@ export default function ComercialesPanelScreen({
  };
 
  const handleConnectStripe = async () => {
+ if (STRIPE_CONNECT_TEMPORARILY_DISABLED) return;
  if (!onUpdateComercial) return;
  setStripeConnectLoading(true);
  setStripeConnectError('');
@@ -199,6 +303,7 @@ export default function ComercialesPanelScreen({
  };
 
  const handleRefreshStripeStatus = async () => {
+ if (STRIPE_CONNECT_TEMPORARILY_DISABLED) return;
  if (!onUpdateComercial || !comercial.stripeConnectAccountId) return;
  setStripeConnectLoading(true);
  setStripeConnectError('');
@@ -257,6 +362,23 @@ export default function ComercialesPanelScreen({
  onUpdateComercial({ ...comercial, password: passwordDraft.next });
  setPasswordDraft({ current: '', next: '', confirm: '' });
  setPasswordFeedback({ type: 'success', text: 'Contrasena actualizada correctamente.' });
+ };
+
+ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file || !onUpdateComercial) return;
+  setAvatarProcessing(true);
+  setAvatarFeedback(null);
+  try {
+   const avatarUrl = await sanitizeProfileImage(file);
+   onUpdateComercial({ ...comercial, avatarUrl });
+   setAvatarFeedback({ type: 'success', text: 'Imagen validada, optimizada y guardada correctamente.' });
+  } catch (error: any) {
+   setAvatarFeedback({ type: 'error', text: error?.message || 'La imagen no ha superado la validación de seguridad.' });
+  } finally {
+   setAvatarProcessing(false);
+  }
  };
 
  const [quickLogScheduled, setQuickLogScheduled] = useState<string>('Llamada hecha');
@@ -447,6 +569,8 @@ export default function ComercialesPanelScreen({
  const myColdCallsCount = coldLeads
  .filter(l => l.assignedToEmail?.toLowerCase() === comercial.email.toLowerCase())
  .reduce((sum, l) => sum + (l.callsCount || 0), 0);
+ const liveComercial = comercialesList.find(item => item.id === comercial.id) || comercial;
+ const myLegacy = calculateLegacyPoints(liveComercial, finTransactions, events, coldLeads, contacts);
  const recapSlides = [
  {
   label: 'Recap mensual Althera',
@@ -601,49 +725,28 @@ export default function ComercialesPanelScreen({
   />
   </div>
 
-  {/* HEADER BAR */}
-  <header className="relative z-10 border-b border-white/5 bg-[#050505]/80 backdrop-blur-md px-4 sm:px-8 py-4 sm:py-5 flex items-center justify-between gap-3">
-  <div className="flex items-center gap-4">
-   <div className="w-10 h-10 flex items-center justify-center bg-black rounded-xl border border-violet-500/25 p-1">
-   <img 
-    src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
-    alt="Althera Logo" 
-    className="w-8 h-8 object-contain"
-    referrerPolicy="no-referrer"
-   />
+  {/* DESKTOP APP SIDEBAR */}
+  <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-white/[0.07] bg-[#080b10]/95 px-4 py-5 backdrop-blur-2xl lg:flex">
+   <div className="flex items-center gap-3 px-2">
+    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-lime-400/20 bg-lime-400/10"><img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="Althera" className="h-8 w-8 object-contain" /></div>
+    <div><p className="text-sm font-black tracking-[.12em] text-white">ALTHERA</p><p className="text-[8px] font-bold uppercase tracking-[.22em] text-lime-300">Sales workspace</p></div>
    </div>
-   <div>
-   <h1 className="text-lg font-bold text-white tracking-tight leading-tight uppercase font-display">Althera Sales</h1>
-   <p className="text-[10px] text-violet-400 font-mono font-bold uppercase tracking-widest leading-none mt-1">
-    Comercial: {comercial.name}
-   </p>
-   </div>
-  </div>
-
-  <div className="flex items-center gap-4">
-   <div className="hidden sm:flex text-right flex-col">
-   <span className="text-[10px] font-mono text-slate-500 uppercase font-bold leading-none">Perfil de Ventas</span>
-   <span className="text-xs font-semibold text-slate-300 mt-1">{comercial.email}</span>
-   </div>
-   <button
-   onClick={() => setShowDossierModal(true)}
-   className="hidden sm:flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-xl text-xs font-bold transition duration-250 cursor-pointer shadow-lg shadow-amber-500/10"
-   >
-   <FileSpreadsheet className="w-3.5 h-3.5" />
-   <span>Ver Dossier & PDF</span>
-   </button>
-   <button
-   onClick={onLogout}
-   className="flex items-center gap-2 min-w-11 min-h-11 px-3 sm:px-4 py-2 bg-red-500/10 hover:bg-red-500/25 text-red-400 border border-red-500/25 rounded-xl text-xs font-semibold hover:text-white transition duration-250 cursor-pointer"
-   >
-   <LogOut className="w-3.5 h-3.5" />
-   <span>Cerrar Sesión</span>
-   </button>
-  </div>
-  </header>
+   <div className="mt-8 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3">{comercial.avatarUrl ? <img src={comercial.avatarUrl} alt={`Perfil de ${comercial.name}`} className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" /> : <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-lime-300 to-emerald-500 text-xs font-black text-slate-950">{comercial.name.slice(0,2).toUpperCase()}</div>}<div className="min-w-0"><p className="truncate text-xs font-bold text-white">{comercial.name}</p><p className="truncate text-[9px] text-slate-500">{comercial.email}</p></div></div><div className="mt-3 flex items-center justify-between border-t border-white/5 pt-3"><span className="text-[9px] text-slate-500">Legado {myLegacy.rank.name}</span><strong className="text-[10px] text-violet-300">{myLegacy.total.toLocaleString('es-ES')} PA</strong></div></div>
+   <p className="mb-2 mt-8 px-3 text-[8px] font-black uppercase tracking-[.24em] text-slate-600">Workspace</p>
+   <nav className="space-y-1">{[
+    { id: 'pipeline', label: 'Overview', Icon: Layers },
+    { id: 'calendar', label: 'Calendario', Icon: Calendar },
+    { id: 'rewards', label: 'Rewards & Legado', Icon: Trophy },
+    { id: 'cold_calling', label: 'Cold Calling', Icon: Snowflake },
+    { id: 'training', label: 'Formación', Icon: GraduationCap },
+    { id: 'settings', label: 'Ajustes', Icon: Settings },
+   ].map(item => <button key={item.id} onClick={() => navigateCommercialView(item.id as CommercialView)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-xs font-bold transition ${activeView === item.id ? 'bg-lime-300 text-slate-950 shadow-[0_10px_25px_rgba(163,230,53,.14)]' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}><item.Icon className="h-4 w-4"/><span>{item.label}</span>{activeView === item.id && <ChevronDown className="ml-auto h-3 w-3 -rotate-90"/>}</button>)}</nav>
+   <div className="mt-auto rounded-2xl border border-white/[0.07] bg-gradient-to-br from-violet-500/10 to-cyan-500/5 p-4"><p className="text-[8px] font-black uppercase tracking-widest text-violet-300">Comisión actual</p><p className="mt-1 text-2xl font-black text-white">{myCommissionPercentage}%</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40"><div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-lime-300" style={{ width: `${myTierInfo.progress}%` }}/></div></div>
+   <button onClick={onLogout} className="mt-3 flex w-full items-center gap-3 rounded-xl border border-rose-400/15 bg-rose-500/[0.06] px-3 py-3 text-xs font-bold text-rose-300 transition hover:bg-rose-500/15 hover:text-white"><LogOut className="h-4 w-4"/><span>Cerrar sesión</span></button>
+  </aside>
 
   {/* VIEWPORT CANVAS */}
-  <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 md:p-8 space-y-6 md:space-y-8 relative z-10 overflow-y-auto min-h-0">
+  <main className="relative z-10 min-h-0 w-full flex-1 space-y-6 overflow-y-auto p-4 pb-28 sm:p-6 sm:pb-28 lg:ml-64 lg:w-[calc(100%_-_16rem)] lg:p-7 xl:p-9">
   
   {/* WELCOME BANNER WITH ANALYTICS BRIEF */}
   <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-4">
@@ -654,14 +757,18 @@ export default function ComercialesPanelScreen({
   </div>
 
   <div className="bg-gradient-to-r from-amber-500/10 via-violet-500/10 to-cyan-500/10 border border-amber-500/15 rounded-2xl p-5 overflow-hidden relative">
-   <div className="absolute right-4 top-4 w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center text-amber-300">
-   <Award className="w-4 h-4" />
+   <div className="absolute right-3 top-2 sm:right-5 sm:top-3 h-20 w-20 sm:h-24 sm:w-24 flex items-center justify-center">
+   <div className="absolute inset-3 rounded-full blur-2xl opacity-25" style={{ backgroundColor: myLegacy.rank.accent }} />
+   <img src={myLegacy.rank.asset} alt={`Rango ${myLegacy.rank.name}`} className="relative h-full w-full object-contain drop-shadow-xl" />
    </div>
-   <div className="pr-12">
+   <div className="pr-24 sm:pr-28">
    <div className="flex flex-wrap items-center gap-2">
     <span className="text-[9px] uppercase tracking-[0.22em] text-amber-300 font-mono font-black">Nivel comercial</span>
     <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/20 text-amber-200 text-[10px] font-mono font-black">
     {myTierInfo.current.name}
+    </span>
+    <span className="px-2 py-0.5 rounded-full bg-violet-500/15 border border-violet-400/20 text-violet-200 text-[10px] font-mono font-black">
+    Legado {myLegacy.rank.name} · {myLegacy.total.toLocaleString('es-ES')} PA
     </span>
    </div>
    <div className="mt-3 flex flex-col md:flex-row md:items-end md:justify-between gap-3">
@@ -689,10 +796,10 @@ export default function ComercialesPanelScreen({
   </div>
 
   {/* VIEW MODE TABS FOR COMERCIAL (CRM vs COLD CALLING vs SETTINGS) */}
-  <div className="flex gap-1.5 p-1 bg-[#050510]/80 backdrop-blur-md rounded-2xl border border-white/5 w-full sm:max-w-md overflow-x-auto">
+  <div className="fixed bottom-3 left-3 right-3 z-50 grid grid-cols-6 gap-1 rounded-2xl border border-white/10 bg-[#090d13]/95 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-2xl lg:hidden">
    <button
-   onClick={() => setActiveView('pipeline')}
-   className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+   onClick={() => navigateCommercialView('pipeline')}
+   className={`flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'pipeline' ?
      'bg-violet-650/20 text-violet-400 border border-violet-500/30'
      : 'text-slate-400 hover:text-white'
@@ -701,10 +808,42 @@ export default function ComercialesPanelScreen({
    <Layers className="w-3.5 h-3.5" />
    <span>Pipeline CRM</span>
    </button>
+
+   <button
+   onClick={() => navigateCommercialView('calendar')}
+   className={`flex-1 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+    activeView === 'calendar' ? 'bg-lime-300 text-slate-950' : 'text-slate-400 hover:text-white'
+   }`}
+   >
+   <Calendar className="w-3.5 h-3.5" />
+   <span>Agenda</span>
+   </button>
+
+   <button
+   onClick={() => navigateCommercialView('training')}
+   className={`flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+    activeView === 'training' ? 'bg-lime-300 text-slate-950' : 'text-slate-400 hover:text-white'
+   }`}
+   >
+   <GraduationCap className="w-3.5 h-3.5" />
+   <span>Formación</span>
+   </button>
+
+   <button
+   onClick={() => navigateCommercialView('rewards')}
+   className={`py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+    activeView === 'rewards' ?
+     'bg-amber-500/15 text-amber-300 border border-amber-400/30 shadow-[0_0_18px_rgba(251,191,36,0.08)]'
+     : 'text-slate-400 hover:text-amber-300 hover:bg-amber-950/20'
+   }`}
+   >
+   <Trophy className="w-3.5 h-3.5" />
+   <span>Recompensas</span>
+   </button>
    
    <button
-   onClick={() => setActiveView('cold_calling')}
-   className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer relative ${
+   onClick={() => navigateCommercialView('cold_calling')}
+   className={`flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer relative ${
     activeView === 'cold_calling' ?
      'bg-cyan-500/10 text-cyan-300 border border-cyan-400/30 shadow-[0_0_18px_rgba(34,211,238,0.08)]'
      : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-950/20'
@@ -720,8 +859,8 @@ export default function ComercialesPanelScreen({
    </button>
 
    <button
-   onClick={() => setActiveView('settings')}
-   className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+   onClick={() => navigateCommercialView('settings')}
+   className={`flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'settings' ?
      'bg-violet-650/20 text-violet-400 border border-violet-500/30'
      : 'text-slate-400 hover:text-white'
@@ -732,7 +871,9 @@ export default function ComercialesPanelScreen({
    </button>
   </div>
 
-  {activeView === 'cold_calling' ? (
+  {activeView === 'calendar' ? (
+   <CommercialCalendarWorkspace comercial={comercial} events={events} coldLeads={coldLeads} onAddEvent={onAddEvent} onUpdateEvent={onUpdateEvent} onDeleteEvent={onDeleteEvent} />
+  ) : activeView === 'cold_calling' ? (
    <div className="bg-[#020205]/40 rounded-3xl border border-white/5 overflow-hidden">
    <ColdCallingScreen
     coldLeads={coldLeads}
@@ -749,9 +890,52 @@ export default function ComercialesPanelScreen({
     onAddContact={onAddContact}
    />
    </div>
+  ) : activeView === 'rewards' ? (
+   <section className="relative min-h-[70vh] overflow-hidden rounded-[32px] border border-white/[0.08] bg-[#080b10] p-5 sm:p-8">
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 select-none overflow-hidden blur-xl opacity-50">
+     <div className="absolute -left-20 -top-24 h-80 w-80 rounded-full bg-violet-500/20" />
+     <div className="absolute -bottom-24 -right-16 h-96 w-96 rounded-full bg-lime-400/10" />
+     <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4 sm:p-8">
+      {[0,1,2,3].map(item => <div key={item} className="h-28 rounded-2xl border border-white/10 bg-white/[0.06]" />)}
+     </div>
+     <div className="mx-5 mt-5 h-64 rounded-3xl border border-white/10 bg-gradient-to-r from-violet-500/10 to-amber-400/10 sm:mx-8" />
+    </div>
+    <div className="absolute inset-0 bg-black/45 backdrop-blur-md" />
+    <div className="relative z-10 flex min-h-[62vh] items-center justify-center text-center">
+     <div className="max-w-md">
+      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl border border-lime-300/25 bg-lime-300/10 shadow-[0_0_55px_rgba(163,230,53,.12)]"><Lock className="h-8 w-8 text-lime-300" /></div>
+      <p className="mt-7 text-[10px] font-black uppercase tracking-[.35em] text-lime-300">Althera Rewards</p>
+      <h2 className="mt-3 text-4xl font-black uppercase tracking-tight text-white sm:text-5xl">Coming soon</h2>
+      <p className="mx-auto mt-4 max-w-sm text-xs leading-5 text-slate-400">Estamos preparando la nueva experiencia de recompensas, rangos y reconocimientos del equipo comercial.</p>
+      <div className="mx-auto mt-7 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[9px] font-bold uppercase tracking-wider text-slate-300"><Trophy className="h-3.5 w-3.5 text-amber-300"/>Acceso temporalmente bloqueado</div>
+     </div>
+    </div>
+   </section>
+  ) : activeView === 'training' ? (
+   <CommercialTrainingCenter onOpenDocumentation={() => setShowDossierModal(true)} />
   ) : activeView === 'settings' ? (
    <div className="space-y-6 animate-fade-in font-sans">
+   <div className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-[#0b1017] p-4 lg:hidden"><div><p className="text-xs font-bold text-white">{comercial.name}</p><p className="mt-0.5 text-[9px] text-slate-500">{comercial.email}</p></div><button onClick={onLogout} className="flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-[10px] font-bold text-rose-300"><LogOut className="h-3.5 w-3.5"/>Cerrar sesión</button></div>
    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <section className="lg:col-span-5 rounded-2xl border border-white/5 bg-slate-950/40 p-6">
+     <div className="flex items-start gap-4">
+      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-lime-300 to-emerald-500">
+       {comercial.avatarUrl ? <img src={comercial.avatarUrl} alt={`Perfil de ${comercial.name}`} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-2xl font-black text-slate-950">{comercial.name.slice(0,2).toUpperCase()}</div>}
+       {avatarProcessing && <div className="absolute inset-0 flex items-center justify-center bg-black/70"><RefreshCw className="h-6 w-6 animate-spin text-lime-300" /></div>}
+      </div>
+      <div className="min-w-0 flex-1">
+       <div className="flex items-center gap-2"><Camera className="h-4 w-4 text-lime-300"/><h3 className="text-sm font-bold text-white">Imagen de perfil</h3></div>
+       <p className="mt-2 text-[10px] leading-4 text-slate-400">JPEG o PNG, máximo 5 MB. Se recorta, optimiza y regenera como WebP seguro.</p>
+       <label className={`mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-lime-300 px-3 py-2 text-[10px] font-black text-slate-950 transition hover:bg-lime-200 ${avatarProcessing ? 'pointer-events-none opacity-50' : ''}`}>
+        <Upload className="h-3.5 w-3.5" />{avatarProcessing ? 'Analizando...' : 'Subir imagen'}
+        <input type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" className="hidden" disabled={avatarProcessing} onChange={handleAvatarUpload} />
+       </label>
+       {comercial.avatarUrl && <button type="button" disabled={avatarProcessing} onClick={() => { onUpdateComercial?.({ ...comercial, avatarUrl: undefined }); setAvatarFeedback({ type: 'success', text: 'Imagen de perfil eliminada.' }); }} className="ml-2 inline-flex items-center gap-1.5 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-[10px] font-bold text-rose-300"><Trash2 className="h-3.5 w-3.5"/>Eliminar</button>}
+      </div>
+     </div>
+     {avatarFeedback && <div className={`mt-4 rounded-xl border p-3 text-[10px] font-bold ${avatarFeedback.type === 'success' ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-300' : 'border-rose-400/20 bg-rose-500/10 text-rose-300'}`}>{avatarFeedback.text}</div>}
+     <div className="mt-4 rounded-xl border border-cyan-400/15 bg-cyan-500/[0.06] p-3 text-[9px] leading-4 text-cyan-200">El archivo original nunca se guarda. Se comprueba su firma binaria y se conserva exclusivamente una imagen nueva generada a partir de los píxeles.</div>
+    </section>
     
     {/* LEFT COLUMN: STRIPE CONNECT SETTINGS */}
     <div className="lg:col-span-5 bg-slate-950/40 border border-white/5 rounded-2xl p-6 space-y-6">
@@ -767,6 +951,12 @@ export default function ComercialesPanelScreen({
 
     {/* STRIPE INFO CARD */}
     <div className="bg-[#050510]/50 border border-violet-500/10 rounded-xl p-4 space-y-2.5">
+     {STRIPE_CONNECT_TEMPORARILY_DISABLED && (
+      <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-[10px] leading-normal text-amber-200">
+       <strong className="block font-black uppercase tracking-wider">Stripe Connect · Próximamente</strong>
+       La conexión está temporalmente desactivada. No se realizará ninguna configuración ni redirección a Stripe.
+      </div>
+     )}
      <div className="flex items-center gap-2">
      <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
      <span className="text-[10px] uppercase font-mono font-bold text-indigo-400 tracking-wider">Stripe Direct Payouts</span>
@@ -793,8 +983,8 @@ export default function ComercialesPanelScreen({
       <button
       type="button"
       onClick={handleRefreshStripeStatus}
-      disabled={stripeConnectLoading}
-      className="w-full py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 rounded-lg text-[10px] text-slate-300 font-bold flex items-center justify-center gap-1.5"
+      disabled={STRIPE_CONNECT_TEMPORARILY_DISABLED || stripeConnectLoading}
+      className="w-full py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed border border-white/5 rounded-lg text-[10px] text-slate-300 font-bold flex items-center justify-center gap-1.5"
       >
       <RefreshCw className={`w-3 h-3 ${stripeConnectLoading ? 'animate-spin' : ''}`} />
       <span>Actualizar estado Stripe</span>
@@ -803,15 +993,15 @@ export default function ComercialesPanelScreen({
       <button
        type="button"
        onClick={handleConnectStripe}
-       disabled={stripeConnectLoading}
-       className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 border border-emerald-500/20 rounded-lg text-[10px] text-white font-bold flex items-center justify-center gap-1.5"
+       disabled={STRIPE_CONNECT_TEMPORARILY_DISABLED || stripeConnectLoading}
+       className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed border border-emerald-500/20 rounded-lg text-[10px] text-white font-bold flex items-center justify-center gap-1.5"
       >
        {stripeConnectLoading ? (
        <RefreshCw className="w-3 h-3 animate-spin" />
        ) : (
        <ExternalLink className="w-3 h-3" />
        )}
-       <span>Continuar configuración Stripe</span>
+       <span>{STRIPE_CONNECT_TEMPORARILY_DISABLED ? 'Conexión temporalmente desactivada' : 'Continuar configuración Stripe'}</span>
       </button>
       )}
      </div>
@@ -819,15 +1009,15 @@ export default function ComercialesPanelScreen({
      <button
       type="button"
       onClick={handleConnectStripe}
-      disabled={stripeConnectLoading}
-      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-wait text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-lg shadow-emerald-500/15 flex items-center justify-center gap-1.5"
+      disabled={STRIPE_CONNECT_TEMPORARILY_DISABLED || stripeConnectLoading}
+      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-lg shadow-emerald-500/15 flex items-center justify-center gap-1.5"
      >
       {stripeConnectLoading ? (
       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
       ) : (
       <CreditCard className="w-3.5 h-3.5" />
       )}
-      <span>{stripeConnectLoading ? 'Abriendo Stripe...' : 'Conectar con Stripe Connect'}</span>
+      <span>{STRIPE_CONNECT_TEMPORARILY_DISABLED ? 'Stripe Connect temporalmente desactivado' : stripeConnectLoading ? 'Abriendo Stripe...' : 'Conectar con Stripe Connect'}</span>
      </button>
      )}
      {stripeConnectError && (
@@ -1021,8 +1211,10 @@ export default function ComercialesPanelScreen({
    </div>
   ) : (
    <>
+   <CommercialAnalyticsDashboard comercial={comercial} leads={myLeads} transactions={finTransactions} coldLeads={coldLeads} events={events} />
+
    {/* METRICS ROW */}
-   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-5">
+   <div className="hidden grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-5">
    
    {/* Total Leads */}
    <div className="bg-white/[0.02] border border-white/5 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-violet-500/20 transition duration-200">

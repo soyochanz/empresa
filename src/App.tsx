@@ -33,6 +33,29 @@ import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, Connection
 import SupabaseInfoModal from './components/SupabaseInfoModal';
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus } from 'lucide-react';
 
+const PRIVATE_EVENTS_CACHE_KEY = 'althera_commercial_private_events';
+const EVENTS_CACHE_KEY = 'althera_events_cache';
+const readEventCache = (): CalendarEvent[] => {
+ try {
+  const parsed = JSON.parse(localStorage.getItem(EVENTS_CACHE_KEY) || '[]');
+  return Array.isArray(parsed) ? parsed : [];
+ } catch { return []; }
+};
+const readPrivateEventCache = (): CalendarEvent[] => {
+ try {
+  const parsed = JSON.parse(localStorage.getItem(PRIVATE_EVENTS_CACHE_KEY) || '[]');
+  return Array.isArray(parsed) ? parsed.filter(event => event?.isPrivate && event?.comercialId) : [];
+ } catch { return []; }
+};
+const writePrivateEventCache = (events: CalendarEvent[]) => {
+ try { localStorage.setItem(PRIVATE_EVENTS_CACHE_KEY, JSON.stringify(events.filter(event => event.isPrivate && event.comercialId))); }
+ catch (error) { console.warn('Could not persist private commercial calendar cache:', error); }
+};
+const upsertPrivateEventCache = (event: CalendarEvent) => {
+ const cached = readPrivateEventCache();
+ writePrivateEventCache([...cached.filter(item => item.id !== event.id), event]);
+};
+
 function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialLoggedIn: boolean): { screen: Screen; redirectedPath?: string } {
  let path = pathString || '/';
  // Strip trailing slashes to maintain uniform match
@@ -68,6 +91,12 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
   return { screen: 'comerciales_acceso', redirectedPath: '/comerciales/acceso' };
  }
  return { screen: 'comerciales_panel' };
+ }
+ if (path.startsWith('/comerciales/panel/')) {
+  if (!isComercialLoggedIn) {
+   return { screen: 'comerciales_acceso', redirectedPath: '/comerciales/acceso' };
+  }
+  return { screen: 'comerciales_panel' };
  }
 
  // Admin and sub panels
@@ -129,7 +158,7 @@ export default function App() {
  const initialPath = window.location.pathname || '/';
  const savedUser = sessionStorage.getItem('agency_user');
  const parsedUser = savedUser ? JSON.parse(savedUser) : null;
- const isLoggedIn = parsedUser?.id === null;
+ const isLoggedIn = !!parsedUser?.email;
  const savedComercial = sessionStorage.getItem('agency_current_comercial');
  const isComercialLoggedIn = !!savedComercial;
 
@@ -156,8 +185,9 @@ export default function App() {
  const [currentUser, setCurrentUser] = useState<{ id: string | null; email: string; name: string } | null>(() => {
  const saved = sessionStorage.getItem('agency_user');
  const parsed = saved ? JSON.parse(saved) : null;
- return parsed?.id === null ? parsed : null;
+ return parsed?.email ? parsed : null;
  });
+ const [authReady, setAuthReady] = useState(false);
 
  // Persistence Engine Database State (with standard fallback to empty arrays)
  const [contacts, setContacts] = useState<ClientContact[]>(() => {
@@ -165,7 +195,16 @@ export default function App() {
  catch { return []; }
  });
 
- const [events, setEvents] = useState<CalendarEvent[]>([]);
+ const [events, setEvents] = useState<CalendarEvent[]>(() => {
+  const cachedEvents = readEventCache();
+  const ids = new Set(cachedEvents.map(event => event.id));
+  return [...cachedEvents, ...readPrivateEventCache().filter(event => !ids.has(event.id))];
+ });
+
+ useEffect(() => {
+  try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify(events)); }
+  catch (error) { console.warn('Could not cache calendar events:', error); }
+ }, [events]);
 
  const [notes, setNotes] = useState<Note[]>([]);
 
@@ -894,7 +933,24 @@ export default function App() {
   if (!silent) {
   setSupabaseStatus(prev => ({ ...prev, loading: true }));
   }
-  const status = await checkSupabaseConnection();
+  const activeUid = userIdToSync || currentUser?.id;
+  // Start data reads immediately. Connection health and payloads travel in parallel,
+  // removing a full network round-trip from the first meaningful render.
+  const dataPromise = Promise.allSettled([
+   db.getColdLeads(),
+   db.getComercialLeads(),
+   db.getComercialesAccounts(),
+   db.getProjects(),
+   db.getContacts(),
+   db.getEvents(),
+   activeUid ? db.getNotes() : Promise.resolve(null),
+   activeUid ? db.getActivities() : Promise.resolve(null),
+   activeUid ? db.getProfiles() : Promise.resolve(null)
+  ]);
+  const statusPromise = silent && supabaseStatus.connected && supabaseStatus.tablesExist
+   ? Promise.resolve({ connected: true, tablesExist: true })
+   : checkSupabaseConnection();
+  const [status, results] = await Promise.all([statusPromise, dataPromise]);
   if (!silent) {
   setSupabaseStatus({ ...status, loading: false });
   } else {
@@ -902,18 +958,6 @@ export default function App() {
   }
 
   if (status.connected && status.tablesExist) {
-  const activeUid = userIdToSync || currentUser?.id;
-  const results = await Promise.allSettled([
-   db.getColdLeads(),
-   db.getComercialLeads(),
-   db.getComercialesAccounts(),
-   db.getProjects(),
-   activeUid ? db.getContacts() : Promise.resolve(null),
-   activeUid ? db.getEvents() : Promise.resolve(null),
-   activeUid ? db.getNotes() : Promise.resolve(null),
-   activeUid ? db.getActivities() : Promise.resolve(null),
-   activeUid ? db.getProfiles() : Promise.resolve(null)
-  ]);
   const value = <T,>(index: number): T | null => results[index].status === 'fulfilled' ? results[index].value as T : null;
 
   const fetchedCold = value<ColdCallingLead[]>(0);
@@ -928,13 +972,26 @@ export default function App() {
 
   if (fetchedCold) setColdLeads(fetchedCold);
   if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
-  if (fetchedComercialAccs) setComercialesList(fetchedComercialAccs);
+  if (fetchedComercialAccs) {
+   setComercialesList(fetchedComercialAccs);
+   setCurrentComercial(current => current
+    ? fetchedComercialAccs.find(account => account.id === current.id) || current
+    : current);
+  }
   if (fetchedProjects) setProjects(fetchedProjects);
   if (fetchedContacts) {
    setContacts(fetchedContacts);
    localStorage.setItem('althera_contacts_cache', JSON.stringify(fetchedContacts));
   }
-  if (fetchedEvents) setEvents(fetchedEvents);
+  if (fetchedEvents) {
+   const cachedPrivateEvents = readPrivateEventCache();
+   const fetchedIds = new Set(fetchedEvents.map(event => event.id));
+   const pendingPrivateEvents = cachedPrivateEvents.filter(event => !fetchedIds.has(event.id));
+   setEvents([...fetchedEvents, ...pendingPrivateEvents]);
+   if (pendingPrivateEvents.length > 0) {
+    await Promise.allSettled(pendingPrivateEvents.map(event => db.insertEvent(event, undefined)));
+   }
+  }
   if (fetchedNotes) setNotes(fetchedNotes);
   if (fetchedActivities) setActivities(fetchedActivities);
   if (fetchedProfiles) setUsersList(mergeUsers(fetchedProfiles, activeUid ? currentUser : undefined));
@@ -958,19 +1015,27 @@ export default function App() {
  }
  };
 
- // Keep checking for database updates in the background (silent sync) every 60 seconds
+ // Refresh shared data frequently without blocking the currently rendered cache.
  useEffect(() => {
+ const refreshVisibleData = () => {
+  if (document.visibilityState === 'visible') syncWithSupabase(undefined, true);
+ };
  const interval = setInterval(() => {
-  if (document.visibilityState === 'visible') {
-  syncWithSupabase(undefined, true);
-  }
- }, 60000);
- return () => clearInterval(interval);
+  refreshVisibleData();
+ }, 20000);
+ window.addEventListener('focus', refreshVisibleData);
+ document.addEventListener('visibilitychange', refreshVisibleData);
+ return () => {
+  clearInterval(interval);
+  window.removeEventListener('focus', refreshVisibleData);
+  document.removeEventListener('visibilitychange', refreshVisibleData);
+ };
  }, [currentUser, currentComercial]);
 
  // Router synchronization effect
  useEffect(() => {
  const handlePathChange = () => {
+  if (!authReady && !currentUser && window.location.pathname.startsWith('/admin')) return;
   const { screen, redirectedPath } = getScreenFromPath(
   window.location.pathname,
   !!currentUser,
@@ -988,6 +1053,9 @@ export default function App() {
  
  // Initial sync
  const initialPath = window.location.pathname || '/';
+ if (!authReady && !currentUser && initialPath.startsWith('/admin')) {
+  return () => window.removeEventListener('popstate', handlePathChange);
+ }
  const { screen, redirectedPath } = getScreenFromPath(initialPath, !!currentUser, !!currentComercial);
  setCurrentScreen(screen);
  if (redirectedPath && window.location.pathname !== redirectedPath) {
@@ -995,7 +1063,7 @@ export default function App() {
  }
 
  return () => window.removeEventListener('popstate', handlePathChange);
- }, [currentUser, currentComercial]);
+ }, [currentUser, currentComercial, authReady]);
 
  // Auth synchronization effect
  useEffect(() => {
@@ -1033,7 +1101,7 @@ export default function App() {
    }
   }
   }
- });
+ }).finally(() => setAuthReady(true));
 
  // Listen to real auth state changes
  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -1215,47 +1283,21 @@ export default function App() {
  };
 
  const handleUpdateContact = async (updated: ClientContact) => {
- // 1. Apply user production rules:
- // If devStatus is set to 'completed', devAssignedTo must always be 'Nacho'
+ // Completing a website only resolves the "Falta web" marker. The contact remains
+ // active and its development status can be changed again at any time.
  if (updated.devStatus === 'completed') {
-  updated.devAssignedTo = 'Nacho';
-  
-  // Auto-archive completed project/contact in session storage so it is moved to "Archivados" tab in CRM
-  try {
-  const saved = sessionStorage.getItem('archived_contacts_ids');
-  let archivedIds: string[] = [];
-  if (saved) {
-   archivedIds = JSON.parse(saved);
-  }
-  if (!archivedIds.includes(updated.id)) {
-   archivedIds.push(updated.id);
-   sessionStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds));
-  }
-  } catch (err) {
-  console.error('Error auto-archiving completed project:', err);
-  }
+  updated.needsWebsite = false;
+  updated.websiteReady = true;
  }
 
- // Once a contact has been marked as completed, even if they put it in red in the future,
- // it remains fully completed 'completed' and assigned to 'Nacho'
- const existingContact = contacts.find(c => c.id === updated.id);
- if (existingContact && existingContact.devStatus === 'completed') {
-  updated.devStatus = 'completed';
-  updated.devAssignedTo = 'Nacho';
-
-  // Also ensure it stays archived
+ // Repair contacts archived by the previous automatic-completion rule.
+ if (updated.devStatus) {
   try {
   const saved = sessionStorage.getItem('archived_contacts_ids');
-  let archivedIds: string[] = [];
-  if (saved) {
-   archivedIds = JSON.parse(saved);
-  }
-  if (!archivedIds.includes(updated.id)) {
-   archivedIds.push(updated.id);
-   sessionStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds));
-  }
+  const archivedIds: string[] = saved ? JSON.parse(saved) : [];
+  sessionStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds.filter(id => id !== updated.id)));
   } catch (err) {
-  console.error('Error auto-archiving completed project:', err);
+  console.error('Error restoring completed contact visibility:', err);
   }
  }
 
@@ -1441,6 +1483,7 @@ export default function App() {
  };
 
  const handleAddEvent = async (event: CalendarEvent) => {
+ const isCommercialPrivateEvent = event.isPrivate === true && !!event.comercialId;
  const activity: Activity = {
   id: 'a_' + Date.now(),
   type: 'Task',
@@ -1450,7 +1493,21 @@ export default function App() {
   accentColor: 'secondary'
  };
 
- if (!currentUser?.id || !supabaseStatus.connected || !supabaseStatus.tablesExist) {
+ if (isCommercialPrivateEvent) {
+  setEvents(prev => prev.some(item => item.id === event.id) ? prev : [...prev, event]);
+  upsertPrivateEventCache(event);
+ }
+
+ if (!supabaseStatus.connected || !supabaseStatus.tablesExist) {
+  if (isCommercialPrivateEvent) {
+   const toast = document.getElementById('toast-msg');
+   if (toast) {
+    toast.innerText = 'Tarea privada guardada en este dispositivo. Se sincronizará cuando vuelva la conexión.';
+    toast.classList.remove('opacity-0');
+    setTimeout(() => toast.classList.add('opacity-0'), 3500);
+   }
+   return;
+  }
   console.error('Supabase is required to create shared calendar events.');
   const toast = document.getElementById('toast-msg');
   if (toast) {
@@ -1462,12 +1519,21 @@ export default function App() {
  }
 
  try {
-  await db.insertEvent(event, currentUser.id);
-  await db.insertActivity(activity, currentUser.id);
-  setEvents(prev => [...prev, event]);
-  setActivities(prev => [activity, ...prev]);
+  await db.insertEvent(event, currentUser?.id || undefined);
+  if (currentUser?.id) await db.insertActivity(activity, currentUser.id);
+  if (!isCommercialPrivateEvent) setEvents(prev => prev.some(item => item.id === event.id) ? prev : [...prev, event]);
+  if (currentUser?.id) setActivities(prev => [activity, ...prev]);
  } catch (err) {
   console.error('Supabase failed to register event:', err);
+  if (isCommercialPrivateEvent) {
+   const toast = document.getElementById('toast-msg');
+   if (toast) {
+    toast.innerText = 'Tarea privada guardada localmente; sincronización pendiente.';
+    toast.classList.remove('opacity-0');
+    setTimeout(() => toast.classList.add('opacity-0'), 3500);
+   }
+   return;
+  }
   const toast = document.getElementById('toast-msg');
   if (toast) {
   toast.innerText = 'No se pudo guardar el evento en Supabase. Revisa la tabla events.';
@@ -1481,11 +1547,12 @@ export default function App() {
  const handleDeleteEvent = async (id: string) => {
  // 1. Optimistic UI update
  setEvents(prev => prev.filter(ev => ev.id !== id));
+ writePrivateEventCache(readPrivateEventCache().filter(event => event.id !== id));
 
  // 2. Persistent Supabase deletion
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
+ if (supabaseStatus.connected && supabaseStatus.tablesExist) {
   try {
-  await db.deleteEvent(id, currentUser.id);
+  await db.deleteEvent(id, currentUser?.id || undefined);
   } catch (err) {
   console.error('Supabase failed to delete event:', err);
   }
@@ -1495,11 +1562,12 @@ export default function App() {
  const handleUpdateEvent = async (updated: CalendarEvent) => {
  // 1. Optimistic UI update
  setEvents(prev => prev.map(ev => ev.id === updated.id ? updated : ev));
+ if (updated.isPrivate && updated.comercialId) upsertPrivateEventCache(updated);
 
  // 2. Persistent Supabase update
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
+ if (supabaseStatus.connected && supabaseStatus.tablesExist) {
   try {
-  await db.updateEvent(updated, currentUser.id);
+  await db.updateEvent(updated, currentUser?.id || undefined);
   } catch (err) {
   console.error('Supabase failed to update event:', err);
   }
@@ -1634,7 +1702,7 @@ export default function App() {
   case 'dashboard':
   return (
    <DashboardScreen 
-   events={globalSearch ? filteredSearchEvents : events}
+   events={(globalSearch ? filteredSearchEvents : events).filter(event => !(event.isPrivate && event.comercialId))}
    notes={globalSearch ? filteredSearchNotes : notes}
    activities={activities}
    onNavigate={navigateTo}
@@ -1650,7 +1718,7 @@ export default function App() {
   case 'calendar':
   return (
    <CalendarScreen 
-   events={globalSearch ? filteredSearchEvents : events}
+   events={(globalSearch ? filteredSearchEvents : events).filter(event => !(event.isPrivate && event.comercialId))}
    contacts={contacts}
    notes={globalSearch ? filteredSearchNotes : notes}
    onAddEvent={handleAddEvent}
@@ -1711,10 +1779,10 @@ export default function App() {
   return (
    <ContactosScreen />
   );
-  case 'citas':
-  return (
-   <CitasScreen
-   events={events}
+ case 'citas':
+ return (
+  <CitasScreen
+   events={events.filter(event => !(event.isPrivate && event.comercialId))}
    contacts={contacts}
    onAddEvent={handleAddEvent}
    onUpdateEvent={handleUpdateEvent}
@@ -1739,13 +1807,14 @@ export default function App() {
    coldLeads={coldLeads}
    finTransactions={finTransactions}
    contacts={contacts}
+   events={events.filter(event => !(event.isPrivate && event.comercialId))}
    onAddComercial={handleAddComercialAccount}
    onUpdateComercial={handleUpdateComercialAccount}
    onDeleteComercial={handleDeleteComercialAccount}
    onNavigate={navigateTo}
    />
   );
-  case 'cold_calling':
+ case 'cold_calling':
   return (
    <ColdCallingScreen
    coldLeads={coldLeads}
@@ -1758,7 +1827,7 @@ export default function App() {
    currentComercial={null}
    onNavigate={navigateTo}
    onAddEvent={handleAddEvent}
-   events={events}
+   events={events.filter(event => !(event.isPrivate && event.comercialId))}
    contacts={contacts}
    onAddContact={handleAddContact}
    onUpdateContact={handleUpdateContact}
@@ -1879,7 +1948,7 @@ export default function App() {
    onAddColdLead={handleAddColdLead}
    onUpdateColdLead={handleUpdateColdLead}
    onDeleteColdLead={handleDeleteColdLead}
-   events={events}
+   events={events.filter(event => !event.isPrivate || !event.comercialId || event.comercialId === currentComercial?.id)}
    onAddEvent={handleAddEvent}
    onUpdateEvent={handleUpdateEvent}
    onDeleteEvent={handleDeleteEvent}

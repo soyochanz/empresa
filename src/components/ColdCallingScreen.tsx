@@ -107,8 +107,9 @@ export default function ColdCallingScreen({
  (user.name || '').toLowerCase().includes(name.toLowerCase()) ||
  (user.email || '').toLowerCase().includes(name.toLowerCase())
  );
- const carlosAdmin = findAdminByName('carlos');
- const nachoAdmin = findAdminByName('nacho');
+const carlosAdmin = findAdminByName('carlos');
+const nachoAdmin = findAdminByName('nacho');
+ const activeCloser = currentUser || carlosAdmin;
  const buildWhatsAppUrl = (phone?: string, message?: string) => {
  const digits = (phone || '').replace(/\D/g, '');
  if (!digits) return undefined;
@@ -176,6 +177,7 @@ export default function ColdCallingScreen({
  phone?: string;
  email?: string;
  status?: ClientContact['closingStatus'];
+ answered?: boolean;
  date?: string;
  time?: string;
  notes?: string;
@@ -184,6 +186,8 @@ export default function ColdCallingScreen({
  website?: string;
  }>>({});
  const [showClosedClosingLeads, setShowClosedClosingLeads] = useState(false);
+ const [closingScope, setClosingScope] = useState<'today' | 'all'>('today');
+ const [expandedClosingLeadId, setExpandedClosingLeadId] = useState<string | null>(null);
  const [deleteConfirmLeadId, setDeleteConfirmLeadId] = useState<string | null>(null);
  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
  const [bulkAssigneeEmail, setBulkAssigneeEmail] = useState('unassigned');
@@ -1210,24 +1214,10 @@ export default function ColdCallingScreen({
  return lead.callbackScheduled === 'Llamar más tarde' && lead.callbackDate === selectedTaskDate;
  });
 
- // Centralized query for commercial-specific and general calendar events
- const myEvents = React.useMemo(() => {
- if (!events) return [];
- if (isAdmin) return events; // Admin sees all
- 
- return events.filter(ev => {
-  const isMyPrivate = ev.comercialId === currentComercial?.id;
-  const isAssignedToMe = ev.assignedUserEmail?.toLowerCase() === comercialEmail.toLowerCase();
-  const isForAllComerciales = ev.isAllComerciales || ev.assignedUserEmail === 'todos-comerciales';
-  
-  return isMyPrivate || isAssignedToMe || isForAllComerciales;
- });
- }, [events, currentComercial, comercialEmail, isAdmin]);
-
- // Calendar events matching the selected date
- const dayEvents = React.useMemo(() => {
- return myEvents.filter(ev => ev.date === selectedTaskDate);
- }, [myEvents, selectedTaskDate]);
+ // This focused dashboard intentionally excludes general calendar events.
+ // It is the production queue for postponed client callbacks only.
+ const myEvents: CalendarEvent[] = [];
+ const dayEvents: CalendarEvent[] = [];
 
  const todayTaskDate = new Date().toISOString().split('T')[0];
  const todayCallbackLeads = coldLeads.filter(lead => {
@@ -1235,10 +1225,7 @@ export default function ColdCallingScreen({
  if (!isAdmin && lead.assignedToEmail.toLowerCase() !== comercialEmail.toLowerCase()) return false;
  return lead.callbackScheduled === 'Llamar más tarde' && lead.callbackDate === todayTaskDate;
  });
- const todayEvents = React.useMemo(() => {
- return myEvents.filter(ev => ev.date === todayTaskDate);
- }, [myEvents, todayTaskDate]);
- const todayTaskNotificationsCount = todayCallbackLeads.length + todayEvents.length;
+ const todayTaskNotificationsCount = todayCallbackLeads.length;
 
  // Add a private task/event (commercials can only add private ones)
  const handleCreatePrivateTask = (e: React.FormEvent) => {
@@ -1300,6 +1287,7 @@ export default function ColdCallingScreen({
   phone: contact?.phone || lead.phone,
   email: contact?.email || '',
   status: contact?.closingStatus || 'Pendiente',
+  answered: contact?.closingAnswered,
   date: lead.callbackDate || '',
   time: lead.callbackTime || '',
   notes: contact?.closingNotes || '',
@@ -1310,11 +1298,14 @@ export default function ColdCallingScreen({
  };
  };
 
- const visibleClosingLeads = closingLeads.filter(lead => {
+ const todayClosingKey = new Date().toISOString().split('T')[0];
+ const openClosingLeads = closingLeads.filter(lead => {
  const contact = getClosingContact(lead);
  const status = closingDrafts[lead.id]?.status || contact?.closingStatus || 'Pendiente';
  return showClosedClosingLeads || status !== 'Cerrado';
  });
+ const visibleClosingLeads = openClosingLeads.filter(lead => closingScope === 'all' || lead.callbackDate === todayClosingKey);
+ const todayClosingCount = openClosingLeads.filter(lead => lead.callbackDate === todayClosingKey).length;
  const isClosingReadOnly = !!currentComercial;
 
  const updateClosingDraft = (leadId: string, patch: Partial<ReturnType<typeof getClosingDraft>>) => {
@@ -1334,8 +1325,12 @@ export default function ColdCallingScreen({
   return;
   }
   onUpdateColdLead({ ...lead, callbackDate: draft.date, callbackTime: draft.time });
-  onAddEvent?.({
-  id: `cc_reschedule_${lead.id}_${Date.now()}`,
+  const originalAppointment = events.find(event =>
+   event.id === `cc_appointment_${lead.id}` || event.linkedContactId === `crm_from_${lead.id}`
+  );
+  const rescheduledAppointment: CalendarEvent = {
+  ...(originalAppointment || {}),
+  id: originalAppointment?.id || `cc_reschedule_${lead.id}_${Date.now()}`,
   title: `Cita reagendada: ${draft.company}`,
   date: draft.date,
   time: draft.time,
@@ -1344,13 +1339,15 @@ export default function ColdCallingScreen({
   description: `Reagenda desde Closing para ${draft.company}. TelÃ©fono: ${draft.phone}`,
   linkedContactId: `crm_from_${lead.id}`,
   linkedContactName: draft.name,
-  assignedUserId: carlosAdmin?.id,
-  assignedUserEmail: carlosAdmin?.email || 'todos-admins',
+  assignedUserId: activeCloser?.id || undefined,
+  assignedUserEmail: activeCloser?.email || 'todos-admins',
   status: 'pending',
   color: '#38BDF8',
   alias: 'Closing Reagendado',
-  isAdminNotification: !carlosAdmin
-  });
+  isAdminNotification: !activeCloser
+  };
+  if (originalAppointment && onUpdateEvent) onUpdateEvent(rescheduledAppointment);
+  else onAddEvent?.(rescheduledAppointment);
  }
 
  const existing = getClosingContact(lead);
@@ -1364,6 +1361,7 @@ export default function ColdCallingScreen({
   website: draft.website?.trim() || base.website,
   customWebsiteUrl: draft.website?.trim() || base.customWebsiteUrl,
   closingStatus: status,
+  closingAnswered: draft.answered,
   closingNotes: draft.notes?.trim() || undefined,
   closingSocials: draft.socials?.trim() || undefined,
   googleMapsUrl: draft.mapsUrl?.trim() || undefined,
@@ -1371,8 +1369,8 @@ export default function ColdCallingScreen({
   needsWebsite: status === 'Cerrado',
   websiteReady: status === 'Cerrado' ? false : base.websiteReady,
   devStatus: status === 'Cerrado' ? 'backlog' : base.devStatus,
-  closerName: carlosAdmin?.name || base.closerName || 'Carlos',
-  closerEmail: carlosAdmin?.email || base.closerEmail,
+  closerName: activeCloser?.name || base.closerName || 'Carlos',
+  closerEmail: activeCloser?.email || base.closerEmail,
   closingSourceLeadId: lead.id,
   lastContacted: status === 'Cerrado' ? 'Justo ahora (Closing cerrado)' : 'Justo ahora (Closing actualizado)',
   notes: [base.notes, draft.notes ? `[Closing] ${draft.notes}` : ''].filter(Boolean).join('\n')
@@ -1403,6 +1401,19 @@ export default function ColdCallingScreen({
   notes: draft.notes
   });
  }
+ };
+
+ const postponeClosingLead = (lead: ColdCallingLead) => {
+  const draft = getClosingDraft(lead);
+  if (!draft.date || !draft.time) {
+   alert('Selecciona una nueva fecha y hora para posponer la cita.');
+   return;
+  }
+  if (draft.date === lead.callbackDate && draft.time === lead.callbackTime) {
+   alert('Selecciona una fecha u hora diferente antes de posponer.');
+   return;
+  }
+  saveClosingLead(lead, 'Pendiente');
  };
 
  // Update a private task/event
@@ -1440,6 +1451,7 @@ export default function ColdCallingScreen({
   <div className="absolute bottom-[5%] left-[5%] w-[40%] h-[40%] rounded-full bg-rose-600/5 blur-[130px] pointer-events-none" />
 
   {/* Screen Title Banner */}
+  {isAdmin && (
   <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-4 relative z-10">
   <div>
    <div className="flex items-center gap-2 mb-1.5">
@@ -1478,6 +1490,7 @@ export default function ColdCallingScreen({
    </div>
   )}
   </div>
+  )}
 
   {/* THREE MODULE SECTIONS TAB CONTROLLERS */}
   <div className="flex gap-1.5 p-1 bg-[#050508]/80 backdrop-blur-md rounded-xl border border-white/5 max-w-2xl relative z-10">
@@ -2584,26 +2597,16 @@ export default function ColdCallingScreen({
    <div>
     <h2 className="text-lg font-bold text-white flex items-center gap-2">
     <Calendar className="w-5 h-5 text-violet-400" />
-    <span>Calendario & Agenda de {currentComercial?.name || 'Comercial'}</span>
+    <span>Citas pospuestas con clientes</span>
     </h2>
     <p className="text-xs text-slate-400 mt-1">
-    Visualiza tus compromisos asignados por administradores, llamadas programadas y añade tus propias tareas privadas.
+    Agenda operativa dedicada exclusivamente a seguimientos de clientes marcados como "Llamar más tarde".
     </p>
    </div>
 
-   <button
-    onClick={() => {
-    setTaskDate(selectedTaskDate);
-    setTaskTitle('');
-    setTaskNotes('');
-    setTaskMeetingUrl('');
-    setShowAddTaskModal(true);
-    }}
-    className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition select-none cursor-pointer shadow-lg shadow-violet-600/10"
-   >
-    <PlusCircle className="w-4 h-4" />
-    <span>Añadir Tarea Privada</span>
-   </button>
+   <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-2 text-[10px] font-bold text-amber-300">
+    Solo citas pospuestas · El calendario completo está en Calendario
+   </div>
    </div>
 
    {/* VIEW SELECTOR SEGMENTED CONTROL */}
@@ -2722,7 +2725,6 @@ export default function ColdCallingScreen({
      const isToday = cell.dateStr === new Date().toISOString().split('T')[0];
      
      // Indicators
-     const hasMyEvents = myEvents.some(ev => ev.date === cell.dateStr);
      const hasCallbacks = coldLeads.some(l => 
       !l.archived && 
       l.assignedToEmail.toLowerCase() === comercialEmail.toLowerCase() && 
@@ -2808,12 +2810,8 @@ export default function ColdCallingScreen({
     {/* Legends */}
     <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono pt-3 border-t border-white/5">
     <span className="flex items-center gap-1">
-     <span className="w-1.5 h-1.5 rounded-full bg-violet-400" />
-     <span>Reunión/Agenda</span>
-    </span>
-    <span className="flex items-center gap-1">
      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-     <span>Llamada agendada</span>
+     <span>Cita pospuesta con cliente</span>
     </span>
     <span className="flex items-center gap-1">
      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 ring-2 ring-amber-500/20 animate-pulse" />
@@ -2861,8 +2859,8 @@ export default function ColdCallingScreen({
     {/* LIST VIEW OPTION */}
     {hourViewMode === 'list' && (
     <div className="space-y-4">
-     {/* Calendar Meetings */}
-     <div className="space-y-2">
+     {/* General meetings belong to the main commercial calendar. */}
+     {dayEvents.length > 0 && <div className="space-y-2">
      <h4 className="text-[10px] font-mono font-bold uppercase tracking-widest text-violet-400">Reuniones y Eventos ({dayEvents.length})</h4>
      {dayEvents.length === 0 ? (
       <p className="text-[11px] text-slate-550 bg-white/[0.01] border border-white/5 rounded-xl p-4 italic text-center">
@@ -2939,7 +2937,7 @@ export default function ColdCallingScreen({
       })}
       </div>
      )}
-     </div>
+     </div>}
 
      {/* Cold Calling Callbacks */}
      <div className="space-y-2">
@@ -3135,19 +3133,9 @@ export default function ColdCallingScreen({
         ))}
        </>
        ) : (
-       <button
-        onClick={() => {
-        setTaskTime(slot);
-        setTaskDate(selectedTaskDate);
-        setTaskTitle('');
-        setTaskNotes('');
-        setTaskMeetingUrl('');
-        setShowAddTaskModal(true);
-        }}
-        className="w-full text-left py-2 px-3 bg-white/[0.01] hover:bg-violet-600/[0.04] border border-dashed border-white/5 hover:border-violet-500/20 text-[10px] text-slate-600 hover:text-violet-400 transition-all rounded-xl cursor-pointer"
-       >
-        + Agendar tarea a las {slot}
-       </button>
+       <div className="w-full rounded-xl border border-dashed border-white/5 bg-white/[0.01] px-3 py-2 text-left text-[10px] text-slate-700">
+        Sin cita pospuesta a las {slot}
+       </div>
        )}
       </div>
 
@@ -3371,15 +3359,13 @@ export default function ColdCallingScreen({
      <h3 className="text-xl font-black text-white mt-1">Citas pasadas a closer</h3>
      <p className="text-xs text-slate-400 mt-1">Clientes potenciales generados desde Call Calling y asignados a Carlos.</p>
     </div>
-    <div className="text-right space-y-2">
-     <p className="text-3xl font-black text-cyan-200 font-mono">{visibleClosingLeads.length}</p>
-     <p className="text-[10px] text-slate-500 font-mono uppercase">{showClosedClosingLeads ? 'oportunidades totales' : 'abiertas'}</p>
-     <button
-      type="button"
-      onClick={() => setShowClosedClosingLeads(prev => !prev)}
-      className="px-3 py-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-[10px] font-black text-cyan-200 hover:bg-cyan-400/20"
-     >
-      {showClosedClosingLeads ? 'Ocultar cerradas' : 'Ver cerradas'}
+    <div className="flex flex-col items-end gap-2">
+     <div className="flex rounded-xl border border-white/10 bg-black/25 p-1">
+      <button type="button" onClick={() => setClosingScope('today')} className={`rounded-lg px-3 py-2 text-[10px] font-black transition ${closingScope === 'today' ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Hoy ({todayClosingCount})</button>
+      <button type="button" onClick={() => setClosingScope('all')} className={`rounded-lg px-3 py-2 text-[10px] font-black transition ${closingScope === 'all' ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Ver todas ({openClosingLeads.length})</button>
+     </div>
+     <button type="button" onClick={() => setShowClosedClosingLeads(prev => !prev)} className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] text-[9px] font-bold text-slate-400 hover:text-white">
+      {showClosedClosingLeads ? 'Ocultar cerradas' : 'Incluir cerradas'}
      </button>
     </div>
    </div>
@@ -3387,34 +3373,48 @@ export default function ColdCallingScreen({
    {visibleClosingLeads.length === 0 ? (
    <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-12 text-center">
     <Briefcase className="w-10 h-10 text-slate-500 mx-auto mb-3" />
-    <p className="text-sm font-bold text-slate-200">{closingLeads.length === 0 ? 'Aún no hay citas para closing.' : 'No hay citas abiertas para closing.'}</p>
-    <p className="text-xs text-slate-500 mt-1">{closingLeads.length === 0 ? 'Cuando un caller marque una cita agendada aparecerá aquí.' : 'Pulsa Ver cerradas para revisar las oportunidades ya cerradas.'}</p>
+    <p className="text-sm font-bold text-slate-200">{closingLeads.length === 0 ? 'Aún no hay citas para closing.' : closingScope === 'today' ? 'No hay llamadas previstas para hoy.' : 'No hay citas que coincidan con el filtro.'}</p>
+    <p className="text-xs text-slate-500 mt-1">{closingLeads.length === 0 ? 'Cuando un caller marque una cita agendada aparecerá aquí.' : closingScope === 'today' ? 'Pulsa Ver todas para consultar próximas citas y citas sin fecha.' : 'Prueba a incluir también las citas cerradas.'}</p>
    </div>
    ) : (
-   <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+   <div className="space-y-3">
     {visibleClosingLeads.map(lead => {
     const draft = getClosingDraft(lead);
     const contact = getClosingContact(lead);
     const status = draft.status || 'Pendiente';
     const statusClass = status === 'Cerrado' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25' : status === 'Perdido' ? 'bg-rose-500/15 text-rose-300 border-rose-500/25' : 'bg-amber-500/15 text-amber-300 border-amber-500/25';
     return (
-     <div key={lead.id} className="rounded-3xl border border-white/10 bg-white/[0.025] p-5 shadow-2xl shadow-black/20 space-y-4">
-     <div className="flex items-start justify-between gap-3">
+     <div key={lead.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 shadow-xl shadow-black/15 space-y-4">
+     <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
       <div className="min-w-0">
       <div className="flex items-center gap-2 flex-wrap">
        <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wider ${statusClass}`}>{status}</span>
-       <span className="px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[9px] text-cyan-300 font-mono">Carlos closer</span>
+       <span className="px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[9px] text-cyan-300 font-mono">{activeCloser?.name || 'Closer'} closer</span>
       </div>
       <h4 className="text-lg font-black text-white mt-2 truncate">{draft.company}</h4>
       <p className="text-xs text-slate-400 truncate">{draft.name} Â· {draft.phone}</p>
       </div>
-      <div className="text-right text-[10px] font-mono text-slate-400">
-      <p>{lead.callbackDate || 'Sin fecha'}</p>
-      <p className="text-cyan-300">{lead.callbackTime || 'Sin hora'}</p>
+      <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+       <div className="text-right text-[10px] font-mono text-slate-400"><p>{lead.callbackDate || 'Sin fecha'}</p><p className="text-cyan-300">{lead.callbackTime || 'Sin hora'}</p></div>
+       <a href={`tel:${(draft.phone || '').replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/20"><Phone className="h-3.5 w-3.5"/>Llamar</a>
+       <button type="button" onClick={() => setExpandedClosingLeadId(current => current === lead.id ? null : lead.id)} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/10">{expandedClosingLeadId === lead.id ? 'Cerrar ficha' : 'Ver ficha'}</button>
       </div>
      </div>
 
+      {expandedClosingLeadId === lead.id && <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+       <div className="md:col-span-2 rounded-xl border border-white/10 bg-black/35 p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+         <div>
+          <p className="text-[10px] font-black uppercase tracking-wider text-cyan-300">¿El cliente ha contestado?</p>
+          <p className="mt-1 text-[10px] text-slate-500">Solo una cita agendada marcada como Sí por el closer cuenta como Show.</p>
+         </div>
+         <div className="grid grid-cols-2 gap-2">
+          <button type="button" disabled={isClosingReadOnly} onClick={() => updateClosingDraft(lead.id, { answered: true })} className={`rounded-xl border px-4 py-2 text-[10px] font-black transition disabled:cursor-not-allowed ${draft.answered === true ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-200' : 'border-white/10 bg-white/[0.03] text-slate-400'}`}>Sí</button>
+          <button type="button" disabled={isClosingReadOnly} onClick={() => updateClosingDraft(lead.id, { answered: false })} className={`rounded-xl border px-4 py-2 text-[10px] font-black transition disabled:cursor-not-allowed ${draft.answered === false ? 'border-rose-400/40 bg-rose-500/20 text-rose-200' : 'border-white/10 bg-white/[0.03] text-slate-400'}`}>No</button>
+         </div>
+        </div>
+       </div>
        <input readOnly={isClosingReadOnly} value={draft.name} onChange={(e) => updateClosingDraft(lead.id, { name: e.target.value })} placeholder="Persona de contacto" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.company} onChange={(e) => updateClosingDraft(lead.id, { company: e.target.value })} placeholder="Empresa" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.phone} onChange={(e) => updateClosingDraft(lead.id, { phone: e.target.value })} placeholder="TelÃ©fono" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
@@ -3435,11 +3435,13 @@ export default function ColdCallingScreen({
 
       {!isClosingReadOnly && (
       <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
       {draft.mapsUrl && <a href={draft.mapsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/10 text-[10px] font-bold text-slate-300 hover:text-white"><MapPin className="w-3.5 h-3.5" /> Maps</a>}
       {buildWhatsAppUrl(draft.phone, `Hola ${draft.name}, te escribo de Althera sobre tu cita.`) && <a href={buildWhatsAppUrl(draft.phone, `Hola ${draft.name}, te escribo de Althera sobre tu cita.`)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-300 hover:text-white"><MessageCircle className="w-3.5 h-3.5" /> WhatsApp</a>}
+      {draft.phone && <a href={`tel:${draft.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-[10px] font-bold text-cyan-300 hover:text-white"><Phone className="w-3.5 h-3.5" /> Llamar</a>}
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
+      <button onClick={() => postponeClosingLead(lead)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] font-black text-amber-300 hover:bg-amber-500/20"><Clock className="w-3.5 h-3.5"/>Posponer cita</button>
       <button onClick={() => saveClosingLead(lead, 'Perdido')} className="px-3 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[10px] font-black text-rose-300 hover:bg-rose-500/20">Perdido</button>
       <button onClick={() => saveClosingLead(lead, 'Pendiente')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-500/10 border border-white/10 text-[10px] font-black text-slate-200 hover:bg-white/10"><Save className="w-3.5 h-3.5" /> Guardar</button>
       <button onClick={() => { saveClosingLead(lead, 'Cerrado'); handleOpenClosingConversion(lead); }} className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/25">Cerrado + pedir web</button>
@@ -3449,6 +3451,7 @@ export default function ColdCallingScreen({
      {contact?.needsWebsite && !contact.websiteReady && (
       <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-[10px] font-bold text-amber-300">Marcado en Gestión Dev como falta web.</div>
      )}
+     </>}
      </div>
     );
     })}

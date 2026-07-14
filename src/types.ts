@@ -61,6 +61,7 @@ export interface ClientContact {
  closerName?: string;
  closerEmail?: string;
  closingStatus?: 'Pendiente' | 'Cerrado' | 'Perdido';
+ closingAnswered?: boolean;
  closingNotes?: string;
  closingSocials?: string;
  googleMapsUrl?: string;
@@ -225,6 +226,7 @@ export interface ComercialAccount {
  id: string;
  name: string;
  email: string;
+ avatarUrl?: string;
  password?: string;
  createdAt: string;
  phone?: string;
@@ -238,6 +240,34 @@ export interface ComercialAccount {
  stripeChargesEnabled?: boolean;
  payouts?: PayoutTransaction[];
  extraCommissions?: ExtraCommission[];
+ monthlyPerformance?: Record<string, MonthlyPerformanceReview>;
+ legacyBonuses?: LegacyBonus[];
+}
+
+export type LegacyBonusType = 'sale_assist' | 'training' | 'monthly_idea';
+
+export interface LegacyBonus {
+ id: string;
+ type: LegacyBonusType;
+ quantity: number;
+ points: number;
+ date: string;
+ note?: string;
+ createdAt: string;
+}
+
+export interface MonthlyPerformanceReview {
+ month: string; // YYYY-MM
+ showRate: number; // 0-100, introducido por administración
+ professionalism: number; // 0-10, introducido por administración
+ effectiveHours?: number;
+ punctuality?: number;
+ meetingAttendance?: number;
+ processCompliance?: number;
+ attitude?: number;
+ communication?: number;
+ taskCompletion?: number;
+ updatedAt?: string;
 }
 
 export interface ComercialLead {
