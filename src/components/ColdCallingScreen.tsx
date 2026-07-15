@@ -1450,11 +1450,28 @@ const nachoAdmin = findAdminByName('nacho');
 
  const closingLeads = React.useMemo(() => {
  const seen = new Set<string>();
+ const normalizeIdentity = (value?: string | null) => (value || '').trim().toLowerCase();
+ const currentAdminEmail = normalizeIdentity(currentUser?.email);
+ const configuredCloserEmail = normalizeIdentity(carlosAdmin?.email);
+ const configuredCloserName = normalizeIdentity(carlosAdmin?.name);
+ const currentAdminIsConfiguredCloser = !!currentUser && !!carlosAdmin && (
+  currentAdminEmail === configuredCloserEmail ||
+  (!!currentUser.id && currentUser.id === carlosAdmin.id)
+ );
  return coldLeads
   .filter(lead => {
    if (currentUser) {
-    return lead.callbackScheduled === 'Sí' &&
-     lead.assignedToEmail?.toLowerCase() === currentUser.email.toLowerCase();
+    if (lead.callbackScheduled !== 'Sí') return false;
+    const appointmentIsVisibleToCurrentAdmin = events.some(event =>
+     event.id === `cc_appointment_${lead.id}` ||
+     event.linkedContactId === `crm_from_${lead.id}`
+    );
+    const directlyAssignedToCurrentAdmin = normalizeIdentity(lead.assignedToEmail) === currentAdminEmail;
+    const assignedToConfiguredCloser = currentAdminIsConfiguredCloser && (
+     normalizeIdentity(lead.assignedToEmail) === configuredCloserEmail ||
+     normalizeIdentity(lead.assignedToName) === configuredCloserName
+    );
+    return appointmentIsVisibleToCurrentAdmin || directlyAssignedToCurrentAdmin || assignedToConfiguredCloser;
    }
    if (!currentComercial) return lead.callbackScheduled === 'Sí';
    // Para el caller, el origen de la cita es el dato estable. El closer puede
@@ -1469,7 +1486,7 @@ const nachoAdmin = findAdminByName('nacho');
    return true;
   })
   .sort((a, b) => `${a.callbackDate || ''}${a.callbackTime || ''}`.localeCompare(`${b.callbackDate || ''}${b.callbackTime || ''}`));
- }, [coldLeads, currentComercial, currentUser]);
+ }, [coldLeads, currentComercial, currentUser, carlosAdmin, events]);
 
  const getClosingContact = (lead: ColdCallingLead) => contacts.find(contact =>
  contact.closingSourceLeadId === lead.id || contact.id === `crm_from_${lead.id}`
