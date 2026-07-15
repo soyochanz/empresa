@@ -41,7 +41,7 @@ import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, Client
 import DossierModal from './DossierModal';
 import AdminRewardsPanel from './AdminRewardsPanel';
 import { db, supabase } from '../supabaseClient';
-import { countUniqueInitialSales } from '../utils/salesRewards';
+import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -534,7 +534,7 @@ export default function ComercialesAdminScreen({
  const coldContactRate = totalColdLeads > 0 ? Math.round((coldContacted / totalColdLeads) * 100) : 0;
 
  // Leaderboard of representatives
- const leaderBoard = comercialesList.map(c => {
+ const leaderBoard = getRankableCommercials(comercialesList).map(c => {
  const comLeads = mappedLeadsList.filter(l => l.comercialId === c.id);
  const comWon = comLeads.filter(l => l.status === 'Ganado');
  const comWonVol = comWon.reduce((sum, l) => sum + (l.value || 0), 0);

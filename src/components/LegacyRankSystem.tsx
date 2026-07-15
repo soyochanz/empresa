@@ -1,7 +1,7 @@
 import React from 'react';
 import { CalendarCheck, CheckCircle2, Coins, Handshake, Lightbulb, Medal, ShoppingBag, Trophy } from 'lucide-react';
 import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount } from '../types';
-import { calculateLegacyPoints, LEGACY_RANKS } from '../utils/salesRewards';
+import { calculateLegacyPoints, getRankableCommercials, LEGACY_RANKS } from '../utils/salesRewards';
 
 interface Props {
   comercial: ComercialAccount;
@@ -14,8 +14,9 @@ interface Props {
 
 export default function LegacyRankSystem({ comercial, comercialesList, finTransactions, events, coldLeads, contacts }: Props) {
   const legacy = calculateLegacyPoints(comercial, finTransactions, events, coldLeads, contacts);
-  const legacyBoard = comercialesList.map(item => ({ comercial: item, result: calculateLegacyPoints(item, finTransactions, events, coldLeads, contacts) })).sort((a, b) => b.result.total - a.result.total);
+  const legacyBoard = getRankableCommercials(comercialesList).map(item => ({ comercial: item, result: calculateLegacyPoints(item, finTransactions, events, coldLeads, contacts) })).sort((a, b) => b.result.total - a.result.total);
   const position = legacyBoard.findIndex(row => row.comercial.id === comercial.id) + 1;
+  const positionLabel = position > 0 ? `#${position}` : 'Fuera de ranking';
   const automatic = [
     { label: 'Cash Collected', detail: `${legacy.cashCollected.toLocaleString('es-ES')} € consolidados × 1`, points: legacy.cashPoints, Icon: Coins },
     { label: 'Agendas', detail: `${legacy.agendas} × 50 PA`, points: legacy.agendaPoints, Icon: CalendarCheck },
@@ -32,7 +33,7 @@ export default function LegacyRankSystem({ comercial, comercialesList, finTransa
           <img src={legacy.rank.asset} alt={`Insignia ${legacy.rank.name}`} className="relative z-10 h-full w-full object-contain drop-shadow-[0_20px_35px_rgba(0,0,0,.65)]" />
         </div>
         <div><div className="flex items-center gap-2"><Medal className="h-4 w-4 text-violet-300"/><p className="text-[10px] font-black uppercase tracking-[.3em] text-violet-300">Legado Althera</p></div>
-          <h2 className="mt-2 text-4xl font-black uppercase tracking-tight text-white">{legacy.rank.name}</h2><p className="mt-1 text-xs text-slate-400">Rango permanente · Posición global #{position}</p>
+          <h2 className="mt-2 text-4xl font-black uppercase tracking-tight text-white">{legacy.rank.name}</h2><p className="mt-1 text-xs text-slate-400">Rango permanente · {positionLabel}</p>
           <div className="mt-6 max-w-xl"><div className="mb-2 flex justify-between text-[10px] font-bold"><span style={{ color: legacy.rank.accent }}>{legacy.total.toLocaleString('es-ES')} PA</span><span className="text-slate-500">{legacy.nextRank ? `${legacy.nextRank.min.toLocaleString('es-ES')} PA · ${legacy.nextRank.name}` : 'Rango máximo'}</span></div><div className="h-3 overflow-hidden rounded-full border border-white/10 bg-black/50"><div className="h-full rounded-full transition-all duration-700" style={{ width: `${legacy.progress}%`, background: `linear-gradient(90deg,${legacy.rank.accent},#ffffff)` }} /></div>{legacy.nextRank && <p className="mt-2 text-[10px] text-slate-500">Te faltan <strong className="text-white">{legacy.pointsToNext.toLocaleString('es-ES')} PA</strong> para ascender.</p>}</div>
         </div>
         <div className="rounded-3xl border border-white/10 bg-black/35 px-7 py-6 text-center backdrop-blur-xl"><Trophy className="mx-auto h-6 w-6 text-amber-300"/><p className="mt-3 text-[9px] font-black uppercase tracking-widest text-slate-500">Puntos Althera</p><p className="mt-1 text-4xl font-black text-white">{legacy.total.toLocaleString('es-ES')}</p><p className="text-xs font-bold text-violet-300">PA totales</p></div>

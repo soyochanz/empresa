@@ -17,6 +17,16 @@ export interface SalesRewardRow {
 const isCollectedSale = (tx: any) =>
   tx.type === 'income' && tx.status === 'paid' && tx.isInitialSale === true;
 
+const TEST_COMMERCIAL_EMAILS = new Set(['carlosronco14@gmail.com', 'ochanypunto@gmail.com']);
+const TEST_COMMERCIAL_NAMES = new Set(['carlos ronco meneses', 'nacho']);
+
+export const isTestCommercial = (comercial: Pick<ComercialAccount, 'email' | 'name'>): boolean =>
+  TEST_COMMERCIAL_EMAILS.has((comercial.email || '').trim().toLowerCase()) ||
+  TEST_COMMERCIAL_NAMES.has((comercial.name || '').trim().toLowerCase());
+
+export const getRankableCommercials = (comerciales: ComercialAccount[]): ComercialAccount[] =>
+  comerciales.filter(comercial => !isTestCommercial(comercial));
+
 export const getInitialSaleKey = (tx: any): string =>
   String(tx.invoiceId || tx.stripePlanId || tx.clientId || tx.id);
 
@@ -215,7 +225,7 @@ export function buildSalesRewards(
   coldLeads: ColdCallingLead[],
   month: string,
 ): SalesRewardRow[] {
-  const raw = comerciales.map(comercial => {
+  const raw = getRankableCommercials(comerciales).map(comercial => {
     const review = comercial.monthlyPerformance?.[month];
     const cashCollected = Math.floor(transactions
       .filter(tx => isCollectedSale(tx) && belongsToMonth(tx.date, month) &&

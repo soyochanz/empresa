@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
 import { db } from '../supabaseClient';
-import { countUniqueInitialSales } from '../utils/salesRewards';
+import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
 import { 
  DollarSign, 
  TrendingUp, 
@@ -176,6 +176,7 @@ const getInvoiceCardStyles = (color: string | undefined) => {
 };
 
 export default function FinanceScreen({ contacts, onNavigate, comercialesList = [] }: FinanceScreenProps) {
+ const rankableComercialesList = getRankableCommercials(comercialesList);
  // Navigation tabs: 'transactions' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
  const [activeTab, setActiveTab] = useState<'transactions' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'>('transactions');
 
@@ -3592,7 +3593,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    <div className="finance-metric-grid finance-metric-grid-wide grid grid-cols-1 sm:grid-cols-3 gap-5">
    {/* Total Sales Volume */}
    {(() => {
-    const totalVentasComerciales = comercialesList.reduce((sum, com) => {
+    const totalVentasComerciales = rankableComercialesList.reduce((sum, com) => {
     const txs = transactions.filter(tx => 
      tx.isInitialSale === true && 
      (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
@@ -3600,7 +3601,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     return sum + txs.reduce((s, t) => s + (t.amount || 0), 0);
     }, 0);
 
-    const totalComisionesDevengadas = comercialesList.reduce((sum, com) => {
+    const totalComisionesDevengadas = rankableComercialesList.reduce((sum, com) => {
     const txs = transactions.filter(tx => 
      tx.isInitialSale === true && 
      (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
@@ -3619,8 +3620,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     return sum + (volume * (pct / 100)) + extras;
     }, 0);
 
-    const avgComm = comercialesList.length 
-    ? Math.round(comercialesList.reduce((sum, com) => {
+    const avgComm = rankableComercialesList.length
+    ? Math.round(rankableComercialesList.reduce((sum, com) => {
      const txs = transactions.filter(tx => 
       tx.isInitialSale === true && 
       (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
@@ -3631,7 +3632,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      ).length;
      const closures = Math.max(clientsCount, countUniqueInitialSales(txs));
      return sum + getTieredCommission(closures);
-     }, 0) / comercialesList.length)
+     }, 0) / rankableComercialesList.length)
     : 10;
 
     return (
@@ -3698,14 +3699,14 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </tr>
     </thead>
     <tbody className="divide-y divide-white/5">
-     {comercialesList.length === 0 ? (
+     {rankableComercialesList.length === 0 ? (
      <tr>
       <td colSpan={5} className="p-16 text-center text-slate-500 text-xs font-light">
       No hay comerciales autorizados registrados.
       </td>
      </tr>
      ) : (
-     comercialesList.map(com => {
+     rankableComercialesList.map(com => {
       const txs = transactions.filter(tx => 
       tx.isInitialSale === true && 
       (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
