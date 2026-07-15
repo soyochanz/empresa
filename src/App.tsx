@@ -91,6 +91,15 @@ const writeDeletedContactIds = (ids: string[]) => {
 const rememberDeletedContact = (id: string) => writeDeletedContactIds([...readDeletedContactIds(), id]);
 const forgetDeletedContact = (id: string) => writeDeletedContactIds(readDeletedContactIds().filter(item => item !== id));
 
+const normalizeClientIdentity = (value?: string) => (value || '').trim().toLocaleLowerCase('es-ES');
+const isCommercialLeadLinkedToContact = (lead: ComercialLead, contact: ClientContact) => {
+ const contactEmail = normalizeClientIdentity(contact.email);
+ const emailMatch = !!contactEmail && normalizeClientIdentity(lead.email) === contactEmail;
+ const nameMatch = normalizeClientIdentity(lead.name) === normalizeClientIdentity(contact.name);
+ const companyMatch = normalizeClientIdentity(lead.company) === normalizeClientIdentity(contact.company);
+ return emailMatch || (nameMatch && companyMatch);
+};
+
 const getLocalDateKey = (date = new Date()) => {
  const year = date.getFullYear();
  const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -1139,7 +1148,16 @@ export default function App() {
    localStorage.setItem('althera_contacts_cache', JSON.stringify(visibleContacts));
 
    if (contactsStillPendingDeletion.length > 0) {
-    await Promise.allSettled(contactsStillPendingDeletion.map(contact => db.deleteContact(contact.id, activeUid)));
+    setLeadsList(previous => previous.filter(lead => !contactsStillPendingDeletion.some(contact => isCommercialLeadLinkedToContact(lead, contact))));
+    setColdLeads(previous => previous.filter(lead => !contactsStillPendingDeletion.some(contact => contact.closingSourceLeadId === lead.id)));
+    setEvents(previous => previous.filter(event => !contactsStillPendingDeletion.some(contact => event.linkedContactId === contact.id || (event.linkedContactIds || []).includes(contact.id))));
+    setProjects(previous => previous.filter(project => !contactsStillPendingDeletion.some(contact => project.clientContactId === contact.id)));
+    setFinTransactions(previous => previous.filter(transaction => !contactsStillPendingDeletion.some(contact => transaction.clientId === contact.id)));
+    const retryResults = await Promise.allSettled(contactsStillPendingDeletion.map(contact => db.deleteClientData(contact, activeUid)));
+    const failedIds = contactsStillPendingDeletion
+     .filter((_, index) => retryResults[index].status === 'rejected')
+     .map(contact => contact.id);
+    writeDeletedContactIds(failedIds);
    } else if (deletedContactIds.length > 0) {
     writeDeletedContactIds([]);
    }
@@ -1840,6 +1858,7 @@ export default function App() {
  };
 
  const handleDeleteContact = async (id: string) => {
+ const contactToDelete = contacts.find(contact => contact.id === id);
  // 1. Optimistic UI update
  rememberDeletedContact(id);
  setContacts(prev => {
@@ -1849,12 +1868,22 @@ export default function App() {
   return nextContacts;
  });
 
+ if (contactToDelete) {
+  setLeadsList(previous => previous.filter(lead => !isCommercialLeadLinkedToContact(lead, contactToDelete)));
+  setColdLeads(previous => previous.filter(lead => lead.id !== contactToDelete.closingSourceLeadId));
+  setEvents(previous => previous.filter(event => event.linkedContactId !== id && !(event.linkedContactIds || []).includes(id)));
+  setProjects(previous => previous.filter(project => project.clientContactId !== id));
+  setFinTransactions(previous => previous.filter(transaction => transaction.clientId !== id));
+ }
+
  // 2. Always request the persistent deletion. If the network is unavailable, the
  // tombstone above keeps the contact hidden and the next synchronization retries it.
  try {
-  await db.deleteContact(id, currentUser?.id || undefined);
+  if (contactToDelete) await db.deleteClientData(contactToDelete, currentUser?.id || undefined);
+  else await db.deleteContact(id, currentUser?.id || undefined);
+  forgetDeletedContact(id);
  } catch (err) {
-  console.error('Supabase failed to delete contact; deletion queued for retry:', err);
+  console.error('Supabase failed to delete the client cascade; deletion queued for retry:', err);
  }
  };
 

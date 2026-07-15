@@ -1059,6 +1059,79 @@ export const db = {
  invalidateCache('contacts');
  },
 
+ async deleteClientData(contact: ClientContact, userId?: string): Promise<{
+  transactions: number;
+  invoices: number;
+  events: number;
+  projects: number;
+  contracts: number;
+  comercialLeads: number;
+  coldLeads: number;
+ }> {
+  const normalize = (value?: string) => (value || '').trim().toLocaleLowerCase('es-ES');
+  const contactEmail = normalize(contact.email);
+  const contactName = normalize(contact.name);
+  const contactCompany = normalize(contact.company);
+  const matchesClientIdentity = (item: any) => {
+   const emailMatch = !!contactEmail && normalize(item.email || item.clientEmail) === contactEmail;
+   const nameMatch = !!contactName && normalize(item.name || item.clientName) === contactName;
+   const companyMatch = !!contactCompany && normalize(item.company || item.clientName) === contactCompany;
+   return emailMatch || (nameMatch && (!contactCompany || companyMatch)) || companyMatch;
+  };
+
+  const [transactions, invoices, events, comercialLeads, coldLeads, projects, contracts] = await Promise.all([
+   this.getFinanceTransactions(userId),
+   this.getFinanceInvoices(userId),
+   this.getEvents(userId),
+   this.getComercialLeads(),
+   this.getColdLeads(),
+   this.getProjects(userId),
+   this.getContractsAlthera(userId),
+  ]);
+
+  const relatedInvoices = invoices.filter(invoice => invoice.clientId === contact.id || matchesClientIdentity(invoice));
+  const relatedInvoiceIds = new Set(relatedInvoices.map(invoice => invoice.id));
+  const relatedTransactions = transactions.filter(transaction =>
+   transaction.clientId === contact.id || (!!transaction.invoiceId && relatedInvoiceIds.has(transaction.invoiceId))
+  );
+  const relatedEvents = events.filter(event =>
+   event.linkedContactId === contact.id || (event.linkedContactIds || []).includes(contact.id)
+  );
+  const relatedProjects = projects.filter(project => project.clientContactId === contact.id);
+  const relatedContracts = contracts.filter(contract =>
+   contract.clientId === contact.id || matchesClientIdentity(contract)
+  );
+  const relatedComercialLeads = comercialLeads.filter(lead => matchesClientIdentity(lead));
+  const relatedColdLeads = coldLeads.filter(lead => !!contact.closingSourceLeadId && lead.id === contact.closingSourceLeadId);
+
+  const dependencyDeletes = [
+   ...relatedTransactions.map(transaction => this.deleteFinanceTransaction(transaction.id, userId)),
+   ...relatedInvoices.map(invoice => this.deleteFinanceInvoice(invoice.id, userId)),
+   ...relatedEvents.map(event => this.deleteEvent(event.id, userId)),
+   ...relatedProjects.map(project => this.deleteProject(project.id, userId)),
+   ...relatedContracts.map(contract => this.deleteContractAlthera(contract.id, userId)),
+   ...relatedComercialLeads.map(lead => this.deleteComercialLead(lead.id, userId)),
+   ...relatedColdLeads.map(lead => this.deleteColdLead(lead.id, userId)),
+  ];
+  const results = await Promise.allSettled(dependencyDeletes);
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  if (failures.length) {
+   throw new AggregateError(failures.map(result => result.reason), `No se pudieron borrar ${failures.length} registros relacionados con el cliente.`);
+  }
+
+  // Delete the contact last so a partial dependency failure can be retried safely.
+  await this.deleteContact(contact.id, userId);
+  return {
+   transactions: relatedTransactions.length,
+   invoices: relatedInvoices.length,
+   events: relatedEvents.length,
+   projects: relatedProjects.length,
+   contracts: relatedContracts.length,
+   comercialLeads: relatedComercialLeads.length,
+   coldLeads: relatedColdLeads.length,
+  };
+ },
+
  // --- FINANCE TRANSACTIONS EXTRA HELPERS ---
  // These helpers serialize/deserialize virtual fields into the description column
  // to avoid column-not-found errors on any Supabase DB setup.

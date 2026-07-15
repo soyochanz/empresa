@@ -95,7 +95,7 @@ interface CrmScreenProps {
  events?: CalendarEvent[];
  onAddContact: (contact: ClientContact) => void;
  onUpdateContact?: (contact: ClientContact) => void;
- onDeleteContact?: (id: string) => void;
+ onDeleteContact?: (id: string) => void | Promise<void>;
  onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
  usersList?: PanelUser[];
  onAddProfile?: (profile: { name: string; email: string }) => void;
@@ -1992,10 +1992,10 @@ export default function CrmScreen({
 
     {/* Delete Button */}
     <button 
-     onClick={() => {
-     if (safeConfirm(`¿Estás seguro de que deseas eliminar permanentemente el cliente: "${selectedContact.name}"?`)) {
+     onClick={async () => {
+     if (safeConfirm(`¿Eliminar permanentemente a "${selectedContact.name}"? Se borrarán también su cierre comercial y todos sus datos vinculados en Supabase.`)) {
       if (onDeleteContact) {
-      onDeleteContact(selectedContact.id);
+      await onDeleteContact(selectedContact.id);
       setSelectedContactId('');
       }
      }
