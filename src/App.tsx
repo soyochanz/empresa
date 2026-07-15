@@ -35,6 +35,69 @@ import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus } from 'lu
 
 const PRIVATE_EVENTS_CACHE_KEY = 'althera_commercial_private_events';
 const EVENTS_CACHE_KEY = 'althera_events_cache';
+const DELETED_CONTACTS_CACHE_KEY = 'althera_deleted_contact_ids';
+const WORK_DATA_RESET_VERSION = 'production-start-2026-07-14-v2';
+
+const clearResetWorkDataCachesOnce = () => {
+ try {
+  if (localStorage.getItem('althera_work_data_reset_version') === WORK_DATA_RESET_VERSION) return;
+  localStorage.removeItem('crm_cold_leads');
+  localStorage.removeItem('crm_comercial_leads');
+  localStorage.removeItem('althera_contacts_cache');
+  localStorage.removeItem(EVENTS_CACHE_KEY);
+
+  const cachedAccounts = JSON.parse(localStorage.getItem('crm_comerciales_accounts') || '[]');
+  if (Array.isArray(cachedAccounts)) {
+   localStorage.setItem('crm_comerciales_accounts', JSON.stringify(cachedAccounts.map(account => ({
+    ...account,
+    payouts: [],
+    extraCommissions: [],
+    monthlyPerformance: {},
+    legacyBonuses: []
+   }))));
+  }
+
+  const cachedCurrentComercial = JSON.parse(sessionStorage.getItem('agency_current_comercial') || 'null');
+  if (cachedCurrentComercial) {
+   sessionStorage.setItem('agency_current_comercial', JSON.stringify({
+    ...cachedCurrentComercial,
+    payouts: [],
+    extraCommissions: [],
+    monthlyPerformance: {},
+    legacyBonuses: []
+   }));
+  }
+
+  localStorage.setItem('althera_work_data_reset_version', WORK_DATA_RESET_VERSION);
+ } catch (error) {
+  console.warn('Could not clear reset work data caches:', error);
+ }
+};
+
+clearResetWorkDataCachesOnce();
+
+const readDeletedContactIds = (): string[] => {
+ try {
+  const parsed = JSON.parse(localStorage.getItem(DELETED_CONTACTS_CACHE_KEY) || '[]');
+  return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
+ } catch { return []; }
+};
+
+const writeDeletedContactIds = (ids: string[]) => {
+ try { localStorage.setItem(DELETED_CONTACTS_CACHE_KEY, JSON.stringify(Array.from(new Set(ids)))); }
+ catch (error) { console.warn('Could not persist deleted CRM contacts:', error); }
+};
+
+const rememberDeletedContact = (id: string) => writeDeletedContactIds([...readDeletedContactIds(), id]);
+const forgetDeletedContact = (id: string) => writeDeletedContactIds(readDeletedContactIds().filter(item => item !== id));
+
+const getLocalDateKey = (date = new Date()) => {
+ const year = date.getFullYear();
+ const month = String(date.getMonth() + 1).padStart(2, '0');
+ const day = String(date.getDate()).padStart(2, '0');
+ return `${year}-${month}-${day}`;
+};
+
 const readEventCache = (): CalendarEvent[] => {
  try {
   const parsed = JSON.parse(localStorage.getItem(EVENTS_CACHE_KEY) || '[]');
@@ -279,6 +342,7 @@ export default function App() {
  try {
   const saved = localStorage.getItem('crm_comercial_leads');
   if (saved) return JSON.parse(saved);
+  return [];
   
   const seedLeads: ComercialLead[] = [
   // Enero 2026
@@ -885,8 +949,10 @@ export default function App() {
 
  // Notifications computation
  const userNotifications = useMemo(() => {
+  const todayKey = getLocalDateKey();
   const dbNotifications = events.filter(e => {
   if (!currentUser) return false;
+  if (e.date !== todayKey) return false;
   if (e.isAdminNotification || e.assignedUserEmail === 'todos-admins') return true;
   const assignedEmails = e.assignedUserEmails || [];
   if (assignedEmails.includes('todos-comerciales')) return true;
@@ -923,6 +989,7 @@ export default function App() {
  };
 
  const syncInFlightRef = useRef<Promise<void> | null>(null);
+ const pendingComercialUpdatesRef = useRef<Map<string, ComercialAccount>>(new Map());
 
  // Verify and hydrate state from Supabase. All independent tables load in parallel,
  // and concurrent auth/mount/interval requests share the same in-flight operation.
@@ -973,15 +1040,39 @@ export default function App() {
   if (fetchedCold) setColdLeads(fetchedCold);
   if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
   if (fetchedComercialAccs) {
-   setComercialesList(fetchedComercialAccs);
+   const pendingUpdates = Array.from(pendingComercialUpdatesRef.current.values());
+   const confirmedDuringSync = new Map<string, ComercialAccount>();
+   if (pendingUpdates.length > 0) {
+    const retryResults = await Promise.allSettled(pendingUpdates.map(account => db.updateComercialAccount(account, activeUid)));
+    retryResults.forEach((result, index) => {
+     if (result.status === 'fulfilled') {
+      confirmedDuringSync.set(pendingUpdates[index].id, pendingUpdates[index]);
+      pendingComercialUpdatesRef.current.delete(pendingUpdates[index].id);
+     }
+    });
+   }
+   const mergedComercialAccs = fetchedComercialAccs.map(account =>
+    pendingComercialUpdatesRef.current.get(account.id) || confirmedDuringSync.get(account.id) || account
+   );
+   setComercialesList(mergedComercialAccs);
    setCurrentComercial(current => current
-    ? fetchedComercialAccs.find(account => account.id === current.id) || current
+    ? mergedComercialAccs.find(account => account.id === current.id) || current
     : current);
   }
   if (fetchedProjects) setProjects(fetchedProjects);
   if (fetchedContacts) {
-   setContacts(fetchedContacts);
-   localStorage.setItem('althera_contacts_cache', JSON.stringify(fetchedContacts));
+   const deletedContactIds = readDeletedContactIds();
+   const deletedContactIdSet = new Set(deletedContactIds);
+   const contactsStillPendingDeletion = fetchedContacts.filter(contact => deletedContactIdSet.has(contact.id));
+   const visibleContacts = fetchedContacts.filter(contact => !deletedContactIdSet.has(contact.id));
+   setContacts(visibleContacts);
+   localStorage.setItem('althera_contacts_cache', JSON.stringify(visibleContacts));
+
+   if (contactsStillPendingDeletion.length > 0) {
+    await Promise.allSettled(contactsStillPendingDeletion.map(contact => db.deleteContact(contact.id, activeUid)));
+   } else if (deletedContactIds.length > 0) {
+    writeDeletedContactIds([]);
+   }
   }
   if (fetchedEvents) {
    const cachedPrivateEvents = readPrivateEventCache();
@@ -1247,6 +1338,7 @@ export default function App() {
  );
  const alreadyExists = !!existingContact;
  const contactToSave = existingContact ? { ...existingContact, ...contact, id: existingContact.id } : contact;
+ forgetDeletedContact(contactToSave.id);
 
  // 1. Optimistic UI update
  setContacts(prev => prev.some(c => c.id === contactToSave.id) ?
@@ -1457,16 +1549,16 @@ export default function App() {
  };
 
  const handleUpdateComercialAccount = async (updated: ComercialAccount) => {
+ pendingComercialUpdatesRef.current.set(updated.id, updated);
  setComercialesList(prev => prev.map(c => c.id === updated.id ? updated : c));
  if (currentComercial && currentComercial.id === updated.id) {
   setCurrentComercial(updated);
  }
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
+ try {
   await db.updateComercialAccount(updated, currentUser?.id || undefined);
-  } catch (err) {
+ } catch (err) {
   console.error('Supabase failed to update comercial account:', err);
-  }
+  throw err;
  }
  };
 
@@ -1630,15 +1722,20 @@ export default function App() {
 
  const handleDeleteContact = async (id: string) => {
  // 1. Optimistic UI update
- setContacts(prev => prev.filter(c => c.id !== id));
+ rememberDeletedContact(id);
+ setContacts(prev => {
+  const nextContacts = prev.filter(c => c.id !== id);
+  try { localStorage.setItem('althera_contacts_cache', JSON.stringify(nextContacts)); }
+  catch (error) { console.warn('Could not update CRM contact cache after deletion:', error); }
+  return nextContacts;
+ });
 
- // 2. Persistent Supabase delete
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.deleteContact(id, currentUser.id);
-  } catch (err) {
-  console.error('Supabase failed to delete contact:', err);
-  }
+ // 2. Always request the persistent deletion. If the network is unavailable, the
+ // tombstone above keeps the contact hidden and the next synchronization retries it.
+ try {
+  await db.deleteContact(id, currentUser?.id || undefined);
+ } catch (err) {
+  console.error('Supabase failed to delete contact; deletion queued for retry:', err);
  }
  };
 

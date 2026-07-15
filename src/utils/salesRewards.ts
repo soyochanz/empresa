@@ -17,6 +17,13 @@ export interface SalesRewardRow {
 const isCollectedSale = (tx: any) =>
   tx.type === 'income' && tx.status === 'paid' && tx.isInitialSale === true;
 
+const isSalesAppointmentEvent = (event: CalendarEvent) =>
+  event.id?.startsWith('cc_appointment_') ||
+  event.id?.startsWith('cc_reschedule_') ||
+  event.alias === 'Cita Cold Calling' ||
+  event.alias === 'Closing Reagendado' ||
+  event.linkedContactId?.startsWith('crm_from_');
+
 export const LEGACY_RANKS = [
   { name: 'Rookie', min: 0, max: 5000, asset: '/assets/ranks/rookie.png', accent: '#e2e8f0' },
   { name: 'Bronce', min: 5000, max: 20000, asset: '/assets/ranks/bronze.png', accent: '#d97706' },
@@ -54,7 +61,8 @@ export function calculateLegacyPoints(
     (tx.comercialId === comercial.id || tx.comercialEmail?.toLowerCase() === comercial.email.toLowerCase()));
   // PA are whole consolidated euros: 1.99 EUR remains 1 PA until it reaches 2.00 EUR.
   const cashCollected = Math.floor(sales.reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
-  const assignedEvents = events.filter(event => event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === comercial.email.toLowerCase());
+  const assignedEvents = events.filter(event => isSalesAppointmentEvent(event) &&
+    (event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === comercial.email.toLowerCase()));
   const commercialEmail = comercial.email.toLowerCase();
   const scheduledLeadIds = new Set(coldLeads
     .filter(lead => lead.callbackScheduled === 'Sí' && (
@@ -107,7 +115,7 @@ export function buildSalesRewards(
       .filter(tx => isCollectedSale(tx) && belongsToMonth(tx.date, month) &&
         (tx.comercialId === comercial.id || tx.comercialEmail?.toLowerCase() === comercial.email.toLowerCase()))
       .reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
-    const appointments = events.filter(event => belongsToMonth(event.date, month) &&
+    const appointments = events.filter(event => isSalesAppointmentEvent(event) && belongsToMonth(event.date, month) &&
       (event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === comercial.email.toLowerCase())).length;
     const monthlyColdLeads = coldLeads.filter(lead => belongsToMonth(lead.callDate || lead.createdAt, month) &&
       lead.assignedToEmail?.toLowerCase() === comercial.email.toLowerCase());

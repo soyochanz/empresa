@@ -13,7 +13,6 @@ import {
  Link as LinkIcon, 
  ChevronRight, 
  Download, 
- Filter, 
  X,
  UserPlus,
  Eye,
@@ -28,7 +27,11 @@ import {
  CreditCard,
  ExternalLink,
  Copy,
- Check
+ Check,
+ UsersRound,
+ Target,
+ TrendingUp,
+ BriefcaseBusiness
 } from 'lucide-react';
 
 export const safeConfirm = (msg: string): boolean => {
@@ -1437,7 +1440,7 @@ export default function CrmScreen({
  const isSelected = contact.id === selectedContactId;
  const contactColor = getContactColor(contact.color);
 
- let cardBorderClass = 'border-slate-850 hover:border-slate-700/60 bg-slate-950/30';
+ let cardBorderClass = 'border-white/[0.065] hover:border-cyan-400/25 bg-gradient-to-br from-white/[0.045] to-white/[0.015] hover:from-white/[0.07] hover:to-cyan-500/[0.025]';
  let dotColor = 'bg-blue-500';
 
  if (contactColor === 'rose') {
@@ -1467,12 +1470,12 @@ export default function CrmScreen({
    setDraggedOverCol(null);
   }}
   onClick={() => setSelectedContactId(contact.id)}
-  className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-grab active:cursor-grabbing text-left relative overflow-hidden group select-none ${cardBorderClass} ${
-   isSelected ? 'ring-1 ring-blue-500/15' : ''
+  className={`p-4 rounded-[20px] border transition-all duration-200 cursor-grab active:cursor-grabbing text-left relative overflow-hidden group select-none shadow-[0_10px_28px_rgba(0,0,0,.12)] hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(0,0,0,.2)] ${cardBorderClass} ${
+   isSelected ? 'ring-1 ring-cyan-400/25' : ''
   }`}
   >
   <div className="flex items-start gap-3">
-   <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-slate-800 text-slate-400 overflow-hidden shrink-0">
+   <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs bg-gradient-to-br from-slate-800 to-slate-900 text-slate-300 border border-white/[0.07] overflow-hidden shrink-0 shadow-inner">
    {contact.avatarUrl ? (
     <img 
     alt={contact.name}
@@ -1488,7 +1491,7 @@ export default function CrmScreen({
    <div className="flex-1 min-w-0">
    <div className="flex items-center gap-1.5 flex-wrap">
     <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-    <h4 className="font-semibold text-[11px] text-white truncate">{contact.name}</h4>
+    <h4 className="font-bold text-[12px] text-white truncate tracking-tight">{contact.name}</h4>
     {contact.priority && (
     <span className="text-[10px] text-amber-400 select-none">â˜…</span>
     )}
@@ -1555,7 +1558,7 @@ export default function CrmScreen({
   archived: 'No tienes clientes archivados en tu historial comercial.' 
  };
  return (
-  <div className="py-12 border border-dashed border-white/5 rounded-2xl flex flex-col items-center justify-center p-6 text-center text-slate-600">
+  <div className="py-12 border border-dashed border-white/10 bg-white/[0.015] rounded-[22px] flex flex-col items-center justify-center p-6 text-center text-slate-600">
   <span className="text-xl mb-1 opacity-60">📂</span>
   <h4 className="text-[10px] font-mono uppercase tracking-widest text-slate-400 font-bold mb-1">Sin {titles[col]}</h4>
   <p className="text-[9px] text-slate-550 max-w-[160px] leading-relaxed">{desc[col]}</p>
@@ -1750,50 +1753,60 @@ export default function CrmScreen({
  const archivedContacts = searchFilteredContacts.filter(c => archivedContactIds.includes(c.id));
 
  const filteredContacts = crmFilter === 'active' ? [...activeLeads, ...activeClients] : archivedContacts;
+ const activePortfolio = activeLeads.length + activeClients.length;
+ const conversionRate = activePortfolio > 0 ? Math.round((activeClients.length / activePortfolio) * 100) : 0;
 
  return (
- <div className="flex-1 p-8 flex gap-8 h-[calc(100vh-80px)] overflow-hidden bg-transparent text-slate-100">
+ <div className="flex-1 min-h-[calc(100vh-80px)] xl:h-[calc(100vh-80px)] overflow-y-auto xl:overflow-hidden p-4 sm:p-5 lg:p-6 xl:p-7 flex flex-col xl:flex-row gap-5 xl:gap-6 bg-[radial-gradient(circle_at_15%_0%,rgba(59,130,246,.07),transparent_30%),radial-gradient(circle_at_100%_20%,rgba(16,185,129,.05),transparent_28%)] text-slate-100">
   
   {/* Contact List Column */}
-  <section className="flex-1 flex flex-col gap-6 min-w-0">
+  <section className="flex-1 flex flex-col gap-4 min-w-0">
   
   {/* Title and Top Search Bar */}
-  <div className="flex justify-between items-end">
+  <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end rounded-[26px] border border-white/[0.07] bg-gradient-to-br from-white/[0.055] to-white/[0.018] p-5 shadow-[0_18px_55px_rgba(0,0,0,.18)]">
    <div>
-   <h2 className="text-2xl font-bold tracking-tight text-white font-sans">Relationship Manager</h2>
-   <p className="text-slate-400 text-xs mt-1">Managing {contacts.length} active leads and clients across 4 projects.</p>
+   <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-[.24em] text-cyan-300"><BriefcaseBusiness className="h-3.5 w-3.5"/>Client intelligence</div>
+   <h2 className="text-2xl sm:text-3xl font-black tracking-[-0.04em] text-white font-sans">CRM & Relaciones</h2>
+   <p className="text-slate-400 text-xs mt-1.5">Centraliza prospectos, clientes, actividad y contexto comercial.</p>
    </div>
-   <div className="flex gap-2">
+   <div className="flex flex-wrap gap-2">
    <button 
-    onClick={() => alert("Sistemas de Filtro de CRM localmente integrados.")}
-    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all text-xs font-medium cursor-pointer"
+    onClick={() => { resetFormFields(); setShowAddModal(true); }}
+    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-cyan-400/20 bg-cyan-400/10 hover:bg-cyan-400/15 text-cyan-200 hover:text-white transition-all text-xs font-bold cursor-pointer shadow-[0_8px_24px_rgba(34,211,238,.08)]"
    >
-    <Filter className="w-4.5 h-4.5" />
-    <span>Filter</span>
+    <UserPlus className="w-4 h-4" />
+    <span>Nuevo contacto</span>
    </button>
    <button 
     onClick={() => alert("Exportando registros de clientes. Descarga iniciada perfectamente en formato CSV.")}
-    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all text-xs font-medium cursor-pointer"
+    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-white/10 bg-black/20 hover:bg-white/10 text-slate-300 hover:text-white transition-all text-xs font-semibold cursor-pointer"
    >
     <Download className="w-4.5 h-4.5" />
-    <span>Export</span>
+    <span>Exportar</span>
    </button>
    </div>
   </div>
 
+  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+   <div className="rounded-2xl border border-white/[0.07] bg-gradient-to-br from-cyan-500/[0.11] to-white/[0.018] p-3.5 sm:p-4 shadow-[0_10px_30px_rgba(0,0,0,.14)]"><div className="flex items-center justify-between"><span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[.16em] text-slate-500">Cartera activa</span><UsersRound className="h-4 w-4 text-cyan-300"/></div><p className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-white">{activePortfolio}</p></div>
+   <div className="rounded-2xl border border-white/[0.07] bg-gradient-to-br from-blue-500/[0.11] to-white/[0.018] p-3.5 sm:p-4 shadow-[0_10px_30px_rgba(0,0,0,.14)]"><div className="flex items-center justify-between"><span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[.16em] text-slate-500">Prospectos</span><Target className="h-4 w-4 text-blue-300"/></div><p className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-white">{activeLeads.length}</p></div>
+   <div className="rounded-2xl border border-white/[0.07] bg-gradient-to-br from-emerald-500/[0.11] to-white/[0.018] p-3.5 sm:p-4 shadow-[0_10px_30px_rgba(0,0,0,.14)]"><div className="flex items-center justify-between"><span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[.16em] text-slate-500">Clientes</span><BriefcaseBusiness className="h-4 w-4 text-emerald-300"/></div><p className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-white">{activeClients.length}</p></div>
+   <div className="rounded-2xl border border-white/[0.07] bg-gradient-to-br from-violet-500/[0.11] to-white/[0.018] p-3.5 sm:p-4 shadow-[0_10px_30px_rgba(0,0,0,.14)]"><div className="flex items-center justify-between"><span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[.16em] text-slate-500">Conversión</span><TrendingUp className="h-4 w-4 text-violet-300"/></div><p className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-white">{conversionRate}%</p></div>
+  </div>
+
   {/* Local Search Input Inside the CRM view with filter tabs */}
-  <div className="flex flex-col sm:flex-row gap-3">
+  <div className="flex flex-col sm:flex-row gap-3 rounded-2xl border border-white/[0.06] bg-black/20 p-2.5">
    <div className="relative flex-1">
    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4.5 h-4.5" />
    <input 
     type="text"
-    placeholder="Search contacts, companies, email addresses..."
+    placeholder="Buscar por contacto, empresa o email…"
     value={searchQuery}
     onChange={(e) => setSearchQuery(e.target.value)}
-    className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 pl-10 pr-4 text-xs focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500 outline-none placeholder:text-slate-600 text-slate-200"
+    className="w-full bg-[#080c14]/90 border border-white/[0.07] rounded-xl py-2.5 pl-10 pr-4 text-xs focus:ring-2 focus:ring-cyan-500/15 focus:border-cyan-400/40 outline-none placeholder:text-slate-600 text-slate-200 transition"
    />
    </div>
-   <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-850 self-start sm:self-auto shrink-0">
+   <div className="flex bg-[#080c14]/90 p-1 rounded-xl border border-white/[0.07] self-start sm:self-auto shrink-0">
    <button
     onClick={() => setCrmFilter('active')}
     className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
@@ -1820,10 +1833,10 @@ export default function CrmScreen({
   {/* Kanban Board Container */}
   <div className="flex-1 flex flex-col min-h-0">
    {crmFilter === 'active' ? (
-   <div className="grid grid-cols-1 md:grid-cols-2 gap-5 flex-1 min-h-0 overflow-hidden">
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0 xl:overflow-hidden">
     {/* Leads Column */}
     <div 
-    className={`flex flex-col bg-white/[0.02] backdrop-blur-md rounded-3xl border border-white/5 p-4.5 min-h-0 transition-all duration-300 ${
+    className={`flex flex-col bg-gradient-to-b from-blue-500/[0.035] to-white/[0.018] backdrop-blur-md rounded-[26px] border border-white/[0.07] p-4 min-h-[320px] xl:min-h-0 transition-all duration-300 shadow-[0_16px_45px_rgba(0,0,0,.16)] ${
      draggedOverCol === 'lead' ? 'bg-blue-500/[0.03] border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.05)]' : ''
     }`}
     onDragOver={(e) => {
@@ -1851,7 +1864,7 @@ export default function CrmScreen({
 
     {/* Clients Column */}
     <div 
-    className={`flex flex-col bg-white/[0.02] backdrop-blur-md rounded-3xl border border-white/5 p-4.5 min-h-0 transition-all duration-300 ${
+    className={`flex flex-col bg-gradient-to-b from-emerald-500/[0.035] to-white/[0.018] backdrop-blur-md rounded-[26px] border border-white/[0.07] p-4 min-h-[320px] xl:min-h-0 transition-all duration-300 shadow-[0_16px_45px_rgba(0,0,0,.16)] ${
      draggedOverCol === 'client' ? 'bg-emerald-500/[0.03] border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.05)]' : ''
     }`}
     onDragOver={(e) => {
@@ -1954,12 +1967,12 @@ export default function CrmScreen({
   </section>
 
   {/* Detailed Side Panel Bio Inspector */}
-  <aside className="w-[400px] flex flex-col gap-6 ">
+  <aside className="w-full xl:w-[420px] 2xl:w-[440px] shrink-0 flex flex-col gap-5 min-h-[560px] xl:min-h-0">
   {selectedContact ? (
-   <div className="bg-white/5 backdrop-blur-xl rounded-3xl overflow-hidden flex flex-col h-full border border-white/10 shadow-2xl shadow-black/20">
+   <div className="bg-gradient-to-b from-white/[0.065] to-white/[0.025] backdrop-blur-xl rounded-[28px] overflow-hidden flex flex-col h-full border border-white/[0.09] shadow-[0_24px_70px_rgba(0,0,0,.28)]">
    
    {/* Detail Banner cover */}
-   <div className={`relative h-32 border-b border-white/5 transition-all duration-300 ${
+   <div className={`relative h-36 border-b border-white/[0.06] transition-all duration-300 ${
     selectedContact.color === 'red' ? 'bg-gradient-to-tr from-red-600/30 via-red-950/20 to-slate-950/20' :
     selectedContact.color === 'green' ? 'bg-gradient-to-tr from-emerald-600/30 via-emerald-950/20 to-slate-950/20' :
     selectedContact.color === 'yellow' ? 'bg-gradient-to-tr from-amber-500/30 via-amber-950/20 to-slate-950/20' :

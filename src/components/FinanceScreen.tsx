@@ -3734,7 +3734,6 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        <td className="p-4 text-left font-mono">
        <div className="flex items-center gap-1.5">
         <span className="font-bold text-amber-400">{pct}%</span>
-        <span className="text-[7px] font-mono px-1 py-0.5 rounded bg-amber-500/10 text-amber-400 font-bold uppercase tracking-wider">Escalonada</span>
        </div>
        </td>
        <td className="p-4 text-left font-mono">

@@ -9,7 +9,7 @@ interface Props {
   events: CalendarEvent[];
   coldLeads: ColdCallingLead[];
   contacts: ClientContact[];
-  onUpdateComercial: (account: ComercialAccount) => void;
+  onUpdateComercial: (account: ComercialAccount) => void | Promise<void>;
 }
 
 const FACTORS: Array<[keyof MonthlyPerformanceReview, string]> = [
@@ -25,6 +25,8 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
   const emptyReview: MonthlyPerformanceReview = { month, showRate: 0, professionalism: 0, effectiveHours: 0 };
   const [draft, setDraft] = useState<MonthlyPerformanceReview>(emptyReview);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [bonusType, setBonusType] = useState<LegacyBonusType>('sale_assist');
   const [bonusQuantity, setBonusQuantity] = useState(1);
   const [bonusNote, setBonusNote] = useState('');
@@ -32,15 +34,29 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
   useEffect(() => {
     setDraft(selected?.monthlyPerformance?.[month] || { ...emptyReview, month });
     setSaved(false);
-  }, [selectedId, month, selected]);
+    setSaveError('');
+  }, [selectedId, month]);
+
+  useEffect(() => {
+    if (!selectedId && comercialesList[0]?.id) setSelectedId(comercialesList[0].id);
+  }, [comercialesList, selectedId]);
 
   const rows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, month);
   const winner = rows.find(row => row.eligible);
-  const save = () => {
+  const save = async () => {
     if (!selected) return;
-    onUpdateComercial({ ...selected, monthlyPerformance: { ...(selected.monthlyPerformance || {}), [month]: { ...draft, month, updatedAt: new Date().toISOString() } } });
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+    setSaving(true);
+    setSaveError('');
+    try {
+      await onUpdateComercial({ ...selected, monthlyPerformance: { ...(selected.monthlyPerformance || {}), [month]: { ...draft, month, updatedAt: new Date().toISOString() } } });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1800);
+    } catch (error) {
+      console.error('Could not save monthly commercial review:', error);
+      setSaveError('No se pudo confirmar el guardado. Se volverá a intentar automáticamente.');
+    } finally {
+      setSaving(false);
+    }
   };
   const updateNumber = (key: keyof MonthlyPerformanceReview, value: number) => setDraft(current => ({ ...current, [key]: value }));
   const bonusConfig: Record<LegacyBonusType, { label: string; points: number }> = {
@@ -72,7 +88,8 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
           <label className={`rounded-2xl border p-4 ${draft.professionalism >= 8 ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-rose-500/20 bg-rose-500/5'}`}><span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-300"><ShieldCheck className="h-4 w-4"/>Profesionalidad</span><div className="mt-3 flex items-end gap-1"><input type="number" min="0" max="10" step="0.1" value={draft.professionalism} onChange={event => updateNumber('professionalism', Math.min(10, Math.max(0, Number(event.target.value))))} className="w-full bg-transparent text-3xl font-black text-white outline-none"/><span className="pb-1 text-slate-500">/10</span></div></label></div>
         <label className="mt-3 block rounded-2xl border border-white/7 bg-black/20 p-4"><span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Horas efectivas del mes</span><input type="number" min="0" step="0.5" value={draft.effectiveHours || 0} onChange={event => updateNumber('effectiveHours', Math.max(0, Number(event.target.value)))} className="mt-2 w-full bg-transparent text-xl font-black text-white outline-none"/></label>
         <div className="mt-5 border-t border-white/7 pt-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Detalle de profesionalidad</p><div className="mt-3 grid grid-cols-2 gap-2">{FACTORS.map(([key,label]) => <label key={key} className="rounded-xl border border-white/5 bg-black/20 p-3"><span className="block text-[9px] text-slate-400">{label}</span><input type="number" min="0" max="10" step="0.5" value={Number(draft[key] || 0)} onChange={event => updateNumber(key, Math.min(10, Math.max(0, Number(event.target.value))))} className="mt-1 w-full bg-transparent text-sm font-bold text-white outline-none"/></label>)}</div></div>
-        <button onClick={save} disabled={!selected} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-3 text-xs font-black text-slate-950 transition hover:bg-amber-300 disabled:opacity-40"><Save className="h-4 w-4"/>{saved ? 'Valoración guardada' : 'Guardar valoración mensual'}</button>
+        {saveError && <p className="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[10px] font-bold text-rose-300">{saveError}</p>}
+        <button onClick={save} disabled={!selected || saving} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-3 text-xs font-black text-slate-950 transition hover:bg-amber-300 disabled:opacity-40"><Save className="h-4 w-4"/>{saving ? 'Guardando…' : saved ? 'Valoración guardada' : 'Guardar valoración mensual'}</button>
       </section>
 
       <section className="rounded-3xl border border-white/7 bg-white/[0.025] p-5"><div className="flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-widest text-violet-300">Resultado provisional</p><h4 className="mt-1 text-lg font-bold text-white">Ranking de recompensas</h4></div><BarChart3 className="h-6 w-6 text-violet-300"/></div>
