@@ -42,6 +42,24 @@ const HOURLY_SLOTS = [
  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
 ];
 
+const formatCallbackDate = (date?: string) => {
+ if (!date) return 'SIN FECHA';
+ const [year, month, day] = date.split('-').map(Number);
+ if (!year || !month || !day) return date;
+ const monthName = new Intl.DateTimeFormat('es-ES', { month: 'short' })
+  .format(new Date(year, month - 1, day))
+  .replace('.', '')
+  .toUpperCase();
+ return `${String(day).padStart(2, '0')} ${monthName} ${year}`;
+};
+
+const getCallbackTimestamp = (lead: ColdCallingLead) => {
+ if (!lead.callbackDate) return Number.POSITIVE_INFINITY;
+ const time = /^\d{2}:\d{2}/.test(lead.callbackTime || '') ? lead.callbackTime : '00:00';
+ const timestamp = new Date(`${lead.callbackDate}T${time}`).getTime();
+ return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
+};
+
 const isOwnWebsite = (website?: string) => {
  if (!website?.trim()) return false;
  try {
@@ -132,6 +150,17 @@ const nachoAdmin = findAdminByName('nacho');
  const [showArchived, setShowArchived] = useState(false);
  const [showPostponed, setShowPostponed] = useState(false);
  const [showOnlySelf, setShowOnlySelf] = useState(false);
+ const [filterNow, setFilterNow] = useState(() => Date.now());
+
+ useEffect(() => {
+  const refreshTime = () => setFilterNow(Date.now());
+  const timer = window.setInterval(refreshTime, 30_000);
+  document.addEventListener('visibilitychange', refreshTime);
+  return () => {
+   window.clearInterval(timer);
+   document.removeEventListener('visibilitychange', refreshTime);
+  };
+ }, []);
 
  // Task calendar date state
  const [selectedTaskDate, setSelectedTaskDate] = useState<string>(() => {
@@ -926,13 +955,14 @@ const nachoAdmin = findAdminByName('nacho');
 
  // List modes: active, postponed, archived.
  const isPostponed = lead.callbackScheduled === 'Llamar más tarde';
+ const isPostponedDue = isPostponed && getCallbackTimestamp(lead) <= filterNow;
  const isAppointment = lead.callbackScheduled === 'Sí';
  if (showArchived) {
   if (!lead.archived && !isAppointment) return false;
  } else if (showPostponed) {
-  if (lead.archived || !isPostponed) return false;
+  if (lead.archived || !isPostponed || isPostponedDue) return false;
  } else {
-  if (lead.archived || isPostponed || isAppointment) return false;
+  if (lead.archived || (isPostponed && !isPostponedDue) || isAppointment) return false;
  }
 
  // Fast search filter
@@ -955,10 +985,15 @@ const nachoAdmin = findAdminByName('nacho');
 
  return matchesSearch && matchesTemp && matchesAssigned;
  }).sort((a, b) => {
- if (!showPostponed) return 0;
- const aKey = `${a.callbackDate || '9999-12-31'} ${a.callbackTime || '23:59'}`;
- const bKey = `${b.callbackDate || '9999-12-31'} ${b.callbackTime || '23:59'}`;
- return aKey.localeCompare(bKey);
+ const aCallback = getCallbackTimestamp(a);
+ const bCallback = getCallbackTimestamp(b);
+ if (!showPostponed) {
+  const aDue = a.callbackScheduled === 'Llamar más tarde' && aCallback <= filterNow;
+  const bDue = b.callbackScheduled === 'Llamar más tarde' && bCallback <= filterNow;
+  if (aDue !== bDue) return aDue ? -1 : 1;
+ }
+ if (!Number.isFinite(aCallback) && !Number.isFinite(bCallback)) return 0;
+ return aCallback - bCallback;
  });
 
  const visibleLeadIds = visibleLeads.map(lead => lead.id);
@@ -1810,6 +1845,7 @@ const nachoAdmin = findAdminByName('nacho');
     }
     const isAdminLockedAppointment = lead.archived && lead.callbackScheduled === 'Sí';
     const lockedForComercial = !isAdmin && isAdminLockedAppointment;
+    const callbackIsDue = lead.callbackScheduled === 'Llamar más tarde' && getCallbackTimestamp(lead) <= filterNow;
 
     return (
      <div 
@@ -1846,8 +1882,11 @@ const nachoAdmin = findAdminByName('nacho');
        <span className="text-[8px] bg-amber-500/10 text-amber-450 border border-amber-500/20 font-bold px-1.5 py-0.5 rounded uppercase">Archivado</span>
       )}
       {lead.callbackScheduled === 'Llamar más tarde' && lead.callbackDate && (
-       <span className="text-[8px] bg-rose-500/15 text-rose-400 border border-rose-550/20 font-bold px-1.5 py-0.5 rounded uppercase flex items-center gap-1">
-       📅 {lead.callbackDate}
+       <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wide shadow-lg ${callbackIsDue ? 'border-rose-300/35 bg-rose-400/15 text-rose-100 shadow-rose-500/10' : 'border-amber-300/30 bg-amber-400/15 text-amber-200 shadow-amber-500/10'}`}>
+       <Calendar className={`h-3.5 w-3.5 ${callbackIsDue ? 'text-rose-300' : 'text-amber-300'}`} />
+       <span className={callbackIsDue ? 'text-rose-300' : 'text-amber-300/70'}>{callbackIsDue ? 'Llamar ahora' : 'Próxima'}</span>
+       <span className="text-white">{formatCallbackDate(lead.callbackDate)}</span>
+       {lead.callbackTime && <span className={callbackIsDue ? 'text-rose-300' : 'text-amber-300'}>· {lead.callbackTime}</span>}
        </span>
       )}
       </div>
@@ -2195,7 +2234,7 @@ const nachoAdmin = findAdminByName('nacho');
    ) : (
    /* GRID VIEW (MOSAICO) */
    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    {visibleLeads.map(lead => {
+   {visibleLeads.map(lead => {
     
     // Styling corresponding to visual temperature (Aesthetic colors)
     let tempBadge = '';
@@ -2210,6 +2249,7 @@ const nachoAdmin = findAdminByName('nacho');
      tempBadge = 'bg-sky-500/10 text-sky-455 border border-sky-550/25 shadow-[0_0_12px_rgba(14,165,233,0.15)]';
      bgStyle = 'bg-gradient-to-br from-[#0c141c]/75 via-[#030306]/95 to-[#04080c]/95 border-sky-500/15 hover:border-sky-500/35 shadow-lg shadow-sky-950/10';
     }
+    const callbackIsDue = lead.callbackScheduled === 'Llamar más tarde' && getCallbackTimestamp(lead) <= filterNow;
     const isAdminLockedAppointment = lead.archived && lead.callbackScheduled === 'Sí';
     const lockedForComercial = !isAdmin && isAdminLockedAppointment;
 
@@ -2326,15 +2366,15 @@ const nachoAdmin = findAdminByName('nacho');
 
       {/* Postponed callback status details */}
       {lead.callbackScheduled === 'Llamar más tarde' && lead.callbackDate && (
-      <div className="mt-3 bg-amber-500/5 border border-amber-500/10 rounded-xl p-2 flex items-center justify-between text-left">
-       <div className="flex items-center gap-1.5 text-amber-400">
-       <Clock className="w-3.5 h-3.5" />
-       <div className="text-[10px] leading-snug">
-        <p className="font-bold uppercase tracking-wider font-mono">Próxima llamada:</p>
-        <p className="text-slate-300">{lead.callbackDate} • {lead.callbackTime || 'Sin hora'}</p>
+      <div className={`mt-3 flex items-center justify-between rounded-xl border p-3 text-left shadow-[inset_0_1px_rgba(255,255,255,.03)] ${callbackIsDue ? 'border-rose-300/30 bg-rose-400/[0.09]' : 'border-amber-300/25 bg-amber-400/[0.08]'}`}>
+       <div className={`flex items-center gap-2.5 ${callbackIsDue ? 'text-rose-300' : 'text-amber-300'}`}>
+       <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${callbackIsDue ? 'border-rose-300/25 bg-rose-300/10' : 'border-amber-300/20 bg-amber-300/10'}`}><Clock className="h-4 w-4" /></div>
+       <div className="leading-snug">
+        <p className={`text-[8px] font-black uppercase tracking-[.18em] ${callbackIsDue ? 'text-rose-300' : 'text-amber-300/70'}`}>{callbackIsDue ? 'Llamar ahora' : 'Próxima llamada'}</p>
+        <p className="mt-0.5 text-sm font-black tracking-wide text-white">{formatCallbackDate(lead.callbackDate)} <span className={callbackIsDue ? 'text-rose-300' : 'text-amber-300'}>· {lead.callbackTime || 'Sin hora'}</span></p>
        </div>
        </div>
-       <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded uppercase font-bold font-mono">POSTPONED</span>
+       <span className={`rounded-lg border px-2 py-1 text-[8px] font-black uppercase tracking-wider ${callbackIsDue ? 'border-rose-300/20 bg-rose-300/10 text-rose-300' : 'border-amber-300/15 bg-amber-300/10 text-amber-300'}`}>{callbackIsDue ? 'Vencida' : 'Pospuesta'}</span>
       </div>
       )}
 
@@ -3416,7 +3456,7 @@ const nachoAdmin = findAdminByName('nacho');
       <p className="text-xs text-slate-400 truncate">{draft.name} Â· {draft.phone}</p>
       </div>
       <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-       <div className="text-right text-[10px] font-mono text-slate-400"><p>{lead.callbackDate || 'Sin fecha'}</p><p className="text-cyan-300">{lead.callbackTime || 'Sin hora'}</p></div>
+       <div className="rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-right font-mono"><p className="text-[11px] font-black text-white">{formatCallbackDate(lead.callbackDate)}</p><p className="mt-0.5 text-[10px] font-bold text-cyan-300">{lead.callbackTime || 'Sin hora'}</p></div>
        <a href={`tel:${(draft.phone || '').replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/20"><Phone className="h-3.5 w-3.5"/>Llamar</a>
        <button type="button" onClick={() => setExpandedClosingLeadId(current => current === lead.id ? null : lead.id)} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/10">{expandedClosingLeadId === lead.id ? 'Cerrar ficha' : 'Ver ficha'}</button>
       </div>
