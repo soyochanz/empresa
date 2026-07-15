@@ -46,6 +46,7 @@ import { calculateLegacyPoints, countUniqueInitialSales } from '../utils/salesRe
 import CommercialAnalyticsDashboard from './CommercialAnalyticsDashboard';
 import CommercialTrainingCenter from './CommercialTrainingCenter';
 import CommercialCalendarWorkspace from './CommercialCalendarWorkspace';
+import SalesRewardsScreen from './SalesRewardsScreen';
 
 const safeConfirm = (msg: string): boolean => {
  const isIframe = window.self !== window.top;
@@ -849,13 +850,14 @@ export default function ComercialesPanelScreen({
    </div>
    <p className="mb-2 mt-8 px-3 text-[8px] font-black uppercase tracking-[.24em] text-slate-600">Workspace</p>
    <nav className="space-y-1">{[
-    { id: 'pipeline', label: 'Overview', Icon: Layers },
-    { id: 'calendar', label: 'Calendario', Icon: Calendar },
-    { id: 'rewards', label: 'Rewards & Legado', Icon: Trophy },
-    { id: 'cold_calling', label: 'Cold Calling', Icon: Snowflake },
-    { id: 'training', label: 'Formación', Icon: GraduationCap },
-    { id: 'settings', label: 'Ajustes', Icon: Settings },
-   ].map(item => <button key={item.id} onClick={() => navigateCommercialView(item.id as CommercialView)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-xs font-bold transition ${activeView === item.id ? 'bg-lime-300 text-slate-950 shadow-[0_10px_25px_rgba(163,230,53,.14)]' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}><item.Icon className="h-4 w-4"/><span>{item.label}</span>{activeView === item.id && <ChevronDown className="ml-auto h-3 w-3 -rotate-90"/>}</button>)}</nav>
+    { id: 'pipeline', label: 'Overview', Icon: Layers, disabled: false },
+    { id: 'calendar', label: 'Calendario', Icon: Calendar, disabled: false },
+    { id: 'rewards', label: 'Rewards', Icon: Trophy, disabled: false },
+    { id: 'legacy', label: 'Legado', Icon: Award, disabled: true },
+    { id: 'cold_calling', label: 'Cold Calling', Icon: Snowflake, disabled: false },
+    { id: 'training', label: 'Formación', Icon: GraduationCap, disabled: false },
+    { id: 'settings', label: 'Ajustes', Icon: Settings, disabled: false },
+   ].map(item => <button key={item.id} type="button" disabled={item.disabled} aria-label={item.disabled ? `${item.label}, próximamente` : item.label} onClick={() => !item.disabled && navigateCommercialView(item.id as CommercialView)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-xs font-bold transition ${item.disabled ? 'cursor-not-allowed border border-white/[0.04] bg-white/[0.015] text-slate-600' : activeView === item.id ? 'bg-lime-300 text-slate-950 shadow-[0_10px_25px_rgba(163,230,53,.14)]' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}><item.Icon className="h-4 w-4"/><span>{item.label}</span>{item.disabled ? <Lock className="ml-auto h-3.5 w-3.5"/> : activeView === item.id && <ChevronDown className="ml-auto h-3 w-3 -rotate-90"/>}</button>)}</nav>
    <div className="mt-auto rounded-2xl border border-white/[0.07] bg-gradient-to-br from-violet-500/10 to-cyan-500/5 p-4"><p className="text-[8px] font-black uppercase tracking-widest text-violet-300">Comisión actual</p><p className="mt-1 text-2xl font-black text-white">{myCommissionPercentage}%</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40"><div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-lime-300" style={{ width: `${myTierInfo.progress}%` }}/></div></div>
    <button onClick={logoutCommercial} className="mt-3 flex w-full items-center gap-3 rounded-xl border border-rose-400/15 bg-rose-500/[0.06] px-3 py-3 text-xs font-bold text-rose-300 transition hover:bg-rose-500/15 hover:text-white"><LogOut className="h-4 w-4"/><span>Cerrar sesión</span></button>
   </aside>
@@ -915,10 +917,10 @@ export default function ComercialesPanelScreen({
   </div>
 
   {/* VIEW MODE TABS FOR COMERCIAL (CRM vs COLD CALLING vs SETTINGS) */}
-  <div className="fixed bottom-3 left-3 right-3 z-50 grid grid-cols-6 gap-1 rounded-2xl border border-white/10 bg-[#090d13]/95 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-2xl lg:hidden">
+  <div className="fixed bottom-3 left-3 right-3 z-50 flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-[#090d13]/95 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-2xl lg:hidden">
    <button
    onClick={() => navigateCommercialView('pipeline')}
-   className={`flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'pipeline' ?
      'bg-violet-650/20 text-violet-400 border border-violet-500/30'
      : 'text-slate-400 hover:text-white'
@@ -930,7 +932,7 @@ export default function ComercialesPanelScreen({
 
    <button
    onClick={() => navigateCommercialView('calendar')}
-   className={`flex-1 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+    className={`min-w-[58px] flex-1 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'calendar' ? 'bg-lime-300 text-slate-950' : 'text-slate-400 hover:text-white'
    }`}
    >
@@ -940,7 +942,7 @@ export default function ComercialesPanelScreen({
 
    <button
    onClick={() => navigateCommercialView('training')}
-   className={`flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'training' ? 'bg-lime-300 text-slate-950' : 'text-slate-400 hover:text-white'
    }`}
    >
@@ -950,19 +952,29 @@ export default function ComercialesPanelScreen({
 
    <button
    onClick={() => navigateCommercialView('rewards')}
-   className={`py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'rewards' ?
      'bg-amber-500/15 text-amber-300 border border-amber-400/30 shadow-[0_0_18px_rgba(251,191,36,0.08)]'
      : 'text-slate-400 hover:text-amber-300 hover:bg-amber-950/20'
    }`}
    >
    <Trophy className="w-3.5 h-3.5" />
-   <span>Recompensas</span>
-   </button>
+    <span>Recompensas</span>
+    </button>
+
+    <button
+    type="button"
+    disabled
+    aria-label="Legado, próximamente"
+    className="flex min-w-[58px] flex-1 cursor-not-allowed flex-col items-center justify-center gap-1 rounded-xl border border-white/[0.04] px-1 py-2 text-[9px] font-bold text-slate-600"
+    >
+    <div className="relative"><Award className="h-3.5 w-3.5"/><Lock className="absolute -right-2 -top-1 h-2.5 w-2.5"/></div>
+    <span>Legado</span>
+    </button>
    
    <button
    onClick={() => navigateCommercialView('cold_calling')}
-   className={`flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer relative ${
+    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer relative ${
     activeView === 'cold_calling' ?
      'bg-cyan-500/10 text-cyan-300 border border-cyan-400/30 shadow-[0_0_18px_rgba(34,211,238,0.08)]'
      : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-950/20'
@@ -979,7 +991,7 @@ export default function ComercialesPanelScreen({
 
    <button
    onClick={() => navigateCommercialView('settings')}
-   className={`flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'settings' ?
      'bg-violet-650/20 text-violet-400 border border-violet-500/30'
      : 'text-slate-400 hover:text-white'
@@ -1010,27 +1022,8 @@ export default function ComercialesPanelScreen({
     focusLeadId={focusedColdLeadId}
    />
    </div>
-  ) : activeView === 'rewards' ? (
-   <section className="relative min-h-[70vh] overflow-hidden rounded-[32px] border border-white/[0.08] bg-[#080b10] p-5 sm:p-8">
-    <div aria-hidden="true" className="pointer-events-none absolute inset-0 select-none overflow-hidden blur-xl opacity-50">
-     <div className="absolute -left-20 -top-24 h-80 w-80 rounded-full bg-violet-500/20" />
-     <div className="absolute -bottom-24 -right-16 h-96 w-96 rounded-full bg-lime-400/10" />
-     <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4 sm:p-8">
-      {[0,1,2,3].map(item => <div key={item} className="h-28 rounded-2xl border border-white/10 bg-white/[0.06]" />)}
-     </div>
-     <div className="mx-5 mt-5 h-64 rounded-3xl border border-white/10 bg-gradient-to-r from-violet-500/10 to-amber-400/10 sm:mx-8" />
-    </div>
-    <div className="absolute inset-0 bg-black/45 backdrop-blur-md" />
-    <div className="relative z-10 flex min-h-[62vh] items-center justify-center text-center">
-     <div className="max-w-md">
-      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl border border-lime-300/25 bg-lime-300/10 shadow-[0_0_55px_rgba(163,230,53,.12)]"><Lock className="h-8 w-8 text-lime-300" /></div>
-      <p className="mt-7 text-[10px] font-black uppercase tracking-[.35em] text-lime-300">Althera Rewards</p>
-      <h2 className="mt-3 text-4xl font-black uppercase tracking-tight text-white sm:text-5xl">Coming soon</h2>
-      <p className="mx-auto mt-4 max-w-sm text-xs leading-5 text-slate-400">Estamos preparando la nueva experiencia de recompensas, rangos y reconocimientos del equipo comercial.</p>
-      <div className="mx-auto mt-7 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[9px] font-bold uppercase tracking-wider text-slate-300"><Trophy className="h-3.5 w-3.5 text-amber-300"/>Acceso temporalmente bloqueado</div>
-     </div>
-    </div>
-   </section>
+   ) : activeView === 'rewards' ? (
+    <SalesRewardsScreen comercial={comercial} comercialesList={comercialesList} finTransactions={finTransactions} events={events} coldLeads={coldLeads} />
   ) : activeView === 'training' ? (
    <CommercialTrainingCenter onOpenDocumentation={() => setShowDossierModal(true)} />
   ) : activeView === 'settings' ? (

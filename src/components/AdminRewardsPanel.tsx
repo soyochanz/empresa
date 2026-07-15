@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BarChart3, CalendarDays, Handshake, Lightbulb, Plus, Save, ShieldCheck, Sparkles, Trash2, Trophy } from 'lucide-react';
-import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, LegacyBonusType, MonthlyPerformanceReview } from '../types';
-import { buildLegacyPointLedger, buildSalesRewards, calculateLegacyPoints } from '../utils/salesRewards';
+import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, CommercialPresence, CommercialWorkSession, LegacyBonusType, MonthlyPerformanceReview } from '../types';
+import { buildLegacyPointLedger, buildSalesRewards, calculateLegacyPoints, calculateProfessionalismScore, PROFESSIONALISM_FACTORS } from '../utils/salesRewards';
 
 interface Props {
   comercialesList: ComercialAccount[];
@@ -9,6 +9,9 @@ interface Props {
   events: CalendarEvent[];
   coldLeads: ColdCallingLead[];
   contacts: ClientContact[];
+  workSessions: CommercialWorkSession[];
+  commercialPresence: CommercialPresence[];
+  activityNow: number;
   onUpdateComercial: (account: ComercialAccount) => void | Promise<void>;
 }
 
@@ -18,11 +21,11 @@ const FACTORS: Array<[keyof MonthlyPerformanceReview, string]> = [
   ['communication', 'Comunicación'], ['taskCompletion', 'Cumplimiento de tareas'],
 ];
 
-export default function AdminRewardsPanel({ comercialesList, finTransactions, events, coldLeads, contacts, onUpdateComercial }: Props) {
+export default function AdminRewardsPanel({ comercialesList, finTransactions, events, coldLeads, contacts, workSessions, commercialPresence, activityNow, onUpdateComercial }: Props) {
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedId, setSelectedId] = useState(comercialesList[0]?.id || '');
   const selected = comercialesList.find(item => item.id === selectedId);
-  const emptyReview: MonthlyPerformanceReview = { month, showRate: 0, professionalism: 0, effectiveHours: 0 };
+  const emptyReview: MonthlyPerformanceReview = { month, showRate: 0, professionalism: 0 };
   const [draft, setDraft] = useState<MonthlyPerformanceReview>(emptyReview);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,7 +35,8 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
   const [bonusNote, setBonusNote] = useState('');
 
   useEffect(() => {
-    setDraft(selected?.monthlyPerformance?.[month] || { ...emptyReview, month });
+    const review = selected?.monthlyPerformance?.[month] || { ...emptyReview, month };
+    setDraft({ ...review, professionalism: calculateProfessionalismScore(review) });
     setSaved(false);
     setSaveError('');
   }, [selectedId, month]);
@@ -41,14 +45,16 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
     if (!selectedId && comercialesList[0]?.id) setSelectedId(comercialesList[0].id);
   }, [comercialesList, selectedId]);
 
-  const rows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, month);
-  const winner = rows.find(row => row.eligible);
+  const rows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, month, { workSessions, presence: commercialPresence, now: activityNow });
+  const winner = rows[0]?.eligible ? rows[0] : undefined;
+  const selectedReward = rows.find(row => row.comercial.id === selectedId);
   const save = async () => {
     if (!selected) return;
     setSaving(true);
     setSaveError('');
     try {
-      await onUpdateComercial({ ...selected, monthlyPerformance: { ...(selected.monthlyPerformance || {}), [month]: { ...draft, month, updatedAt: new Date().toISOString() } } });
+      const { effectiveHours: _legacyEffectiveHours, ...automaticDraft } = draft;
+      await onUpdateComercial({ ...selected, monthlyPerformance: { ...(selected.monthlyPerformance || {}), [month]: { ...automaticDraft, professionalism: calculateProfessionalismScore(automaticDraft), month, updatedAt: new Date().toISOString() } } });
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1800);
     } catch (error) {
@@ -58,7 +64,13 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
       setSaving(false);
     }
   };
-  const updateNumber = (key: keyof MonthlyPerformanceReview, value: number) => setDraft(current => ({ ...current, [key]: value }));
+  const updateNumber = (key: keyof MonthlyPerformanceReview, value: number) => setDraft(current => {
+    const next = { ...current, [key]: value };
+    return PROFESSIONALISM_FACTORS.includes(key as typeof PROFESSIONALISM_FACTORS[number])
+      ? { ...next, professionalism: calculateProfessionalismScore(next) }
+      : next;
+  });
+  const professionalismPoints = PROFESSIONALISM_FACTORS.reduce((sum, key) => sum + Number(draft[key] || 0), 0);
   const bonusConfig: Record<LegacyBonusType, { label: string; points: number }> = {
     sale_assist: { label: 'Ayudar a cerrar una venta', points: 150 },
     training: { label: 'Completar formación', points: 100 },
@@ -86,15 +98,15 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
 
   return <div className="space-y-6 animate-fade-in">
     <section className="rounded-3xl border border-amber-400/20 bg-gradient-to-r from-amber-500/10 via-violet-500/5 to-transparent p-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2 text-amber-300"><Trophy className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.25em]">Althera Rewards</span></div><h3 className="mt-2 text-2xl font-black text-white">Cierre y valoración mensual</h3><p className="mt-1 text-xs text-slate-400">Introduce Show Rate y profesionalidad el último día del mes. El score y el ranking se recalculan al instante.</p></div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2 text-amber-300"><Trophy className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.25em]">Althera Rewards</span></div><h3 className="mt-2 text-2xl font-black text-white">Cierre y valoración mensual</h3><p className="mt-1 text-xs text-slate-400">Introduce el Show Rate y valora los seis criterios. Profesionalidad, horas, score y ranking se recalculan automáticamente.</p></div>
         <input type="month" value={month} onChange={event => setMonth(event.target.value)} className="rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-amber-400/50"/></div>
     </section>
 
     <div className="grid gap-6 xl:grid-cols-[.85fr_1.15fr]">
       <section className="rounded-3xl border border-white/7 bg-white/[0.025] p-5"><label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Comercial a valorar</label><select value={selectedId} onChange={event => setSelectedId(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none">{comercialesList.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <div className="mt-5 grid grid-cols-2 gap-3"><label className="rounded-2xl border border-cyan-500/15 bg-cyan-500/5 p-4"><span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-cyan-300"><Sparkles className="h-4 w-4"/>Show Rate</span><div className="mt-3 flex items-end gap-1"><input type="number" min="0" max="100" value={draft.showRate} onChange={event => updateNumber('showRate', Math.min(100, Math.max(0, Number(event.target.value))))} className="w-full bg-transparent text-3xl font-black text-white outline-none"/><span className="pb-1 text-slate-500">%</span></div></label>
-          <label className={`rounded-2xl border p-4 ${draft.professionalism >= 8 ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-rose-500/20 bg-rose-500/5'}`}><span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-300"><ShieldCheck className="h-4 w-4"/>Profesionalidad</span><div className="mt-3 flex items-end gap-1"><input type="number" min="0" max="10" step="0.1" value={draft.professionalism} onChange={event => updateNumber('professionalism', Math.min(10, Math.max(0, Number(event.target.value))))} className="w-full bg-transparent text-3xl font-black text-white outline-none"/><span className="pb-1 text-slate-500">/10</span></div></label></div>
-        <label className="mt-3 block rounded-2xl border border-white/7 bg-black/20 p-4"><span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Horas efectivas del mes</span><input type="number" min="0" step="0.5" value={draft.effectiveHours || 0} onChange={event => updateNumber('effectiveHours', Math.max(0, Number(event.target.value)))} className="mt-2 w-full bg-transparent text-xl font-black text-white outline-none"/></label>
+          <div className={`rounded-2xl border p-4 ${draft.professionalism >= 8 ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-rose-500/20 bg-rose-500/5'}`}><span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-300"><ShieldCheck className="h-4 w-4"/>Profesionalidad automática</span><div className="mt-3 flex items-end gap-1"><strong className="text-3xl font-black text-white">{draft.professionalism}</strong><span className="pb-1 text-slate-500">/10</span></div><p className="mt-1 text-[9px] text-slate-500">{professionalismPoints}/60 puntos en los criterios</p></div></div>
+        <div className="mt-3 rounded-2xl border border-lime-300/15 bg-lime-300/[0.05] p-4"><span className="text-[9px] font-black uppercase tracking-wider text-lime-300">Horas Available del mes · automático</span><p className="mt-2 text-xl font-black text-white">{selectedReward?.effectiveHours || 0} h</p></div>
         <div className="mt-5 border-t border-white/7 pt-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Detalle de profesionalidad</p><div className="mt-3 grid grid-cols-2 gap-2">{FACTORS.map(([key,label]) => <label key={key} className="rounded-xl border border-white/5 bg-black/20 p-3"><span className="block text-[9px] text-slate-400">{label}</span><input type="number" min="0" max="10" step="0.5" value={Number(draft[key] || 0)} onChange={event => updateNumber(key, Math.min(10, Math.max(0, Number(event.target.value))))} className="mt-1 w-full bg-transparent text-sm font-bold text-white outline-none"/></label>)}</div></div>
         {saveError && <p className="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[10px] font-bold text-rose-300">{saveError}</p>}
         <button onClick={save} disabled={!selected || saving} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-3 text-xs font-black text-slate-950 transition hover:bg-amber-300 disabled:opacity-40"><Save className="h-4 w-4"/>{saving ? 'Guardando…' : saved ? 'Valoración guardada' : 'Guardar valoración mensual'}</button>

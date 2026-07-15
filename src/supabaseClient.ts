@@ -606,6 +606,11 @@ function invalidateCache(keyPrefix: string): void {
  });
 }
 
+export const invalidateSharedPipelineCache = (): void => {
+ ['cold_calling_leads', 'comercial_leads', 'contacts', 'events', 'finance_transactions', 'finance_invoices']
+  .forEach(invalidateCache);
+};
+
 function clearAllCache(): void {
  Object.keys(_queryCache).forEach(k => {
  delete _queryCache[k];
@@ -1101,7 +1106,11 @@ export const db = {
   const relatedContracts = contracts.filter(contract =>
    contract.clientId === contact.id || matchesClientIdentity(contract)
   );
-  const relatedComercialLeads = comercialLeads.filter(lead => matchesClientIdentity(lead));
+   const relatedComercialLeads = comercialLeads.filter(lead =>
+    lead.notes?.includes(`[SOURCE_CONTACT_ID:${contact.id}]`) ||
+    (!!contact.closingSourceLeadId && lead.notes?.includes(`[SOURCE_COLD_LEAD_ID:${contact.closingSourceLeadId}]`)) ||
+    matchesClientIdentity(lead)
+   );
   const relatedColdLeads = coldLeads.filter(lead => !!contact.closingSourceLeadId && lead.id === contact.closingSourceLeadId);
 
   const dependencyDeletes = [
@@ -2612,9 +2621,10 @@ export const db = {
   if (error) throw error;
  },
 
- async getCommercialWorkSessions(since?: string): Promise<CommercialWorkSession[]> {
+ async getCommercialWorkSessions(since?: string, commercialId?: string): Promise<CommercialWorkSession[]> {
   let query = supabase.from('commercial_work_sessions').select('*').order('started_at', { ascending: false }).limit(3000);
   if (since) query = query.gte('started_at', since);
+  if (commercialId) query = query.eq('commercial_id', commercialId);
   const { data, error } = await query;
   if (error) throw error;
   return (data || []).map(mapCommercialWorkSession);

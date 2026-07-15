@@ -142,11 +142,9 @@ export default function ComercialesAdminScreen({
   let mounted = true;
   const loadOperationalData = async () => {
    try {
-    const since = new Date();
-    since.setDate(since.getDate() - 35);
-    const [presenceRows, sessionRows, logRows] = await Promise.all([
+     const [presenceRows, sessionRows, logRows] = await Promise.all([
      db.getCommercialPresence(),
-     db.getCommercialWorkSessions(since.toISOString()),
+     db.getCommercialWorkSessions(),
      db.getCommercialActivityLogs({ limit: 1000 })
     ]);
     if (!mounted) return;
@@ -671,7 +669,7 @@ export default function ComercialesAdminScreen({
  };
 
  return (
- <div className="p-8 space-y-8 flex-1 overflow-y-auto bg-transparent text-slate-100 relative min-h-screen">
+ <div className="relative h-full min-h-0 flex-1 space-y-8 overflow-y-auto bg-transparent p-4 text-slate-100 sm:p-6 lg:p-8">
   
   {/* Glow ambient background elements */}
   <div className="absolute top-0 right-1/4 w-[35%] h-[35%] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
@@ -1550,7 +1548,7 @@ export default function ComercialesAdminScreen({
 
   {/* TAB 3: MANAGEMENT (AUTHORIZED ACCOUNTS TABLE + CREATION FORM) */}
   {activeTab === 'rewards' && (
-   <AdminRewardsPanel comercialesList={comercialesList} finTransactions={finTransactions} events={events} coldLeads={coldLeads} contacts={contacts} onUpdateComercial={onUpdateComercial} />
+   <AdminRewardsPanel comercialesList={comercialesList} finTransactions={finTransactions} events={events} coldLeads={coldLeads} contacts={contacts} workSessions={workSessions} commercialPresence={commercialPresence} activityNow={presenceNow} onUpdateComercial={onUpdateComercial} />
   )}
 
   {activeTab === 'gestion' && (

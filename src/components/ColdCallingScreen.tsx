@@ -283,10 +283,23 @@ const nachoAdmin = findAdminByName('nacho');
   if (!carlosAdmin) return events;
   const closerEmail = carlosAdmin.email.toLowerCase();
   return events.filter(event => {
+   if (event.isPrivate && event.comercialId) return false;
+   const directEmail = event.assignedUserEmail?.toLowerCase();
    const assignedEmails = (event.assignedUserEmails || []).map(email => email.toLowerCase());
-   return event.assignedUserEmail?.toLowerCase() === closerEmail ||
-    assignedEmails.includes(closerEmail) ||
-    (!!event.assignedUserId && event.assignedUserId === carlosAdmin.id);
+   const hasExplicitAssignment = !!directEmail || assignedEmails.length > 0 || !!event.assignedUserId;
+
+   // La disponibilidad debe reproducir toda la agenda que ve Carlos como admin,
+   // no solo las citas de clientes asignadas directamente a su correo.
+   if (
+    directEmail === 'todos-admins' || assignedEmails.includes('todos-admins') ||
+    directEmail === 'todos-comerciales' || assignedEmails.includes('todos-comerciales') ||
+    event.isAllComerciales
+   ) return true;
+   if (directEmail === closerEmail || assignedEmails.includes(closerEmail)) return true;
+   if (event.assignedUserId && event.assignedUserId === carlosAdmin.id) return true;
+
+   // Los eventos administrativos sin destinatario también aparecen en su calendario.
+   return !hasExplicitAssignment;
   });
  }, [events, carlosAdmin?.id, carlosAdmin?.email]);
 
@@ -294,7 +307,8 @@ const nachoAdmin = findAdminByName('nacho');
  const targetStart = new Date(`${date}T${normalizeTime(time)}`).getTime();
  const targetEnd = targetStart + 60 * 60 * 1000;
  return closerCalendarEvents.find(event => {
-  if (event.date !== date || event.status === 'done') return false;
+  if (event.date !== date) return false;
+  if (!/^\d{1,2}:\d{2}/.test(event.time || '')) return true;
   const eventStart = new Date(`${event.date}T${normalizeTime(event.time)}`).getTime();
   const rawDuration = event.duration || '60m';
   const durationMinutes = rawDuration.endsWith('h')
@@ -588,13 +602,15 @@ const nachoAdmin = findAdminByName('nacho');
   );
 
   if (existingLead) {
-   const updatedLead: ComercialLead = {
-   ...existingLead,
+    const sourceMarkers = `[SOURCE_CONTACT_ID:${newContact.id}] [SOURCE_COLD_LEAD_ID:${convertingLead.id}]`;
+    const updatedLead: ComercialLead = {
+    ...existingLead,
    status: convType === 'Client' ? 'Ganado' : 'Pendiente',
    value: convType === 'Client' ? convSalePrice : 0,
    comercialId: matchedCom.id,
    comercialName: matchedCom.name,
-   temperature: convertingLead.temperature || 'Caliente'
+    temperature: convertingLead.temperature || 'Caliente',
+    notes: `${(existingLead.notes || '').replace(/\s*\[SOURCE_CONTACT_ID:[^\]]+\]\s*\[SOURCE_COLD_LEAD_ID:[^\]]+\]\s*/g, ' ').trim()} ${sourceMarkers}`.trim()
    };
    await db.updateComercialLead(updatedLead);
   } else {
@@ -608,7 +624,7 @@ const nachoAdmin = findAdminByName('nacho');
    phone: convPhone.trim() || '',
    status: convType === 'Client' ? 'Ganado' : 'Pendiente',
    value: convType === 'Client' ? convSalePrice : 0,
-   notes: `Creado al convertir desde Cold Calling por ${matchedCom.name}`,
+    notes: `Creado al convertir desde Cold Calling por ${matchedCom.name} [SOURCE_CONTACT_ID:${newContact.id}] [SOURCE_COLD_LEAD_ID:${convertingLead.id}]`,
    createdAt: new Date().toISOString(),
    temperature: convertingLead.temperature || 'Caliente',
    isDone: convType === 'Client'
@@ -1276,7 +1292,7 @@ const nachoAdmin = findAdminByName('nacho');
  }
 
  if (callScheduled === 'Sí' && isSlotBusy(callCallbackDate, callCallbackTime)) {
-  alert('Esa hora ya tiene una cita asignada. Elige otra franja disponible.');
+  alert('Carlos ya tiene un evento en esa franja. Elige otra hora disponible.');
   return;
  }
 
@@ -1320,8 +1336,8 @@ const nachoAdmin = findAdminByName('nacho');
   archived: shouldSendToClosing ? true : selectedLeadForCall.archived,
   assignedToEmail: shouldSendToClosing ? closerAssigneeEmail : selectedLeadForCall.assignedToEmail,
   assignedToName: shouldSendToClosing ? closerAssigneeName : selectedLeadForCall.assignedToName,
-  closingOriginComercialEmail: shouldSendToClosing ? selectedLeadForCall.assignedToEmail : selectedLeadForCall.closingOriginComercialEmail,
-  closingOriginComercialName: shouldSendToClosing ? selectedLeadForCall.assignedToName : selectedLeadForCall.closingOriginComercialName,
+  closingOriginComercialEmail: shouldSendToClosing ? (selectedLeadForCall.closingOriginComercialEmail || selectedLeadForCall.assignedToEmail) : selectedLeadForCall.closingOriginComercialEmail,
+  closingOriginComercialName: shouldSendToClosing ? (selectedLeadForCall.closingOriginComercialName || selectedLeadForCall.assignedToName) : selectedLeadForCall.closingOriginComercialName,
   notes: currentNotes,
   callDate: new Date().toISOString().split('T')[0],
   callsCount: updatedLogs.length,
@@ -1531,8 +1547,13 @@ const nachoAdmin = findAdminByName('nacho');
    if (!currentComercial) return lead.callbackScheduled === 'Sí';
    // Para el caller, el origen de la cita es el dato estable. El closer puede
    // modificar su estado posteriormente sin hacer desaparecer el seguimiento.
+   const linkedContact = contacts.find(contact => contact.closingSourceLeadId === lead.id || contact.id === `crm_from_${lead.id}`);
+   const linkedAppointment = events.find(event => event.id === `cc_appointment_${lead.id}` || event.linkedContactId === `crm_from_${lead.id}`);
    return lead.closingOriginComercialEmail?.toLowerCase() === currentComercial.email.toLowerCase() ||
-    lead.closingOriginComercialName?.toLowerCase() === currentComercial.name.toLowerCase();
+    lead.closingOriginComercialName?.toLowerCase() === currentComercial.name.toLowerCase() ||
+    linkedContact?.contactedByComercialEmail?.toLowerCase() === currentComercial.email.toLowerCase() ||
+    linkedContact?.contactedByComercialName?.toLowerCase() === currentComercial.name.toLowerCase() ||
+    linkedAppointment?.comercialId === currentComercial.id;
   })
   .filter(lead => {
    const key = lead.id || `${lead.businessName}-${lead.phone}`;
@@ -1541,7 +1562,7 @@ const nachoAdmin = findAdminByName('nacho');
    return true;
   })
   .sort((a, b) => `${a.callbackDate || ''}${a.callbackTime || ''}`.localeCompare(`${b.callbackDate || ''}${b.callbackTime || ''}`));
- }, [coldLeads, currentComercial, currentUser, carlosAdmin, events]);
+ }, [coldLeads, currentComercial, currentUser, carlosAdmin, events, contacts]);
 
  const getClosingContact = (lead: ColdCallingLead) => contacts.find(contact =>
  contact.closingSourceLeadId === lead.id || contact.id === `crm_from_${lead.id}`
@@ -1658,7 +1679,7 @@ const nachoAdmin = findAdminByName('nacho');
   onAddEvent?.({
   id: `web_needed_${updatedContact.id}_${Date.now()}`,
   title: `Web pendiente: ${updatedContact.company}`,
-  date: todayKey,
+  date: new Date().toISOString().split('T')[0],
   time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
   duration: '15m',
   type: 'Deadline',
@@ -3782,6 +3803,7 @@ const nachoAdmin = findAdminByName('nacho');
       <button onClick={() => saveClosingLead(lead, 'Perdido')} className="px-3 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[10px] font-black text-rose-300 hover:bg-rose-500/20">Perdido</button>
       <button onClick={() => saveClosingLead(lead, 'Pendiente')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-500/10 border border-white/10 text-[10px] font-black text-slate-200 hover:bg-white/10"><Save className="w-3.5 h-3.5" /> Guardar</button>
       <button onClick={() => handleOpenClosingConversion(lead)} className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/25">Cerrado + pedir web</button>
+      {contact?.status !== 'Client' && <button onClick={() => setDeleteConfirmLeadId(lead.id)} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/25 bg-rose-500/[0.08] px-3 py-2 text-[10px] font-black text-rose-300 hover:bg-rose-500/20"><Trash2 className="h-3.5 w-3.5"/>Eliminar definitivamente</button>}
       </div>
      </div>
       )}
@@ -4447,7 +4469,7 @@ const nachoAdmin = findAdminByName('nacho');
          key={slot}
          type="button"
          disabled={busy}
-         title={busy ? `Ocupada: ${conflict?.title || 'cita existente'}` : `Disponible ${slot}`}
+         title={busy ? `Ocupada: ${conflict?.title || 'evento existente'}` : `Disponible ${slot}`}
          onClick={() => {
           setCallCallbackTime(slot);
          }}
@@ -4474,7 +4496,7 @@ const nachoAdmin = findAdminByName('nacho');
        )}
        {callScheduled === 'Sí' && (
        <p className="text-[9px] text-slate-500 leading-relaxed">
-        Verde disponible, violeta seleccionado, rojo ocupado por otra cita del calendario.
+        Verde disponible, violeta seleccionado, rojo ocupado por cualquier evento del calendario de Carlos.
        </p>
        )}
       </div>
@@ -4921,9 +4943,9 @@ const nachoAdmin = findAdminByName('nacho');
     <h4 className="text-sm font-sans font-bold text-white uppercase tracking-wide">
      ¿Eliminar Prospecto?
     </h4>
-    <p className="text-xs text-slate-400 leading-relaxed font-sans">
-     ¿Seguro que deseas eliminar definitivamente este lead de cold calling? Esta acción es irreversible y se borrarán todos sus registros de por vida.
-    </p>
+     <p className="text-xs text-slate-400 leading-relaxed font-sans">
+      ¿Seguro que deseas eliminar definitivamente este negocio? Desaparecerá tanto del caller como del closer, junto con su cita y su ficha CRM vinculada. Esta acción es irreversible.
+     </p>
     </div>
    </div>
    <div className="flex gap-3 justify-end pt-2">

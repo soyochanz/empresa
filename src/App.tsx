@@ -29,7 +29,7 @@ import DeveloperHubScreen from './components/DeveloperHubScreen';
 import MarketingScreen from './components/MarketingScreen';
 import DepartmentsScreen from './components/DepartmentsScreen';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
+import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase } from 'lucide-react';
 
@@ -93,11 +93,13 @@ const forgetDeletedContact = (id: string) => writeDeletedContactIds(readDeletedC
 
 const normalizeClientIdentity = (value?: string) => (value || '').trim().toLocaleLowerCase('es-ES');
 const isCommercialLeadLinkedToContact = (lead: ComercialLead, contact: ClientContact) => {
+ const sourceMarkerMatch = lead.notes?.includes(`[SOURCE_CONTACT_ID:${contact.id}]`) ||
+  (!!contact.closingSourceLeadId && lead.notes?.includes(`[SOURCE_COLD_LEAD_ID:${contact.closingSourceLeadId}]`));
  const contactEmail = normalizeClientIdentity(contact.email);
  const emailMatch = !!contactEmail && normalizeClientIdentity(lead.email) === contactEmail;
  const nameMatch = normalizeClientIdentity(lead.name) === normalizeClientIdentity(contact.name);
  const companyMatch = normalizeClientIdentity(lead.company) === normalizeClientIdentity(contact.company);
- return emailMatch || (nameMatch && companyMatch);
+ return !!sourceMarkerMatch || emailMatch || (nameMatch && companyMatch);
 };
 
 const getLocalDateKey = (date = new Date()) => {
@@ -834,15 +836,22 @@ export default function App() {
  }
  }, []);
 
- useEffect(() => {
- handleRefreshFinance();
+  useEffect(() => {
+  handleRefreshFinance();
  // Keep checking every 60 seconds for updates, only when tab is visible
  const interval = setInterval(() => {
   if (document.visibilityState === 'visible') {
   handleRefreshFinance();
   }
  }, 60000);
- return () => clearInterval(interval);
+  return () => clearInterval(interval);
+  }, [handleRefreshFinance]);
+
+ useEffect(() => {
+  const channel = supabase.channel('app-finance-transactions-sync')
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transactions' }, () => void handleRefreshFinance())
+   .subscribe();
+  return () => { void supabase.removeChannel(channel); };
  }, [handleRefreshFinance]);
 
  const financeNotifications = useMemo(() => {
@@ -1119,7 +1128,7 @@ export default function App() {
   if (fetchedCold) setColdLeads(fetchedCold);
   if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
   if (fetchedComercialAccs) {
-   const pendingUpdates = Array.from(pendingComercialUpdatesRef.current.values());
+   const pendingUpdates = Array.from(pendingComercialUpdatesRef.current.values()) as ComercialAccount[];
    const confirmedDuringSync = new Map<string, ComercialAccount>();
    if (pendingUpdates.length > 0) {
     const retryResults = await Promise.allSettled(pendingUpdates.map(account => db.updateComercialAccount(account, activeUid)));
@@ -1210,6 +1219,21 @@ export default function App() {
   document.removeEventListener('visibilitychange', refreshVisibleData);
  };
  }, [currentUser, currentComercial]);
+
+ useEffect(() => {
+  const refreshSharedPipeline = () => {
+   invalidateSharedPipelineCache();
+   void syncWithSupabase(undefined, true);
+   void handleRefreshFinance();
+  };
+  const channel = supabase.channel('shared-caller-closer-pipeline')
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'cold_calling_leads' }, refreshSharedPipeline)
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'comercial_leads' }, refreshSharedPipeline)
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, refreshSharedPipeline)
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, refreshSharedPipeline)
+   .subscribe();
+  return () => { void supabase.removeChannel(channel); };
+ }, [currentUser?.id, currentComercial?.id, handleRefreshFinance]);
 
  // Router synchronization effect
  useEffect(() => {
@@ -1622,12 +1646,38 @@ export default function App() {
  };
 
  const handleDeleteColdLead = async (id: string) => {
- const deletedLead = coldLeads.find(lead => lead.id === id);
- setColdLeads(prev => prev.filter(l => l.id !== id));
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.deleteColdLead(id, currentUser?.id || undefined);
-  if (currentComercial && deletedLead) await db.addCommercialActivityLog({
+  const deletedLead = coldLeads.find(lead => lead.id === id);
+  const linkedContact = contacts.find(contact => contact.closingSourceLeadId === id || contact.id === `crm_from_${id}`);
+  const relatedEvents = events.filter(event =>
+   event.id === `cc_appointment_${id}` ||
+   event.id.startsWith(`cc_reschedule_${id}_`) ||
+   event.linkedContactId === `crm_from_${id}` ||
+   (!!linkedContact && (event.linkedContactId === linkedContact.id || (event.linkedContactIds || []).includes(linkedContact.id)))
+  );
+  setColdLeads(prev => prev.filter(l => l.id !== id));
+  setEvents(previous => previous.filter(event => !relatedEvents.some(related => related.id === event.id)));
+  if (linkedContact) {
+   rememberDeletedContact(linkedContact.id);
+   setContacts(previous => previous.filter(contact => contact.id !== linkedContact.id));
+   setLeadsList(previous => previous.filter(lead => !isCommercialLeadLinkedToContact(lead, linkedContact)));
+   setProjects(previous => previous.filter(project => project.clientContactId !== linkedContact.id));
+   setFinTransactions(previous => previous.filter(transaction => transaction.clientId !== linkedContact.id));
+  }
+  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+   try {
+   if (linkedContact) {
+    await db.deleteClientData(linkedContact, currentUser?.id || undefined);
+    forgetDeletedContact(linkedContact.id);
+    await handleRefreshFinance();
+   } else {
+    const results = await Promise.allSettled([
+     ...relatedEvents.map(event => db.deleteEvent(event.id, currentUser?.id || undefined)),
+     db.deleteColdLead(id, currentUser?.id || undefined),
+    ]);
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failure) throw failure.reason;
+   }
+   if (currentComercial && deletedLead) await db.addCommercialActivityLog({
    commercial: currentComercial,
    action: 'cold_lead_deleted',
    entityType: 'cold_calling_lead',
@@ -1635,10 +1685,10 @@ export default function App() {
    description: `Eliminó ${deletedLead.businessName} de Call Calling.`,
    metadata: { businessName: deletedLead.businessName }
   });
-  } catch (err) {
-  console.error('Supabase failed to delete cold lead:', err);
+   } catch (err) {
+   console.error('Supabase failed to delete the shared caller/closer lead:', err);
+   }
   }
- }
  };
 
  const handleAddComercialLead = async (newLead: ComercialLead) => {
@@ -1878,10 +1928,11 @@ export default function App() {
 
  // 2. Always request the persistent deletion. If the network is unavailable, the
  // tombstone above keeps the contact hidden and the next synchronization retries it.
- try {
-  if (contactToDelete) await db.deleteClientData(contactToDelete, currentUser?.id || undefined);
-  else await db.deleteContact(id, currentUser?.id || undefined);
-  forgetDeletedContact(id);
+  try {
+   if (contactToDelete) await db.deleteClientData(contactToDelete, currentUser?.id || undefined);
+   else await db.deleteContact(id, currentUser?.id || undefined);
+   await handleRefreshFinance();
+   forgetDeletedContact(id);
  } catch (err) {
   console.error('Supabase failed to delete the client cascade; deletion queued for retry:', err);
  }
@@ -2018,6 +2069,7 @@ export default function App() {
    contacts={contacts}
    onNavigate={navigateTo}
    comercialesList={comercialesList}
+   onRefreshFinance={handleRefreshFinance}
    />
   );
   case 'contactos':

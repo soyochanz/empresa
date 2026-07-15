@@ -61,6 +61,7 @@ interface FinanceScreenProps {
  contacts: ClientContact[];
  onNavigate?: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
  comercialesList?: ComercialAccount[];
+ onRefreshFinance?: () => void | Promise<void>;
 }
 
 const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
@@ -175,7 +176,7 @@ const getInvoiceCardStyles = (color: string | undefined) => {
  }
 };
 
-export default function FinanceScreen({ contacts, onNavigate, comercialesList = [] }: FinanceScreenProps) {
+export default function FinanceScreen({ contacts, onNavigate, comercialesList = [], onRefreshFinance }: FinanceScreenProps) {
  const rankableComercialesList = getRankableCommercials(comercialesList);
  // Navigation tabs: 'transactions' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
  const [activeTab, setActiveTab] = useState<'transactions' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'>('transactions');
@@ -785,8 +786,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const oldTransactions = [...transactions];
   setTransactions(prev => prev.filter(t => t.id !== id));
   db.deleteFinanceTransaction(id)
-  .then(() => {
-   showToast('Sincronizado: Transacción eliminada de Supabase.');
+   .then(async () => {
+    await onRefreshFinance?.();
+    showToast('Sincronizado: Transacción eliminada de Supabase.');
   })
   .catch(err => {
    console.error('Error deleting transaction in DB:', err);

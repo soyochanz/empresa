@@ -1,4 +1,4 @@
-import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, FinanceTransaction } from '../types';
+import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, CommercialPresence, CommercialWorkSession, FinanceTransaction, MonthlyPerformanceReview } from '../types';
 
 export interface SalesRewardRow {
   comercial: ComercialAccount;
@@ -13,6 +13,51 @@ export interface SalesRewardRow {
   eligible: boolean;
   cashPrize: number;
 }
+
+export const PROFESSIONALISM_FACTORS: Array<keyof Pick<MonthlyPerformanceReview,
+  'punctuality' | 'meetingAttendance' | 'processCompliance' | 'attitude' | 'communication' | 'taskCompletion'>> = [
+  'punctuality', 'meetingAttendance', 'processCompliance', 'attitude', 'communication', 'taskCompletion',
+];
+
+export const calculateProfessionalismScore = (review?: Partial<MonthlyPerformanceReview>): number => {
+  const total = PROFESSIONALISM_FACTORS.reduce((sum, key) => sum + Math.min(10, Math.max(0, Number(review?.[key] || 0))), 0);
+  return Math.round((total / PROFESSIONALISM_FACTORS.length) * 10) / 10;
+};
+
+export interface SalesRewardsActivity {
+  workSessions?: CommercialWorkSession[];
+  presence?: CommercialPresence[];
+  now?: number;
+}
+
+export const calculateMonthlyAvailableHours = (
+  commercialId: string,
+  month: string,
+  activity: SalesRewardsActivity = {},
+): number => {
+  const monthStart = new Date(`${month}-01T00:00:00`);
+  const monthEnd = new Date(monthStart);
+  monthEnd.setMonth(monthEnd.getMonth() + 1);
+  const monthStartMs = monthStart.getTime();
+  const monthEndMs = monthEnd.getTime();
+  const now = activity.now ?? Date.now();
+  const presence = activity.presence?.find(item => item.commercialId === commercialId);
+  const seconds = (activity.workSessions || [])
+    .filter(session => session.commercialId === commercialId)
+    .reduce((total, session) => {
+      const originalStart = new Date(session.startedAt).getTime();
+      if (!Number.isFinite(originalStart)) return total;
+      const start = Math.max(originalStart, monthStartMs);
+      const isCurrentSession = !session.endedAt && presence?.sessionId === session.id;
+      const liveEnd = isCurrentSession && presence
+        ? Math.min(now, new Date(presence.lastSeenAt).getTime() + 90_000)
+        : originalStart + Math.max(0, Number(session.durationSeconds || 0)) * 1000;
+      const rawEnd = session.endedAt ? new Date(session.endedAt).getTime() : liveEnd;
+      const end = Math.min(rawEnd, monthEndMs);
+      return total + Math.max(0, Math.floor((end - start) / 1000));
+    }, 0);
+  return Math.round((seconds / 3600) * 10) / 10;
+};
 
 const isCollectedSale = (tx: any) =>
   tx.type === 'income' && tx.status === 'paid' && tx.isInitialSale === true;
@@ -224,6 +269,7 @@ export function buildSalesRewards(
   events: CalendarEvent[],
   coldLeads: ColdCallingLead[],
   month: string,
+  activity: SalesRewardsActivity = {},
 ): SalesRewardRow[] {
   const raw = getRankableCommercials(comerciales).map(comercial => {
     const review = comercial.monthlyPerformance?.[month];
@@ -233,9 +279,13 @@ export function buildSalesRewards(
       .reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
     const appointments = events.filter(event => isSalesAppointmentEvent(event) && belongsToMonth(event.date, month) &&
       (event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === comercial.email.toLowerCase())).length;
-    const monthlyColdLeads = coldLeads.filter(lead => belongsToMonth(lead.callDate || lead.createdAt, month) &&
-      lead.assignedToEmail?.toLowerCase() === comercial.email.toLowerCase());
-    const calls = monthlyColdLeads.reduce((sum, lead) => sum + Number(lead.callsCount || 0), 0);
+    const commercialEmail = comercial.email.toLowerCase();
+    const commercialColdLeads = coldLeads.filter(lead =>
+      lead.assignedToEmail?.toLowerCase() === commercialEmail ||
+      lead.closingOriginComercialEmail?.toLowerCase() === commercialEmail);
+    const monthlyColdLeads = commercialColdLeads.filter(lead => belongsToMonth(lead.callDate || lead.createdAt, month));
+    const calls = commercialColdLeads.reduce((sum, lead) => sum + (lead.callsLog || []).filter(log =>
+      belongsToMonth(log.date, month) && /(?:^|\|)\s*Contactado:\s*Sí(?:\s*\||$)/i.test(log.result || '')).length, 0);
     const conversations = monthlyColdLeads.filter(lead => lead.contacted === 'Sí' || lead.answered === 'Sí').length;
 
     return {
@@ -243,10 +293,10 @@ export function buildSalesRewards(
       cashCollected,
       appointments,
       showRate: Number(review?.showRate || 0),
-      professionalism: Number(review?.professionalism || 0),
+      professionalism: calculateProfessionalismScore(review),
       calls,
       conversations,
-      effectiveHours: Number(review?.effectiveHours || 0),
+      effectiveHours: calculateMonthlyAvailableHours(comercial.id, month, activity),
     };
   });
 
@@ -264,5 +314,5 @@ export function buildSalesRewards(
       eligible: row.professionalism >= 8,
       cashPrize: row.cashCollected > 0 ? ([200, 100, 50][cashPosition] || 0) : 0,
     };
-  }).sort((a, b) => b.score - a.score);
+  }).sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.score - a.score);
 }
