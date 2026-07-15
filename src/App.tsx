@@ -985,8 +985,13 @@ export default function App() {
    const assignedEmails = (event.assignedUserEmails || []).map(email => email.toLowerCase());
    const hasExplicitAssignment = !!directEmail || assignedEmails.length > 0 || !!event.assignedUserId;
 
-   if (directEmail === 'todos-admins' || assignedEmails.includes('todos-admins')) return true;
-   if (directEmail === 'todos-comerciales' || assignedEmails.includes('todos-comerciales')) return false;
+   // Las asignaciones grupales no pertenecen a un admin concreto: forman parte
+   // de la agenda general y deben ser visibles también para todos los admins.
+   if (
+    directEmail === 'todos-admins' || assignedEmails.includes('todos-admins') ||
+    directEmail === 'todos-comerciales' || assignedEmails.includes('todos-comerciales') ||
+    event.isAllComerciales
+   ) return true;
    if (directEmail === adminEmail || assignedEmails.includes(adminEmail)) return true;
    if (event.assignedUserId && currentUser.id && event.assignedUserId === currentUser.id) return true;
 
