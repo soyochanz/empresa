@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CalendarEvent, ClientContact, Screen, Note } from '../types';
 import { REGISTERED_USERS, PanelUser } from '../mockData';
-import { 
+import {
  Plus, 
  ChevronLeft, 
  ChevronRight, 
@@ -18,6 +18,13 @@ import {
  Calendar,
  Archive
 } from 'lucide-react';
+
+const getDurationMinutes = (duration?: string) => {
+ const raw = (duration || '').trim().toLowerCase();
+ if (!raw) return 60;
+ if (raw.endsWith('h')) return Math.max(15, Math.round((Number.parseFloat(raw) || 1) * 60));
+ return Math.max(15, Number.parseInt(raw, 10) || 60);
+};
 
 interface CalendarScreenProps {
  events: CalendarEvent[];
@@ -111,6 +118,7 @@ export default function CalendarScreen({
  return `${d.getFullYear()}-${padM}-${padD}`;
  });
  const [newTime, setNewTime] = useState('11:00');
+ const [newDurationMinutes, setNewDurationMinutes] = useState(60);
  const [newType, setNewType] = useState<'Meeting' | 'Review' | 'Deadline' | 'Kickoff' | 'Other'>('Meeting');
  const [newDescription, setNewDescription] = useState('');
  const [newMeetingUrl, setNewMeetingUrl] = useState('');
@@ -123,6 +131,7 @@ export default function CalendarScreen({
  const [editTitle, setEditTitle] = useState('');
  const [editDate, setEditDate] = useState('');
  const [editTime, setEditTime] = useState('');
+ const [editDurationMinutes, setEditDurationMinutes] = useState(60);
  const [editType, setEditType] = useState<'Meeting' | 'Review' | 'Deadline' | 'Kickoff' | 'Other'>('Meeting');
  const [editDescription, setEditDescription] = useState('');
  const [editMeetingUrl, setEditMeetingUrl] = useState('');
@@ -162,6 +171,7 @@ export default function CalendarScreen({
   title: newTitle,
   date: newDate,
   time: newTime,
+  duration: `${Math.max(15, newDurationMinutes)}m`,
   type: newType,
   description: newDescription || 'Sin descripción adicional.',
   meetingUrl: newType === 'Meeting' ? newMeetingUrl || undefined : undefined,
@@ -199,6 +209,7 @@ export default function CalendarScreen({
  setNewTitle('');
  setNewDescription('');
  setNewMeetingUrl('');
+ setNewDurationMinutes(60);
  setSelectedContactIds([]);
  setSelectedNoteIds([]);
  setContactSearch('');
@@ -220,6 +231,7 @@ export default function CalendarScreen({
  setEditTitle(selectedEvent.title);
  setEditDate(selectedEvent.date);
  setEditTime(selectedEvent.time || '11:00');
+ setEditDurationMinutes(getDurationMinutes(selectedEvent.duration));
  setEditType(selectedEvent.type || 'Meeting');
  setEditDescription(selectedEvent.description || '');
  setEditMeetingUrl(selectedEvent.meetingUrl || '');
@@ -243,6 +255,7 @@ export default function CalendarScreen({
   title: editTitle,
   date: editDate,
   time: editTime,
+  duration: `${Math.max(15, editDurationMinutes)}m`,
   type: editType,
   description: editDescription,
   meetingUrl: editType === 'Meeting' ? editMeetingUrl || undefined : undefined,
@@ -623,7 +636,7 @@ export default function CalendarScreen({
           {ev.type}
          </span>
          <span className="text-slate-400">
-          {ev.time} {ev.duration ? `(${ev.duration} min)` : ''}
+          {ev.time} · {getDurationMinutes(ev.duration)} min
          </span>
          {ev.meetingUrl && (
           <span className="text-blue-400 flex items-center gap-0.5 font-semibold bg-blue-500/5 border border-blue-500/10 px-1.5 rounded-full lowercase text-[8px]">
@@ -788,7 +801,7 @@ export default function CalendarScreen({
     <div className="flex items-center gap-2 text-xs text-slate-400">
      <Clock className="w-4 h-4 text-blue-400" />
      <span>
-     {selectedEvent.date === '2023-10-12' ? 'Today' : selectedEvent.date}, {selectedEvent.time}
+     {selectedEvent.date === '2023-10-12' ? 'Today' : selectedEvent.date}, {selectedEvent.time} · {getDurationMinutes(selectedEvent.duration)} min
      </span>
     </div>
     </div>
@@ -1151,7 +1164,7 @@ export default function CalendarScreen({
     </div>
 
     {/* Grid: Date & Time */}
-    <div className="grid grid-cols-2 gap-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+    <div className="grid grid-cols-1 gap-4 rounded-2xl border border-white/10 bg-black/20 p-4 sm:grid-cols-3">
     <div className="space-y-1">
      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Fecha</label>
      <input 
@@ -1169,6 +1182,19 @@ export default function CalendarScreen({
      required
      value={newTime}
      onChange={(e) => setNewTime(e.target.value)}
+     className="w-full bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-xs text-slate-100 focus:outline-none focus:border-blue-500 [color-scheme:dark]"
+     />
+    </div>
+    <div className="space-y-1">
+     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Duración (min)</label>
+     <input
+     type="number"
+     required
+     min="15"
+     max="720"
+     step="15"
+     value={newDurationMinutes}
+     onChange={(e) => setNewDurationMinutes(Math.max(15, Number(e.target.value) || 15))}
      className="w-full bg-[#030712] border border-white/10 rounded-xl px-4 py-3 text-xs text-slate-100 focus:outline-none focus:border-blue-500 [color-scheme:dark]"
      />
     </div>
@@ -1585,7 +1611,7 @@ export default function CalendarScreen({
     </div>
 
     {/* Grid: Date & Time */}
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
     <div className="space-y-1">
      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Date</label>
      <input 
@@ -1603,6 +1629,19 @@ export default function CalendarScreen({
      required
      value={editTime}
      onChange={(e) => setEditTime(e.target.value)}
+     className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500 [color-scheme:dark]"
+     />
+    </div>
+    <div className="space-y-1">
+     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Duración (min)</label>
+     <input
+     type="number"
+     required
+     min="15"
+     max="720"
+     step="15"
+     value={editDurationMinutes}
+     onChange={(e) => setEditDurationMinutes(Math.max(15, Number(e.target.value) || 15))}
      className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500 [color-scheme:dark]"
      />
     </div>

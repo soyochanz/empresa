@@ -308,7 +308,9 @@ const nachoAdmin = findAdminByName('nacho');
  const targetEnd = targetStart + 60 * 60 * 1000;
  return closerCalendarEvents.find(event => {
   if (event.date !== date) return false;
-  if (!/^\d{1,2}:\d{2}/.test(event.time || '')) return true;
+  // Un evento sin una hora concreta se muestra en el calendario, pero no
+  // convierte automáticamente todas las franjas del día en no disponibles.
+  if (!/^\d{1,2}:\d{2}/.test(event.time || '')) return false;
   const eventStart = new Date(`${event.date}T${normalizeTime(event.time)}`).getTime();
   const rawDuration = event.duration || '60m';
   const durationMinutes = rawDuration.endsWith('h')
