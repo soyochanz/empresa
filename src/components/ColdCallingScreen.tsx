@@ -455,11 +455,11 @@ const nachoAdmin = findAdminByName('nacho');
   } : {})
  };
 
- if (existingClosingContact && onUpdateContact) onUpdateContact(newContact);
- else onAddContact(newContact);
+ if (existingClosingContact && onUpdateContact) await onUpdateContact(newContact);
+ else await onAddContact(newContact);
 
  // 2. Archive the cold lead
- onUpdateColdLead({
+ await onUpdateColdLead({
   ...convertingLead,
   archived: true
  });

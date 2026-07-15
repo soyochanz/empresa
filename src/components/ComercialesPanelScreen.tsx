@@ -42,7 +42,7 @@ import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, Client
 import { db } from '../supabaseClient';
 import ColdCallingScreen from './ColdCallingScreen';
 import DossierModal from './DossierModal';
-import { calculateLegacyPoints } from '../utils/salesRewards';
+import { calculateLegacyPoints, countUniqueInitialSales } from '../utils/salesRewards';
 import CommercialAnalyticsDashboard from './CommercialAnalyticsDashboard';
 import CommercialTrainingCenter from './CommercialTrainingCenter';
 import CommercialCalendarWorkspace from './CommercialCalendarWorkspace';
@@ -590,7 +590,7 @@ export default function ComercialesPanelScreen({
    value: adminSaleTotal || lead.value || 0
    };
   }
-  return true;
+  return lead;
   });
 
  // 2. Find client contacts associated with the current commercial that are NOT already in leadsList
@@ -659,8 +659,8 @@ export default function ComercialesPanelScreen({
  (tx.comercialId === comercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === comercial.email.toLowerCase()))
  );
  const myInitialTxsPaid = myInitialTxs.filter(tx => tx.status === 'paid');
- const myCommissionPercentage = comercial.commissionPercentage ?? getTieredCommission(Math.max(wonLeads.length, myInitialTxs.length));
- const myClosuresForTier = Math.max(wonLeads.length, myInitialTxs.length);
+ const myClosuresForTier = Math.max(wonLeads.length, countUniqueInitialSales(myInitialTxs));
+ const myCommissionPercentage = comercial.commissionPercentage ?? getTieredCommission(myClosuresForTier);
  const myTierInfo = getCommissionTierInfo(myClosuresForTier);
  const myInitialSalesVolume = myInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
  const myTotalSalesVolume = myInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);

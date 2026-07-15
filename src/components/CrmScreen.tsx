@@ -546,7 +546,7 @@ export default function CrmScreen({
  };
 
  if (onUpdateContact) {
-  onUpdateContact(updatedContact);
+  await onUpdateContact(updatedContact);
  }
 
  // Clear state

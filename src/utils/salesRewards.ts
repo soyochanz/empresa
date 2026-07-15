@@ -17,6 +17,12 @@ export interface SalesRewardRow {
 const isCollectedSale = (tx: any) =>
   tx.type === 'income' && tx.status === 'paid' && tx.isInitialSale === true;
 
+export const getInitialSaleKey = (tx: any): string =>
+  String(tx.invoiceId || tx.stripePlanId || tx.clientId || tx.id);
+
+export const countUniqueInitialSales = (transactions: FinanceTransaction[] | any[]): number =>
+  new Set(transactions.filter(tx => tx.type === 'income' && tx.isInitialSale === true).map(getInitialSaleKey)).size;
+
 const isSalesAppointmentEvent = (event: CalendarEvent) =>
   event.id?.startsWith('cc_appointment_') ||
   event.id?.startsWith('cc_reschedule_') ||
@@ -67,10 +73,11 @@ export function calculateLegacyPoints(
   coldLeads: ColdCallingLead[] = [],
   contacts: ClientContact[] = [],
 ): LegacyPointsResult {
-  const sales = transactions.filter(tx => isCollectedSale(tx) &&
+  const paidSaleTransactions = transactions.filter(tx => isCollectedSale(tx) &&
     (tx.comercialId === comercial.id || tx.comercialEmail?.toLowerCase() === comercial.email.toLowerCase()));
+  const sales = Array.from(new Map(paidSaleTransactions.map(tx => [getInitialSaleKey(tx), tx])).values());
   // PA are whole consolidated euros: 1.99 EUR remains 1 PA until it reaches 2.00 EUR.
-  const cashCollected = Math.floor(sales.reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
+  const cashCollected = Math.floor(paidSaleTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
   const assignedEvents = events.filter(event => isSalesAppointmentEvent(event) &&
     (event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === comercial.email.toLowerCase()));
   const commercialEmail = comercial.email.toLowerCase();
@@ -106,8 +113,9 @@ export function buildLegacyPointLedger(
   contacts: ClientContact[] = [],
 ): LegacyPointEntry[] {
   const commercialEmail = comercial.email.toLowerCase();
-  const sales = transactions.filter(tx => isCollectedSale(tx) &&
+  const paidSaleTransactions = transactions.filter(tx => isCollectedSale(tx) &&
     (tx.comercialId === comercial.id || tx.comercialEmail?.toLowerCase() === commercialEmail));
+  const sales = Array.from(new Map(paidSaleTransactions.map(tx => [getInitialSaleKey(tx), tx])).values());
   const assignedEvents = events.filter(event => isSalesAppointmentEvent(event) &&
     (event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === commercialEmail));
   const scheduledLeadIds = new Set(coldLeads
@@ -123,8 +131,8 @@ export function buildLegacyPointLedger(
       scheduledLeadIds.has(contact.closingSourceLeadId)
     )
     .map(contact => [contact.closingSourceLeadId as string, contact])).values());
-  const cashCollected = Math.floor(sales.reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
-  const latestSaleDate = sales.map(tx => String(tx.date || '')).sort().at(-1) || '';
+  const cashCollected = Math.floor(paidSaleTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
+  const latestSaleDate = paidSaleTransactions.map(tx => String(tx.date || '')).sort().at(-1) || '';
   const entries: LegacyPointEntry[] = [];
 
   if (cashCollected > 0) {
@@ -133,7 +141,7 @@ export function buildLegacyPointLedger(
       date: latestSaleDate,
       category: 'cash',
       label: 'Cash Collected consolidado',
-      detail: `${sales.length} cobro${sales.length === 1 ? '' : 's'} pagado${sales.length === 1 ? '' : 's'} · ${cashCollected.toLocaleString('es-ES')} € computables`,
+      detail: `${paidSaleTransactions.length} cobro${paidSaleTransactions.length === 1 ? '' : 's'} pagado${paidSaleTransactions.length === 1 ? '' : 's'} · ${cashCollected.toLocaleString('es-ES')} € computables`,
       points: cashCollected,
       automatic: true,
     });

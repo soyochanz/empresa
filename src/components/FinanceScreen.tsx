@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
 import { db } from '../supabaseClient';
+import { countUniqueInitialSales } from '../utils/salesRewards';
 import { 
  DollarSign, 
  TrendingUp, 
@@ -3611,7 +3612,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      c.status === 'Client' && 
      (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
     ).length;
-    const closures = Math.max(clientsCount, txs.length);
+    const closures = Math.max(clientsCount, countUniqueInitialSales(txs));
     const pct = getTieredCommission(closures);
     
     const extras = (com.extraCommissions || []).reduce((extraSum, extra) => extraSum + Number(extra.amount || 0), 0);
@@ -3628,7 +3629,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       c.status === 'Client' && 
       (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
      ).length;
-     const closures = Math.max(clientsCount, txs.length);
+     const closures = Math.max(clientsCount, countUniqueInitialSales(txs));
      return sum + getTieredCommission(closures);
      }, 0) / comercialesList.length)
     : 10;
@@ -3718,7 +3719,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
       ).length;
       
-      const closures = Math.max(clientsCount, txs.length);
+      const closures = Math.max(clientsCount, countUniqueInitialSales(txs));
       const pct = getTieredCommission(closures);
       const extras = (com.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
       const benefits = (paidVolume * (pct / 100)) + extras;
@@ -3815,7 +3816,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        c.status === 'Client' && 
        (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === assignedCom.email.toLowerCase())
       ).length;
-      const closures = Math.max(clientsCount, comTxs.length);
+      const closures = Math.max(clientsCount, countUniqueInitialSales(comTxs));
       commPct = getTieredCommission(closures);
       }
       

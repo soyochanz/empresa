@@ -41,6 +41,7 @@ import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, Client
 import DossierModal from './DossierModal';
 import AdminRewardsPanel from './AdminRewardsPanel';
 import { db, supabase } from '../supabaseClient';
+import { countUniqueInitialSales } from '../utils/salesRewards';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -447,7 +448,7 @@ export default function ComercialesAdminScreen({
    value: adminSaleTotal || lead.value || 0
    };
   }
-  return true;
+  return lead;
   });
 
  // 2. Find client contacts associated with ANY commercial that are NOT already in leadsList
@@ -598,7 +599,7 @@ export default function ComercialesAdminScreen({
  ) : [];
  const indInitialTxsPaid = indInitialTxs.filter(tx => tx.status === 'paid');
  const indInitialSalesVolume = indInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
- const indCommissionPercentage = currentComercial ? (currentComercial.commissionPercentage ?? getTieredCommission(Math.max(indWon.length, indInitialTxs.length))) : 10;
+ const indCommissionPercentage = currentComercial ? (currentComercial.commissionPercentage ?? getTieredCommission(Math.max(indWon.length, countUniqueInitialSales(indInitialTxs)))) : 10;
  const indExtraCommissions = currentComercial ? (currentComercial.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0) : 0;
  const indBenefitsEarned = (indInitialSalesVolume * (indCommissionPercentage / 100)) + indExtraCommissions;
  
@@ -1743,7 +1744,7 @@ export default function ComercialesAdminScreen({
       const initialSalesVolTotal = initialTxsForC.reduce((sum, tx) => sum + (tx.amount || 0), 0);
       const initialSalesVol = initialTxsForC.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + (tx.amount || 0), 0);
       const wonLeadsCount = (summary as any).wonLeads || 0;
-      const closuresForC = Math.max(wonLeadsCount, initialTxsForC.length);
+      const closuresForC = Math.max(wonLeadsCount, countUniqueInitialSales(initialTxsForC));
       const commissionPct = getTieredCommission(closuresForC);
       const tierInfo = getCommissionTierInfo(closuresForC);
       const extraForC = (c.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
