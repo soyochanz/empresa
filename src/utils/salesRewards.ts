@@ -50,6 +50,16 @@ export interface LegacyPointsResult {
  pointsToNext: number;
 }
 
+export interface LegacyPointEntry {
+ id: string;
+ date: string;
+ category: 'cash' | 'agenda' | 'show' | 'sale' | 'manual';
+ label: string;
+ detail: string;
+ points: number;
+ automatic: boolean;
+}
+
 export function calculateLegacyPoints(
   comercial: ComercialAccount,
   transactions: FinanceTransaction[] | any[],
@@ -86,6 +96,94 @@ export function calculateLegacyPoints(
   const nextRank = LEGACY_RANKS[rankIndex + 1];
   const progress = nextRank ? Math.min(100, ((total - rank.min) / (nextRank.min - rank.min)) * 100) : 100;
   return { total, cashPoints, agendaPoints, showPoints, salesPoints, manualPoints, cashCollected, agendas: assignedEvents.length, shows, sales: sales.length, rank, nextRank, progress, pointsToNext: nextRank ? Math.max(0, nextRank.min - total) : 0 };
+}
+
+export function buildLegacyPointLedger(
+  comercial: ComercialAccount,
+  transactions: FinanceTransaction[] | any[],
+  events: CalendarEvent[],
+  coldLeads: ColdCallingLead[] = [],
+  contacts: ClientContact[] = [],
+): LegacyPointEntry[] {
+  const commercialEmail = comercial.email.toLowerCase();
+  const sales = transactions.filter(tx => isCollectedSale(tx) &&
+    (tx.comercialId === comercial.id || tx.comercialEmail?.toLowerCase() === commercialEmail));
+  const assignedEvents = events.filter(event => isSalesAppointmentEvent(event) &&
+    (event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === commercialEmail));
+  const scheduledLeadIds = new Set(coldLeads
+    .filter(lead => lead.callbackScheduled === 'Sí' && (
+      lead.assignedToEmail?.toLowerCase() === commercialEmail ||
+      lead.closingOriginComercialEmail?.toLowerCase() === commercialEmail
+    ))
+    .map(lead => lead.id));
+  const showContacts = Array.from(new Map(contacts
+    .filter(contact =>
+      contact.closingAnswered === true &&
+      !!contact.closingSourceLeadId &&
+      scheduledLeadIds.has(contact.closingSourceLeadId)
+    )
+    .map(contact => [contact.closingSourceLeadId as string, contact])).values());
+  const cashCollected = Math.floor(sales.reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
+  const latestSaleDate = sales.map(tx => String(tx.date || '')).sort().at(-1) || '';
+  const entries: LegacyPointEntry[] = [];
+
+  if (cashCollected > 0) {
+    entries.push({
+      id: `cash_${comercial.id}`,
+      date: latestSaleDate,
+      category: 'cash',
+      label: 'Cash Collected consolidado',
+      detail: `${sales.length} cobro${sales.length === 1 ? '' : 's'} pagado${sales.length === 1 ? '' : 's'} · ${cashCollected.toLocaleString('es-ES')} € computables`,
+      points: cashCollected,
+      automatic: true,
+    });
+  }
+
+  assignedEvents.forEach(event => entries.push({
+    id: `agenda_${event.id}`,
+    date: event.date,
+    category: 'agenda',
+    label: 'Agenda conseguida',
+    detail: event.linkedContactName || event.title || 'Cita comercial',
+    points: 50,
+    automatic: true,
+  }));
+  showContacts.forEach(contact => entries.push({
+    id: `show_${contact.closingSourceLeadId}`,
+    date: contact.addedDate || '',
+    category: 'show',
+    label: 'Show confirmado por closer',
+    detail: `${contact.company || contact.name} · el cliente contestó`,
+    points: 75,
+    automatic: true,
+  }));
+  sales.forEach(tx => entries.push({
+    id: `sale_${tx.id}`,
+    date: String(tx.date || ''),
+    category: 'sale',
+    label: 'Venta cerrada y cobrada',
+    detail: tx.description || `${Number(tx.amount || 0).toLocaleString('es-ES')} € cobrados`,
+    points: 250,
+    automatic: true,
+  }));
+  (comercial.legacyBonuses || []).forEach(bonus => {
+    const labels: Record<string, string> = {
+      sale_assist: 'Ayudar a cerrar una venta',
+      training: 'Completar formación',
+      monthly_idea: 'Mejor idea del mes',
+    };
+    entries.push({
+      id: bonus.id,
+      date: bonus.date,
+      category: 'manual',
+      label: labels[bonus.type] || 'Bonificación manual',
+      detail: bonus.note || `${bonus.quantity} reconocimiento${bonus.quantity === 1 ? '' : 's'}`,
+      points: Number(bonus.points || 0),
+      automatic: false,
+    });
+  });
+
+  return entries.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id.localeCompare(a.id));
 }
 
 export const getMonthKey = (value: unknown): string => {

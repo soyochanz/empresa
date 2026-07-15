@@ -271,6 +271,8 @@ const nachoAdmin = findAdminByName('nacho');
  const [convInstallments, setConvInstallments] = useState(1);
  const [convPaymentMethod, setConvPaymentMethod] = useState<'cash' | 'transfer' | 'stripe'>('transfer');
  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
+ const [convCommercialEmail, setConvCommercialEmail] = useState('');
+ const [conversionOrigin, setConversionOrigin] = useState<'cold-calling' | 'closing'>('cold-calling');
 
  const normalizeTime = (time?: string) => {
  const [hours = '00', minutes = '00'] = (time || '').split(':');
@@ -366,6 +368,8 @@ const nachoAdmin = findAdminByName('nacho');
  setConvInstallments(1);
  setConvPaymentMethod('transfer');
  setConvConcept('Servicio de Consultoría Althera');
+ setConvCommercialEmail(lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : '');
+ setConversionOrigin('cold-calling');
  };
 
  const handleOpenClosingConversion = (lead: ColdCallingLead) => {
@@ -390,6 +394,12 @@ const nachoAdmin = findAdminByName('nacho');
  setConvInstallments(1);
  setConvPaymentMethod('transfer');
  setConvConcept('Servicio web Althera');
+ setConvCommercialEmail(
+  lead.closingOriginComercialEmail ||
+  getClosingContact(lead)?.contactedByComercialEmail ||
+  (lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : '')
+ );
+ setConversionOrigin('closing');
  };
 
  const handleConfirmConvertToClient = async (e: React.FormEvent) => {
@@ -399,8 +409,15 @@ const nachoAdmin = findAdminByName('nacho');
  const subtleColor = convertingLead.temperature === 'Caliente' ? 'rose' : convertingLead.temperature === 'Templado' ? 'amber' : 'indigo';
 
  // 1. Create the new client contact
+ const existingClosingContact = conversionOrigin === 'closing' ? getClosingContact(convertingLead) : undefined;
+ const selectedCommercial = comercialesList.find(c => c.email.toLowerCase() === convCommercialEmail.toLowerCase());
+ const selectedCommercialName = selectedCommercial?.name ||
+  convertingLead.closingOriginComercialName ||
+  convertingLead.assignedToName ||
+  'Sin asignar';
  const newContact: ClientContact = {
-  id: 'c_' + Date.now(),
+  ...(existingClosingContact || {}),
+  id: existingClosingContact?.id || 'c_' + Date.now(),
   name: convName.trim(),
   company: convCompany.trim(),
   status: convType,
@@ -416,15 +433,30 @@ const nachoAdmin = findAdminByName('nacho');
   .toUpperCase() || 'CLI',
   color: subtleColor,
   temperature: convertingLead.temperature || 'Caliente',
-  assignedUserEmail: convertingLead.assignedToEmail !== 'unassigned' ? convertingLead.assignedToEmail : undefined,
-  contactedByComercialEmail: convertingLead.assignedToEmail !== 'unassigned' ? convertingLead.assignedToEmail : undefined,
-  contactedByComercialName: convertingLead.assignedToName && convertingLead.assignedToName !== 'Sin asignar' ? convertingLead.assignedToName : undefined,
+  assignedUserEmail: conversionOrigin === 'closing'
+   ? (existingClosingContact?.assignedUserEmail || activeCloser?.email)
+   : (convCommercialEmail || undefined),
+  contactedByComercialEmail: convCommercialEmail || undefined,
+  contactedByComercialName: selectedCommercialName !== 'Sin asignar' ? selectedCommercialName : undefined,
   originalLeadNotes: convertingLead.notes || undefined,
   notes: convertingLead.notes ? `[Historial de llamada] ${convertingLead.notes}` : undefined,
-  callsLog: convertingLead.callsLog || []
+  callsLog: convertingLead.callsLog || [],
+  ...(conversionOrigin === 'closing' ? {
+   closingStatus: 'Cerrado' as const,
+   closingAnswered: getClosingDraft(convertingLead).answered,
+   closingNotes: getClosingDraft(convertingLead).notes?.trim() || undefined,
+   closingSocials: getClosingDraft(convertingLead).socials?.trim() || undefined,
+   closingSourceLeadId: convertingLead.id,
+   closerName: activeCloser?.name || existingClosingContact?.closerName || 'Carlos',
+   closerEmail: activeCloser?.email || existingClosingContact?.closerEmail,
+   needsWebsite: true,
+   websiteReady: false,
+   devStatus: 'backlog' as const,
+  } : {})
  };
 
- onAddContact(newContact);
+ if (existingClosingContact && onUpdateContact) onUpdateContact(newContact);
+ else onAddContact(newContact);
 
  // 2. Archive the cold lead
  onUpdateColdLead({
@@ -433,7 +465,7 @@ const nachoAdmin = findAdminByName('nacho');
  });
 
  // 3. Find associated commercial account to resolve commission percentage
- const assignedEmail = convertingLead.assignedToEmail || '';
+ const assignedEmail = convCommercialEmail || '';
  const matchedCom = comercialesList.find(c => c.email.toLowerCase() === assignedEmail.toLowerCase());
  const commPct = matchedCom?.commissionPercentage ?? 10; // defaults to 10% if not set
 
@@ -506,7 +538,7 @@ const nachoAdmin = findAdminByName('nacho');
   taxPercentage: 0,
   taxAmount: 0,
   total: convSalePrice,
-  notes: `Venta inicial generada automáticamente desde Cold Calling. Comercial: ${convertingLead.assignedToName || 'Sin asignar'}. Comisión: ${commPct}%.`,
+  notes: `Venta inicial generada automáticamente desde Cold Calling. Comercial: ${selectedCommercialName}. Comisión: ${commPct}%.`,
   comercialId: matchedCom?.id,
   comercialEmail: assignedEmail,
   isInitialSale: true
@@ -590,6 +622,29 @@ const nachoAdmin = findAdminByName('nacho');
 
  if (onRefreshFinance) {
   onRefreshFinance();
+ }
+
+ if (conversionOrigin === 'closing') {
+  onAddEvent?.({
+   id: `web_needed_${newContact.id}_${Date.now()}`,
+   title: `Web pendiente: ${newContact.company}`,
+   date: new Date().toISOString().split('T')[0],
+   time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+   duration: '15m',
+   type: 'Deadline',
+   description: `Nacho, este cliente se ha cerrado desde Closing y necesita web. Cliente: ${newContact.name}. Teléfono: ${newContact.phone || 'Sin teléfono'}.`,
+   linkedContactId: newContact.id,
+   linkedContactName: newContact.name,
+   linkedContactIds: [newContact.id],
+   assignedUserId: nachoAdmin?.id,
+   assignedUserEmail: nachoAdmin?.email || 'todos-admins',
+   assignedUserEmails: nachoAdmin?.email ? [nachoAdmin.email] : ['todos-admins'],
+   status: 'pending',
+   color: '#F59E0B',
+   alias: 'Falta Web',
+   isAdminNotification: !nachoAdmin,
+   notes: getClosingDraft(convertingLead).notes
+  });
  }
 
  if (convType === 'Client') {
@@ -1534,14 +1589,14 @@ const nachoAdmin = findAdminByName('nacho');
   draftPatch?: Partial<ReturnType<typeof getClosingDraft>>
  ) => {
  if (!onUpdateContact) {
-  alert('No hay conexiÃ³n de actualizaciÃ³n CRM disponible para guardar Closing.');
+  alert('No hay conexión de actualización CRM disponible para guardar Closing.');
   return;
  }
  const draft = { ...getClosingDraft(lead), ...(draftPatch || {}) };
  const status = forcedStatus || draft.status || 'Pendiente';
  if (draft.date && draft.time && (draft.date !== lead.callbackDate || draft.time !== lead.callbackTime)) {
   if (isSlotBusy(draft.date, draft.time)) {
-  alert('Esa hora ya estÃ¡ ocupada en calendario. Elige otra franja.');
+  alert('Esa hora ya está ocupada en calendario. Elige otra franja.');
   return;
   }
   onUpdateColdLead({ ...lead, callbackDate: draft.date, callbackTime: draft.time });
@@ -1556,7 +1611,7 @@ const nachoAdmin = findAdminByName('nacho');
   time: draft.time,
   duration: '45m',
   type: 'Meeting',
-  description: `Reagenda desde Closing para ${draft.company}. TelÃ©fono: ${draft.phone}`,
+  description: `Reagenda desde Closing para ${draft.company}. Teléfono: ${draft.phone}`,
   linkedContactId: `crm_from_${lead.id}`,
   linkedContactName: draft.name,
   assignedUserId: activeCloser?.id || undefined,
@@ -1607,7 +1662,7 @@ const nachoAdmin = findAdminByName('nacho');
   time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
   duration: '15m',
   type: 'Deadline',
-  description: `Nacho, este cliente se ha cerrado desde Closing y necesita web. Cliente: ${updatedContact.name}. TelÃ©fono: ${updatedContact.phone || 'Sin telÃ©fono'}.`,
+  description: `Nacho, este cliente se ha cerrado desde Closing y necesita web. Cliente: ${updatedContact.name}. Teléfono: ${updatedContact.phone || 'Sin teléfono'}.`,
   linkedContactId: updatedContact.id,
   linkedContactName: updatedContact.name,
   linkedContactIds: [updatedContact.id],
@@ -3674,7 +3729,7 @@ const nachoAdmin = findAdminByName('nacho');
        <span className="px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[9px] text-cyan-300 font-mono">{activeCloser?.name || 'Closer'} closer</span>
       </div>
       <h4 className="text-lg font-black text-white mt-2 truncate">{draft.company}</h4>
-      <p className="text-xs text-slate-400 truncate">{draft.name} Â· {draft.phone}</p>
+      <p className="text-xs text-slate-400 truncate">{draft.name} · {draft.phone}</p>
       </div>
       <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
        <div className="rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-right font-mono"><p className="text-[11px] font-black text-white">{formatCallbackDate(lead.callbackDate)}</p><p className="mt-0.5 text-[10px] font-bold text-cyan-300">{lead.callbackTime || 'Sin hora'}</p></div>
@@ -3699,7 +3754,7 @@ const nachoAdmin = findAdminByName('nacho');
        </div>
        <input readOnly={isClosingReadOnly} value={draft.name} onChange={(e) => updateClosingDraft(lead.id, { name: e.target.value })} placeholder="Persona de contacto" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.company} onChange={(e) => updateClosingDraft(lead.id, { company: e.target.value })} placeholder="Empresa" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
-       <input readOnly={isClosingReadOnly} value={draft.phone} onChange={(e) => updateClosingDraft(lead.id, { phone: e.target.value })} placeholder="TelÃ©fono" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+       <input readOnly={isClosingReadOnly} value={draft.phone} onChange={(e) => updateClosingDraft(lead.id, { phone: e.target.value })} placeholder="Teléfono" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.email} onChange={(e) => updateClosingDraft(lead.id, { email: e.target.value })} placeholder="Email" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
        <input readOnly type="date" value={draft.date} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none read-only:opacity-70" title="Usa Posponer cita para cambiar la fecha" />
        <select disabled value={draft.time} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none disabled:opacity-70" title="Usa Posponer cita para cambiar la hora">
@@ -3712,7 +3767,7 @@ const nachoAdmin = findAdminByName('nacho');
        <input readOnly={isClosingReadOnly} value={draft.socials} onChange={(e) => updateClosingDraft(lead.id, { socials: e.target.value })} placeholder="Redes sociales" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.mapsUrl} onChange={(e) => updateClosingDraft(lead.id, { mapsUrl: e.target.value })} placeholder="URL Google Maps" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.website} onChange={(e) => updateClosingDraft(lead.id, { website: e.target.value })} placeholder="Web actual o futura" className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400 read-only:opacity-70" />
-       <textarea readOnly={isClosingReadOnly} value={draft.notes} onChange={(e) => updateClosingDraft(lead.id, { notes: e.target.value })} placeholder="Notas del closer, objeciones, presupuesto, prÃ³ximos pasos..." rows={3} className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+       <textarea readOnly={isClosingReadOnly} value={draft.notes} onChange={(e) => updateClosingDraft(lead.id, { notes: e.target.value })} placeholder="Notas del closer, objeciones, presupuesto, próximos pasos..." rows={3} className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
       </div>
 
       {!isClosingReadOnly && (
@@ -3726,7 +3781,7 @@ const nachoAdmin = findAdminByName('nacho');
       <button onClick={() => postponeClosingLead(lead)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] font-black text-amber-300 hover:bg-amber-500/20"><Clock className="w-3.5 h-3.5"/>Posponer cita</button>
       <button onClick={() => saveClosingLead(lead, 'Perdido')} className="px-3 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[10px] font-black text-rose-300 hover:bg-rose-500/20">Perdido</button>
       <button onClick={() => saveClosingLead(lead, 'Pendiente')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-500/10 border border-white/10 text-[10px] font-black text-slate-200 hover:bg-white/10"><Save className="w-3.5 h-3.5" /> Guardar</button>
-      <button onClick={() => { saveClosingLead(lead, 'Cerrado'); handleOpenClosingConversion(lead); }} className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/25">Cerrado + pedir web</button>
+      <button onClick={() => handleOpenClosingConversion(lead)} className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/25">Cerrado + pedir web</button>
       </div>
      </div>
       )}
@@ -5022,6 +5077,20 @@ const nachoAdmin = findAdminByName('nacho');
     </div>
     </div>
 
+    <div className="rounded-2xl border border-violet-400/15 bg-violet-500/[0.05] p-4">
+     <label className="text-[10px] text-violet-200 font-mono font-bold block mb-1.5">Call caller asociado</label>
+     <select
+      required
+      value={convCommercialEmail}
+      onChange={(e) => setConvCommercialEmail(e.target.value)}
+      className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white outline-none focus:border-violet-400"
+     >
+      <option value="" disabled>Selecciona el comercial que gestionó la llamada</option>
+      {comercialesList.map(comercial => <option key={comercial.id} value={comercial.email}>{comercial.name} · {comercial.email}</option>)}
+     </select>
+     <p className="mt-2 text-[9px] leading-relaxed text-slate-500">Se completa automáticamente con el autor original de la llamada. Puedes corregirlo antes de confirmar; esta atribución se usará en CRM, comisiones y PA.</p>
+    </div>
+
     {/* Financial Terms Panel - ONLY FOR CLIENT */}
     {convType === 'Client' && (
     <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
@@ -5071,7 +5140,7 @@ const nachoAdmin = findAdminByName('nacho');
 
     {/* Calculated Results Preview or Assignment Information */}
     {(() => {
-    const assignedEmail = convertingLead.assignedToEmail || '';
+    const assignedEmail = convCommercialEmail || '';
     const matchedCom = comercialesList.find(c => c.email.toLowerCase() === assignedEmail.toLowerCase());
     const commPct = matchedCom?.commissionPercentage ?? 10;
     const totalComm = (convSalePrice * commPct) / 100;
@@ -5101,7 +5170,7 @@ const nachoAdmin = findAdminByName('nacho');
       <div className="border-t border-white/5 pt-2 flex justify-between items-center text-xs">
       <div>
        <span className="text-[10px] text-slate-400">Comercial Asignado:</span>
-       <p className="font-semibold text-slate-200">{convertingLead.assignedToName || 'N/A'} ({assignedEmail || 'Sin email'})</p>
+       <p className="font-semibold text-slate-200">{matchedCom?.name || convertingLead.closingOriginComercialName || 'N/A'} ({assignedEmail || 'Sin email'})</p>
       </div>
       <div className="text-right">
        <span className="text-[10px] text-slate-400">Comisión Devengada ({commPct}%):</span>
@@ -5118,7 +5187,7 @@ const nachoAdmin = findAdminByName('nacho');
       <span className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest block">Asignación de Autoría</span>
       <div className="text-xs space-y-1">
       <p className="text-slate-300 leading-relaxed">
-       El comercial <strong className="text-white">{convertingLead.assignedToName || 'N/A'}</strong> figurará permanentemente como el autor / asignado de este Lead.
+       El comercial <strong className="text-white">{matchedCom?.name || convertingLead.closingOriginComercialName || 'N/A'}</strong> figurará permanentemente como el autor / asignado de este Lead.
       </p>
       <p className="text-slate-400 text-[10.5px] leading-relaxed">
        Si en el futuro la administración de la agencia cierra un contrato con este cliente, la venta le será atribuida automáticamente para el cobro de sus comisiones.

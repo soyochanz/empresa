@@ -207,7 +207,7 @@ export default function CitasScreen({
     : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
    }`}
    >
-   PrÃ³ximas
+   Próximas
    </button>
    <button
    onClick={() => setTimeFilter('past')}

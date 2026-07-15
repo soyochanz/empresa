@@ -1396,7 +1396,7 @@ export default function CrmScreen({
   setConvSalePrice(1500);
   setConvInstallments(1);
   setConvPaymentMethod('transfer');
-  setConvConcept('Servicio de ConsultorÃ­a Althera');
+  setConvConcept('Servicio de Consultoría Althera');
   setConvSelectedComercialId(comercialesList[0]?.id || '');
   setDraggedContactId(null);
   setDraggedOverCol(null);
@@ -1493,7 +1493,7 @@ export default function CrmScreen({
     <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
     <h4 className="font-bold text-[12px] text-white truncate tracking-tight">{contact.name}</h4>
     {contact.priority && (
-    <span className="text-[10px] text-amber-400 select-none">â˜…</span>
+    <span className="text-[10px] text-amber-400 select-none">★</span>
     )}
    </div>
    
@@ -2083,7 +2083,7 @@ export default function CrmScreen({
         setConvSalePrice(1500);
         setConvInstallments(1);
         setConvPaymentMethod('transfer');
-        setConvConcept('Servicio de ConsultorÃ­a Althera');
+        setConvConcept('Servicio de Consultoría Althera');
         setConvSelectedComercialId(comercialesList[0]?.id || '');
         return;
        }
@@ -2100,7 +2100,7 @@ export default function CrmScreen({
       <option value="Lead" className="bg-[#0e1628] text-slate-300 font-sans font-medium text-xs">Lead</option>
       <option value="Client" className="bg-[#0e1628] text-slate-300 font-sans font-medium text-xs">Client</option>
       </select>
-      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none text-[8px] scale-75">â–¼</span>
+      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none text-[8px] scale-75">▼</span>
      </div>
      {selectedContact.priority && (
       <span className="px-2.5 py-1 rounded-xl text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">

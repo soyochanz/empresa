@@ -238,7 +238,7 @@ export default function DeveloperHubScreen({
  if (!digits) return undefined;
  const normalized = digits.startsWith('34') ? digits : `34${digits}`;
  const url = getWebsiteShareUrl(contact);
- const message = `Hola ${contact.name}, tu web ya estÃ¡ lista: ${url}. RevÃ­sala y dime si quieres que ajustemos algÃºn detalle.`;
+ const message = `Hola ${contact.name}, tu web ya está lista: ${url}. Revísala y dime si quieres que ajustemos algún detalle.`;
  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
  };
  const handleMarkWebsiteReady = (contact: ClientContact) => {
@@ -259,7 +259,7 @@ export default function DeveloperHubScreen({
   time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
   duration: '10m',
   type: 'Review',
-  description: `Carlos, la web de ${contact.company} ya estÃ¡ lista. URL: ${shareUrl || 'pendiente de revisar'}.`,
+  description: `Carlos, la web de ${contact.company} ya está lista. URL: ${shareUrl || 'pendiente de revisar'}.`,
   linkedContactId: contact.id,
   linkedContactName: contact.name,
   linkedContactIds: [contact.id],

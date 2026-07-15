@@ -433,8 +433,7 @@ export default function ComercialesAdminScreen({
  };
 
  // 1. Map existing leads, force to 'Ganado' if matching contact is 'Client'
- const updated = leadsList
-  .map(lead => {
+ const updated = leadsList.map(lead => {
   const matchingContact = contacts.find(c => 
    (lead.email && c.email && lead.email.toLowerCase() === c.email.toLowerCase()) ||
    (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase())
@@ -447,18 +446,6 @@ export default function ComercialesAdminScreen({
    status: 'Ganado' as const,
    value: adminSaleTotal || lead.value || 0
    };
-  }
-  return lead;
-  })
-  .filter(lead => {
-  // If a lead has status 'Ganado', we only keep it if a matching 'Client' actually exists in the contacts list.
-  // This ensures deleting a client or removing their client status instantly removes them from commercial stats.
-  if (lead.status === 'Ganado') {
-   return contacts.some(c => 
-   c.status === 'Client' && 
-   ((lead.email && c.email && lead.email.toLowerCase() === c.email.toLowerCase()) ||
-    (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase()))
-   );
   }
   return true;
   });
