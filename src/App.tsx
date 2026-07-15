@@ -31,7 +31,7 @@ import DepartmentsScreen from './components/DepartmentsScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
-import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus } from 'lucide-react';
+import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase } from 'lucide-react';
 
 const PRIVATE_EVENTS_CACHE_KEY = 'althera_commercial_private_events';
 const EVENTS_CACHE_KEY = 'althera_events_cache';
@@ -96,6 +96,17 @@ const getLocalDateKey = (date = new Date()) => {
  const month = String(date.getMonth() + 1).padStart(2, '0');
  const day = String(date.getDate()).padStart(2, '0');
  return `${year}-${month}-${day}`;
+};
+
+const isClosingAppointmentEvent = (event: CalendarEvent) =>
+ event.id.startsWith('cc_appointment_') ||
+ event.alias === 'Cita Cold Calling' ||
+ event.linkedContactId?.startsWith('crm_from_');
+
+const getClosingLeadIdFromEvent = (event: CalendarEvent) => {
+ if (event.linkedContactId?.startsWith('crm_from_')) return event.linkedContactId.slice('crm_from_'.length);
+ if (event.id.startsWith('cc_appointment_')) return event.id.slice('cc_appointment_'.length);
+ return undefined;
 };
 
 const readEventCache = (): CalendarEvent[] => {
@@ -263,6 +274,24 @@ export default function App() {
   const ids = new Set(cachedEvents.map(event => event.id));
   return [...cachedEvents, ...readPrivateEventCache().filter(event => !ids.has(event.id))];
  });
+ const [focusedAdminClosingLeadId, setFocusedAdminClosingLeadId] = useState<string>();
+ const [closingAlertClock, setClosingAlertClock] = useState(() => Date.now());
+ const [handledClosingAlertIds, setHandledClosingAlertIds] = useState<string[]>(() => {
+  try {
+   const parsed = JSON.parse(localStorage.getItem('althera_handled_closing_alerts') || '[]');
+   return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
+  } catch { return []; }
+ });
+
+ useEffect(() => {
+  const timer = window.setInterval(() => setClosingAlertClock(Date.now()), 15_000);
+  return () => window.clearInterval(timer);
+ }, []);
+
+ useEffect(() => {
+  try { localStorage.setItem('althera_handled_closing_alerts', JSON.stringify(handledClosingAlertIds)); }
+  catch (error) { console.warn('Could not persist closing alert decisions:', error); }
+ }, [handledClosingAlertIds]);
 
  useEffect(() => {
   try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify(events)); }
@@ -947,17 +976,53 @@ export default function App() {
  return list;
  }, [leadsList, coldLeads, currentUser, notifyHotLeads]);
 
+ const adminVisibleEvents = useMemo(() => {
+  if (!currentUser) return [];
+  const adminEmail = currentUser.email.toLowerCase();
+  return events.filter(event => {
+   if (event.isPrivate && event.comercialId) return false;
+   const directEmail = event.assignedUserEmail?.toLowerCase();
+   const assignedEmails = (event.assignedUserEmails || []).map(email => email.toLowerCase());
+   const hasExplicitAssignment = !!directEmail || assignedEmails.length > 0 || !!event.assignedUserId;
+
+   if (directEmail === 'todos-admins' || assignedEmails.includes('todos-admins')) return true;
+   if (directEmail === 'todos-comerciales' || assignedEmails.includes('todos-comerciales')) return false;
+   if (directEmail === adminEmail || assignedEmails.includes(adminEmail)) return true;
+   if (event.assignedUserId && currentUser.id && event.assignedUserId === currentUser.id) return true;
+
+   // Los eventos sin destinatario continúan siendo agenda administrativa común.
+   return !hasExplicitAssignment;
+  });
+ }, [events, currentUser]);
+
+ const adminVisibleEventIds = useMemo(() => new Set(adminVisibleEvents.map(event => event.id)), [adminVisibleEvents]);
+
+ const dueClosingAlertEvent = useMemo(() => {
+  const todayKey = getLocalDateKey();
+  const adminEmail = currentUser?.email.toLowerCase();
+  if (!adminEmail) return null;
+  return adminVisibleEvents
+   .filter(event => isClosingAppointmentEvent(event))
+   .filter(event => event.status !== 'done' && event.date === todayKey)
+   .filter(event => !handledClosingAlertIds.includes(`${adminEmail}:${event.id}`))
+   .filter(event => {
+    const dueAt = new Date(`${event.date}T${/^\d{2}:\d{2}/.test(event.time || '') ? event.time : '23:59'}`).getTime();
+    return Number.isFinite(dueAt) && dueAt <= closingAlertClock;
+   })
+   .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))[0] || null;
+ }, [adminVisibleEvents, handledClosingAlertIds, closingAlertClock, currentUser]);
+
  // Notifications computation
  const userNotifications = useMemo(() => {
   const todayKey = getLocalDateKey();
-  const dbNotifications = events.filter(e => {
+  const dbNotifications = adminVisibleEvents.filter(e => {
   if (!currentUser) return false;
   if (e.date !== todayKey) return false;
-  if (e.isAdminNotification || e.assignedUserEmail === 'todos-admins') return true;
-  const assignedEmails = e.assignedUserEmails || [];
-  if (assignedEmails.includes('todos-comerciales')) return true;
-  if (assignedEmails.some(email => email.toLowerCase() === currentUser.email.toLowerCase())) return true;
-  return !!e.assignedUserEmail && e.assignedUserEmail.toLowerCase() === currentUser.email.toLowerCase();
+  if (isClosingAppointmentEvent(e)) {
+   const dueAt = new Date(`${e.date}T${/^\d{2}:\d{2}/.test(e.time || '') ? e.time : '23:59'}`).getTime();
+   return Number.isFinite(dueAt) && dueAt <= closingAlertClock;
+  }
+  return true;
   });
   const notificationTime = (notification: any) => {
   const rawDate = notification.date || new Date().toISOString().split('T')[0];
@@ -971,7 +1036,7 @@ export default function App() {
    if (unreadDelta !== 0) return unreadDelta;
    return notificationTime(b) - notificationTime(a);
   });
-  }, [events, financeNotifications, hotLeadsNotifications, currentUser, readNotificationIds]);
+  }, [adminVisibleEvents, financeNotifications, hotLeadsNotifications, currentUser, readNotificationIds, closingAlertClock]);
 
  const unreadNotifications = useMemo(() => {
  return userNotifications.filter(e => !readNotificationIds.includes(e.id));
@@ -1327,6 +1392,21 @@ export default function App() {
   setCurrentScreen(target);
  }
  setGlobalSearch(''); // reset search on navigation
+ };
+
+ const openClosingCase = (event: CalendarEvent) => {
+  const leadId = getClosingLeadIdFromEvent(event);
+  if (leadId) setFocusedAdminClosingLeadId(leadId);
+  handleMarkAsRead(event.id);
+  setIsNotificationsOpen(false);
+  navigateTo('cold_calling', 'push');
+ };
+
+ const resolveClosingAlert = (event: CalendarEvent, decision: 'accepted' | 'rejected') => {
+  const alertKey = `${currentUser?.email.toLowerCase() || 'admin'}:${event.id}`;
+  setHandledClosingAlertIds(previous => previous.includes(alertKey) ? previous : [...previous, alertKey]);
+  handleMarkAsRead(event.id);
+  if (decision === 'accepted') openClosingCase(event);
  };
 
  // State handles to modify database items dynamically with Optimistic UI updates
@@ -1833,7 +1913,7 @@ export default function App() {
   case 'dashboard':
   return (
    <DashboardScreen 
-   events={(globalSearch ? filteredSearchEvents : events).filter(event => !(event.isPrivate && event.comercialId))}
+   events={globalSearch ? filteredSearchEvents.filter(event => adminVisibleEventIds.has(event.id)) : adminVisibleEvents}
    notes={globalSearch ? filteredSearchNotes : notes}
    activities={activities}
    onNavigate={navigateTo}
@@ -1849,7 +1929,7 @@ export default function App() {
   case 'calendar':
   return (
    <CalendarScreen 
-   events={(globalSearch ? filteredSearchEvents : events).filter(event => !(event.isPrivate && event.comercialId))}
+   events={globalSearch ? filteredSearchEvents.filter(event => adminVisibleEventIds.has(event.id)) : adminVisibleEvents}
    contacts={contacts}
    notes={globalSearch ? filteredSearchNotes : notes}
    onAddEvent={handleAddEvent}
@@ -1865,7 +1945,7 @@ export default function App() {
   return (
    <CrmScreen 
    contacts={globalSearch ? filteredSearchContacts : contacts}
-   events={events}
+   events={adminVisibleEvents}
    onAddContact={handleAddContact}
    onUpdateContact={handleUpdateContact}
    onDeleteContact={handleDeleteContact}
@@ -1913,7 +1993,7 @@ export default function App() {
  case 'citas':
  return (
   <CitasScreen
-   events={events.filter(event => !(event.isPrivate && event.comercialId))}
+   events={adminVisibleEvents}
    contacts={contacts}
    onAddEvent={handleAddEvent}
    onUpdateEvent={handleUpdateEvent}
@@ -1938,7 +2018,7 @@ export default function App() {
    coldLeads={coldLeads}
    finTransactions={finTransactions}
    contacts={contacts}
-   events={events.filter(event => !(event.isPrivate && event.comercialId))}
+   events={adminVisibleEvents}
    onAddComercial={handleAddComercialAccount}
    onUpdateComercial={handleUpdateComercialAccount}
    onDeleteComercial={handleDeleteComercialAccount}
@@ -1958,11 +2038,14 @@ export default function App() {
    currentComercial={null}
    onNavigate={navigateTo}
    onAddEvent={handleAddEvent}
-   events={events.filter(event => !(event.isPrivate && event.comercialId))}
+   onUpdateEvent={handleUpdateEvent}
+   onDeleteEvent={handleDeleteEvent}
+   events={adminVisibleEvents}
    contacts={contacts}
    onAddContact={handleAddContact}
    onUpdateContact={handleUpdateContact}
    onRefreshFinance={handleRefreshFinance}
+   focusClosingLeadId={focusedAdminClosingLeadId}
    />
   );
   case 'developer_hub':
@@ -2312,6 +2395,15 @@ export default function App() {
          Enviar WhatsApp
         </a>
         )}
+        {isClosingAppointmentEvent(ev) && (
+        <button
+         type="button"
+         onClick={() => openClosingCase(ev)}
+         className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2.5 py-1.5 text-[10px] font-black text-amber-300 transition hover:bg-amber-400/20 hover:text-white"
+        >
+         <Briefcase className="h-3.5 w-3.5" /> Ir al caso de Closing
+        </button>
+        )}
        </div>
        
        {isUnread && (
@@ -2339,6 +2431,24 @@ export default function App() {
    </>
   )}
   </AnimatePresence>
+
+  {dueClosingAlertEvent && (
+  <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl">
+   <div role="alertdialog" aria-modal="true" aria-labelledby="closing-alert-title" className="relative w-full max-w-lg overflow-hidden rounded-[30px] border border-amber-300/25 bg-[#0a0e14] p-6 shadow-[0_30px_120px_rgba(0,0,0,.8)] sm:p-8">
+    <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-amber-400/10 blur-3xl" />
+    <div className="relative">
+     <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-300/25 bg-amber-400/10"><AlertTriangle className="h-7 w-7 animate-pulse text-amber-300" /></div>
+     <p className="mt-6 text-[10px] font-black uppercase tracking-[.28em] text-amber-300">Closing · {dueClosingAlertEvent.time}</p>
+     <h2 id="closing-alert-title" className="mt-2 text-3xl font-black tracking-tight text-white">Es la hora de tu cita</h2>
+     <p className="mt-2 text-sm leading-6 text-slate-400">Tienes que gestionar <strong className="text-white">{dueClosingAlertEvent.title.replace(/^Cita comercial:\s*/i, '')}</strong>. Puedes abrir directamente la ficha de Closing o descartar este aviso.</p>
+     <div className="mt-7 grid grid-cols-2 gap-3">
+      <button type="button" onClick={() => resolveClosingAlert(dueClosingAlertEvent, 'rejected')} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs font-black text-slate-300 transition hover:bg-white/10 hover:text-white">Rechazar aviso</button>
+      <button type="button" onClick={() => resolveClosingAlert(dueClosingAlertEvent, 'accepted')} className="rounded-2xl bg-amber-300 px-4 py-3 text-xs font-black text-slate-950 shadow-[0_15px_40px_rgba(252,211,77,.18)] transition hover:bg-amber-200">Aceptar e ir al caso</button>
+     </div>
+    </div>
+   </div>
+  </div>
+  )}
   
   {/* Stripe Callback Modal Overlay */}
   {stripeSuccessData?.show && (

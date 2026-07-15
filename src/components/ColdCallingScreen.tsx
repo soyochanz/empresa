@@ -34,8 +34,11 @@ import {
  MapPin,
  MessageCircle,
  Save
+ ,Folder
+ ,FolderPlus
+ ,History
 } from 'lucide-react';
-import { ColdCallingLead, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
+import { ColdCallingLead, ColdCallingProspectGroup, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
 
 const HOURLY_SLOTS = [
@@ -95,6 +98,7 @@ interface ColdCallingScreenProps {
  onDeleteEvent?: (id: string) => void;
  onRefreshFinance?: () => void;
  focusLeadId?: string;
+ focusClosingLeadId?: string;
 }
 
 export default function ColdCallingScreen({
@@ -115,7 +119,8 @@ export default function ColdCallingScreen({
  onUpdateEvent,
  onDeleteEvent,
  onRefreshFinance,
- focusLeadId
+ focusLeadId,
+ focusClosingLeadId
 }: ColdCallingScreenProps) {
  
  // Combine comerciales and admins (usersList) for assignment
@@ -151,6 +156,13 @@ const nachoAdmin = findAdminByName('nacho');
  const [showPostponed, setShowPostponed] = useState(false);
  const [showOnlySelf, setShowOnlySelf] = useState(false);
  const [filterNow, setFilterNow] = useState(() => Date.now());
+ const [prospectGroups, setProspectGroups] = useState<ColdCallingProspectGroup[]>([]);
+ const [groupFilter, setGroupFilter] = useState('all');
+ const [showGroupsModal, setShowGroupsModal] = useState(false);
+ const [newGroupName, setNewGroupName] = useState('');
+ const [newGroupColor, setNewGroupColor] = useState('#8B5CF6');
+ const [groupBusy, setGroupBusy] = useState(false);
+ const [groupError, setGroupError] = useState('');
 
  useEffect(() => {
   const refreshTime = () => setFilterNow(Date.now());
@@ -161,6 +173,18 @@ const nachoAdmin = findAdminByName('nacho');
    document.removeEventListener('visibilitychange', refreshTime);
   };
  }, []);
+
+ useEffect(() => {
+  if (!currentComercial) {
+   setProspectGroups([]);
+   return;
+  }
+  let cancelled = false;
+  db.getColdCallingGroups(currentComercial.email)
+   .then(groups => { if (!cancelled) setProspectGroups(groups); })
+   .catch(error => { if (!cancelled) setGroupError(error?.message || 'No se pudieron cargar los grupos.'); });
+  return () => { cancelled = true; };
+ }, [currentComercial?.id, currentComercial?.email]);
 
  // Task calendar date state
  const [selectedTaskDate, setSelectedTaskDate] = useState<string>(() => {
@@ -219,6 +243,9 @@ const nachoAdmin = findAdminByName('nacho');
  const [showClosedClosingLeads, setShowClosedClosingLeads] = useState(false);
  const [closingScope, setClosingScope] = useState<'today' | 'all'>('today');
  const [expandedClosingLeadId, setExpandedClosingLeadId] = useState<string | null>(null);
+ const [postponingClosingLead, setPostponingClosingLead] = useState<ColdCallingLead | null>(null);
+ const [postponeClosingDate, setPostponeClosingDate] = useState(() => new Date().toISOString().split('T')[0]);
+ const [postponeClosingTime, setPostponeClosingTime] = useState('');
  const [deleteConfirmLeadId, setDeleteConfirmLeadId] = useState<string | null>(null);
  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
  const [bulkAssigneeEmail, setBulkAssigneeEmail] = useState('unassigned');
@@ -250,9 +277,30 @@ const nachoAdmin = findAdminByName('nacho');
  return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
  };
 
+ const closerCalendarEvents = React.useMemo(() => {
+  if (!carlosAdmin) return events;
+  const closerEmail = carlosAdmin.email.toLowerCase();
+  return events.filter(event => {
+   const assignedEmails = (event.assignedUserEmails || []).map(email => email.toLowerCase());
+   return event.assignedUserEmail?.toLowerCase() === closerEmail ||
+    assignedEmails.includes(closerEmail) ||
+    (!!event.assignedUserId && event.assignedUserId === carlosAdmin.id);
+  });
+ }, [events, carlosAdmin?.id, carlosAdmin?.email]);
+
  const getSlotConflict = (date: string, time: string) => {
- const targetTime = normalizeTime(time);
- return events.find(event => event.date === date && normalizeTime(event.time) === targetTime);
+ const targetStart = new Date(`${date}T${normalizeTime(time)}`).getTime();
+ const targetEnd = targetStart + 60 * 60 * 1000;
+ return closerCalendarEvents.find(event => {
+  if (event.date !== date || event.status === 'done') return false;
+  const eventStart = new Date(`${event.date}T${normalizeTime(event.time)}`).getTime();
+  const rawDuration = event.duration || '60m';
+  const durationMinutes = rawDuration.endsWith('h')
+   ? Math.max(1, Number.parseFloat(rawDuration) * 60)
+   : Math.max(1, Number.parseInt(rawDuration, 10) || 60);
+  const eventEnd = eventStart + durationMinutes * 60 * 1000;
+  return Number.isFinite(eventStart) && targetStart < eventEnd && targetEnd > eventStart;
+ });
  };
 
  const isSlotBusy = (date: string, time: string) => !!getSlotConflict(date, time);
@@ -983,7 +1031,10 @@ const nachoAdmin = findAdminByName('nacho');
   matchesAssigned = lead.assignedToEmail === assignedFilter;
  }
 
- return matchesSearch && matchesTemp && matchesAssigned;
+ const matchesGroup = !currentComercial || groupFilter === 'all' ||
+  (groupFilter === 'ungrouped' ? !lead.prospectGroupId : lead.prospectGroupId === groupFilter);
+
+ return matchesSearch && matchesTemp && matchesAssigned && matchesGroup;
  }).sort((a, b) => {
  const aCallback = getCallbackTimestamp(a);
  const bCallback = getCallbackTimestamp(b);
@@ -1144,6 +1195,16 @@ const nachoAdmin = findAdminByName('nacho');
   }
  }, [focusLeadId]);
 
+ useEffect(() => {
+  if (!focusClosingLeadId) return;
+  const lead = coldLeads.find(item => item.id === focusClosingLeadId);
+  if (!lead) return;
+  setActiveTab('closing');
+  setClosingScope('all');
+  setShowClosedClosingLeads(true);
+  setExpandedClosingLeadId(lead.id);
+ }, [focusClosingLeadId, coldLeads]);
+
  // Submit Logger Update
  const handleSaveCallLog = (e: React.FormEvent) => {
  e.preventDefault();
@@ -1263,6 +1324,80 @@ const nachoAdmin = findAdminByName('nacho');
  });
  };
 
+ const handleCreateProspectGroup = async (event: React.FormEvent) => {
+  event.preventDefault();
+  if (!currentComercial || !newGroupName.trim() || groupBusy) return;
+  setGroupBusy(true);
+  setGroupError('');
+  const group: ColdCallingProspectGroup = {
+   id: `cc_group_${currentComercial.id}_${Date.now()}`,
+   ownerCommercialId: currentComercial.id,
+   ownerEmail: currentComercial.email,
+   ownerName: currentComercial.name,
+   name: newGroupName.trim().slice(0, 60),
+   color: newGroupColor,
+   createdAt: new Date().toISOString()
+  };
+  try {
+   await db.insertColdCallingGroup(group);
+   setProspectGroups(current => [...current, group]);
+   setNewGroupName('');
+   await db.addCommercialActivityLog({
+    commercial: currentComercial,
+    action: 'prospect_group_created',
+    entityType: 'prospect_group',
+    entityId: group.id,
+    description: `Creó el grupo de prospectos “${group.name}”.`,
+    metadata: { groupName: group.name, color: group.color }
+   });
+  } catch (error: any) {
+   setGroupError(error?.message || 'No se pudo crear el grupo.');
+  } finally {
+   setGroupBusy(false);
+  }
+ };
+
+ const handleDeleteProspectGroup = async (group: ColdCallingProspectGroup) => {
+  if (!currentComercial || groupBusy || !confirm(`¿Eliminar el grupo “${group.name}”? Los prospectos no se eliminarán.`)) return;
+  setGroupBusy(true);
+  setGroupError('');
+  try {
+   await db.deleteColdCallingGroup(group.id, currentComercial.email);
+   setProspectGroups(current => current.filter(item => item.id !== group.id));
+   if (groupFilter === group.id) setGroupFilter('all');
+   await Promise.all(coldLeads
+    .filter(lead => lead.prospectGroupId === group.id)
+    .map(lead => onUpdateColdLead({ ...lead, prospectGroupId: undefined })));
+   await db.addCommercialActivityLog({
+    commercial: currentComercial,
+    action: 'prospect_group_deleted',
+    entityType: 'prospect_group',
+    entityId: group.id,
+    description: `Eliminó el grupo de prospectos “${group.name}”.`,
+    metadata: { groupName: group.name }
+   });
+  } catch (error: any) {
+   setGroupError(error?.message || 'No se pudo eliminar el grupo.');
+  } finally {
+   setGroupBusy(false);
+  }
+ };
+
+ const assignLeadToGroup = async (lead: ColdCallingLead, groupId: string) => {
+  if (!currentComercial) return;
+  const nextGroupId = groupId || undefined;
+  await onUpdateColdLead({ ...lead, prospectGroupId: nextGroupId });
+  const group = prospectGroups.find(item => item.id === nextGroupId);
+  void db.addCommercialActivityLog({
+   commercial: currentComercial,
+   action: 'prospect_group_assigned',
+   entityType: 'cold_calling_lead',
+   entityId: lead.id,
+   description: group ? `Añadió ${lead.businessName} al grupo “${group.name}”.` : `Quitó ${lead.businessName} de su grupo.`,
+   metadata: { leadId: lead.id, groupId: nextGroupId || null, groupName: group?.name || null }
+  }).catch(error => console.error('Could not log prospect group assignment:', error));
+ };
+
  // Calendar tasks query: matching callbackScheduled === 'Llamar más tarde' and callbackDate matches
  const dayCallbackLeads = coldLeads.filter(lead => {
  if (lead.archived) return false;
@@ -1316,9 +1451,14 @@ const nachoAdmin = findAdminByName('nacho');
  const closingLeads = React.useMemo(() => {
  const seen = new Set<string>();
  return coldLeads
-  .filter(lead => lead.callbackScheduled === 'Sí')
   .filter(lead => {
-   if (!currentComercial) return true;
+   if (currentUser) {
+    return lead.callbackScheduled === 'Sí' &&
+     lead.assignedToEmail?.toLowerCase() === currentUser.email.toLowerCase();
+   }
+   if (!currentComercial) return lead.callbackScheduled === 'Sí';
+   // Para el caller, el origen de la cita es el dato estable. El closer puede
+   // modificar su estado posteriormente sin hacer desaparecer el seguimiento.
    return lead.closingOriginComercialEmail?.toLowerCase() === currentComercial.email.toLowerCase() ||
     lead.closingOriginComercialName?.toLowerCase() === currentComercial.name.toLowerCase();
   })
@@ -1329,7 +1469,7 @@ const nachoAdmin = findAdminByName('nacho');
    return true;
   })
   .sort((a, b) => `${a.callbackDate || ''}${a.callbackTime || ''}`.localeCompare(`${b.callbackDate || ''}${b.callbackTime || ''}`));
- }, [coldLeads, currentComercial]);
+ }, [coldLeads, currentComercial, currentUser]);
 
  const getClosingContact = (lead: ColdCallingLead) => contacts.find(contact =>
  contact.closingSourceLeadId === lead.id || contact.id === `crm_from_${lead.id}`
@@ -1355,25 +1495,32 @@ const nachoAdmin = findAdminByName('nacho');
  };
 
  const todayClosingKey = new Date().toISOString().split('T')[0];
+ const isClosingReadOnly = !!currentComercial;
  const openClosingLeads = closingLeads.filter(lead => {
+ if (isClosingReadOnly) return true;
  const contact = getClosingContact(lead);
  const status = closingDrafts[lead.id]?.status || contact?.closingStatus || 'Pendiente';
  return showClosedClosingLeads || status !== 'Cerrado';
  });
- const visibleClosingLeads = openClosingLeads.filter(lead => closingScope === 'all' || lead.callbackDate === todayClosingKey);
+ const visibleClosingLeads = isClosingReadOnly
+  ? openClosingLeads
+  : openClosingLeads.filter(lead => closingScope === 'all' || lead.callbackDate === todayClosingKey);
  const todayClosingCount = openClosingLeads.filter(lead => lead.callbackDate === todayClosingKey).length;
- const isClosingReadOnly = !!currentComercial;
 
  const updateClosingDraft = (leadId: string, patch: Partial<ReturnType<typeof getClosingDraft>>) => {
  setClosingDrafts(prev => ({ ...prev, [leadId]: { ...(prev[leadId] || {}), ...patch } }));
  };
 
- const saveClosingLead = (lead: ColdCallingLead, forcedStatus?: ClientContact['closingStatus']) => {
+ const saveClosingLead = (
+  lead: ColdCallingLead,
+  forcedStatus?: ClientContact['closingStatus'],
+  draftPatch?: Partial<ReturnType<typeof getClosingDraft>>
+ ) => {
  if (!onUpdateContact) {
   alert('No hay conexiÃ³n de actualizaciÃ³n CRM disponible para guardar Closing.');
   return;
  }
- const draft = getClosingDraft(lead);
+ const draft = { ...getClosingDraft(lead), ...(draftPatch || {}) };
  const status = forcedStatus || draft.status || 'Pendiente';
  if (draft.date && draft.time && (draft.date !== lead.callbackDate || draft.time !== lead.callbackTime)) {
   if (isSlotBusy(draft.date, draft.time)) {
@@ -1460,16 +1607,25 @@ const nachoAdmin = findAdminByName('nacho');
  };
 
  const postponeClosingLead = (lead: ColdCallingLead) => {
-  const draft = getClosingDraft(lead);
-  if (!draft.date || !draft.time) {
-   alert('Selecciona una nueva fecha y hora para posponer la cita.');
-   return;
-  }
-  if (draft.date === lead.callbackDate && draft.time === lead.callbackTime) {
+  setPostponingClosingLead(lead);
+  setPostponeClosingDate(lead.callbackDate || new Date().toISOString().split('T')[0]);
+  setPostponeClosingTime('');
+ };
+
+ const confirmPostponeClosingLead = () => {
+  if (!postponingClosingLead || !postponeClosingDate || !postponeClosingTime) return;
+  if (postponeClosingDate === postponingClosingLead.callbackDate && postponeClosingTime === postponingClosingLead.callbackTime) {
    alert('Selecciona una fecha u hora diferente antes de posponer.');
    return;
   }
-  saveClosingLead(lead, 'Pendiente');
+  const conflict = getSlotConflict(postponeClosingDate, postponeClosingTime);
+  if (conflict) {
+   alert(`La franja ${postponeClosingTime} está ocupada por “${conflict.title}”.`);
+   return;
+  }
+  updateClosingDraft(postponingClosingLead.id, { date: postponeClosingDate, time: postponeClosingTime });
+  saveClosingLead(postponingClosingLead, 'Pendiente', { date: postponeClosingDate, time: postponeClosingTime });
+  setPostponingClosingLead(null);
  };
 
  // Update a private task/event
@@ -1722,6 +1878,17 @@ const nachoAdmin = findAdminByName('nacho');
     </div>
     )}
 
+    {currentComercial && (
+    <div className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-slate-950 p-1">
+     <select value={groupFilter} onChange={event => setGroupFilter(event.target.value)} className="max-w-[170px] bg-transparent px-2 py-1 text-[10px] font-bold text-slate-300 outline-none">
+      <option value="all">Todos los grupos</option>
+      <option value="ungrouped">Sin grupo</option>
+      {prospectGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+     </select>
+     <button type="button" onClick={() => setShowGroupsModal(true)} className="flex items-center gap-1.5 rounded-lg bg-violet-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-violet-300 transition hover:bg-violet-500/20" title="Crear y gestionar grupos internos"><FolderPlus className="h-3.5 w-3.5"/>Grupos</button>
+    </div>
+    )}
+
     {/* Solo mis asignados toggle */}
     {!currentComercial && (
     <button
@@ -1905,6 +2072,15 @@ const nachoAdmin = findAdminByName('nacho');
        {lead.callsCount || 0} {lead.callsCount === 1 ? 'llamada' : 'llamadas'}
       </button>
       </div>
+      {currentComercial && (
+      <label className="mt-2 flex max-w-full items-center gap-1.5 rounded-lg border border-white/5 bg-black/25 px-2 py-1">
+       <Folder className="h-3 w-3 shrink-0" style={{ color: prospectGroups.find(group => group.id === lead.prospectGroupId)?.color || '#64748B' }} />
+       <select value={lead.prospectGroupId || ''} onChange={event => void assignLeadToGroup(lead, event.target.value)} className="min-w-0 flex-1 bg-transparent text-[9px] font-bold text-slate-300 outline-none">
+        <option value="">Sin grupo</option>
+        {prospectGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+       </select>
+      </label>
+      )}
       {isAdmin && (
       <select value={lead.demoWebsiteId || ''} onChange={e => onUpdateColdLead({ ...lead, demoWebsiteId: e.target.value || undefined })} className="mt-2 max-w-full bg-cyan-950/20 border border-cyan-500/20 text-cyan-300 rounded-lg px-2 py-1 text-[9px] outline-none">
        <option value="">Asignar web demo...</option>
@@ -1987,6 +2163,12 @@ const nachoAdmin = findAdminByName('nacho');
        <ClipboardList className="w-3.5 h-3.5 text-violet-400" />
        <span>Resolver</span>
        </button>
+
+       {currentComercial && (
+       <button onClick={() => handleToggleArchive(lead)} className={`p-1.5 rounded-lg border transition-all ${lead.archived ? 'bg-amber-500/15 border-amber-400/30 text-amber-300 hover:bg-amber-500/25' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:border-amber-400/25 hover:text-amber-300'}`} title={lead.archived ? 'Desarchivar prospecto' : 'Archivar prospecto'}>
+        <Archive className="h-3.5 w-3.5" />
+       </button>
+       )}
 
        {isAdmin && (
        <div className="flex items-center gap-1">
@@ -2294,6 +2476,16 @@ const nachoAdmin = findAdminByName('nacho');
       )}
       </div>
 
+      {currentComercial && (
+      <label className="mb-3 flex items-center gap-2 rounded-xl border border-white/5 bg-black/20 px-3 py-2">
+       <Folder className="h-3.5 w-3.5 shrink-0" style={{ color: prospectGroups.find(group => group.id === lead.prospectGroupId)?.color || '#64748B' }} />
+       <select value={lead.prospectGroupId || ''} onChange={event => void assignLeadToGroup(lead, event.target.value)} className="min-w-0 flex-1 bg-transparent text-[10px] font-bold text-slate-300 outline-none">
+        <option value="">Sin grupo</option>
+        {prospectGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+       </select>
+      </label>
+      )}
+
       {/* Business & Contact Name */}
       <div className="flex items-center justify-between gap-2 mt-1 mb-1">
       <div className="flex items-center gap-2 truncate">
@@ -2399,6 +2591,12 @@ const nachoAdmin = findAdminByName('nacho');
        <ClipboardList className="w-3.5 h-3.5" />
        <span>Formulario / Registrar Llamada</span>
        </button>
+
+       {currentComercial && (
+       <button onClick={() => handleToggleArchive(lead)} className={`p-1.5 rounded-lg border transition-all ${lead.archived ? 'bg-amber-500/15 border-amber-400/30 text-amber-300 hover:bg-amber-500/25' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:border-amber-400/25 hover:text-amber-300'}`} title={lead.archived ? 'Desarchivar prospecto' : 'Archivar prospecto'}>
+        <Archive className="h-3.5 w-3.5" />
+       </button>
+       )}
 
        {/* Admin Controls */}
        {isAdmin && (
@@ -3418,8 +3616,13 @@ const nachoAdmin = findAdminByName('nacho');
     <div>
      <p className="text-[10px] uppercase tracking-[0.24em] font-mono font-bold text-cyan-300">Closing Pipeline</p>
      <h3 className="text-xl font-black text-white mt-1">Citas pasadas a closer</h3>
-     <p className="text-xs text-slate-400 mt-1">Clientes potenciales generados desde Call Calling y asignados a Carlos.</p>
+     <p className="text-xs text-slate-400 mt-1">{isClosingReadOnly ? 'Seguimiento de todas las citas que has generado. La gestión corresponde al closer.' : 'Clientes potenciales generados desde Call Calling y asignados a Carlos.'}</p>
     </div>
+    {isClosingReadOnly ? (
+     <div className="shrink-0 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.07] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-200">
+      Solo lectura · {closingLeads.length} {closingLeads.length === 1 ? 'cita' : 'citas'}
+     </div>
+    ) : (
     <div className="flex flex-col items-end gap-2">
      <div className="flex rounded-xl border border-white/10 bg-black/25 p-1">
       <button type="button" onClick={() => setClosingScope('today')} className={`rounded-lg px-3 py-2 text-[10px] font-black transition ${closingScope === 'today' ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Hoy ({todayClosingCount})</button>
@@ -3429,13 +3632,14 @@ const nachoAdmin = findAdminByName('nacho');
       {showClosedClosingLeads ? 'Ocultar cerradas' : 'Incluir cerradas'}
      </button>
     </div>
+    )}
    </div>
 
    {visibleClosingLeads.length === 0 ? (
    <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-12 text-center">
     <Briefcase className="w-10 h-10 text-slate-500 mx-auto mb-3" />
     <p className="text-sm font-bold text-slate-200">{closingLeads.length === 0 ? 'Aún no hay citas para closing.' : closingScope === 'today' ? 'No hay llamadas previstas para hoy.' : 'No hay citas que coincidan con el filtro.'}</p>
-    <p className="text-xs text-slate-500 mt-1">{closingLeads.length === 0 ? 'Cuando un caller marque una cita agendada aparecerá aquí.' : closingScope === 'today' ? 'Pulsa Ver todas para consultar próximas citas y citas sin fecha.' : 'Prueba a incluir también las citas cerradas.'}</p>
+    <p className="text-xs text-slate-500 mt-1">{closingLeads.length === 0 ? (isClosingReadOnly ? 'Cuando agendes una cita quedará registrada aquí para que puedas seguir su evolución.' : 'Cuando un caller marque una cita agendada aparecerá aquí.') : closingScope === 'today' ? 'Pulsa Ver todas para consultar próximas citas y citas sin fecha.' : 'Prueba a incluir también las citas cerradas.'}</p>
    </div>
    ) : (
    <div className="space-y-3">
@@ -3457,7 +3661,7 @@ const nachoAdmin = findAdminByName('nacho');
       </div>
       <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
        <div className="rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-right font-mono"><p className="text-[11px] font-black text-white">{formatCallbackDate(lead.callbackDate)}</p><p className="mt-0.5 text-[10px] font-bold text-cyan-300">{lead.callbackTime || 'Sin hora'}</p></div>
-       <a href={`tel:${(draft.phone || '').replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/20"><Phone className="h-3.5 w-3.5"/>Llamar</a>
+       {!isClosingReadOnly && <a href={`tel:${(draft.phone || '').replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/20"><Phone className="h-3.5 w-3.5"/>Llamar</a>}
        <button type="button" onClick={() => setExpandedClosingLeadId(current => current === lead.id ? null : lead.id)} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/10">{expandedClosingLeadId === lead.id ? 'Cerrar ficha' : 'Ver ficha'}</button>
       </div>
      </div>
@@ -3480,8 +3684,8 @@ const nachoAdmin = findAdminByName('nacho');
        <input readOnly={isClosingReadOnly} value={draft.company} onChange={(e) => updateClosingDraft(lead.id, { company: e.target.value })} placeholder="Empresa" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.phone} onChange={(e) => updateClosingDraft(lead.id, { phone: e.target.value })} placeholder="TelÃ©fono" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.email} onChange={(e) => updateClosingDraft(lead.id, { email: e.target.value })} placeholder="Email" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
-       <input readOnly={isClosingReadOnly} type="date" value={draft.date} onChange={(e) => updateClosingDraft(lead.id, { date: e.target.value })} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
-       <select disabled={isClosingReadOnly} value={draft.time} onChange={(e) => updateClosingDraft(lead.id, { time: e.target.value })} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 disabled:opacity-70">
+       <input readOnly type="date" value={draft.date} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none read-only:opacity-70" title="Usa Posponer cita para cambiar la fecha" />
+       <select disabled value={draft.time} className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none disabled:opacity-70" title="Usa Posponer cita para cambiar la hora">
        <option value="">Sin hora</option>
        {HOURLY_SLOTS.map(slot => {
        const busy = draft.date && isSlotBusy(draft.date, slot) && !(draft.date === lead.callbackDate && slot === lead.callbackTime);
@@ -3673,6 +3877,32 @@ const nachoAdmin = findAdminByName('nacho');
 
    </div>
 
+  </div>
+  )}
+
+  {showGroupsModal && currentComercial && (
+  <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-xl">
+   <div className="w-full max-w-xl overflow-hidden rounded-[28px] border border-violet-300/20 bg-[#090d14] shadow-2xl shadow-black/70">
+    <div className="flex items-start justify-between border-b border-white/[0.07] bg-gradient-to-r from-violet-500/10 to-cyan-400/[0.04] p-6">
+     <div><p className="text-[9px] font-black uppercase tracking-[.25em] text-violet-300">Organización privada</p><h3 className="mt-2 text-2xl font-black text-white">Grupos de prospectos</h3><p className="mt-1 text-[11px] text-slate-500">Solo organizan tu espacio de Call Calling. Archivar o eliminar un grupo no elimina prospectos.</p></div>
+     <button type="button" onClick={() => setShowGroupsModal(false)} className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 hover:text-white"><X className="h-4 w-4"/></button>
+    </div>
+    <form onSubmit={handleCreateProspectGroup} className="border-b border-white/[0.06] p-5 sm:p-6">
+     <label className="text-[9px] font-black uppercase tracking-wider text-slate-500">Nuevo grupo</label>
+     <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+      <input value={newGroupName} onChange={event => setNewGroupName(event.target.value)} maxLength={60} placeholder="Ej. Restaurantes Madrid" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs font-bold text-white outline-none placeholder:text-slate-600 focus:border-violet-400" />
+      <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/30 p-1.5">{['#8B5CF6','#06B6D4','#84CC16','#F59E0B','#F43F5E'].map(color => <button key={color} type="button" onClick={() => setNewGroupColor(color)} className={`h-7 w-7 rounded-lg transition ${newGroupColor === color ? 'ring-2 ring-white ring-offset-2 ring-offset-[#090d14]' : 'opacity-60 hover:opacity-100'}`} style={{ backgroundColor: color }} aria-label={`Color ${color}`}/>)}</div>
+      <button type="submit" disabled={!newGroupName.trim() || groupBusy} className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 py-3 text-xs font-black text-white transition hover:bg-violet-400 disabled:opacity-40"><FolderPlus className="h-4 w-4"/>Crear</button>
+     </div>
+     {groupError && <p className="mt-2 text-[10px] text-rose-400">{groupError}</p>}
+    </form>
+    <div className="max-h-[390px] space-y-2 overflow-y-auto p-5 sm:p-6">
+     {prospectGroups.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 py-10 text-center"><Folder className="mx-auto h-7 w-7 text-slate-700"/><p className="mt-2 text-xs text-slate-500">Todavía no has creado grupos.</p></div> : prospectGroups.map(group => {
+      const count = coldLeads.filter(lead => lead.prospectGroupId === group.id).length;
+      return <div key={group.id} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: `${group.color}20`, color: group.color }}><Folder className="h-4 w-4"/></div><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-white">{group.name}</p><p className="mt-0.5 text-[9px] text-slate-500">{count} {count === 1 ? 'prospecto' : 'prospectos'}</p></div><button type="button" disabled={groupBusy} onClick={() => void handleDeleteProspectGroup(group)} className="rounded-xl border border-rose-400/15 bg-rose-500/[0.06] p-2 text-rose-400 transition hover:bg-rose-500/15" title="Eliminar grupo"><Trash2 className="h-3.5 w-3.5"/></button></div>;
+     })}
+    </div>
+   </div>
   </div>
   )}
 
@@ -3926,40 +4156,45 @@ const nachoAdmin = findAdminByName('nacho');
 
   {/* MODAL 2: FORMULARIO DE TRABAJO INDIVIDUAL (CALL QUESTIONNAIRE FOR SUCCESS METRICS) */}
   {selectedLeadForCall && (
-  <div className="fixed inset-0 bg-slate-950/78 backdrop-blur-xl z-50 flex items-center justify-center p-4">
-   <div className="bg-slate-900/88 border border-white/15 rounded-3xl max-w-5xl w-full p-6 text-left relative overflow-hidden animate-scale-in shadow-2xl shadow-black/60">
-   <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(34,211,238,.14),transparent_30%),radial-gradient(circle_at_90%_20%,rgba(167,139,250,.12),transparent_32%)] pointer-events-none" />
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020407]/88 p-2 backdrop-blur-2xl sm:p-5">
+   <div className="relative flex max-h-[94vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-[30px] border border-white/[0.09] bg-[#080c12]/98 text-left shadow-[0_40px_140px_rgba(0,0,0,.82)] animate-scale-in">
+   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(163,230,53,.09),transparent_28%),radial-gradient(circle_at_92%_12%,rgba(139,92,246,.12),transparent_30%)]" />
+   <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-lime-300/60 to-transparent" />
    
-   <div className="relative z-10 flex justify-between items-center border-b border-white/10 pb-4">
-    <div className="text-left">
-    <span className="text-[9px] font-mono font-bold bg-violet-500/10 text-violet-400 px-2 py-0.5 rounded uppercase">
-     Lead: {selectedLeadForCall.id}
-    </span>
-    <h3 className="font-bold text-sm text-white uppercase mt-1 leading-tight">
-     Formulario: {selectedLeadForCall.businessName}
-    </h3>
+   <div className="relative z-10 flex items-center justify-between gap-4 border-b border-white/[0.07] bg-white/[0.018] px-5 py-4 sm:px-7 sm:py-5">
+    <div className="flex min-w-0 items-center gap-3.5 text-left">
+    <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-lime-300 sm:flex"><Phone className="h-5 w-5" /></div>
+    <div className="min-w-0">
+     <div className="flex flex-wrap items-center gap-2">
+      <span className="rounded-full border border-violet-400/15 bg-violet-400/10 px-2.5 py-1 font-mono text-[8px] font-black uppercase tracking-[.16em] text-violet-300">Lead · {selectedLeadForCall.id}</span>
+      <span className="inline-flex items-center gap-1 rounded-full border border-white/[0.07] bg-white/[0.035] px-2.5 py-1 font-mono text-[8px] font-bold text-slate-400"><Phone className="h-2.5 w-2.5" />{selectedLeadForCall.phone}</span>
+     </div>
+     <h3 className="mt-2 truncate text-lg font-black tracking-tight text-white sm:text-xl">{selectedLeadForCall.businessName}</h3>
+     <p className="mt-0.5 text-[9px] font-bold uppercase tracking-[.18em] text-slate-500">Registro operativo de llamada</p>
+    </div>
     </div>
     <button 
     onClick={() => setSelectedLeadForCall(null)}
-    className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.035] text-slate-500 transition hover:border-rose-400/25 hover:bg-rose-500/10 hover:text-rose-300"
+    aria-label="Cerrar formulario"
     >
-    <XCircle className="w-5 h-5" />
+    <X className="h-4 w-4" />
     </button>
    </div>
 
-   <form onSubmit={handleSaveCallLog} noValidate className="relative z-10 mt-4 font-sans space-y-4">
+   <form onSubmit={handleSaveCallLog} noValidate className="relative z-10 flex-1 space-y-5 overflow-y-auto p-4 font-sans sm:p-6 lg:p-7">
     
-    <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
     
     {/* LEFT COLUMN: FORM (7 cols) */}
-    <div className="md:col-span-7 space-y-4">
+    <div className="space-y-5 lg:col-span-7">
      
      {/* Questionnaire Form Grid */}
-     <div className="grid grid-cols-2 gap-4">
+     <div className="grid grid-cols-1 gap-3 rounded-3xl border border-white/[0.07] bg-white/[0.018] p-4 sm:grid-cols-2 sm:p-5">
      
      {/* Contactado (Sí/No) */}
-     <div className="space-y-1.5">
-      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+     <div className="space-y-2.5">
+      <label className="text-[9px] font-mono text-slate-500 uppercase tracking-[.16em] font-black">
       ¿CONTACTADO? (SI/NO)
       </label>
       <div className="grid grid-cols-2 gap-2">
@@ -3970,10 +4205,10 @@ const nachoAdmin = findAdminByName('nacho');
         key={v}
         type="button"
         onClick={() => setCallContacted(v as any)}
-        className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+        className={`min-h-10 rounded-xl border text-[11px] font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
         active  ?
-         'bg-violet-600/25 border-violet-500 text-violet-300 font-extrabold' 
-         : 'bg-slate-950 border-white/5 text-slate-400'
+         'bg-violet-500/20 border-violet-400/70 text-violet-200 shadow-[0_8px_24px_rgba(139,92,246,.12)]'
+         : 'bg-black/35 border-white/[0.07] text-slate-500 hover:border-white/15 hover:text-slate-300'
         }`}
        >
         {v === 'Sí' ? '✔️ Sí' : '❌ No'}
@@ -3984,8 +4219,8 @@ const nachoAdmin = findAdminByName('nacho');
      </div>
 
      {/* Responde (Sí/No) */}
-     <div className="space-y-1.5">
-      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+     <div className="space-y-2.5">
+      <label className="text-[9px] font-mono text-slate-500 uppercase tracking-[.16em] font-black">
       ¿RESPONDE AL TELÉFONO?
       </label>
       <div className="grid grid-cols-2 gap-2">
@@ -3996,10 +4231,10 @@ const nachoAdmin = findAdminByName('nacho');
         key={v}
         type="button"
         onClick={() => setCallAnswered(v as any)}
-        className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+        className={`min-h-10 rounded-xl border text-[11px] font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
         active  ?
-         'bg-sky-500/20 border-sky-500 text-sky-300 font-extrabold' 
-         : 'bg-slate-950 border-white/5 text-slate-400'
+         'bg-cyan-400/15 border-cyan-300/60 text-cyan-200 shadow-[0_8px_24px_rgba(34,211,238,.10)]'
+         : 'bg-black/35 border-white/[0.07] text-slate-500 hover:border-white/15 hover:text-slate-300'
         }`}
        >
         {v === 'Sí' ? '✔️ Sí' : '❌ No'}
@@ -4010,8 +4245,8 @@ const nachoAdmin = findAdminByName('nacho');
      </div>
 
      {/* ¿Era el dueño? (Sí/No) */}
-     <div className="space-y-1.5">
-      <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+     <div className="space-y-2.5">
+      <label className="text-[9px] font-mono text-slate-500 uppercase tracking-[.16em] font-black">
       ¿HABLAMOS CON EL DUEÑO / DECISOR?
       </label>
       <div className="grid grid-cols-2 gap-2">
@@ -4022,10 +4257,10 @@ const nachoAdmin = findAdminByName('nacho');
         key={v}
         type="button"
         onClick={() => setCallIsOwner(v as any)}
-        className={`py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+        className={`min-h-10 rounded-xl border text-[11px] font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
         active  ?
-         'bg-rose-500/15 border-rose-500 text-rose-350' 
-         : 'bg-slate-950 border-white/5 text-slate-400'
+         'bg-amber-400/15 border-amber-300/60 text-amber-200 shadow-[0_8px_24px_rgba(251,191,36,.10)]'
+         : 'bg-black/35 border-white/[0.07] text-slate-500 hover:border-white/15 hover:text-slate-300'
         }`}
        >
         {v === 'Sí' ? '👑 Sí, el dueño' : '❌ No'}
@@ -4036,24 +4271,24 @@ const nachoAdmin = findAdminByName('nacho');
      </div>
 
      {/* Temperatura */}
-     <div className="space-y-1.5">
-      <label className="text-[10px] font-mono text-rose-455 uppercase tracking-widest font-bold">
+     <div className="space-y-2.5">
+      <label className="text-[9px] font-mono text-slate-500 uppercase tracking-[.16em] font-black">
       TEMPERATURA (VENTAS)
       </label>
       <div className="grid grid-cols-3 gap-1.5">
       {(['Frío', 'Templado', 'Caliente'] as const).map(val => {
        const active = callTemperature === val;
        let styles = '';
-       if (val === 'Caliente') styles = active ? 'bg-rose-500/25 border-rose-500 text-rose-300' : 'bg-slate-950 border-white/5 text-slate-400';
-       else if (val === 'Templado') styles = active ? 'bg-amber-500/25 border-amber-500 text-amber-300' : 'bg-slate-950 border-white/5 text-slate-400';
-       else styles = active ? 'bg-sky-500/20 border-sky-500 text-sky-300' : 'bg-slate-950 border-white/5 text-slate-400';
+       if (val === 'Caliente') styles = active ? 'bg-rose-400/20 border-rose-300/70 text-rose-200 shadow-[0_8px_22px_rgba(251,113,133,.10)]' : 'bg-black/35 border-white/[0.07] text-slate-500 hover:text-rose-300';
+       else if (val === 'Templado') styles = active ? 'bg-amber-400/20 border-amber-300/70 text-amber-200 shadow-[0_8px_22px_rgba(251,191,36,.10)]' : 'bg-black/35 border-white/[0.07] text-slate-500 hover:text-amber-300';
+       else styles = active ? 'bg-cyan-400/15 border-cyan-300/70 text-cyan-200 shadow-[0_8px_22px_rgba(34,211,238,.10)]' : 'bg-black/35 border-white/[0.07] text-slate-500 hover:text-cyan-300';
        
        return (
        <button
         key={val}
         type="button"
         onClick={() => setCallTemperature(val as any)}
-        className={`py-1.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${styles}`}
+        className={`min-h-10 rounded-xl border text-[10px] font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${styles}`}
        >
         {val}
        </button>
@@ -4065,8 +4300,8 @@ const nachoAdmin = findAdminByName('nacho');
      </div>
 
      {/* AGENDADA (SI / NO / LLAMAR MAS TARDE) */}
-     <div className="space-y-1.5">
-     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold text-amber-450">
+     <div className="space-y-2.5 rounded-3xl border border-white/[0.07] bg-white/[0.018] p-4 sm:p-5">
+     <label className="text-[9px] font-mono text-amber-300/70 uppercase tracking-[.16em] font-black">
       ¿CITA AGENDADA / POSTERGACIÓN?
      </label>
      <div className="grid grid-cols-3 gap-2">
@@ -4088,10 +4323,10 @@ const nachoAdmin = findAdminByName('nacho');
         if (!item.isAppointment) setAppointmentAccessConfirmed(false);
         setCallScheduled(item.val as any);
        }}
-       className={`py-2 px-1.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center leading-tight ${
+       className={`min-h-11 rounded-xl border px-2 text-[10px] font-black transition-all cursor-pointer flex items-center justify-center leading-tight ${
         active  ?
-        'bg-amber-500/20 border-amber-500 text-amber-300' 
-        : 'bg-slate-950 border-white/5 text-slate-400 hover:text-slate-200'
+        'bg-lime-300 border-lime-200 text-slate-950 shadow-[0_10px_28px_rgba(163,230,53,.14)]'
+        : 'bg-black/35 border-white/[0.07] text-slate-500 hover:border-white/15 hover:text-slate-200'
        }`}
        >
        {item.label}
@@ -4103,10 +4338,10 @@ const nachoAdmin = findAdminByName('nacho');
 
      {/* LLAMAR MAS TARDE FIELDS */}
      {(callScheduled === 'Llamar más tarde' || callScheduled === 'Sí') && (
-     <div className="p-4 bg-amber-500/5 rounded-2.5xl border border-amber-500/20 space-y-3 animation-fade-in text-left">
-      <div className="flex items-center gap-1 text-light">
-      <Clock className="w-4 h-4 text-amber-400" />
-      <span className="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider">
+     <div className="space-y-4 rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-400/[0.07] to-transparent p-4 text-left shadow-[inset_0_1px_rgba(255,255,255,.03)] animation-fade-in sm:p-5">
+      <div className="flex items-center gap-2 text-light">
+      <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-300/20 bg-amber-300/10"><Clock className="h-4 w-4 text-amber-300" /></div>
+      <span className="text-[10px] font-mono font-black text-amber-300 uppercase tracking-[.14em]">
        {callScheduled === 'Sí' ? 'Fecha y hora de la cita comercial' : 'Calendario de llamada de retorno'}
       </span>
       </div>
@@ -4124,7 +4359,7 @@ const nachoAdmin = findAdminByName('nacho');
         return;
         }
        }}
-       className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+       className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-xs font-bold text-white outline-none transition focus:border-amber-300/60 cursor-pointer"
        />
       </div>
       <div className="space-y-1">
@@ -4162,7 +4397,7 @@ const nachoAdmin = findAdminByName('nacho');
        type="time"
        value={callCallbackTime}
        onChange={e => setCallCallbackTime(e.target.value)}
-       className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+       className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-xs font-bold text-white outline-none transition focus:border-amber-300/60 cursor-pointer"
        />
        )}
        {callScheduled === 'Sí' && (
@@ -4172,35 +4407,12 @@ const nachoAdmin = findAdminByName('nacho');
        )}
       </div>
       </div>
-      <div className="space-y-1.5">
-      <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Pagar con</label>
-      <div className="grid grid-cols-3 gap-2">
-       {(['cash', 'transfer', 'stripe'] as const).map(method => (
-       <button
-        key={method}
-        type="button"
-        onClick={() => setConvPaymentMethod(method)}
-        className={`py-2.5 rounded-xl border text-[10px] font-extrabold uppercase tracking-wider transition-all ${
-        convPaymentMethod === method
-         ? method === 'stripe'
-          ? 'bg-violet-500/20 border-violet-400 text-violet-200'
-          : method === 'cash'
-           ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
-           : 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
-         : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:border-white/20'
-        }`}
-       >
-        {method === 'cash' ? 'Efectivo' : method === 'transfer' ? 'Transferencia' : 'Stripe'}
-       </button>
-       ))}
-      </div>
-      </div>
      </div>
      )}
 
      {/* PERSONA CONTACTADA (FREE TEXT INPUT WRITER) */}
-     <div className="space-y-1.5 p-3 rounded-xl bg-violet-600/5 border border-violet-500/10 text-left">
-     <label className="text-[10px] font-mono text-violet-400 uppercase tracking-widest font-bold flex items-center gap-1.5">
+     <div className="space-y-2.5 rounded-2xl border border-violet-400/15 bg-violet-400/[0.045] p-4 text-left">
+     <label className="flex items-center gap-1.5 font-mono text-[9px] font-black uppercase tracking-[.16em] text-violet-300/80">
       <span>👨‍💼 PERSONA CON QUIEN HABLÉ / DUEÑO O CONTACTO</span>
      </label>
      <input
@@ -4208,13 +4420,13 @@ const nachoAdmin = findAdminByName('nacho');
       placeholder="Nombre de la persona contactada"
       value={callContactPerson}
       onChange={e => setCallContactPerson(e.target.value)}
-      className="w-full bg-[#050510] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-violet-500 placeholder:text-slate-600 transition-all font-sans"
+      className="h-11 w-full rounded-xl border border-white/[0.09] bg-black/40 px-3.5 text-xs font-bold text-white outline-none transition placeholder:text-slate-600 focus:border-violet-300/50 font-sans"
      />
      </div>
 
      {/* NOTES */}
-     <div className="space-y-1.5">
-     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+     <div className="space-y-2.5 rounded-2xl border border-white/[0.07] bg-white/[0.018] p-4">
+     <label className="text-[9px] font-mono text-slate-500 uppercase tracking-[.16em] font-black">
       NOTAS DE SEGUIMIENTO (QUÉ COMENTÓ EL CLIENTE)
      </label>
      <textarea
@@ -4222,17 +4434,17 @@ const nachoAdmin = findAdminByName('nacho');
       placeholder="Escribe aquí las objeciones, respuestas del dueño, dossier enviado, o detalles a tener en cuenta para la rellamada..."
       value={callNotes}
       onChange={e => setCallNotes(e.target.value)}
-      className="w-full bg-slate-950 border border-white/10 focus:border-violet-500 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none transition-all resize-none placeholder:text-slate-600"
+      className="w-full resize-none rounded-xl border border-white/[0.09] bg-black/40 px-3.5 py-3 text-xs leading-5 text-white outline-none transition placeholder:text-slate-600 focus:border-violet-300/50"
      />
      </div>
 
     </div>
 
     {/* RIGHT COLUMN: CALL HISTORY TIMELINE BOX (5 cols) */}
-    <div className="md:col-span-5 bg-slate-950/40 border border-white/5 p-4 rounded-2.5xl flex flex-col max-h-[580px] overflow-hidden">
-     <div className="flex items-center justify-between border-b border-white/5 pb-2.5 mb-3">
-     <span className="text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-      📅 Historial de Registros
+    <div className="flex max-h-[650px] flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-[#05080d]/85 shadow-[inset_0_1px_rgba(255,255,255,.025)] lg:sticky lg:top-0 lg:col-span-5">
+     <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] bg-white/[0.018] px-4 py-4 sm:px-5">
+     <span className="flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-[.15em] text-slate-300">
+      <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-violet-400/15 bg-violet-400/10 text-violet-300"><History className="h-3.5 w-3.5" /></span>Historial
      </span>
      <div className="flex items-center gap-2">
       <button
@@ -4248,19 +4460,19 @@ const nachoAdmin = findAdminByName('nacho');
        minute: '2-digit'
        }));
       }}
-      className="text-[9px] bg-violet-600 hover:bg-violet-500 text-white font-bold px-2 py-0.5 rounded transition cursor-pointer select-none"
+      className="rounded-lg border border-violet-300/20 bg-violet-400/10 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-wider text-violet-300 transition hover:bg-violet-400/20 cursor-pointer select-none"
       >
       {showAddLogInline ? '✕ Cancelar' : '+ Añadir'}
       </button>
-      <span className="text-[10px] bg-violet-500/15 text-violet-400 px-2 py-0.5 rounded-full font-mono font-bold">
+      <span className="rounded-full border border-white/[0.06] bg-white/[0.04] px-2 py-1 font-mono text-[8px] font-black text-slate-400">
       {selectedLeadForCall.callsCount || 0} previas
       </span>
      </div>
      </div>
 
-     <div className="overflow-y-auto flex-1 space-y-3 pr-1 text-xs scrollbar-thin scrollbar-thumb-white/5 max-h-[480px]">
+     <div className="flex-1 space-y-3 overflow-y-auto p-3 text-xs scrollbar-thin scrollbar-thumb-white/5 sm:p-4">
      {showAddLogInline && (
-      <div className="bg-violet-950/20 border border-violet-500/30 rounded-xl p-3 space-y-2 text-left">
+      <div className="space-y-3 rounded-2xl border border-violet-400/20 bg-violet-400/[0.06] p-4 text-left">
       <span className="text-[9px] font-mono font-bold text-violet-300 uppercase tracking-wider">
        Registrar Llamada Manual
       </span>
@@ -4319,7 +4531,7 @@ const nachoAdmin = findAdminByName('nacho');
       const logId = log.id || `log_${idx}`;
       const isEditing = editingLogId === logId;
       return (
-       <div key={logId} className="bg-[#050510]/80 border border-white/5 rounded-xl p-3 space-y-2 text-left relative group">
+       <div key={logId} className="group relative space-y-2.5 rounded-2xl border border-white/[0.065] bg-white/[0.022] p-4 text-left transition hover:border-violet-300/15 hover:bg-violet-400/[0.025]">
        
        {isEditing ? (
         <div className="space-y-2">
@@ -4373,7 +4585,7 @@ const nachoAdmin = findAdminByName('nacho');
        ) : (
         <>
         <div className="flex justify-between items-center">
-         <span className="text-[10px] text-violet-400 font-mono font-bold">{log.date}</span>
+         <span className="font-mono text-[9px] font-black tracking-wide text-violet-300">{log.date}</span>
          <div className="flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
          <button
           type="button"
@@ -4401,10 +4613,10 @@ const nachoAdmin = findAdminByName('nacho');
          </span>
          </div>
         </div>
-        <p className="text-[11px] text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
+        <p className="whitespace-pre-wrap font-sans text-[11px] font-medium leading-5 text-slate-300">
          {log.notes}
         </p>
-        <div className="text-[9px] bg-white/[0.02] border border-white/5 p-1.5 rounded-lg text-slate-400 font-mono leading-tight">
+        <div className="rounded-xl border border-white/[0.05] bg-black/25 p-2 font-mono text-[8px] leading-4 text-slate-500">
          {log.result}
         </div>
         </>
@@ -4420,18 +4632,18 @@ const nachoAdmin = findAdminByName('nacho');
     </div>
 
     {/* ACTION COMMANDS */}
-    <div className="flex gap-3 justify-end pt-3 border-t border-white/5">
+    <div className="sticky bottom-0 -mx-4 -mb-4 flex justify-end gap-3 border-t border-white/[0.07] bg-[#080c12]/90 px-4 py-4 backdrop-blur-xl sm:-mx-6 sm:-mb-6 sm:px-6 lg:-mx-7 lg:-mb-7 lg:px-7">
     <button
      type="button"
      onClick={() => setSelectedLeadForCall(null)}
-     className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+     className="rounded-xl border border-white/[0.08] bg-white/[0.035] px-5 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400 transition hover:bg-white/[0.07] hover:text-white cursor-pointer"
     >
      Cerrar
     </button>
     <button
      type="submit"
      id="cold-call-resolver-submit"
-     className="px-5.5 py-2 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs transition duration-240 cursor-pointer shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+     className="rounded-xl bg-lime-300 px-5 py-3 text-[10px] font-black uppercase tracking-wider text-slate-950 shadow-[0_12px_32px_rgba(163,230,53,.16)] transition hover:bg-lime-200 cursor-pointer"
     >
      Registrar Formulario
     </button>
@@ -4663,6 +4875,53 @@ const nachoAdmin = findAdminByName('nacho');
     Eliminar Registro
     </button>
    </div>
+   </div>
+  </div>
+  )}
+
+  {postponingClosingLead && (
+  <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-xl">
+   <div className="w-full max-w-2xl overflow-hidden rounded-[30px] border border-amber-300/20 bg-[#080c12] shadow-[0_35px_140px_rgba(0,0,0,.8)]">
+    <div className="flex items-start justify-between gap-5 border-b border-white/[0.07] bg-gradient-to-r from-amber-400/[0.09] to-transparent p-6 sm:p-7">
+     <div>
+      <div className="flex items-center gap-2 text-amber-300"><Clock className="h-4 w-4"/><span className="font-mono text-[9px] font-black uppercase tracking-[.24em]">Agenda del closer</span></div>
+      <h3 className="mt-2 text-2xl font-black text-white">Posponer cita</h3>
+      <p className="mt-1 text-xs text-slate-400">Selecciona una nueva fecha para <strong className="text-slate-200">{postponingClosingLead.businessName}</strong>. Las horas ocupadas de Carlos aparecen en rojo.</p>
+     </div>
+     <button type="button" onClick={() => setPostponingClosingLead(null)} className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"><X className="h-4 w-4"/></button>
+    </div>
+
+    <div className="space-y-6 p-6 sm:p-7">
+     <label className="block">
+      <span className="mb-2 flex items-center gap-2 font-mono text-[9px] font-black uppercase tracking-[.18em] text-slate-500"><Calendar className="h-3.5 w-3.5 text-amber-300"/>Nueva fecha</span>
+      <input type="date" min={new Date().toISOString().split('T')[0]} value={postponeClosingDate} onChange={event => { setPostponeClosingDate(event.target.value); setPostponeClosingTime(''); }} className="h-12 w-full rounded-2xl border border-white/10 bg-black/35 px-4 text-sm font-bold text-white outline-none transition focus:border-amber-300/50"/>
+     </label>
+
+     <div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+       <span className="font-mono text-[9px] font-black uppercase tracking-[.18em] text-slate-500">Franja horaria</span>
+       <div className="flex items-center gap-3 text-[9px] font-bold"><span className="flex items-center gap-1.5 text-emerald-300"><i className="h-2 w-2 rounded-full bg-emerald-400"/>Disponible</span><span className="flex items-center gap-1.5 text-rose-300"><i className="h-2 w-2 rounded-full bg-rose-400"/>Ocupada</span></div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+       {HOURLY_SLOTS.map(slot => {
+        const conflict = postponeClosingDate ? getSlotConflict(postponeClosingDate, slot) : undefined;
+        const busy = !!conflict;
+        const selected = postponeClosingTime === slot;
+        return (
+         <button key={slot} type="button" disabled={busy || !postponeClosingDate} onClick={() => setPostponeClosingTime(slot)} title={busy ? `Ocupada: ${conflict?.title}` : `Disponible: ${slot}`} className={`min-h-12 rounded-2xl border px-2 py-2 text-[11px] font-black transition ${busy ? 'cursor-not-allowed border-rose-400/30 bg-rose-500/15 text-rose-300' : selected ? 'border-amber-200 bg-amber-300 text-slate-950 shadow-[0_10px_28px_rgba(252,211,77,.16)]' : 'border-emerald-400/20 bg-emerald-400/[0.07] text-emerald-200 hover:border-emerald-300/50 hover:bg-emerald-400/[0.12]'}`}>
+          <span className="block">{slot}</span>
+          <span className="mt-0.5 block truncate text-[7px] uppercase tracking-wider opacity-70">{busy ? 'Ocupada' : selected ? 'Elegida' : 'Libre'}</span>
+         </button>
+        );
+       })}
+      </div>
+     </div>
+
+     <div className="flex flex-col-reverse gap-3 border-t border-white/[0.06] pt-5 sm:flex-row sm:justify-end">
+      <button type="button" onClick={() => setPostponingClosingLead(null)} className="rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-3 text-xs font-black text-slate-400 transition hover:bg-white/[0.07] hover:text-white">Cancelar</button>
+      <button type="button" disabled={!postponeClosingDate || !postponeClosingTime} onClick={confirmPostponeClosingLead} className="rounded-2xl bg-amber-300 px-5 py-3 text-xs font-black text-slate-950 shadow-[0_14px_36px_rgba(252,211,77,.16)] transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-35">Confirmar nueva cita</button>
+     </div>
+    </div>
    </div>
   </div>
   )}

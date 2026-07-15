@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog } from './types';
+import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ColdCallingProspectGroup, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog } from './types';
 
 // Use environment variables or fallback directly to the provided credentials
 const getSupabaseConfig = () => {
@@ -385,6 +385,8 @@ CREATE TABLE IF NOT EXISTS cold_calling_leads (
  notes TEXT,
  "assignedToEmail" TEXT,
  "assignedToName" TEXT,
+ "closingOriginComercialEmail" TEXT,
+ "closingOriginComercialName" TEXT,
  archived BOOLEAN DEFAULT false,
  "isDone" BOOLEAN DEFAULT false,
  position INTEGER,
@@ -2017,6 +2019,7 @@ export const db = {
   notes: cleanNotes,
   callsCount,
   callsLog,
+  prospectGroupId: lead.prospect_group_id || lead.prospectGroupId || undefined,
   createdAt: lead.created_at || lead.createdAt || new Date().toISOString()
  };
  },
@@ -2054,9 +2057,11 @@ export const db = {
   callbackDate: serialized.callbackDate || null,
   callbackTime: serialized.callbackTime || null,
   notes: serialized.notes || null,
-  assignedToEmail: serialized.assignedToEmail || null,
-  assignedToName: serialized.assignedToName || null,
-  archived: serialized.archived ?? false,
+ assignedToEmail: serialized.assignedToEmail || null,
+ assignedToName: serialized.assignedToName || null,
+  closingOriginComercialEmail: serialized.closingOriginComercialEmail || null,
+  closingOriginComercialName: serialized.closingOriginComercialName || null,
+ archived: serialized.archived ?? false,
   isDone: serialized.isDone ?? false,
   position: serialized.position ?? null,
   rating: serialized.rating ?? null,
@@ -2065,7 +2070,8 @@ export const db = {
   hasWebsite: serialized.hasWebsite ?? null,
   sourceStatus: serialized.sourceStatus || null,
   info: serialized.info || null,
-  mapsUrl: serialized.mapsUrl || null
+  mapsUrl: serialized.mapsUrl || null,
+  prospect_group_id: serialized.prospectGroupId || null
  };
  const { error } = await supabase.from('cold_calling_leads').insert(payload);
  if (error) throw error;
@@ -2087,9 +2093,11 @@ export const db = {
   callbackDate: serialized.callbackDate || null,
   callbackTime: serialized.callbackTime || null,
   notes: serialized.notes || null,
-  assignedToEmail: serialized.assignedToEmail || null,
-  assignedToName: serialized.assignedToName || null,
-  archived: serialized.archived ?? false,
+ assignedToEmail: serialized.assignedToEmail || null,
+ assignedToName: serialized.assignedToName || null,
+  closingOriginComercialEmail: serialized.closingOriginComercialEmail || null,
+  closingOriginComercialName: serialized.closingOriginComercialName || null,
+ archived: serialized.archived ?? false,
   isDone: serialized.isDone ?? false,
   position: serialized.position ?? null,
   rating: serialized.rating ?? null,
@@ -2098,7 +2106,8 @@ export const db = {
   hasWebsite: serialized.hasWebsite ?? null,
   sourceStatus: serialized.sourceStatus || null,
   info: serialized.info || null,
-  mapsUrl: serialized.mapsUrl || null
+  mapsUrl: serialized.mapsUrl || null,
+  prospect_group_id: serialized.prospectGroupId || null
  };
  const { error } = await supabase.from('cold_calling_leads').update(payload).eq('id', lead.id);
  if (error) throw error;
@@ -2109,6 +2118,52 @@ export const db = {
  const { error } = await supabase.from('cold_calling_leads').delete().eq('id', id);
  if (error) throw error;
  invalidateCache('cold_calling_leads');
+ },
+
+ async getColdCallingGroups(ownerEmail: string): Promise<ColdCallingProspectGroup[]> {
+  const { data, error } = await supabase.from('cold_calling_groups')
+   .select('*')
+   .eq('owner_email', ownerEmail.toLowerCase())
+   .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+   id: row.id,
+   ownerCommercialId: row.owner_commercial_id,
+   ownerEmail: row.owner_email,
+   ownerName: row.owner_name,
+   name: row.name,
+   color: row.color,
+   createdAt: row.created_at
+  }));
+ },
+
+ async insertColdCallingGroup(group: ColdCallingProspectGroup): Promise<void> {
+  const { error } = await supabase.from('cold_calling_groups').insert({
+   id: group.id,
+   owner_commercial_id: group.ownerCommercialId,
+   owner_email: group.ownerEmail.toLowerCase(),
+   owner_name: group.ownerName,
+   name: group.name.trim(),
+   color: group.color,
+   created_at: group.createdAt
+  });
+  if (error) throw error;
+ },
+
+ async updateColdCallingGroup(group: ColdCallingProspectGroup): Promise<void> {
+  const { error } = await supabase.from('cold_calling_groups')
+   .update({ name: group.name.trim(), color: group.color })
+   .eq('id', group.id)
+   .eq('owner_email', group.ownerEmail.toLowerCase());
+  if (error) throw error;
+ },
+
+ async deleteColdCallingGroup(groupId: string, ownerEmail: string): Promise<void> {
+  const { error } = await supabase.from('cold_calling_groups')
+   .delete()
+   .eq('id', groupId)
+   .eq('owner_email', ownerEmail.toLowerCase());
+  if (error) throw error;
  },
 
  // --- COMERCIAL LEADS ---

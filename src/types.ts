@@ -334,6 +334,17 @@ export interface ColdCallingLead {
  // New fields for tracking calls history and count
  callsCount?: number;    // Veces que se le ha llamado
  callsLog?: CallLogItem[];  // Historial de llamadas
+ prospectGroupId?: string;
+}
+
+export interface ColdCallingProspectGroup {
+ id: string;
+ ownerCommercialId: string;
+ ownerEmail: string;
+ ownerName: string;
+ name: string;
+ color: string;
+ createdAt: string;
 }
 
 export type CommercialPresenceStatus = 'available' | 'offline';
