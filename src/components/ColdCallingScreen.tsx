@@ -76,6 +76,7 @@ interface ColdCallingScreenProps {
  onUpdateEvent?: (event: CalendarEvent) => void;
  onDeleteEvent?: (id: string) => void;
  onRefreshFinance?: () => void;
+ focusLeadId?: string;
 }
 
 export default function ColdCallingScreen({
@@ -95,7 +96,8 @@ export default function ColdCallingScreen({
  events = [],
  onUpdateEvent,
  onDeleteEvent,
- onRefreshFinance
+ onRefreshFinance,
+ focusLeadId
 }: ColdCallingScreenProps) {
  
  // Combine comerciales and admins (usersList) for assignment
@@ -1086,7 +1088,26 @@ const nachoAdmin = findAdminByName('nacho');
  // Reset inline actions states
  setEditingLogId(null);
  setShowAddLogInline(false);
+ if (currentComercial) {
+  void db.addCommercialActivityLog({
+   commercial: currentComercial,
+   action: 'cold_lead_opened',
+   entityType: 'cold_calling_lead',
+   entityId: lead.id,
+   description: `Abrió la ficha de llamada de ${lead.businessName}.`,
+   metadata: { businessName: lead.businessName, phone: lead.phone }
+  }).catch(error => console.error('Could not log lead opening:', error));
+ }
  };
+
+ useEffect(() => {
+  if (!focusLeadId) return;
+  const lead = coldLeads.find(item => item.id === focusLeadId);
+  if (lead) {
+   setActiveTab('leads');
+   handleOpenCallLog(lead);
+  }
+ }, [focusLeadId]);
 
  // Submit Logger Update
  const handleSaveCallLog = (e: React.FormEvent) => {

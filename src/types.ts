@@ -335,3 +335,40 @@ export interface ColdCallingLead {
  callsCount?: number;    // Veces que se le ha llamado
  callsLog?: CallLogItem[];  // Historial de llamadas
 }
+
+export type CommercialPresenceStatus = 'available' | 'offline';
+
+export interface CommercialPresence {
+ commercialId: string;
+ commercialEmail: string;
+ commercialName: string;
+ status: CommercialPresenceStatus;
+ sessionId?: string;
+ sessionStartedAt?: string;
+ statusChangedAt: string;
+ lastSeenAt: string;
+}
+
+export interface CommercialWorkSession {
+ id: string;
+ commercialId: string;
+ commercialEmail: string;
+ commercialName: string;
+ startedAt: string;
+ endedAt?: string;
+ durationSeconds?: number;
+ createdAt: string;
+}
+
+export interface CommercialActivityLog {
+ id: string;
+ commercialId: string;
+ commercialEmail: string;
+ commercialName: string;
+ action: string;
+ entityType?: string;
+ entityId?: string;
+ description: string;
+ metadata: Record<string, unknown>;
+ createdAt: string;
+}

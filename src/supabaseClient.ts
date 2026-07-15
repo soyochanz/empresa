@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ComercialLead, ComercialAccount, DemoSite } from './types';
+import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog } from './types';
 
 // Use environment variables or fallback directly to the provided credentials
 const getSupabaseConfig = () => {
@@ -609,6 +609,41 @@ function clearAllCache(): void {
  delete _queryCache[k];
  });
 }
+
+const mapCommercialPresence = (row: any): CommercialPresence => ({
+ commercialId: row.commercial_id,
+ commercialEmail: row.commercial_email,
+ commercialName: row.commercial_name,
+ status: row.status,
+ sessionId: row.session_id || undefined,
+ sessionStartedAt: row.session_started_at || undefined,
+ statusChangedAt: row.status_changed_at,
+ lastSeenAt: row.last_seen_at
+});
+
+const mapCommercialWorkSession = (row: any): CommercialWorkSession => ({
+ id: row.id,
+ commercialId: row.commercial_id,
+ commercialEmail: row.commercial_email,
+ commercialName: row.commercial_name,
+ startedAt: row.started_at,
+ endedAt: row.ended_at || undefined,
+ durationSeconds: row.duration_seconds ?? undefined,
+ createdAt: row.created_at
+});
+
+const mapCommercialActivityLog = (row: any): CommercialActivityLog => ({
+ id: row.id,
+ commercialId: row.commercial_id,
+ commercialEmail: row.commercial_email,
+ commercialName: row.commercial_name,
+ action: row.action,
+ entityType: row.entity_type || undefined,
+ entityId: row.entity_id || undefined,
+ description: row.description,
+ metadata: row.metadata || {},
+ createdAt: row.created_at
+});
 
 // ==========================================
 // DB API Helper functions for each Resource
@@ -2417,5 +2452,75 @@ export const db = {
  const { error } = await supabase.from('comerciales_accounts').delete().eq('id', id);
  if (error) throw error;
  invalidateCache('comerciales_accounts');
+ },
+
+ // --- COMMERCIAL PRESENCE, WORK SESSIONS & AUDIT ---
+ async getCommercialPresence(): Promise<CommercialPresence[]> {
+  const { data, error } = await supabase.from('commercial_presence').select('*').order('commercial_name');
+  if (error) throw error;
+  return (data || []).map(mapCommercialPresence);
+ },
+
+ async getCommercialPresenceById(commercialId: string): Promise<CommercialPresence | null> {
+  const { data, error } = await supabase.from('commercial_presence').select('*').eq('commercial_id', commercialId).maybeSingle();
+  if (error) throw error;
+  return data ? mapCommercialPresence(data) : null;
+ },
+
+ async setCommercialPresence(account: ComercialAccount, status: CommercialPresenceStatus): Promise<CommercialPresence> {
+  const { data, error } = await supabase.rpc('set_commercial_presence', {
+   p_commercial_id: account.id,
+   p_commercial_email: account.email,
+   p_commercial_name: account.name,
+   p_status: status
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return mapCommercialPresence(row);
+ },
+
+ async heartbeatCommercialPresence(commercialId: string): Promise<void> {
+  const { error } = await supabase.rpc('heartbeat_commercial_presence', { p_commercial_id: commercialId });
+  if (error) throw error;
+ },
+
+ async getCommercialWorkSessions(since?: string): Promise<CommercialWorkSession[]> {
+  let query = supabase.from('commercial_work_sessions').select('*').order('started_at', { ascending: false }).limit(3000);
+  if (since) query = query.gte('started_at', since);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map(mapCommercialWorkSession);
+ },
+
+ async addCommercialActivityLog(input: {
+  commercial: ComercialAccount;
+  action: string;
+  description: string;
+  entityType?: string;
+  entityId?: string;
+  metadata?: Record<string, unknown>;
+ }): Promise<CommercialActivityLog> {
+  const { data, error } = await supabase.rpc('log_commercial_activity', {
+   p_commercial_id: input.commercial.id,
+   p_commercial_email: input.commercial.email.toLowerCase(),
+   p_commercial_name: input.commercial.name,
+   p_action: input.action,
+   p_description: input.description,
+   p_entity_type: input.entityType || null,
+   p_entity_id: input.entityId || null,
+   p_metadata: input.metadata || {}
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return mapCommercialActivityLog(row);
+ },
+
+ async getCommercialActivityLogs(options: { commercialId?: string; limit?: number; entityType?: string } = {}): Promise<CommercialActivityLog[]> {
+  let query = supabase.from('commercial_activity_logs').select('*').order('created_at', { ascending: false }).limit(options.limit || 500);
+  if (options.commercialId) query = query.eq('commercial_id', options.commercialId);
+  if (options.entityType) query = query.eq('entity_type', options.entityType);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map(mapCommercialActivityLog);
  }
 };

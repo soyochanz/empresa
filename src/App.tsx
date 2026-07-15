@@ -1464,6 +1464,14 @@ export default function App() {
   try {
   await db.insertColdLead(newLead, currentUser?.id || undefined);
   if (currentUser?.id) await db.insertActivity(activity, currentUser.id);
+  if (currentComercial) await db.addCommercialActivityLog({
+   commercial: currentComercial,
+   action: 'cold_lead_created',
+   entityType: 'cold_calling_lead',
+   entityId: newLead.id,
+   description: `Creó el negocio ${newLead.businessName} en Call Calling.`,
+   metadata: { businessName: newLead.businessName, assignedToEmail: newLead.assignedToEmail }
+  });
   } catch (err) {
   console.error('Supabase failed to register cold lead:', err);
   }
@@ -1487,6 +1495,23 @@ export default function App() {
  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
   try {
   await db.updateColdLead(updated, currentUser?.id || undefined);
+  if (currentComercial) {
+   const changes: string[] = [];
+   if (previous?.callsCount !== updated.callsCount) changes.push(`registró llamada #${updated.callsCount || 0}`);
+   if (previous?.callbackScheduled !== updated.callbackScheduled || previous?.callbackDate !== updated.callbackDate || previous?.callbackTime !== updated.callbackTime) changes.push(`actualizó seguimiento a ${updated.callbackScheduled}${updated.callbackDate ? ` (${updated.callbackDate} ${updated.callbackTime || ''})` : ''}`);
+   if (previous?.temperature !== updated.temperature) changes.push(`cambió temperatura a ${updated.temperature}`);
+   if (previous?.answered !== updated.answered) changes.push(`marcó responde: ${updated.answered}`);
+   if (previous?.isDone !== updated.isDone) changes.push(updated.isDone ? 'marcó como hecho' : 'reabrió el negocio');
+   if (previous?.archived !== updated.archived) changes.push(updated.archived ? 'archivó el negocio' : 'restauró el negocio');
+   await db.addCommercialActivityLog({
+    commercial: currentComercial,
+    action: 'cold_lead_updated',
+    entityType: 'cold_calling_lead',
+    entityId: updated.id,
+    description: `${updated.businessName}: ${changes.join(', ') || 'actualizó la ficha'}.`,
+    metadata: { businessName: updated.businessName, changes, callsCount: updated.callsCount || 0 }
+   });
+  }
   } catch (err) {
   console.error('Supabase failed to update cold lead:', err);
   }
@@ -1494,10 +1519,19 @@ export default function App() {
  };
 
  const handleDeleteColdLead = async (id: string) => {
+ const deletedLead = coldLeads.find(lead => lead.id === id);
  setColdLeads(prev => prev.filter(l => l.id !== id));
  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
   try {
   await db.deleteColdLead(id, currentUser?.id || undefined);
+  if (currentComercial && deletedLead) await db.addCommercialActivityLog({
+   commercial: currentComercial,
+   action: 'cold_lead_deleted',
+   entityType: 'cold_calling_lead',
+   entityId: id,
+   description: `Eliminó ${deletedLead.businessName} de Call Calling.`,
+   metadata: { businessName: deletedLead.businessName }
+  });
   } catch (err) {
   console.error('Supabase failed to delete cold lead:', err);
   }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
  User, 
  Mail, 
@@ -34,10 +34,13 @@ import {
  Clock,
  Globe,
  RefreshCw
+ ,Radio
+ ,WifiOff
 } from 'lucide-react';
-import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen } from '../types';
+import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen, CommercialPresence, CommercialWorkSession, CommercialActivityLog } from '../types';
 import DossierModal from './DossierModal';
 import AdminRewardsPanel from './AdminRewardsPanel';
+import { db, supabase } from '../supabaseClient';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -89,7 +92,7 @@ interface ComercialesAdminScreenProps {
  onNavigate?: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
 }
 
-type TabType = 'general' | 'individual' | 'rewards' | 'gestion';
+type TabType = 'general' | 'individual' | 'activity' | 'rewards' | 'gestion';
 
 export default function ComercialesAdminScreen({
  comercialesList,
@@ -128,6 +131,45 @@ export default function ComercialesAdminScreen({
  const [extraCommissionPercent, setExtraCommissionPercent] = useState('10');
  const [extraCommissionTxId, setExtraCommissionTxId] = useState('');
  const [extraCommissionReason, setExtraCommissionReason] = useState('');
+ const [commercialPresence, setCommercialPresence] = useState<CommercialPresence[]>([]);
+ const [workSessions, setWorkSessions] = useState<CommercialWorkSession[]>([]);
+ const [activityLogs, setActivityLogs] = useState<CommercialActivityLog[]>([]);
+ const [activityCommercialFilter, setActivityCommercialFilter] = useState('all');
+ const [presenceNow, setPresenceNow] = useState(() => Date.now());
+
+ useEffect(() => {
+  let mounted = true;
+  const loadOperationalData = async () => {
+   try {
+    const since = new Date();
+    since.setDate(since.getDate() - 35);
+    const [presenceRows, sessionRows, logRows] = await Promise.all([
+     db.getCommercialPresence(),
+     db.getCommercialWorkSessions(since.toISOString()),
+     db.getCommercialActivityLogs({ limit: 1000 })
+    ]);
+    if (!mounted) return;
+    setCommercialPresence(presenceRows);
+    setWorkSessions(sessionRows);
+    setActivityLogs(logRows);
+   } catch (error) {
+    console.error('Could not load commercial operations data:', error);
+   }
+  };
+  void loadOperationalData();
+  const channel = supabase.channel('admin-commercial-operations')
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'commercial_presence' }, () => void loadOperationalData())
+   .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'commercial_activity_logs' }, () => void loadOperationalData())
+   .subscribe();
+  const poll = window.setInterval(loadOperationalData, 30_000);
+  const clock = window.setInterval(() => setPresenceNow(Date.now()), 1_000);
+  return () => {
+   mounted = false;
+   window.clearInterval(poll);
+   window.clearInterval(clock);
+   void supabase.removeChannel(channel);
+  };
+ }, []);
 
  // Dialog modal custom implementation to avoid sandboxed iframe native blockings
  const [customDialog, setCustomDialog] = useState<{
@@ -607,6 +649,39 @@ export default function ComercialesAdminScreen({
  const indColdContacted = indColdLeads.filter(l => l.contacted === 'Sí').length;
  const indColdCallback = indColdLeads.filter(l => l.callbackScheduled === 'Sí').length;
 
+ const presenceByCommercial = new Map(commercialPresence.map(item => [item.commercialId, item]));
+ const isAvailableNow = (item?: CommercialPresence) => !!item && item.status === 'available' && presenceNow - new Date(item.lastSeenAt).getTime() < 120_000;
+ const availableCommercials = comercialesList
+  .map(comercial => ({ comercial, presence: presenceByCommercial.get(comercial.id) }))
+  .filter(item => isAvailableNow(item.presence));
+ const todayStart = new Date();
+ todayStart.setHours(0, 0, 0, 0);
+ const todayEnd = new Date(todayStart);
+ todayEnd.setDate(todayEnd.getDate() + 1);
+ const getWorkedSecondsToday = (commercialId: string) => workSessions
+  .filter(session => session.commercialId === commercialId)
+  .reduce((total, session) => {
+   const start = Math.max(new Date(session.startedAt).getTime(), todayStart.getTime());
+   const presenceRow = presenceByCommercial.get(commercialId);
+   const liveCap = presenceRow ? Math.min(presenceNow, new Date(presenceRow.lastSeenAt).getTime() + 90_000) : presenceNow;
+   const rawEnd = session.endedAt ? new Date(session.endedAt).getTime() : liveCap;
+   const end = Math.min(rawEnd, todayEnd.getTime());
+   return total + Math.max(0, Math.floor((end - start) / 1000));
+  }, 0);
+ const formatDuration = (seconds: number) => {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+ };
+ const selectedWorkedSeconds = currentComercial ? getWorkedSecondsToday(currentComercial.id) : 0;
+ const visibleActivityLogs = activityLogs.filter(log => activityCommercialFilter === 'all' || log.commercialId === activityCommercialFilter);
+ const actionLabel: Record<string, string> = {
+  presence_available: 'Disponible', presence_offline: 'Offline', cold_lead_opened: 'Ficha abierta',
+  cold_lead_created: 'Negocio creado', cold_lead_updated: 'Negocio actualizado', cold_lead_deleted: 'Negocio eliminado',
+  callback_alert_accepted: 'Callback aceptado', callback_alert_rejected: 'Callback rechazado'
+ };
+
  return (
  <div className="p-8 space-y-8 flex-1 overflow-y-auto bg-transparent text-slate-100 relative min-h-screen">
   
@@ -645,7 +720,7 @@ export default function ComercialesAdminScreen({
   </div>
   
   {/* Navigation Tabs */}
-  <div className="grid grid-cols-2 lg:grid-cols-4 bg-slate-950/80 p-1 rounded-xl border border-white/10 select-none">
+  <div className="grid grid-cols-2 lg:grid-cols-5 bg-slate-950/80 p-1 rounded-xl border border-white/10 select-none">
    <button
    onClick={() => setActiveTab('general')}
    className={`px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all cursor-pointer ${
@@ -665,6 +740,14 @@ export default function ComercialesAdminScreen({
    }`}
    >
    Métricas Individuales
+   </button>
+   <button
+   onClick={() => setActiveTab('activity')}
+   className={`px-4 py-2 rounded-lg text-xs font-mono uppercase tracking-wider transition-all cursor-pointer ${
+    activeTab === 'activity' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white hover:bg-white/5'
+   }`}
+   >
+   Actividad & Horas
    </button>
    <button
    onClick={() => setActiveTab('rewards')}
@@ -690,6 +773,13 @@ export default function ComercialesAdminScreen({
   {/* TAB 1: GENERAL METRICS */}
   {activeTab === 'general' && (
   <div className="space-y-8 animate-fade-in">
+   <section className="overflow-hidden rounded-3xl border border-lime-300/15 bg-gradient-to-br from-lime-300/[0.07] via-slate-950/50 to-cyan-400/[0.04] p-5 sm:p-6">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+     <div><p className="text-[9px] font-black uppercase tracking-[.25em] text-lime-300">Presencia en tiempo real</p><h3 className="mt-1 text-xl font-black text-white">Equipo Available</h3><p className="mt-1 text-[10px] text-slate-500">Solo aparecen conexiones con señal recibida durante los últimos 2 minutos.</p></div>
+     <div className="flex items-center gap-2 rounded-2xl border border-lime-300/15 bg-lime-300/10 px-4 py-2"><Radio className="h-4 w-4 animate-pulse text-lime-300"/><strong className="text-2xl text-white">{availableCommercials.length}</strong><span className="text-[9px] font-black uppercase tracking-wider text-lime-200">online</span></div>
+    </div>
+    {availableCommercials.length === 0 ? <div className="mt-5 rounded-2xl border border-dashed border-white/10 px-4 py-6 text-center text-xs text-slate-500">No hay comerciales Available ahora mismo.</div> : <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{availableCommercials.map(({ comercial, presence: row }) => <button key={comercial.id} type="button" onClick={() => { setSelectedComercialId(comercial.id); setActiveTab('individual'); }} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-black/25 p-3 text-left transition hover:border-lime-300/25 hover:bg-lime-300/[0.04]"><div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-lime-300 text-xs font-black text-slate-950">{comercial.name.slice(0,2).toUpperCase()}<span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-[#0b1113] bg-lime-300"/></div><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-white">{comercial.name}</p><p className="mt-1 font-mono text-[10px] text-lime-300">{formatDuration(getWorkedSecondsToday(comercial.id))} hoy</p></div><span className="text-[8px] uppercase tracking-wider text-slate-600">desde {row?.sessionStartedAt ? new Date(row.sessionStartedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : 'ahora'}</span></button>)}</div>}
+   </section>
    {/* TOP KPI Cards Grid */}
    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
    
@@ -984,6 +1074,10 @@ export default function ComercialesAdminScreen({
      <div className="flex justify-between items-center text-[10px] font-mono">
       <span className="text-slate-500">ID de Sistema:</span>
       <span className="text-slate-400 font-mono">{currentComercial.id}</span>
+     </div>
+     <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-black/25 p-3">
+      <div><span className="block text-[8px] font-black uppercase tracking-wider text-slate-500">Jornada de hoy</span><strong className="mt-1 block font-mono text-lg text-white">{formatDuration(selectedWorkedSeconds)}</strong></div>
+      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase ${isAvailableNow(presenceByCommercial.get(currentComercial.id)) ? 'border-lime-300/25 bg-lime-300/10 text-lime-300' : 'border-white/10 bg-white/[0.04] text-slate-500'}`}>{isAvailableNow(presenceByCommercial.get(currentComercial.id)) ? <Radio className="h-3 w-3 animate-pulse"/> : <WifiOff className="h-3 w-3"/>}{isAvailableNow(presenceByCommercial.get(currentComercial.id)) ? 'Available' : 'Offline'}</span>
      </div>
      </div>
     </div>
@@ -1448,6 +1542,22 @@ export default function ComercialesAdminScreen({
    )}
 
   </div>
+  )}
+
+  {activeTab === 'activity' && (
+   <div className="space-y-6 animate-fade-in">
+    <div className="grid gap-4 md:grid-cols-3">
+     <div className="rounded-2xl border border-lime-300/15 bg-lime-300/[0.06] p-5"><span className="text-[9px] font-black uppercase tracking-wider text-lime-300">Available ahora</span><p className="mt-2 text-3xl font-black text-white">{availableCommercials.length}</p></div>
+     <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.05] p-5"><span className="text-[9px] font-black uppercase tracking-wider text-cyan-300">Horas equipo hoy</span><p className="mt-2 font-mono text-3xl font-black text-white">{formatDuration(comercialesList.reduce((total, comercial) => total + getWorkedSecondsToday(comercial.id), 0))}</p></div>
+     <div className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.05] p-5"><span className="text-[9px] font-black uppercase tracking-wider text-violet-300">Acciones registradas</span><p className="mt-2 text-3xl font-black text-white">{activityLogs.length}</p></div>
+    </div>
+    <section className="rounded-3xl border border-white/[0.07] bg-slate-950/45 p-5 sm:p-6">
+     <div className="flex flex-col gap-4 border-b border-white/[0.06] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[9px] font-black uppercase tracking-[.24em] text-violet-300">Auditoría Call Calling</p><h3 className="mt-1 text-xl font-black text-white">Registro operativo</h3><p className="mt-1 text-[10px] text-slate-500">Aperturas de fichas, cambios, llamadas, callbacks y estados con fecha y hora reales.</p></div><select value={activityCommercialFilter} onChange={event => setActivityCommercialFilter(event.target.value)} className="rounded-xl border border-white/10 bg-[#070b11] px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-violet-400"><option value="all">Todo el equipo</option>{comercialesList.map(comercial => <option key={comercial.id} value={comercial.id}>{comercial.name}</option>)}</select></div>
+     <div className="mt-5 max-h-[680px] space-y-2 overflow-y-auto pr-1">
+      {visibleActivityLogs.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 py-12 text-center text-xs text-slate-500">Todavía no hay actividad registrada para este filtro.</div> : visibleActivityLogs.map(log => <div key={log.id} className="group grid gap-3 rounded-2xl border border-white/[0.06] bg-black/20 p-4 transition hover:border-violet-300/15 sm:grid-cols-[auto_1fr_auto]"><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${log.action.includes('available') || log.action.includes('accepted') ? 'bg-lime-300/10 text-lime-300' : log.action.includes('rejected') || log.action.includes('deleted') ? 'bg-rose-400/10 text-rose-300' : 'bg-violet-400/10 text-violet-300'}`}>{log.action.includes('presence') ? <Radio className="h-4 w-4"/> : <History className="h-4 w-4"/>}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-xs text-white">{log.commercialName}</strong><span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-slate-400">{actionLabel[log.action] || log.action}</span></div><p className="mt-1 text-[11px] leading-5 text-slate-400">{log.description}</p></div><time className="whitespace-nowrap font-mono text-[9px] text-slate-500">{new Date(log.createdAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time></div>)}
+     </div>
+    </section>
+   </div>
   )}
 
   {/* TAB 3: MANAGEMENT (AUTHORIZED ACCOUNTS TABLE + CREATION FORM) */}

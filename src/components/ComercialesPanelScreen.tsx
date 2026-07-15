@@ -34,8 +34,12 @@ import {
  GraduationCap
  ,Camera
  ,Upload
+ ,Radio
+ ,WifiOff
+ ,AlertTriangle
 } from 'lucide-react';
-import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact } from '../types';
+import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact, CommercialPresence } from '../types';
+import { db } from '../supabaseClient';
 import ColdCallingScreen from './ColdCallingScreen';
 import DossierModal from './DossierModal';
 import { calculateLegacyPoints } from '../utils/salesRewards';
@@ -258,6 +262,122 @@ export default function ComercialesPanelScreen({
  const [activeLoggerLeadId, setActiveLoggerLeadId] = useState<string | null>(null);
  const [quickLogNotes, setQuickLogNotes] = useState('');
  const [quickLogResult, setQuickLogResult] = useState('Responde');
+ const [presence, setPresence] = useState<CommercialPresence | null>(null);
+ const [presenceBusy, setPresenceBusy] = useState(false);
+ const [presenceError, setPresenceError] = useState('');
+ const [presenceClock, setPresenceClock] = useState(() => Date.now());
+ const [handledCallbackKeys, setHandledCallbackKeys] = useState<Set<string>>(new Set());
+ const [callbackAlertLead, setCallbackAlertLead] = useState<ColdCallingLead | null>(null);
+ const [focusedColdLeadId, setFocusedColdLeadId] = useState<string>();
+
+ const callbackKey = (lead: ColdCallingLead) => `${lead.id}|${lead.callbackDate || ''}|${lead.callbackTime || ''}`;
+ const isPresenceFresh = !!presence && presence.status === 'available' && presenceClock - new Date(presence.lastSeenAt).getTime() < 120_000;
+
+ useEffect(() => {
+  let cancelled = false;
+  Promise.all([
+   db.getCommercialPresenceById(comercial.id),
+   db.getCommercialActivityLogs({ commercialId: comercial.id, entityType: 'callback_alert', limit: 500 })
+  ]).then(([currentPresence, callbackLogs]) => {
+   if (cancelled) return;
+   setPresence(currentPresence);
+   setHandledCallbackKeys(new Set(callbackLogs.map(log => log.entityId).filter(Boolean) as string[]));
+  }).catch(error => console.error('Could not load commercial presence:', error));
+  return () => { cancelled = true; };
+ }, [comercial.id]);
+
+ useEffect(() => {
+  const timer = window.setInterval(() => setPresenceClock(Date.now()), 15_000);
+  return () => window.clearInterval(timer);
+ }, []);
+
+ useEffect(() => {
+  if (presence?.status !== 'available') return;
+  const sendHeartbeat = async () => {
+   try {
+    await db.heartbeatCommercialPresence(comercial.id);
+    setPresence(current => current ? { ...current, lastSeenAt: new Date().toISOString() } : current);
+   } catch (error) {
+    console.error('Commercial presence heartbeat failed:', error);
+   }
+  };
+  void sendHeartbeat();
+  const timer = window.setInterval(sendHeartbeat, 30_000);
+  document.addEventListener('visibilitychange', sendHeartbeat);
+  return () => {
+   window.clearInterval(timer);
+   document.removeEventListener('visibilitychange', sendHeartbeat);
+  };
+ }, [comercial.id, presence?.status]);
+
+ useEffect(() => {
+  if (!isPresenceFresh || callbackAlertLead) return;
+  const now = Date.now();
+  const nextDue = coldLeads
+   .filter(lead => !lead.archived && lead.assignedToEmail?.toLowerCase() === comercial.email.toLowerCase())
+   .filter(lead => lead.callbackScheduled?.includes('Llamar') && lead.callbackDate && lead.callbackTime)
+   .filter(lead => {
+    const dueAt = new Date(`${lead.callbackDate}T${lead.callbackTime}`).getTime();
+    return Number.isFinite(dueAt) && dueAt <= now && !handledCallbackKeys.has(callbackKey(lead));
+   })
+   .sort((a, b) => `${a.callbackDate}T${a.callbackTime}`.localeCompare(`${b.callbackDate}T${b.callbackTime}`))[0];
+  if (nextDue) setCallbackAlertLead(nextDue);
+ }, [coldLeads, comercial.email, handledCallbackKeys, isPresenceFresh, presenceClock, callbackAlertLead]);
+
+ const changePresence = async (nextStatus: 'available' | 'offline') => {
+  if (presenceBusy || (presence?.status === nextStatus && (nextStatus === 'offline' || isPresenceFresh))) return;
+  setPresenceBusy(true);
+  setPresenceError('');
+  try {
+   const updated = await db.setCommercialPresence(comercial, nextStatus);
+   setPresence(updated);
+   await db.addCommercialActivityLog({
+    commercial: comercial,
+    action: nextStatus === 'available' ? 'presence_available' : 'presence_offline',
+    entityType: 'presence',
+    entityId: updated.sessionId,
+    description: nextStatus === 'available' ? 'Se puso Available e inició su jornada.' : 'Se puso Offline y cerró su sesión de trabajo.'
+   });
+  } catch (error: any) {
+   setPresenceError(error?.message || 'No se pudo actualizar el estado.');
+  } finally {
+   setPresenceBusy(false);
+  }
+ };
+
+ const logoutCommercial = async () => {
+  try {
+   if (presence?.status === 'available') await db.setCommercialPresence(comercial, 'offline');
+  } catch (error) {
+   console.error('Could not close commercial work session on logout:', error);
+  } finally {
+   onLogout();
+  }
+ };
+
+ const resolveCallbackAlert = async (decision: 'accepted' | 'rejected') => {
+  if (!callbackAlertLead) return;
+  const lead = callbackAlertLead;
+  const key = callbackKey(lead);
+  setHandledCallbackKeys(current => new Set([...current, key]));
+  setCallbackAlertLead(null);
+  try {
+   await db.addCommercialActivityLog({
+    commercial: comercial,
+    action: decision === 'accepted' ? 'callback_alert_accepted' : 'callback_alert_rejected',
+    entityType: 'callback_alert',
+    entityId: key,
+    description: `${decision === 'accepted' ? 'Aceptó' : 'Rechazó'} la alerta de llamada a ${lead.businessName}.`,
+    metadata: { leadId: lead.id, businessName: lead.businessName, callbackDate: lead.callbackDate, callbackTime: lead.callbackTime }
+   });
+  } catch (error) {
+   console.error('Could not persist callback alert decision:', error);
+  }
+  if (decision === 'accepted') {
+   setFocusedColdLeadId(lead.id);
+   navigateCommercialView('cold_calling');
+  }
+ };
 
  const readStripeJson = async (response: Response) => {
  const contentType = response.headers.get('content-type') || '';
@@ -732,6 +852,14 @@ export default function ComercialesPanelScreen({
     <div><p className="text-sm font-black tracking-[.12em] text-white">ALTHERA</p><p className="text-[8px] font-bold uppercase tracking-[.22em] text-lime-300">Sales workspace</p></div>
    </div>
    <div className="mt-8 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3">{comercial.avatarUrl ? <img src={comercial.avatarUrl} alt={`Perfil de ${comercial.name}`} className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" /> : <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-lime-300 to-emerald-500 text-xs font-black text-slate-950">{comercial.name.slice(0,2).toUpperCase()}</div>}<div className="min-w-0"><p className="truncate text-xs font-bold text-white">{comercial.name}</p><p className="truncate text-[9px] text-slate-500">{comercial.email}</p></div></div><div className="mt-3 flex items-center justify-between border-t border-white/5 pt-3"><span className="text-[9px] text-slate-500">Legado {myLegacy.rank.name}</span><strong className="text-[10px] text-violet-300">{myLegacy.total.toLocaleString('es-ES')} PA</strong></div></div>
+   <div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 p-2">
+    <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#05080d] p-1">
+     <button type="button" disabled={presenceBusy} onClick={() => changePresence('available')} className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-wider transition ${isPresenceFresh ? 'bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(163,230,53,.18)]' : 'text-slate-500 hover:text-lime-300'}`}><Radio className={`h-3 w-3 ${isPresenceFresh ? 'animate-pulse' : ''}`}/>Available</button>
+     <button type="button" disabled={presenceBusy} onClick={() => changePresence('offline')} className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[9px] font-black uppercase tracking-wider transition ${!isPresenceFresh ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-white'}`}><WifiOff className="h-3 w-3"/>Offline</button>
+    </div>
+    <p className="mt-2 px-1 text-[8px] leading-3 text-slate-600">{presenceBusy ? 'Actualizando estado…' : isPresenceFresh ? 'Tu tiempo de trabajo se está registrando.' : 'El contador de jornada está detenido.'}</p>
+    {presenceError && <p className="mt-1 px-1 text-[8px] text-rose-400">{presenceError}</p>}
+   </div>
    <p className="mb-2 mt-8 px-3 text-[8px] font-black uppercase tracking-[.24em] text-slate-600">Workspace</p>
    <nav className="space-y-1">{[
     { id: 'pipeline', label: 'Overview', Icon: Layers },
@@ -742,7 +870,7 @@ export default function ComercialesPanelScreen({
     { id: 'settings', label: 'Ajustes', Icon: Settings },
    ].map(item => <button key={item.id} onClick={() => navigateCommercialView(item.id as CommercialView)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-xs font-bold transition ${activeView === item.id ? 'bg-lime-300 text-slate-950 shadow-[0_10px_25px_rgba(163,230,53,.14)]' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}><item.Icon className="h-4 w-4"/><span>{item.label}</span>{activeView === item.id && <ChevronDown className="ml-auto h-3 w-3 -rotate-90"/>}</button>)}</nav>
    <div className="mt-auto rounded-2xl border border-white/[0.07] bg-gradient-to-br from-violet-500/10 to-cyan-500/5 p-4"><p className="text-[8px] font-black uppercase tracking-widest text-violet-300">Comisión actual</p><p className="mt-1 text-2xl font-black text-white">{myCommissionPercentage}%</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40"><div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-lime-300" style={{ width: `${myTierInfo.progress}%` }}/></div></div>
-   <button onClick={onLogout} className="mt-3 flex w-full items-center gap-3 rounded-xl border border-rose-400/15 bg-rose-500/[0.06] px-3 py-3 text-xs font-bold text-rose-300 transition hover:bg-rose-500/15 hover:text-white"><LogOut className="h-4 w-4"/><span>Cerrar sesión</span></button>
+   <button onClick={logoutCommercial} className="mt-3 flex w-full items-center gap-3 rounded-xl border border-rose-400/15 bg-rose-500/[0.06] px-3 py-3 text-xs font-bold text-rose-300 transition hover:bg-rose-500/15 hover:text-white"><LogOut className="h-4 w-4"/><span>Cerrar sesión</span></button>
   </aside>
 
   {/* VIEWPORT CANVAS */}
@@ -753,6 +881,10 @@ export default function ComercialesPanelScreen({
    <div>
    <h2 className="text-2xl font-bold tracking-tight text-white">¡Hola de nuevo, {comercial.name}!</h2>
    <p className="text-xs text-slate-400 mt-1">Este es tu panel centralizado de carteras de clientes rápidos. Sigue tus objetivos de conversión.</p>
+   </div>
+   <div className="flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-[#090d13] p-1.5 lg:hidden">
+    <button type="button" disabled={presenceBusy} onClick={() => changePresence('available')} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[10px] font-black transition ${isPresenceFresh ? 'bg-lime-300 text-slate-950' : 'text-slate-500'}`}><Radio className="h-3.5 w-3.5"/>Available</button>
+    <button type="button" disabled={presenceBusy} onClick={() => changePresence('offline')} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[10px] font-black transition ${!isPresenceFresh ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><WifiOff className="h-3.5 w-3.5"/>Offline</button>
    </div>
   </div>
 
@@ -888,6 +1020,7 @@ export default function ComercialesPanelScreen({
     onDeleteEvent={onDeleteEvent}
     usersList={usersList}
     onAddContact={onAddContact}
+    focusLeadId={focusedColdLeadId}
    />
    </div>
   ) : activeView === 'rewards' ? (
@@ -915,7 +1048,7 @@ export default function ComercialesPanelScreen({
    <CommercialTrainingCenter onOpenDocumentation={() => setShowDossierModal(true)} />
   ) : activeView === 'settings' ? (
    <div className="space-y-6 animate-fade-in font-sans">
-   <div className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-[#0b1017] p-4 lg:hidden"><div><p className="text-xs font-bold text-white">{comercial.name}</p><p className="mt-0.5 text-[9px] text-slate-500">{comercial.email}</p></div><button onClick={onLogout} className="flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-[10px] font-bold text-rose-300"><LogOut className="h-3.5 w-3.5"/>Cerrar sesión</button></div>
+   <div className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-[#0b1017] p-4 lg:hidden"><div><p className="text-xs font-bold text-white">{comercial.name}</p><p className="mt-0.5 text-[9px] text-slate-500">{comercial.email}</p></div><button onClick={logoutCommercial} className="flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-[10px] font-bold text-rose-300"><LogOut className="h-3.5 w-3.5"/>Cerrar sesión</button></div>
    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
     <section className="lg:col-span-5 rounded-2xl border border-white/5 bg-slate-950/40 p-6">
      <div className="flex items-start gap-4">
@@ -1768,6 +1901,24 @@ export default function ComercialesPanelScreen({
   </footer>
 
   </main>
+
+  {callbackAlertLead && isPresenceFresh && (
+   <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="callback-alert-title" className="relative w-full max-w-lg overflow-hidden rounded-[30px] border border-amber-300/25 bg-[#0a0e14] p-6 shadow-[0_30px_120px_rgba(0,0,0,.75)] sm:p-8">
+     <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-amber-400/10 blur-3xl" />
+     <div className="relative">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-300/25 bg-amber-400/10"><AlertTriangle className="h-7 w-7 animate-pulse text-amber-300" /></div>
+      <p className="mt-6 text-[10px] font-black uppercase tracking-[.28em] text-amber-300">Callback pendiente · {callbackAlertLead.callbackTime}</p>
+      <h2 id="callback-alert-title" className="mt-2 text-3xl font-black tracking-tight text-white">Es hora de llamar</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-400">Tienes una llamada pospuesta con <strong className="text-white">{callbackAlertLead.businessName}</strong>{callbackAlertLead.contactPerson ? ` · ${callbackAlertLead.contactPerson}` : ''}.</p>
+      <div className="mt-7 grid grid-cols-2 gap-3">
+       <button type="button" onClick={() => resolveCallbackAlert('rejected')} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs font-black text-slate-300 transition hover:bg-white/10 hover:text-white">Rechazar</button>
+       <button type="button" onClick={() => resolveCallbackAlert('accepted')} className="rounded-2xl bg-lime-300 px-4 py-3 text-xs font-black text-slate-950 shadow-[0_15px_40px_rgba(163,230,53,.18)] transition hover:bg-lime-200">Aceptar y abrir ficha</button>
+      </div>
+     </div>
+    </div>
+   </div>
+  )}
 
   {false && showMonthlyRecap && (
   <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4">
