@@ -84,7 +84,7 @@ export default function SalesRewardsScreen({ comercial, comercialesList, finTran
 
   const activity = { workSessions, presence: presence ? [presence] : [], now: activityNow };
   const rows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, month, contacts, activity);
-  const me = rows.find(row => row.comercial.id === liveComercial.id) || rows[0];
+  const me = buildSalesRewards([liveComercial], finTransactions, events, coldLeads, month, contacts, activity, { includeUnrankable: true })[0];
   const mvp = rows[0]?.eligible ? rows[0] : undefined;
   const previousMonthDate = new Date(`${month}-01T12:00:00`);
   previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
@@ -97,6 +97,7 @@ export default function SalesRewardsScreen({ comercial, comercialesList, finTran
     .map(row => ({ row, delta: Math.round((row.score - (previousScores.get(row.comercial.id) || 0)) * 100) / 100 }))
     .sort((a, b) => b.delta - a.delta)[0];
   const myPosition = rows.findIndex(row => row.comercial.id === liveComercial.id) + 1;
+  const myPositionLabel = myPosition > 0 ? `Posición #${myPosition}` : 'Fuera de ranking';
   const monthLabel = new Date(`${month}-02`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
   const kpiValues = {
     cash: Number(me?.cashCollected || 0), appointments: Number(me?.appointments || 0),
@@ -119,7 +120,7 @@ export default function SalesRewardsScreen({ comercial, comercialesList, finTran
         <div><p className="text-[10px] font-black uppercase tracking-[.28em] text-amber-300">Althera Rewards · {monthLabel}</p>
           <h2 className="mt-2 text-3xl font-black text-white">Tu carrera hacia el MVP</h2>
           <p className="mt-2 max-w-xl text-xs leading-5 text-slate-400">El MVP usa un índice abierto: Cash Collected 50%, citas agendadas 20%, Show Rate 15% y profesionalidad 15%. La referencia es 100, pero no existe máximo.</p></div>
-        <div className="rounded-2xl border border-white/10 bg-black/25 px-6 py-4 text-center backdrop-blur-xl"><p className="text-[9px] uppercase tracking-widest text-slate-500">Score MVP · sin máximo</p><p className="text-4xl font-black text-amber-300">{me.score.toFixed(2)}</p><p className="text-[10px] text-slate-400">{me.kpiPoints} puntos acumulados · Posición #{myPosition}</p></div>
+        <div className="rounded-2xl border border-white/10 bg-black/25 px-6 py-4 text-center backdrop-blur-xl"><p className="text-[9px] uppercase tracking-widest text-slate-500">Score MVP · sin máximo</p><p className="text-4xl font-black text-amber-300">{me.score.toFixed(2)}</p><p className="text-[10px] text-slate-400">{me.kpiPoints} puntos acumulados · {myPositionLabel}</p></div>
       </div>
     </section>
 

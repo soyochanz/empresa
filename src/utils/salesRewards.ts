@@ -292,8 +292,10 @@ export function buildSalesRewards(
   month: string,
   contacts: ClientContact[] = [],
   activity: SalesRewardsActivity = {},
+  options: { includeUnrankable?: boolean } = {},
 ): SalesRewardRow[] {
-  const raw = getRankableCommercials(comerciales).map(comercial => {
+  const rewardCommercials = options.includeUnrankable ? comerciales : getRankableCommercials(comerciales);
+  const raw = rewardCommercials.map(comercial => {
     const review = comercial.monthlyPerformance?.[month];
     const cashCollected = Math.floor(transactions
       .filter(tx => isCollectedSale(tx) && belongsToMonth(tx.date, month) &&
