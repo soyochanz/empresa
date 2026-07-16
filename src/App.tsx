@@ -1645,6 +1645,43 @@ export default function App() {
  }
  };
 
+ const handleBulkAssignColdLeads = async (
+  leadIds: string[],
+  assignee: { email: string; name: string }
+ ): Promise<number> => {
+  let assignedIds = leadIds;
+  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+   assignedIds = await db.bulkAssignColdLeads(leadIds, assignee.email, assignee.name);
+  }
+
+  const assignedIdSet = new Set(assignedIds);
+  setColdLeads(previous => previous.map(lead =>
+   assignedIdSet.has(lead.id) && (!lead.assignedToEmail || lead.assignedToEmail === 'unassigned')
+    ? { ...lead, assignedToEmail: assignee.email, assignedToName: assignee.name }
+    : lead
+  ));
+
+  if (assignedIds.length > 0) {
+   const activity: Activity = {
+    id: 'a_cold_bulk_assign_' + Date.now(),
+    type: 'Lead',
+    timestamp: 'Just now',
+    title: `${assignedIds.length} leads asignados`,
+    subtitle: `asignación masiva a ${assignee.name}`,
+    detail: `Se asignaron los primeros ${assignedIds.length} leads sin comercial a ${assignee.email}.`,
+    accentColor: 'secondary'
+   };
+   setActivities(previous => [activity, ...previous]);
+   if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
+    void db.insertActivity(activity, currentUser.id).catch(error =>
+     console.error('Supabase failed to register bulk assignment activity:', error)
+    );
+   }
+  }
+
+  return assignedIds.length;
+ };
+
  const handleDeleteColdLead = async (id: string) => {
   const deletedLead = coldLeads.find(lead => lead.id === id);
   const linkedContact = contacts.find(contact => contact.closingSourceLeadId === id || contact.id === `crm_from_${id}`);
@@ -2119,6 +2156,7 @@ export default function App() {
    usersList={usersList}
    onAddColdLead={handleAddColdLead}
    onUpdateColdLead={handleUpdateColdLead}
+   onBulkAssignColdLeads={handleBulkAssignColdLeads}
    onDeleteColdLead={handleDeleteColdLead}
    currentUser={currentUser}
    currentComercial={null}

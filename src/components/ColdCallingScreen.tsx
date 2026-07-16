@@ -85,6 +85,7 @@ interface ColdCallingScreenProps {
  usersList?: { id: string; name: string; email: string }[];
  onAddColdLead: (lead: ColdCallingLead) => void | Promise<void>;
  onUpdateColdLead: (lead: ColdCallingLead) => void | Promise<void>;
+ onBulkAssignColdLeads?: (leadIds: string[], assignee: { email: string; name: string }) => Promise<number>;
  onDeleteColdLead: (id: string) => void | Promise<void>;
  currentUser?: { name: string; email: string; id: string | null } | null; // present if Admin
  currentComercial?: ComercialAccount | null; // present if Comercial
@@ -107,6 +108,7 @@ export default function ColdCallingScreen({
  usersList,
  onAddColdLead,
  onUpdateColdLead,
+ onBulkAssignColdLeads,
  onDeleteColdLead,
  currentUser,
  currentComercial,
@@ -250,6 +252,10 @@ const nachoAdmin = findAdminByName('nacho');
  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
  const [bulkAssigneeEmail, setBulkAssigneeEmail] = useState('unassigned');
  const [bulkActionRunning, setBulkActionRunning] = useState(false);
+ const [quantityAssigneeEmail, setQuantityAssigneeEmail] = useState('');
+ const [assignmentQuantity, setAssignmentQuantity] = useState('100');
+ const [quantityAssignmentMessage, setQuantityAssignmentMessage] = useState('');
+ const [quantityAssignmentError, setQuantityAssignmentError] = useState('');
 
  // Dedicated modal state for scheduling in-person meetings (Cita Presencial)
  const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1397,6 +1403,58 @@ const nachoAdmin = findAdminByName('nacho');
  });
  };
 
+ const unassignedLeads = coldLeads.filter(lead =>
+  !lead.assignedToEmail || lead.assignedToEmail === 'unassigned'
+ );
+ const parsedAssignmentQuantity = Number.parseInt(assignmentQuantity, 10);
+ const quantityToAssign = Number.isFinite(parsedAssignmentQuantity) && parsedAssignmentQuantity > 0
+  ? Math.min(parsedAssignmentQuantity, unassignedLeads.length)
+  : 0;
+ const handleAssignByQuantity = async () => {
+  setQuantityAssignmentMessage('');
+  setQuantityAssignmentError('');
+  const assignee = comercialesList.find(comercial => comercial.email === quantityAssigneeEmail);
+  if (!assignee) {
+   setQuantityAssignmentError('Selecciona un comercial.');
+   return;
+  }
+  if (!Number.isInteger(parsedAssignmentQuantity) || parsedAssignmentQuantity <= 0) {
+   setQuantityAssignmentError('Introduce una cantidad entera mayor que 0.');
+   return;
+  }
+  const leadsToAssign = unassignedLeads.slice(0, parsedAssignmentQuantity);
+  if (!leadsToAssign.length) {
+   setQuantityAssignmentError('No quedan leads sin comercial asignado.');
+   return;
+  }
+
+  setBulkActionRunning(true);
+  try {
+   let assignedCount = leadsToAssign.length;
+   if (onBulkAssignColdLeads) {
+    assignedCount = await onBulkAssignColdLeads(
+     leadsToAssign.map(lead => lead.id),
+     { email: assignee.email, name: assignee.name }
+    );
+   } else {
+    for (let index = 0; index < leadsToAssign.length; index += 20) {
+     await Promise.all(leadsToAssign.slice(index, index + 20).map(lead => onUpdateColdLead({
+      ...lead,
+      assignedToEmail: assignee.email,
+      assignedToName: assignee.name
+     })));
+    }
+   }
+   setQuantityAssignmentMessage(
+    `${assignedCount} lead${assignedCount === 1 ? '' : 's'} asignado${assignedCount === 1 ? '' : 's'} a ${assignee.name}.`
+   );
+  } catch (error) {
+   setQuantityAssignmentError(error instanceof Error ? error.message : 'No se pudo completar la asignación.');
+  } finally {
+   setBulkActionRunning(false);
+  }
+ };
+
  const handleCreateProspectGroup = async (event: React.FormEvent) => {
   event.preventDefault();
   if (!currentComercial || !newGroupName.trim() || groupBusy) return;
@@ -2040,6 +2098,41 @@ const nachoAdmin = findAdminByName('nacho');
    </div>
 
    {isAdmin && (
+   <div className="space-y-3">
+   <div className="bg-[#050508]/90 border border-cyan-500/20 rounded-2xl p-4">
+    <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
+     <div>
+      <div className="flex items-center gap-2">
+       <UserPlus className="w-4 h-4 text-cyan-400" />
+       <h3 className="text-xs font-bold text-white">Asignar leads por cantidad</h3>
+      </div>
+      <p className="text-[10px] text-slate-400 mt-1">
+       Se asignarán los primeros leads de la lista general que todavía no tengan comercial.
+      </p>
+      <p className="text-[10px] font-mono text-cyan-400 mt-2">{unassignedLeads.length} disponibles sin asignar</p>
+     </div>
+     <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+      <label className="space-y-1">
+       <span className="block text-[9px] font-mono font-bold uppercase text-slate-500">Comercial</span>
+       <select value={quantityAssigneeEmail} onChange={event => { setQuantityAssigneeEmail(event.target.value); setQuantityAssignmentError(''); setQuantityAssignmentMessage(''); }} disabled={bulkActionRunning} className="w-full sm:w-56 bg-slate-950 border border-white/10 text-xs text-slate-300 px-3 py-2.5 rounded-xl outline-none focus:border-cyan-500">
+        <option value="">Seleccionar comercial...</option>
+        {comercialesList.map(comercial => <option key={comercial.id} value={comercial.email}>{comercial.name}</option>)}
+       </select>
+      </label>
+      <label className="space-y-1">
+       <span className="block text-[9px] font-mono font-bold uppercase text-slate-500">Cantidad</span>
+       <input type="number" min="1" step="1" value={assignmentQuantity} onChange={event => { setAssignmentQuantity(event.target.value); setQuantityAssignmentError(''); setQuantityAssignmentMessage(''); }} disabled={bulkActionRunning} className="w-full sm:w-28 bg-slate-950 border border-white/10 text-xs text-white px-3 py-2.5 rounded-xl outline-none focus:border-cyan-500" />
+      </label>
+      <button onClick={handleAssignByQuantity} disabled={!quantityAssigneeEmail || quantityToAssign === 0 || bulkActionRunning} className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-xs font-bold whitespace-nowrap flex items-center justify-center gap-2">
+       {bulkActionRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+       {bulkActionRunning ? 'Asignando...' : `Asignar ${quantityToAssign || ''}`}
+      </button>
+     </div>
+    </div>
+    {quantityAssignmentMessage && <p className="mt-3 text-[11px] font-bold text-emerald-400">{quantityAssignmentMessage}</p>}
+    {quantityAssignmentError && <p className="mt-3 text-[11px] font-bold text-rose-400">{quantityAssignmentError}</p>}
+   </div>
+
    <div className="bg-[#050508]/90 border border-violet-500/20 rounded-2xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
     <div className="flex items-center gap-3">
     <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
@@ -2060,6 +2153,7 @@ const nachoAdmin = findAdminByName('nacho');
      <Trash2 className="w-3.5 h-3.5" /> Eliminar
     </button>
     </div>
+   </div>
    </div>
    )}
 

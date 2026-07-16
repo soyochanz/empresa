@@ -2196,6 +2196,27 @@ export const db = {
  invalidateCache('cold_calling_leads');
  },
 
+ async bulkAssignColdLeads(leadIds: string[], assignedToEmail: string, assignedToName: string): Promise<string[]> {
+  if (!leadIds.length) return [];
+  const updatedIds: string[] = [];
+  const batchSize = 100;
+
+  for (let index = 0; index < leadIds.length; index += batchSize) {
+   const batch = leadIds.slice(index, index + batchSize);
+   const { data, error } = await supabase
+    .from('cold_calling_leads')
+    .update({ assignedToEmail, assignedToName })
+    .in('id', batch)
+    .or('assignedToEmail.eq.unassigned,assignedToEmail.is.null')
+    .select('id');
+   if (error) throw error;
+   updatedIds.push(...(data || []).map((row: { id: string }) => row.id));
+  }
+
+  invalidateCache('cold_calling_leads');
+  return updatedIds;
+ },
+
  async deleteColdLead(id: string, _userId?: string): Promise<void> {
  const { error } = await supabase.from('cold_calling_leads').delete().eq('id', id);
  if (error) throw error;
