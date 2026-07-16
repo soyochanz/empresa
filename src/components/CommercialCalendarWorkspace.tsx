@@ -6,8 +6,8 @@ interface Props {
   comercial: ComercialAccount;
   events: CalendarEvent[];
   coldLeads: ColdCallingLead[];
-  onAddEvent: (event: CalendarEvent) => void;
-  onUpdateEvent: (event: CalendarEvent) => void;
+  onAddEvent: (event: CalendarEvent) => void | Promise<void>;
+  onUpdateEvent: (event: CalendarEvent) => void | Promise<void>;
   onDeleteEvent: (id: string) => void;
 }
 
@@ -23,6 +23,7 @@ export default function CommercialCalendarWorkspace({ comercial, events, coldLea
   const [time, setTime] = useState('09:00');
   const [notes, setNotes] = useState('');
   const [meetingUrl, setMeetingUrl] = useState('');
+  const [isSavingEvent, setIsSavingEvent] = useState(false);
 
   const myEvents = useMemo(() => {
     const comercialEmail = comercial.email.toLowerCase();
@@ -75,16 +76,23 @@ export default function CommercialCalendarWorkspace({ comercial, events, coldLea
   const monthLabel = cursor.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
   const selectedLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  const createEvent = (event: React.FormEvent) => {
+  const createEvent = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!title.trim()) return;
-    onAddEvent({
-      id: `evt_com_${Date.now()}`,
-      title: title.trim(), date: selectedDate, time, type: meetingUrl.trim() ? 'Meeting' : 'Other',
-      notes: notes.trim(), description: notes.trim(), meetingUrl: meetingUrl.trim() || undefined,
-      comercialId: comercial.id, assignedUserEmail: comercial.email, status: 'pending', isPrivate: true, color: '#a3e635',
-    });
-    setTitle(''); setNotes(''); setMeetingUrl(''); setShowCreate(false);
+    if (!title.trim() || isSavingEvent) return;
+    setIsSavingEvent(true);
+    try {
+      await onAddEvent({
+        id: `evt_com_${Date.now()}`,
+        title: title.trim(), date: selectedDate, time, type: meetingUrl.trim() ? 'Meeting' : 'Other',
+        notes: notes.trim(), description: notes.trim(), meetingUrl: meetingUrl.trim() || undefined,
+        comercialId: comercial.id, assignedUserEmail: comercial.email, status: 'pending', isPrivate: true, color: '#a3e635',
+      });
+      setTitle(''); setNotes(''); setMeetingUrl(''); setShowCreate(false);
+    } catch (error) {
+      console.error('Could not create personal calendar event:', error);
+    } finally {
+      setIsSavingEvent(false);
+    }
   };
 
   return <div className="space-y-5 animate-fade-in">
@@ -99,6 +107,6 @@ export default function CommercialCalendarWorkspace({ comercial, events, coldLea
       <aside className="rounded-3xl border border-white/[0.07] bg-[#0b1017]/95 p-5"><p className="text-[9px] font-black uppercase tracking-widest text-violet-300">Agenda del día</p><h3 className="mt-1 text-base font-black capitalize text-white">{selectedLabel}</h3><div className="mt-5 space-y-3">{selectedEvents.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center"><CalendarDays className="mx-auto h-7 w-7 text-slate-700"/><p className="mt-3 text-xs font-bold text-slate-400">Día disponible</p><p className="mt-1 text-[9px] text-slate-600">Añade una tarea o reunión.</p></div> : selectedEvents.map(item => <article key={item.id} className={`rounded-2xl border p-4 ${item.status === 'done' ? 'border-emerald-400/15 bg-emerald-400/[0.04]' : 'border-white/[0.07] bg-black/20'}`}><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-400/10"><Clock3 className="h-4 w-4 text-violet-300"/></div><div className="min-w-0 flex-1"><p className={`text-xs font-bold text-white ${item.status === 'done' ? 'line-through opacity-60' : ''}`}>{item.title}</p><p className="mt-1 text-[9px] font-bold text-lime-300">{item.time || 'Todo el día'}</p>{(item.notes || item.description) && <p className="mt-2 text-[9px] leading-4 text-slate-500">{item.notes || item.description}</p>}</div></div>{item.meetingUrl && item.status !== 'done' && <a href={item.meetingUrl.startsWith('http') ? item.meetingUrl : `https://${item.meetingUrl}`} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-violet-500 px-3 py-2 text-[9px] font-bold text-white"><Video className="h-3.5 w-3.5"/>Abrir reunión</a>}{item.id.startsWith('cold_callback_') ? <div className="mt-3 rounded-lg border border-amber-400/15 bg-amber-400/[0.06] px-3 py-2 text-center text-[8px] font-bold text-amber-300">Gestiona este seguimiento desde Cold Calling</div> : <div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => onUpdateEvent({ ...item, status: item.status === 'done' ? 'pending' : 'done' })} className="flex items-center justify-center gap-1.5 rounded-lg border border-emerald-400/15 bg-emerald-400/[0.06] py-2 text-[8px] font-bold text-emerald-300"><Check className="h-3 w-3"/>{item.status === 'done' ? 'Reabrir' : 'Completar'}</button><button onClick={() => onDeleteEvent(item.id)} className="flex items-center justify-center gap-1.5 rounded-lg border border-rose-400/15 bg-rose-400/[0.05] py-2 text-[8px] font-bold text-rose-300"><Trash2 className="h-3 w-3"/>Eliminar</button></div>}</article>)}</div><button onClick={() => setShowCreate(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 py-3 text-[10px] font-bold text-slate-300 hover:bg-white/5"><Plus className="h-3.5 w-3.5"/>Añadir a este día</button></aside>
     </div>
 
-    {showCreate && <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md"><form onSubmit={createEvent} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b1017] p-6 shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-widest text-lime-300">Nueva tarea</p><h3 className="mt-1 text-lg font-black text-white">{selectedLabel}</h3></div><button type="button" onClick={() => setShowCreate(false)} className="text-xs text-slate-500 hover:text-white">Cerrar</button></div><div className="mt-5 space-y-3"><input autoFocus value={title} onChange={event => setTitle(event.target.value)} placeholder="Título de la tarea o reunión" required className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-white outline-none focus:border-lime-300/40"/><div className="grid grid-cols-2 gap-3"><input type="date" value={selectedDate} onChange={event => setSelectedDate(event.target.value)} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-xs text-white outline-none"/><input type="time" value={time} onChange={event => setTime(event.target.value)} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-xs text-white outline-none"/></div><textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Notas y objetivo" rows={3} className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-white outline-none"/><input value={meetingUrl} onChange={event => setMeetingUrl(event.target.value)} placeholder="Enlace de videollamada (opcional)" className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-white outline-none"/></div><div className="mt-5 grid grid-cols-2 gap-3"><button type="button" onClick={() => setShowCreate(false)} className="rounded-xl border border-white/10 py-3 text-xs font-bold text-slate-400">Cancelar</button><button type="submit" className="rounded-xl bg-lime-300 py-3 text-xs font-black text-slate-950">Guardar tarea</button></div></form></div>}
+    {showCreate && <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md"><form onSubmit={createEvent} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b1017] p-6 shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-widest text-lime-300">Nueva tarea</p><h3 className="mt-1 text-lg font-black text-white">{selectedLabel}</h3></div><button type="button" disabled={isSavingEvent} onClick={() => setShowCreate(false)} className="text-xs text-slate-500 hover:text-white disabled:opacity-40">Cerrar</button></div><div className="mt-5 space-y-3"><input autoFocus value={title} onChange={event => setTitle(event.target.value)} placeholder="Título de la tarea o reunión" required className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-white outline-none focus:border-lime-300/40"/><div className="grid grid-cols-2 gap-3"><input type="date" value={selectedDate} onChange={event => setSelectedDate(event.target.value)} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-xs text-white outline-none"/><input type="time" value={time} onChange={event => setTime(event.target.value)} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-xs text-white outline-none"/></div><textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Notas y objetivo" rows={3} className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-white outline-none"/><input value={meetingUrl} onChange={event => setMeetingUrl(event.target.value)} placeholder="Enlace de videollamada (opcional)" className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-xs text-white outline-none"/></div><div className="mt-5 grid grid-cols-2 gap-3"><button type="button" disabled={isSavingEvent} onClick={() => setShowCreate(false)} className="rounded-xl border border-white/10 py-3 text-xs font-bold text-slate-400 disabled:opacity-40">Cancelar</button><button type="submit" disabled={isSavingEvent} className="rounded-xl bg-lime-300 py-3 text-xs font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50">{isSavingEvent ? 'Guardando…' : 'Guardar tarea'}</button></div></form></div>}
   </div>;
 }

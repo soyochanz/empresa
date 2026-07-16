@@ -32,7 +32,7 @@ interface CalendarScreenProps {
  notes: Note[];
  onAddEvent: (event: CalendarEvent) => void | Promise<void>;
  onDeleteEvent: (id: string) => void;
- onUpdateEvent: (event: CalendarEvent) => void;
+ onUpdateEvent: (event: CalendarEvent) => void | Promise<void>;
  onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
  usersList?: PanelUser[];
  onAddProfile?: (profile: { name: string; email: string }) => void;
@@ -65,6 +65,8 @@ export default function CalendarScreen({
  const [showAddModal, setShowAddModal] = useState(false);
  const [showEditModal, setShowEditModal] = useState(false);
  const [deleteConfirmEventId, setDeleteConfirmEventId] = useState<string | null>(null);
+ const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+ const [isUpdatingEvent, setIsUpdatingEvent] = useState(false);
 
  // Quick collaborator states
  const [showQuickAddCollab, setShowQuickAddCollab] = useState(false);
@@ -152,7 +154,8 @@ export default function CalendarScreen({
 
  const handleAddEventSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
- if (!newTitle.trim()) return;
+ if (!newTitle.trim() || isCreatingEvent) return;
+ setIsCreatingEvent(true);
 
  const selectedAssignees = newAssignedUserEmails.length ? newAssignedUserEmails : (newAssignedUserEmail ? [newAssignedUserEmail] : []);
  const matchedContact = contacts.find(c => c.id === selectedContactIds[0]);
@@ -188,10 +191,12 @@ export default function CalendarScreen({
   recurrence: newRecurrence,
   recurrenceCount: newRecurrenceCount,
   recurrenceGroupId,
+  color: newRecurrence === 'daily' ? '#A855F7' : '#3B82F6',
   reminders: ['15 min before']
  };
 
  const repetitions = newRecurrence === 'none' ? 1 : Math.max(1, Math.min(36, Number(newRecurrenceCount || 1)));
+ let saved = false;
  try {
  for (let index = 0; index < repetitions; index += 1) {
   await onAddEvent({
@@ -201,10 +206,13 @@ export default function CalendarScreen({
   parentEventId: index === 0 ? undefined : generatedEvent.id
   });
  }
+ saved = true;
  } catch (err) {
  console.error('Failed to create calendar event:', err);
- return;
+ } finally {
+ setIsCreatingEvent(false);
  }
+ if (!saved) return;
  setSelectedEventId(generatedEvent.id);
  setShowAddModal(false);
 
@@ -245,9 +253,9 @@ export default function CalendarScreen({
  setShowEditModal(true);
  };
 
- const handleUpdateEventSubmit = (e: React.FormEvent) => {
+ const handleUpdateEventSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
- if (!editTitle.trim()) return;
+ if (!editTitle.trim() || isUpdatingEvent) return;
 
  const matchedContact = contacts.find(c => c.id === editContactIds[0]);
  const matchedUser = usersList.find(u => u.email === editAssignedUserEmail);
@@ -269,8 +277,16 @@ export default function CalendarScreen({
   assignedUserId: matchedUser ? matchedUser.id : undefined,
  };
 
- onUpdateEvent(updatedEvent);
- setShowEditModal(false);
+ setIsUpdatingEvent(true);
+ try {
+  await onUpdateEvent(updatedEvent);
+  setShowEditModal(false);
+ } catch (error) {
+  console.error('Failed to update calendar event:', error);
+  return;
+ } finally {
+  setIsUpdatingEvent(false);
+ }
 
  const toast = document.getElementById('toast-msg');
  if (toast) {
@@ -523,7 +539,8 @@ export default function CalendarScreen({
       } else if (ev.status === "postponed") {
        chipColor = "bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 border border-amber-500/30";
       } else {
-       if (ev.type === "Deadline") chipColor = "bg-red-500/10 text-red-400 hover:bg-red-500/20";
+       if (ev.recurrence === 'daily') chipColor = "bg-fuchsia-500/20 text-fuchsia-200 hover:bg-fuchsia-500/30 border border-fuchsia-400/30 shadow-sm shadow-fuchsia-500/10";
+       else if (ev.type === "Deadline") chipColor = "bg-red-500/10 text-red-400 hover:bg-red-500/20";
        else if (ev.type === "Review") chipColor = "bg-purple-500/10 text-purple-400 hover:bg-purple-500/20";
        else if (ev.type === "Kickoff") chipColor = "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20";
       }
@@ -623,6 +640,10 @@ export default function CalendarScreen({
         statusBadgeColor = "text-amber-400 border-amber-500/30 bg-amber-500/10";
         cardBorderColor = isSelected ? "border-amber-500/50" : "border-amber-500/10 hover:border-amber-500/20";
         cardBgColor = isSelected ? "bg-[#181109]" : "bg-[#100b05] hover:bg-[#181008]";
+       } else if (ev.recurrence === 'daily') {
+        statusBadgeColor = "text-fuchsia-200 border-fuchsia-400/30 bg-fuchsia-500/15";
+        cardBorderColor = isSelected ? "border-fuchsia-400/55 shadow-lg shadow-fuchsia-500/10" : "border-fuchsia-500/20 hover:border-fuchsia-400/40";
+        cardBgColor = isSelected ? "bg-fuchsia-950/25" : "bg-fuchsia-950/10 hover:bg-fuchsia-950/20";
        }
 
        return (
@@ -635,7 +656,7 @@ export default function CalendarScreen({
          {/* Top line metadata row */}
          <div className="flex items-center gap-2 flex-wrap text-[9px] font-mono">
          <span className={`px-2 py-0.5 rounded-full uppercase font-bold tracking-wider border ${statusBadgeColor}`}>
-          {ev.type}
+          {ev.recurrence === 'daily' ? 'Diario' : ev.type}
          </span>
          <span className="text-slate-400">
           {ev.time} · {getDurationMinutes(ev.duration)} min
@@ -1569,9 +1590,10 @@ export default function CalendarScreen({
     </button>
     <button 
      type="submit"
-     className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-all"
+     disabled={isCreatingEvent}
+     className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-all disabled:cursor-not-allowed disabled:opacity-50"
     >
-     Guardar evento
+     {isCreatingEvent ? 'Guardando…' : 'Guardar evento'}
     </button>
     </div>
 
@@ -1924,9 +1946,10 @@ export default function CalendarScreen({
     </button>
     <button 
      type="submit"
-     className="flex-1 py-1 px-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+     disabled={isUpdatingEvent}
+     className="flex-1 py-1 px-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
     >
-     Save Changes
+     {isUpdatingEvent ? 'Guardando…' : 'Guardar cambios'}
     </button>
     </div>
 
