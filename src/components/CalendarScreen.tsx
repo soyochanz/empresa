@@ -163,7 +163,9 @@ export default function CalendarScreen({
   if (newRecurrence === 'daily') d.setDate(d.getDate() + index);
   if (newRecurrence === 'weekly') d.setDate(d.getDate() + (index * 7));
   if (newRecurrence === 'monthly') d.setMonth(d.getMonth() + index);
-  return d.toISOString().split('T')[0];
+  // Calendar dates are local civil dates, not UTC instants. Converting midnight
+  // in Madrid to ISO/UTC moves it to the previous day during summer time.
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
  };
 
  const generatedEvent: CalendarEvent = {

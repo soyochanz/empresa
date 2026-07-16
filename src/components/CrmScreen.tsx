@@ -507,7 +507,8 @@ export default function CrmScreen({
    status: 'Ganado',
    value: convSalePrice,
    comercialId: matchedCom.id,
-   comercialName: matchedCom.name
+   comercialName: matchedCom.name,
+   notes: `${existingLead.notes || ''}\n[SOURCE_CONTACT_ID:${convertingLead.id}]`.trim()
    };
    await db.updateComercialLead(updatedLead);
   } else {
@@ -521,7 +522,7 @@ export default function CrmScreen({
    phone: convertingLead.phone || '',
    status: 'Ganado',
    value: convSalePrice,
-   notes: `Creado al convertir desde CRM por ${matchedCom.name}`,
+   notes: `Creado al convertir desde CRM por ${matchedCom.name}\n[SOURCE_CONTACT_ID:${convertingLead.id}]`,
    createdAt: new Date().toISOString(),
    temperature: 'Caliente',
    isDone: true
@@ -754,7 +755,8 @@ export default function CrmScreen({
     status: 'Ganado',
     value: existingLead.status === 'Ganado' ? existingLead.value : (existingLead.value || 0) + amt,
     comercialId: matchedCom.id,
-    comercialName: matchedCom.name
+    comercialName: matchedCom.name,
+    notes: `${existingLead.notes || ''}\n[SOURCE_CONTACT_ID:${selectedContact.id}]`.trim()
     };
     await db.updateComercialLead(updatedLead);
    } else {
@@ -768,7 +770,7 @@ export default function CrmScreen({
     phone: selectedContact.phone || '',
     status: 'Ganado',
     value: amt,
-    notes: `Creado automáticamente al registrar un cobro para el cliente por ${matchedCom.name}`,
+    notes: `Creado automáticamente al registrar un cobro para el cliente por ${matchedCom.name}\n[SOURCE_CONTACT_ID:${selectedContact.id}]`,
     createdAt: new Date().toISOString(),
     temperature: 'Caliente',
     isDone: true

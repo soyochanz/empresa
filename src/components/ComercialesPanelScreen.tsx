@@ -586,23 +586,32 @@ export default function ComercialesPanelScreen({
   return saleTxs.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
  };
 
- // 1. Map existing leads, force to 'Ganado' if matching contact is 'Client'
- const updated = leadsList.map(lead => {
+ // 1. CRM-derived wins disappear from stats when their source contact is deleted.
+ const updated = leadsList.reduce<ComercialLead[]>((result, lead) => {
   const matchingContact = contacts.find(c => 
+   lead.notes?.includes(`[SOURCE_CONTACT_ID:${c.id}]`) ||
+   (!!c.closingSourceLeadId && lead.notes?.includes(`[SOURCE_COLD_LEAD_ID:${c.closingSourceLeadId}]`)) ||
    (lead.email && c.email && lead.email.toLowerCase() === c.email.toLowerCase()) ||
-   (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase())
+   (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase() &&
+    lead.company?.toLowerCase() === c.company?.toLowerCase())
   );
+
+  if (lead.status === 'Ganado' && !matchingContact) return result;
   
   if (matchingContact && matchingContact.status === 'Client') {
    const adminSaleTotal = getAdminSaleTotal(matchingContact);
-   return {
+   result.push({
    ...lead,
    status: 'Ganado' as const,
    value: adminSaleTotal || lead.value || 0
-   };
+   });
+   return result;
   }
-  return lead;
-  });
+  result.push(matchingContact && lead.status === 'Ganado'
+   ? { ...lead, status: 'Pendiente', value: 0 }
+   : lead);
+  return result;
+ }, []);
 
  // 2. Find client contacts associated with the current commercial that are NOT already in leadsList
  const newLeadsFromClients: ComercialLead[] = [];

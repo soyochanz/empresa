@@ -431,23 +431,33 @@ export default function ComercialesAdminScreen({
   return saleTxs.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
  };
 
- // 1. Map existing leads, force to 'Ganado' if matching contact is 'Client'
- const updated = leadsList.map(lead => {
+ // 1. A CRM-derived win is valid only while its source contact still exists.
+ // This also neutralizes obsolete browser-cache entries after deleting test clients.
+ const updated = leadsList.reduce<ComercialLead[]>((result, lead) => {
   const matchingContact = contacts.find(c => 
+   lead.notes?.includes(`[SOURCE_CONTACT_ID:${c.id}]`) ||
+   (!!c.closingSourceLeadId && lead.notes?.includes(`[SOURCE_COLD_LEAD_ID:${c.closingSourceLeadId}]`)) ||
    (lead.email && c.email && lead.email.toLowerCase() === c.email.toLowerCase()) ||
-   (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase())
+   (lead.name && c.name && lead.name.toLowerCase() === c.name.toLowerCase() &&
+    lead.company?.toLowerCase() === c.company?.toLowerCase())
   );
+
+  if (lead.status === 'Ganado' && !matchingContact) return result;
   
   if (matchingContact && matchingContact.status === 'Client') {
    const adminSaleTotal = getAdminSaleTotal(matchingContact);
-   return {
+   result.push({
    ...lead,
    status: 'Ganado' as const,
    value: adminSaleTotal || lead.value || 0
-   };
+   });
+   return result;
   }
-  return lead;
-  });
+  result.push(matchingContact && lead.status === 'Ganado'
+   ? { ...lead, status: 'Pendiente', value: 0 }
+   : lead);
+  return result;
+ }, []);
 
  // 2. Find client contacts associated with ANY commercial that are NOT already in leadsList
  const newLeadsFromClients: ComercialLead[] = [];
@@ -530,6 +540,25 @@ export default function ComercialesAdminScreen({
  const totalCallsLogged = coldLeads.reduce((sum, l) => sum + (l.callsCount || 0), 0);
  const coldContacted = coldLeads.filter(l => l.contacted === 'Sí').length;
  const coldContactRate = totalColdLeads > 0 ? Math.round((coldContacted / totalColdLeads) * 100) : 0;
+ const getColdLeadIdFromAppointment = (event: CalendarEvent) => {
+  if (event.linkedContactId?.startsWith('crm_from_')) return event.linkedContactId.slice('crm_from_'.length);
+  if (event.id.startsWith('cc_appointment_')) return event.id.slice('cc_appointment_'.length);
+  return undefined;
+ };
+ const appointmentLeadIdsByCommercial = new Map<string, Set<string>>();
+ events.forEach(event => {
+  const leadId = getColdLeadIdFromAppointment(event);
+  if (!leadId || !event.comercialId) return;
+  const ids = appointmentLeadIdsByCommercial.get(event.comercialId) || new Set<string>();
+  ids.add(leadId);
+  appointmentLeadIdsByCommercial.set(event.comercialId, ids);
+ });
+ const coldLeadBelongsToCommercial = (lead: ColdCallingLead, commercial: ComercialAccount) => {
+  const originEmail = lead.closingOriginComercialEmail?.toLowerCase();
+  if (originEmail) return originEmail === commercial.email.toLowerCase();
+  if (appointmentLeadIdsByCommercial.get(commercial.id)?.has(lead.id)) return true;
+  return lead.assignedToEmail?.toLowerCase() === commercial.email.toLowerCase();
+ };
 
  // Leaderboard of representatives
  const leaderBoard = getRankableCommercials(comercialesList).map(c => {
@@ -539,8 +568,10 @@ export default function ComercialesAdminScreen({
  const comConv = comLeads.length > 0 ? Math.round((comWon.length / comLeads.length) * 100) : 0;
  
  // Cold calling assignments
- const comColdLeads = coldLeads.filter(l => l.assignedToEmail?.toLowerCase() === c.email.toLowerCase());
+ const comColdLeads = coldLeads.filter(lead => coldLeadBelongsToCommercial(lead, c));
  const comCallsCount = comColdLeads.reduce((sum, l) => sum + (l.callsCount || 0), 0);
+ const comAppointmentCount = appointmentLeadIdsByCommercial.get(c.id)?.size || 0;
+ const comCallbackCount = comColdLeads.filter(lead => lead.callbackScheduled === 'Llamar más tarde').length;
 
  return {
   comercial: c,
@@ -549,7 +580,9 @@ export default function ComercialesAdminScreen({
   wonVolume: comWonVol,
   conversionRate: comConv,
   coldLeadsCount: comColdLeads.length,
-  callsCount: comCallsCount
+  callsCount: comCallsCount,
+  appointmentCount: comAppointmentCount,
+  callbackCount: comCallbackCount
  };
  }).sort((a, b) => b.wonVolume - a.wonVolume);
  const commercialActivity = [
@@ -629,11 +662,12 @@ export default function ComercialesAdminScreen({
 
  // Individual Cold Calling Stats
  const indColdLeads = currentComercial  ?
-  coldLeads.filter(l => l.assignedToEmail?.toLowerCase() === currentComercial.email.toLowerCase())
+  coldLeads.filter(lead => coldLeadBelongsToCommercial(lead, currentComercial))
  : [];
  const indColdCallsLogged = indColdLeads.reduce((sum, l) => sum + (l.callsCount || 0), 0);
  const indColdContacted = indColdLeads.filter(l => l.contacted === 'Sí').length;
- const indColdCallback = indColdLeads.filter(l => l.callbackScheduled === 'Sí').length;
+ const indColdAppointments = currentComercial ? appointmentLeadIdsByCommercial.get(currentComercial.id)?.size || 0 : 0;
+ const indColdCallbacks = indColdLeads.filter(l => l.callbackScheduled === 'Llamar más tarde').length;
 
  const presenceByCommercial = new Map(commercialPresence.map(item => [item.commercialId, item]));
  const isAvailableNow = (item?: CommercialPresence) => !!item && item.status === 'available' && presenceNow - new Date(item.lastSeenAt).getTime() < 120_000;
@@ -905,8 +939,8 @@ export default function ComercialesAdminScreen({
        <span className="text-[11px] font-mono font-bold text-emerald-400">{item.conversionRate}% Conv.</span>
       </div>
       <div className="hidden sm:block">
-       <span className="block text-[8px] font-mono text-slate-500 uppercase">Embudo (Leads)</span>
-       <span className="text-[11px] font-mono font-bold text-slate-300">{item.totalLeads} gestionados</span>
+       <span className="block text-[8px] font-mono text-slate-500 uppercase">Citas / Callbacks</span>
+       <span className="text-[11px] font-mono font-bold text-slate-300">{item.appointmentCount} closer · {item.callbackCount} callback</span>
       </div>
       <div>
        <span className="block text-[8px] font-mono text-slate-500 uppercase">Volumen Cerrado</span>
@@ -1456,7 +1490,7 @@ export default function ComercialesAdminScreen({
       </div>
       <div className="flex justify-between items-center text-[10px] font-mono">
       <span className="text-slate-400">Citas/Callbacks Agendadas:</span>
-      <span className="font-bold text-violet-400">{indColdCallback} agendadas</span>
+      <span className="font-bold text-violet-400">{indColdAppointments} a closer · {indColdCallbacks} callbacks</span>
       </div>
      </div>
      </div>

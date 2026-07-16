@@ -336,8 +336,28 @@ const nachoAdmin = findAdminByName('nacho');
 
  const isSlotBusy = (date: string, time: string) => !!getSlotConflict(date, time);
 
+ const resolveOriginCommercial = (lead: ColdCallingLead, contact?: ClientContact) => {
+  const linkedAppointment = events.find(event =>
+   event.id === `cc_appointment_${lead.id}` || event.linkedContactId === `crm_from_${lead.id}`
+  );
+  const emailCandidates = [
+   lead.closingOriginComercialEmail,
+   contact?.contactedByComercialEmail,
+   lead.assignedToEmail
+  ].filter((email): email is string => Boolean(email && email !== 'unassigned'));
+  const commercial = emailCandidates
+   .map(email => comercialesList.find(item => item.email.toLowerCase() === email.toLowerCase()))
+   .find((item): item is ComercialAccount => Boolean(item)) ||
+   comercialesList.find(item => item.id === linkedAppointment?.comercialId);
+  return {
+   id: commercial?.id || linkedAppointment?.comercialId,
+   email: commercial?.email || lead.closingOriginComercialEmail || contact?.contactedByComercialEmail,
+   name: commercial?.name || lead.closingOriginComercialName || contact?.contactedByComercialName,
+  };
+ };
 
  const buildLeadContactFromColdLead = (lead: ColdCallingLead, notes: string): ClientContact => {
+ const originCommercial = resolveOriginCommercial(lead);
  const cleanName = callContactPerson.trim() || (lead.contactPerson && lead.contactPerson !== 'Sin especificar' ? lead.contactPerson : lead.businessName);
  const initials = cleanName
   .split(' ')
@@ -360,8 +380,8 @@ const nachoAdmin = findAdminByName('nacho');
   temperature: callTemperature as any,
   assignedUserId: carlosAdmin?.id,
   assignedUserEmail: carlosAdmin?.email || (lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : undefined),
-  contactedByComercialEmail: lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : undefined,
-  contactedByComercialName: lead.assignedToName && lead.assignedToName !== 'Sin asignar' ? lead.assignedToName : undefined,
+  contactedByComercialEmail: originCommercial.email,
+  contactedByComercialName: originCommercial.name,
   originalLeadNotes: lead.notes || undefined,
   closingSourceLeadId: lead.id,
   closerName: carlosAdmin?.name || 'Carlos',
@@ -373,7 +393,7 @@ const nachoAdmin = findAdminByName('nacho');
   devAssignedTo: nachoAdmin?.name || 'Por Asignar',
   devNotes: [
    `Lead recibido desde Cold Calling y enviado a Closing.`,
-   `Caller: ${lead.assignedToName || 'Sin asignar'}`,
+   `Caller: ${originCommercial.name || 'Sin asignar'}`,
    `Contacto: ${cleanName}`,
    `Teléfono: ${lead.phone || 'Sin teléfono'}`,
    `Cita: ${callCallbackDate || 'Sin fecha'} ${callCallbackTime || ''}`.trim(),
@@ -437,9 +457,7 @@ const nachoAdmin = findAdminByName('nacho');
  setConvPaymentMethod('transfer');
  setConvConcept('Servicio web Althera');
  setConvCommercialEmail(
-  lead.closingOriginComercialEmail ||
-  getClosingContact(lead)?.contactedByComercialEmail ||
-  (lead.assignedToEmail !== 'unassigned' ? lead.assignedToEmail : '')
+  resolveOriginCommercial(lead, getClosingContact(lead)).email || ''
  );
  setConversionOrigin('closing');
  };
@@ -1348,8 +1366,6 @@ const nachoAdmin = findAdminByName('nacho');
  const updatedLogs = [newLogItem, ...existingLogs];
 
  const shouldSendToClosing = callScheduled === 'Sí';
- const closerAssigneeEmail = carlosAdmin?.email || selectedLeadForCall.assignedToEmail;
- const closerAssigneeName = carlosAdmin?.name || 'Carlos';
 
  const updatedLead: ColdCallingLead = {
   ...selectedLeadForCall,
@@ -1362,8 +1378,10 @@ const nachoAdmin = findAdminByName('nacho');
   callbackDate: (callScheduled === 'Llamar más tarde' || callScheduled === 'Sí') ? callCallbackDate : undefined,
   callbackTime: (callScheduled === 'Llamar más tarde' || callScheduled === 'Sí') ? callCallbackTime : undefined,
   archived: shouldSendToClosing ? true : selectedLeadForCall.archived,
-  assignedToEmail: shouldSendToClosing ? closerAssigneeEmail : selectedLeadForCall.assignedToEmail,
-  assignedToName: shouldSendToClosing ? closerAssigneeName : selectedLeadForCall.assignedToName,
+  // La propiedad comercial nunca se transfiere al closer. Closing se asigna
+  // mediante el evento y los campos closer del CRM, manteniendo intacto al caller.
+  assignedToEmail: selectedLeadForCall.assignedToEmail,
+  assignedToName: selectedLeadForCall.assignedToName,
   closingOriginComercialEmail: shouldSendToClosing ? (selectedLeadForCall.closingOriginComercialEmail || selectedLeadForCall.assignedToEmail) : selectedLeadForCall.closingOriginComercialEmail,
   closingOriginComercialName: shouldSendToClosing ? (selectedLeadForCall.closingOriginComercialName || selectedLeadForCall.assignedToName) : selectedLeadForCall.closingOriginComercialName,
   notes: Array.from(new Set([selectedLeadForCall.notes?.trim(), currentNotes].filter(Boolean))).join('\n'),
@@ -1751,7 +1769,11 @@ const nachoAdmin = findAdminByName('nacho');
  const visibleClosingLeads = isClosingReadOnly
   ? openClosingLeads
   : openClosingLeads.filter(lead => closingScope === 'all' || lead.callbackDate === todayClosingKey);
- const todayClosingCount = openClosingLeads.filter(lead => lead.callbackDate === todayClosingKey).length;
+ const todayClosingCount = closingLeads.filter(lead => {
+  const contact = getClosingContact(lead);
+  const status = closingDrafts[lead.id]?.status || contact?.closingStatus || 'Pendiente';
+  return lead.callbackDate === todayClosingKey && status === 'Pendiente';
+ }).length;
 
  const updateClosingDraft = (leadId: string, patch: Partial<ReturnType<typeof getClosingDraft>>) => {
  setClosingDrafts(prev => ({ ...prev, [leadId]: { ...(prev[leadId] || {}), ...patch } }));
@@ -1777,6 +1799,7 @@ const nachoAdmin = findAdminByName('nacho');
  }
 
  const existing = getClosingContact(lead);
+ const originCommercial = resolveOriginCommercial(lead, existing);
  const base = existing || buildLeadContactFromColdLead(lead, lead.notes || 'Lead creado desde Closing.');
  const updatedContact: ClientContact = {
   ...base,
@@ -1797,6 +1820,8 @@ const nachoAdmin = findAdminByName('nacho');
   devStatus: status === 'Cerrado' ? 'backlog' : (base.devStatus || 'backlog'),
   closerName: activeCloser?.name || base.closerName || 'Carlos',
   closerEmail: activeCloser?.email || base.closerEmail,
+  contactedByComercialEmail: originCommercial.email || base.contactedByComercialEmail,
+  contactedByComercialName: originCommercial.name || base.contactedByComercialName,
   closingSourceLeadId: lead.id,
   originalLeadNotes: getClosingCallerNotes(lead) || base.originalLeadNotes,
   callsLog: getClosingCallLogs(lead),
@@ -1809,8 +1834,6 @@ const nachoAdmin = findAdminByName('nacho');
    const originalAppointment = events.find(event =>
     event.id === `cc_appointment_${lead.id}` || event.linkedContactId === `crm_from_${lead.id}`
    );
-   const originCommercialEmail = lead.closingOriginComercialEmail || existing?.contactedByComercialEmail;
-   const originCommercial = comercialesList.find(comercial => comercial.email.toLowerCase() === originCommercialEmail?.toLowerCase());
    const rescheduledAppointment: CalendarEvent = {
     ...(originalAppointment || {}),
     id: originalAppointment?.id || `cc_reschedule_${lead.id}`,
@@ -1826,7 +1849,7 @@ const nachoAdmin = findAdminByName('nacho');
     assignedUserId: activeCloser?.id || undefined,
     assignedUserEmail: activeCloser?.email || 'todos-admins',
     assignedUserEmails: activeCloser?.email ? [activeCloser.email] : ['todos-admins'],
-    comercialId: originalAppointment?.comercialId || originCommercial?.id,
+    comercialId: originCommercial.id || originalAppointment?.comercialId,
     status: 'pending',
     color: '#38BDF8',
     alias: 'Closing Reagendado',
@@ -1835,7 +1858,15 @@ const nachoAdmin = findAdminByName('nacho');
    if (originalAppointment && onUpdateEvent) await onUpdateEvent(rescheduledAppointment);
    else if (onAddEvent) await onAddEvent(rescheduledAppointment);
    else throw new Error('No hay conexión con el calendario del closer.');
-   await onUpdateColdLead({ ...lead, callbackDate: draft.date, callbackTime: draft.time });
+   await onUpdateColdLead({
+    ...lead,
+    callbackDate: draft.date,
+    callbackTime: draft.time,
+    assignedToEmail: originCommercial.email || lead.assignedToEmail,
+    assignedToName: originCommercial.name || lead.assignedToName,
+    closingOriginComercialEmail: originCommercial.email || lead.closingOriginComercialEmail,
+    closingOriginComercialName: originCommercial.name || lead.closingOriginComercialName,
+   });
   }
 
   if (existing) await onUpdateContact(updatedContact);
@@ -2011,9 +2042,9 @@ const nachoAdmin = findAdminByName('nacho');
   >
    <Briefcase className="w-3.5 h-3.5" />
    <span>Closing</span>
-   {closingLeads.length > 0 && (
+   {todayClosingCount > 0 && (
    <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-cyan-500 text-[9px] text-white font-extrabold flex items-center justify-center rounded-full">
-    {closingLeads.length}
+    {todayClosingCount}
    </span>
    )}
   </button>
@@ -3973,8 +4004,9 @@ const nachoAdmin = findAdminByName('nacho');
     const draft = getClosingDraft(lead);
     const contact = getClosingContact(lead);
     const status = draft.status || 'Pendiente';
-    const originCommercialName = contact?.contactedByComercialName || lead.closingOriginComercialName || lead.assignedToName || 'Sin identificar';
-    const originCommercialEmail = contact?.contactedByComercialEmail || lead.closingOriginComercialEmail || '';
+    const originCommercial = resolveOriginCommercial(lead, contact);
+    const originCommercialName = originCommercial.name || 'Sin identificar';
+    const originCommercialEmail = originCommercial.email || '';
     const statusClass = status === 'Cerrado' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25' : status === 'Perdido' ? 'bg-rose-500/15 text-rose-300 border-rose-500/25' : 'bg-amber-500/15 text-amber-300 border-amber-500/25';
     return (
      <div key={lead.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 shadow-xl shadow-black/15 space-y-4">
