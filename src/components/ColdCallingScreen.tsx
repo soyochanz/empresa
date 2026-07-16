@@ -254,6 +254,7 @@ const nachoAdmin = findAdminByName('nacho');
  const [bulkActionRunning, setBulkActionRunning] = useState(false);
  const [quantityAssigneeEmail, setQuantityAssigneeEmail] = useState('');
  const [assignmentQuantity, setAssignmentQuantity] = useState('100');
+ const [quantityAssignmentMode, setQuantityAssignmentMode] = useState<'ordered' | 'random'>('ordered');
  const [quantityAssignmentMessage, setQuantityAssignmentMessage] = useState('');
  const [quantityAssignmentError, setQuantityAssignmentError] = useState('');
 
@@ -1320,7 +1321,7 @@ const nachoAdmin = findAdminByName('nacho');
   hour: '2-digit',
   minute: '2-digit'
   }),
-  notes: currentNotes,
+  notes: Array.from(new Set([selectedLeadForCall.notes?.trim(), currentNotes].filter(Boolean))).join('\n'),
   result: `Contactado: ${callContacted} | Dueño: ${callIsOwner} | Responde: ${callAnswered} | Agendada: ${callScheduled}`
  };
 
@@ -1422,7 +1423,14 @@ const nachoAdmin = findAdminByName('nacho');
    setQuantityAssignmentError('Introduce una cantidad entera mayor que 0.');
    return;
   }
-  const leadsToAssign = unassignedLeads.slice(0, parsedAssignmentQuantity);
+  const assignmentPool = [...unassignedLeads];
+  if (quantityAssignmentMode === 'random') {
+   for (let index = assignmentPool.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [assignmentPool[index], assignmentPool[randomIndex]] = [assignmentPool[randomIndex], assignmentPool[index]];
+   }
+  }
+  const leadsToAssign = assignmentPool.slice(0, parsedAssignmentQuantity);
   if (!leadsToAssign.length) {
    setQuantityAssignmentError('No quedan leads sin comercial asignado.');
    return;
@@ -1445,8 +1453,11 @@ const nachoAdmin = findAdminByName('nacho');
      })));
     }
    }
+   const selectionLabel = quantityAssignmentMode === 'random'
+    ? (assignedCount === 1 ? 'aleatorio' : 'aleatorios')
+    : 'en orden';
    setQuantityAssignmentMessage(
-    `${assignedCount} lead${assignedCount === 1 ? '' : 's'} asignado${assignedCount === 1 ? '' : 's'} a ${assignee.name}.`
+    `${assignedCount} lead${assignedCount === 1 ? '' : 's'} ${selectionLabel} asignado${assignedCount === 1 ? '' : 's'} a ${assignee.name}.`
    );
   } catch (error) {
    setQuantityAssignmentError(error instanceof Error ? error.message : 'No se pudo completar la asignación.');
@@ -1647,6 +1658,26 @@ const nachoAdmin = findAdminByName('nacho');
  };
  };
 
+ const getClosingCallerNotes = (lead: ColdCallingLead) => {
+  const contact = getClosingContact(lead);
+  return Array.from(new Set([
+   contact?.originalLeadNotes?.trim(),
+   lead.notes?.trim()
+  ].filter((note): note is string => !!note))).join('\n');
+ };
+
+ const getClosingCallLogs = (lead: ColdCallingLead) => {
+  const contact = getClosingContact(lead);
+  const combined = [...(lead.callsLog || []), ...(contact?.callsLog || [])];
+  const seen = new Set<string>();
+  return combined.filter(log => {
+   const key = log.id || `${log.date}|${log.result}|${log.notes}`;
+   if (seen.has(key)) return false;
+   seen.add(key);
+   return true;
+  });
+ };
+
  const todayClosingKey = new Date().toISOString().split('T')[0];
  const isClosingReadOnly = !!currentComercial;
  const openClosingLeads = closingLeads.filter(lead => {
@@ -1728,6 +1759,8 @@ const nachoAdmin = findAdminByName('nacho');
   closerName: activeCloser?.name || base.closerName || 'Carlos',
   closerEmail: activeCloser?.email || base.closerEmail,
   closingSourceLeadId: lead.id,
+  originalLeadNotes: getClosingCallerNotes(lead) || base.originalLeadNotes,
+  callsLog: getClosingCallLogs(lead),
   lastContacted: status === 'Cerrado' ? 'Justo ahora (Closing cerrado)' : 'Justo ahora (Closing actualizado)',
   notes: [base.notes, draft.notes ? `[Closing] ${draft.notes}` : ''].filter(Boolean).join('\n')
  };
@@ -2107,7 +2140,7 @@ const nachoAdmin = findAdminByName('nacho');
        <h3 className="text-xs font-bold text-white">Asignar leads por cantidad</h3>
       </div>
       <p className="text-[10px] text-slate-400 mt-1">
-       Se asignarán los primeros leads de la lista general que todavía no tengan comercial.
+       Elige si quieres tomar los primeros leads disponibles o una muestra aleatoria entre todos los que no tienen comercial.
       </p>
       <p className="text-[10px] font-mono text-cyan-400 mt-2">{unassignedLeads.length} disponibles sin asignar</p>
      </div>
@@ -2122,6 +2155,13 @@ const nachoAdmin = findAdminByName('nacho');
       <label className="space-y-1">
        <span className="block text-[9px] font-mono font-bold uppercase text-slate-500">Cantidad</span>
        <input type="number" min="1" step="1" value={assignmentQuantity} onChange={event => { setAssignmentQuantity(event.target.value); setQuantityAssignmentError(''); setQuantityAssignmentMessage(''); }} disabled={bulkActionRunning} className="w-full sm:w-28 bg-slate-950 border border-white/10 text-xs text-white px-3 py-2.5 rounded-xl outline-none focus:border-cyan-500" />
+      </label>
+      <label className="space-y-1">
+       <span className="block text-[9px] font-mono font-bold uppercase text-slate-500">Selección</span>
+       <select value={quantityAssignmentMode} onChange={event => { setQuantityAssignmentMode(event.target.value as 'ordered' | 'random'); setQuantityAssignmentError(''); setQuantityAssignmentMessage(''); }} disabled={bulkActionRunning} className="w-full sm:w-36 bg-slate-950 border border-white/10 text-xs text-slate-300 px-3 py-2.5 rounded-xl outline-none focus:border-cyan-500">
+        <option value="ordered">En orden</option>
+        <option value="random">Aleatoria</option>
+       </select>
       </label>
       <button onClick={handleAssignByQuantity} disabled={!quantityAssigneeEmail || quantityToAssign === 0 || bulkActionRunning} className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-xs font-bold whitespace-nowrap flex items-center justify-center gap-2">
        {bulkActionRunning ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
@@ -3885,6 +3925,30 @@ const nachoAdmin = findAdminByName('nacho');
        <input readOnly={isClosingReadOnly} value={draft.mapsUrl} onChange={(e) => updateClosingDraft(lead.id, { mapsUrl: e.target.value })} placeholder="URL Google Maps" className="bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-400 read-only:opacity-70" />
        <input readOnly={isClosingReadOnly} value={draft.website} onChange={(e) => updateClosingDraft(lead.id, { website: e.target.value })} placeholder="Web actual o futura" className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400 read-only:opacity-70" />
        <textarea readOnly={isClosingReadOnly} value={draft.notes} onChange={(e) => updateClosingDraft(lead.id, { notes: e.target.value })} placeholder="Notas del closer, objeciones, presupuesto, próximos pasos..." rows={3} className="md:col-span-2 bg-black/35 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 read-only:opacity-70" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+       <section className="rounded-2xl border border-violet-400/15 bg-violet-400/[0.045] p-4">
+        <div className="flex items-center justify-between gap-3">
+         <div className="flex items-center gap-2"><ClipboardList className="h-4 w-4 text-violet-300"/><h5 className="text-[10px] font-black uppercase tracking-wider text-violet-200">Notas del caller</h5></div>
+         <span className="text-[9px] font-mono text-slate-500">Información original</span>
+        </div>
+        <p className="mt-3 whitespace-pre-wrap text-[11px] leading-5 text-slate-300">{getClosingCallerNotes(lead) || 'No hay notas registradas por el caller.'}</p>
+       </section>
+
+       <section className="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.035] p-4">
+        <div className="flex items-center justify-between gap-3">
+         <div className="flex items-center gap-2"><History className="h-4 w-4 text-cyan-300"/><h5 className="text-[10px] font-black uppercase tracking-wider text-cyan-200">Historial Call Caller</h5></div>
+         <span className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.06] px-2 py-1 text-[9px] font-mono text-cyan-300">{getClosingCallLogs(lead).length} registros</span>
+        </div>
+        {getClosingCallLogs(lead).length === 0 ? (
+         <p className="mt-3 text-[11px] text-slate-500">No hay llamadas registradas.</p>
+        ) : (
+         <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+          {getClosingCallLogs(lead).map((log, index) => <article key={log.id || `${lead.id}_closing_log_${index}`} className="rounded-xl border border-white/[0.07] bg-black/25 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] font-bold text-white">{log.result || 'Llamada registrada'}</p><time className="text-[9px] font-mono text-cyan-300">{log.date || 'Sin fecha'}</time></div><p className="mt-2 whitespace-pre-wrap text-[10px] leading-4 text-slate-400">{log.notes || 'Sin notas.'}</p></article>)}
+         </div>
+        )}
+       </section>
       </div>
 
       {!isClosingReadOnly && (

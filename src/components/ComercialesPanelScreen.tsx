@@ -37,6 +37,8 @@ import {
  ,Radio
  ,WifiOff
  ,AlertTriangle
+ ,PanelLeftClose
+ ,PanelLeftOpen
 } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact, CommercialPresence } from '../types';
 import { db } from '../supabaseClient';
@@ -231,6 +233,11 @@ export default function ComercialesPanelScreen({
 }: ComercialesPanelScreenProps) {
  // Local state
  const [activeView, setActiveView] = useState<CommercialView>(() => getCommercialViewFromPath(window.location.pathname));
+ const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+  const saved = localStorage.getItem('althera_commercial_sidebar_collapsed');
+  if (window.innerWidth < 1280) return true;
+  return saved === 'true';
+ });
  const navigateCommercialView = (view: CommercialView) => {
   setActiveView(view);
   const nextPath = COMMERCIAL_VIEW_PATHS[view];
@@ -242,6 +249,9 @@ export default function ComercialesPanelScreen({
   window.addEventListener('popstate', restoreViewFromPath);
   return () => window.removeEventListener('popstate', restoreViewFromPath);
  }, []);
+ useEffect(() => {
+  localStorage.setItem('althera_commercial_sidebar_collapsed', String(sidebarCollapsed));
+ }, [sidebarCollapsed]);
  const [showMonthlyRecap, setShowMonthlyRecap] = useState(false);
  const [recapStep, setRecapStep] = useState(0);
  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
@@ -536,7 +546,7 @@ export default function ComercialesPanelScreen({
   callbackScheduled: quickLogScheduled === 'Llamar más tarde' ? 'Llamar más tarde' : 'No',
   callbackDate: quickLogScheduled === 'Llamar más tarde' ? quickLogCallbackDate : undefined,
   callbackTime: quickLogScheduled === 'Llamar más tarde' ? quickLogCallbackTime : undefined,
-  notes: currentNotes,
+  notes: Array.from(new Set([lead.notes?.trim(), currentNotes].filter(Boolean))).join('\n'),
   callDate: new Date().toISOString().split('T')[0],
   callsCount: updatedLogs.length,
   callsLog: updatedLogs
@@ -834,11 +844,16 @@ export default function ComercialesPanelScreen({
   </div>
 
   {/* DESKTOP APP SIDEBAR */}
-  <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-white/[0.07] bg-[#080b10]/95 px-4 py-5 backdrop-blur-2xl lg:flex">
-   <div className="flex items-center gap-3 px-2">
+  {!sidebarCollapsed && (
+  <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-white/[0.07] bg-[#080b10]/95 py-5 backdrop-blur-2xl transition-[width,padding] duration-300 lg:flex ${sidebarCollapsed ? 'w-20 px-2' : 'w-64 px-4'}`}>
+   <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-2'}`}>
     <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-lime-400/20 bg-lime-400/10"><img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="Althera" className="h-8 w-8 object-contain" /></div>
-    <div><p className="text-sm font-black tracking-[.12em] text-white">ALTHERA</p><p className="text-[8px] font-bold uppercase tracking-[.22em] text-lime-300">Sales workspace</p></div>
+    {!sidebarCollapsed && <div><p className="text-sm font-black tracking-[.12em] text-white">ALTHERA</p><p className="text-[8px] font-bold uppercase tracking-[.22em] text-lime-300">Sales workspace</p></div>}
    </div>
+   <button type="button" onClick={() => setSidebarCollapsed(current => !current)} aria-label={sidebarCollapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'} title={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'} className={`mt-5 flex items-center rounded-xl border border-white/[0.07] bg-white/[0.025] py-2 text-[10px] font-bold text-slate-400 transition hover:bg-white/[0.06] hover:text-white ${sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-3'}`}>
+    {!sidebarCollapsed && <span>Colapsar menú</span>}
+    {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4"/> : <PanelLeftClose className="h-4 w-4"/>}
+   </button>
    <div className="mt-8 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3">{comercial.avatarUrl ? <img src={comercial.avatarUrl} alt={`Perfil de ${comercial.name}`} className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" /> : <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-lime-300 to-emerald-500 text-xs font-black text-slate-950">{comercial.name.slice(0,2).toUpperCase()}</div>}<div className="min-w-0"><p className="truncate text-xs font-bold text-white">{comercial.name}</p><p className="truncate text-[9px] text-slate-500">{comercial.email}</p></div></div><div className="mt-3 flex items-center justify-between border-t border-white/5 pt-3"><span className="text-[9px] text-slate-500">Legado {myLegacy.rank.name}</span><strong className="text-[10px] text-violet-300">{myLegacy.total.toLocaleString('es-ES')} PA</strong></div></div>
    <div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 p-2">
     <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#05080d] p-1">
@@ -861,9 +876,32 @@ export default function ComercialesPanelScreen({
    <div className="mt-auto rounded-2xl border border-white/[0.07] bg-gradient-to-br from-violet-500/10 to-cyan-500/5 p-4"><p className="text-[8px] font-black uppercase tracking-widest text-violet-300">Comisión actual</p><p className="mt-1 text-2xl font-black text-white">{myCommissionPercentage}%</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40"><div className="h-full rounded-full bg-gradient-to-r from-violet-400 to-lime-300" style={{ width: `${myTierInfo.progress}%` }}/></div></div>
    <button onClick={logoutCommercial} className="mt-3 flex w-full items-center gap-3 rounded-xl border border-rose-400/15 bg-rose-500/[0.06] px-3 py-3 text-xs font-bold text-rose-300 transition hover:bg-rose-500/15 hover:text-white"><LogOut className="h-4 w-4"/><span>Cerrar sesión</span></button>
   </aside>
+  )}
+
+  {sidebarCollapsed && (
+  <aside className="fixed inset-y-0 left-0 z-30 hidden w-20 flex-col items-center border-r border-white/[0.07] bg-[#080b10]/95 px-2 py-5 backdrop-blur-2xl lg:flex">
+   <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-lime-400/20 bg-lime-400/10"><img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="Althera" className="h-8 w-8 object-contain" /></div>
+   <button type="button" onClick={() => setSidebarCollapsed(false)} aria-label="Expandir menú lateral" title="Expandir menú" className="mt-5 flex h-9 w-11 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.025] text-slate-400 transition hover:bg-white/[0.06] hover:text-white"><PanelLeftOpen className="h-4 w-4"/></button>
+   <div className="mt-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.07] bg-white/[0.025]" title={`${comercial.name} · ${myLegacy.total.toLocaleString('es-ES')} PA`}>{comercial.avatarUrl ? <img src={comercial.avatarUrl} alt={`Perfil de ${comercial.name}`} className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" /> : <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-lime-300 to-emerald-500 text-xs font-black text-slate-950">{comercial.name.slice(0,2).toUpperCase()}</div>}</div>
+   <div className="mt-3 grid w-12 grid-cols-1 gap-1 rounded-2xl border border-white/[0.07] bg-black/20 p-1">
+    <button type="button" title="Available" disabled={presenceBusy} onClick={() => changePresence('available')} className={`flex items-center justify-center rounded-lg py-2 transition ${isPresenceFresh ? 'bg-lime-300 text-slate-950' : 'text-slate-500 hover:text-lime-300'}`}><Radio className={`h-3.5 w-3.5 ${isPresenceFresh ? 'animate-pulse' : ''}`}/></button>
+    <button type="button" title="Offline" disabled={presenceBusy} onClick={() => changePresence('offline')} className={`flex items-center justify-center rounded-lg py-2 transition ${!isPresenceFresh ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-white'}`}><WifiOff className="h-3.5 w-3.5"/></button>
+   </div>
+   <nav className="mt-6 w-full space-y-1">{[
+    { id: 'pipeline', label: 'Overview', Icon: Layers, disabled: false },
+    { id: 'calendar', label: 'Calendario', Icon: Calendar, disabled: false },
+    { id: 'rewards', label: 'Rewards', Icon: Trophy, disabled: false },
+    { id: 'legacy', label: 'Legado', Icon: Award, disabled: true },
+    { id: 'cold_calling', label: 'Cold Calling', Icon: Snowflake, disabled: false },
+    { id: 'training', label: 'Formación', Icon: GraduationCap, disabled: false },
+    { id: 'settings', label: 'Ajustes', Icon: Settings, disabled: false },
+   ].map(item => <button key={item.id} type="button" title={item.label} disabled={item.disabled} aria-label={item.disabled ? `${item.label}, próximamente` : item.label} onClick={() => !item.disabled && navigateCommercialView(item.id as CommercialView)} className={`flex w-full items-center justify-center rounded-xl py-3 transition ${item.disabled ? 'cursor-not-allowed border border-white/[0.04] bg-white/[0.015] text-slate-600' : activeView === item.id ? 'bg-lime-300 text-slate-950 shadow-[0_10px_25px_rgba(163,230,53,.14)]' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}><item.Icon className="h-4 w-4"/></button>)}</nav>
+   <button onClick={logoutCommercial} title="Cerrar sesión" aria-label="Cerrar sesión" className="mt-auto flex w-12 items-center justify-center rounded-xl border border-rose-400/15 bg-rose-500/[0.06] py-3 text-rose-300 transition hover:bg-rose-500/15 hover:text-white"><LogOut className="h-4 w-4"/></button>
+  </aside>
+  )}
 
   {/* VIEWPORT CANVAS */}
-  <main className="relative z-10 min-h-0 w-full flex-1 space-y-6 overflow-y-auto p-4 pb-28 sm:p-6 sm:pb-28 lg:ml-64 lg:w-[calc(100%_-_16rem)] lg:p-7 xl:p-9">
+  <main className={`relative min-h-0 w-full flex-1 space-y-6 overflow-y-auto p-4 pb-28 transition-[margin,width] duration-300 sm:p-6 sm:pb-28 lg:p-7 xl:p-9 ${sidebarCollapsed ? 'lg:ml-20 lg:w-[calc(100%_-_5rem)]' : 'lg:ml-64 lg:w-[calc(100%_-_16rem)]'}`}>
   
   {/* WELCOME BANNER WITH ANALYTICS BRIEF */}
   <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-4">

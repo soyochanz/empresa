@@ -1668,7 +1668,7 @@ export default function App() {
     timestamp: 'Just now',
     title: `${assignedIds.length} leads asignados`,
     subtitle: `asignación masiva a ${assignee.name}`,
-    detail: `Se asignaron los primeros ${assignedIds.length} leads sin comercial a ${assignee.email}.`,
+    detail: `Se asignaron ${assignedIds.length} leads sin comercial a ${assignee.email}.`,
     accentColor: 'secondary'
    };
    setActivities(previous => [activity, ...previous]);
