@@ -68,6 +68,8 @@ export interface ClientContact {
  needsWebsite?: boolean;
  websiteReady?: boolean;
  webReadyNotifiedAt?: string;
+ requestedProducts?: string[];
+ requestedProductOther?: string;
  // Developer Hub Properties
  devStatus?: 'backlog' | 'design' | 'development' | 'testing' | 'deployed' | 'completed';
  devAssignedTo?: string;
@@ -335,6 +337,8 @@ export interface ColdCallingLead {
  callsCount?: number;    // Veces que se le ha llamado
  callsLog?: CallLogItem[];  // Historial de llamadas
  prospectGroupId?: string;
+ requestedProducts?: string[];
+ requestedProductOther?: string;
 }
 
 export interface ColdCallingProspectGroup {

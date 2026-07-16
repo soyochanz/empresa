@@ -39,6 +39,17 @@ const PRESET_COLORS = [
  { name: 'Púrpura', hex: '#8B5CF6' }
 ];
 
+const getLocalDateKey = (date = new Date()) =>
+ `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const formatCivilDate = (date?: string) => {
+ if (!date) return 'Sin fecha';
+ const [year, month, day] = date.split('-').map(Number);
+ if (!year || !month || !day) return date;
+ return new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+  .format(new Date(year, month - 1, day));
+};
+
 export default function CitasScreen({ 
  events, 
  contacts, 
@@ -58,7 +69,7 @@ export default function CitasScreen({
  // Modal state for quickly scheduling an appointment
  const [showAddModal, setShowAddModal] = useState(false);
  const [newTitle, setNewTitle] = useState('');
- const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+ const [newDate, setNewDate] = useState(getLocalDateKey());
  const [newTime, setNewTime] = useState('10:00');
  const [newDescription, setNewDescription] = useState('');
  const [newType, setNewType] = useState<CalendarEvent['type']>('Meeting');
@@ -171,7 +182,7 @@ export default function CitasScreen({
  const matchesStatus = statusFilter === 'all' || ev.status === statusFilter;
  const matchesType = typeFilter === 'all' || ev.type === typeFilter;
 
- const todayStr = new Date().toISOString().split('T')[0];
+ const todayStr = getLocalDateKey();
  const matchesTime =
   timeFilter === 'today' ? ev.date === todayStr :
   timeFilter === 'current_future' ? ev.date >= todayStr :
@@ -333,9 +344,57 @@ export default function CitasScreen({
     ) : (
     filteredEvents.map((item) => {
      const isEditing = editingEventId === item.id;
+     const isDevDelivery = item.alias === 'Lead Dev desde Cold Calling';
+     const linkedContact = isDevDelivery ? contacts.find(contact => contact.id === item.linkedContactId) : undefined;
+     const detailLines = (item.description || '').split('\n').map(line => line.trim()).filter(Boolean);
+     const getDetail = (label: string) => detailLines.find(line => line.startsWith(`${label}:`))?.slice(label.length + 1).trim();
      
      // Color bullet
      const currentColor = item.color || '#D4AF37';
+
+     if (isDevDelivery) {
+      const assignedName = usersList.find(user => user.email === item.assignedUserEmail)?.name || item.assignedUserEmail || 'Nacho Dev';
+      const products = linkedContact?.requestedProducts?.length
+       ? linkedContact.requestedProducts
+       : (getDetail('Productos') || '').split(',').map(product => product.trim()).filter(Boolean);
+      const statusStyles = item.status === 'done'
+       ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-200'
+       : item.status === 'postponed'
+        ? 'border-amber-400/25 bg-amber-500/10 text-amber-200'
+        : 'border-violet-400/25 bg-violet-500/10 text-violet-200';
+      return (
+       <tr key={item.id} className="border-b border-violet-400/10 bg-violet-950/[0.08]">
+        <td colSpan={8} className="p-3 sm:p-4">
+         <article className="overflow-hidden rounded-2xl border border-violet-400/20 bg-gradient-to-br from-violet-950/30 via-[#080b12] to-[#05070b] shadow-xl shadow-black/20">
+          <div className="flex flex-col gap-4 border-b border-white/[0.06] p-4 lg:flex-row lg:items-center lg:justify-between">
+           <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+             <span className="rounded-full border border-violet-300/25 bg-violet-400/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[.14em] text-violet-200">Entrega Dev</span>
+             <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[.12em] ${statusStyles}`}>{item.status === 'done' ? 'Completada' : item.status === 'postponed' ? 'Pospuesta' : 'Pendiente'}</span>
+            </div>
+            <h3 className="mt-2 break-words text-sm font-black text-white sm:text-base">{linkedContact?.company || getDetail('Negocio') || item.title}</h3>
+            <p className="mt-1 break-all font-mono text-[8px] text-slate-600">{item.id}</p>
+           </div>
+           <div className="flex shrink-0 flex-wrap gap-2">
+            <button onClick={() => handleUpdateStatus(item, item.status === 'done' ? 'pending' : 'done')} className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[9px] font-bold transition ${item.status === 'done' ? 'border-white/10 bg-white/[0.04] text-slate-300' : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15'}`}><CheckCircle className="h-3.5 w-3.5" />{item.status === 'done' ? 'Reabrir' : 'Completar'}</button>
+            <button onClick={() => { if (confirm('¿Estás seguro de que deseas eliminar esta cita de la base de datos?')) onDeleteEvent(item.id); }} className="inline-flex items-center gap-1.5 rounded-xl border border-rose-400/15 bg-rose-500/[0.06] px-3 py-2 text-[9px] font-bold text-rose-300 hover:bg-rose-500/10"><Trash2 className="h-3.5 w-3.5" />Eliminar</button>
+           </div>
+          </div>
+
+          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+           <div className="rounded-xl border border-cyan-300/15 bg-cyan-400/[0.055] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300/65">Cita closer · Entrega</span><strong className="mt-1.5 flex items-center gap-2 text-[11px] text-cyan-100"><Calendar className="h-3.5 w-3.5" />{formatCivilDate(item.date)}</strong><span className="mt-1 flex items-center gap-2 text-[9px] text-cyan-200/70"><Clock className="h-3 w-3" />{item.time || 'Sin hora'}</span></div>
+           <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Contacto</span><strong className="mt-1.5 block break-words text-[11px] text-white">{linkedContact?.name || getDetail('Contacto') || item.linkedContactName || 'Sin especificar'}</strong><span className="mt-1 block break-words text-[9px] text-slate-400">{linkedContact?.phone || getDetail('Teléfono') || 'Sin teléfono'}</span></div>
+           <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Comercial de origen</span><strong className="mt-1.5 block break-words text-[11px] text-violet-200">{linkedContact?.contactedByComercialName || getDetail('Caller') || 'Sin asignar'}</strong></div>
+           <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Responsable Dev</span><strong className="mt-1.5 flex items-center gap-2 break-words text-[11px] text-white"><User className="h-3.5 w-3.5 text-violet-300" />{assignedName}</strong></div>
+          </div>
+
+          {(products.length > 0 || linkedContact?.requestedProductOther) && <div className="flex flex-wrap items-center gap-2 px-4 pb-4"><span className="mr-1 text-[8px] font-black uppercase tracking-wider text-slate-500">Productos</span>{products.map(product => <span key={product} className="rounded-lg border border-cyan-300/15 bg-cyan-400/[0.07] px-2.5 py-1 text-[9px] font-bold text-cyan-100">{product}</span>)}{linkedContact?.requestedProductOther && <span className="rounded-lg border border-violet-300/15 bg-violet-400/[0.07] px-2.5 py-1 text-[9px] font-bold text-violet-100">{linkedContact.requestedProductOther}</span>}</div>}
+          {getDetail('Nota') && <div className="mx-4 mb-4 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-[10px] leading-5 text-slate-400"><span className="font-bold text-slate-200">Nota comercial: </span><span className="break-words">{getDetail('Nota')}</span></div>}
+         </article>
+        </td>
+       </tr>
+      );
+     }
 
      return (
      <tr 
@@ -370,9 +429,10 @@ export default function CitasScreen({
       {/* Date & Time */}
       <td className="py-4 px-3 text-left">
       <div className="flex flex-col">
+       {isDevDelivery && <span className="mb-1.5 w-fit rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-violet-200">Cita closer · Entrega Dev</span>}
        <span className="text-xs text-slate-300 font-mono flex items-center gap-1.5">
        <Calendar className="w-3 h-3 text-amber-500/60" />
-       {item.date}
+       {formatCivilDate(item.date)}
        </span>
        <span className="text-[10px] text-slate-500 block mt-1 font-mono flex items-center gap-1.5">
        <Clock className="w-3 h-3 text-amber-500/40" />

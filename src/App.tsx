@@ -1060,7 +1060,12 @@ export default function App() {
   const todayKey = getLocalDateKey();
   const dbNotifications = adminVisibleEvents.filter(e => {
   if (!currentUser) return false;
-  if (e.date !== todayKey) return false;
+  // Las entregas asignadas a Dev deben avisarse en el momento de su creación,
+  // aunque su fecha de calendario sea la futura cita con el closer.
+  const isImmediateDevAssignment = e.isAdminNotification && (
+   e.alias === 'Lead Dev desde Cold Calling' || e.id.startsWith('dev_intake_')
+  );
+  if (e.date !== todayKey && !isImmediateDevAssignment) return false;
   if (isClosingAppointmentEvent(e)) {
    const dueAt = new Date(`${e.date}T${/^\d{2}:\d{2}/.test(e.time || '') ? e.time : '23:59'}`).getTime();
    return Number.isFinite(dueAt) && dueAt <= closingAlertClock;

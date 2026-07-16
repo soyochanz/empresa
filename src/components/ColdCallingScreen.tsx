@@ -37,6 +37,12 @@ import {
  ,Folder
  ,FolderPlus
  ,History
+ ,Globe2
+ ,CalendarCheck2
+ ,QrCode
+ ,Share2
+ ,Megaphone
+ ,PackageOpen
 } from 'lucide-react';
 import { ColdCallingLead, ColdCallingProspectGroup, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
@@ -44,6 +50,24 @@ import { db } from '../supabaseClient';
 const HOURLY_SLOTS = [
  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
 ];
+
+const PRODUCT_OPTIONS = [
+ { id: 'Website', label: 'Website', Icon: Globe2, tone: 'cyan' },
+ { id: 'Sistema de reservas', label: 'Sistema de reservas', Icon: CalendarCheck2, tone: 'violet' },
+ { id: 'Menú Inteligente', label: 'Menú Inteligente', Icon: QrCode, tone: 'lime' },
+ { id: 'Gestión de redes', label: 'Gestión de redes', Icon: Share2, tone: 'pink' },
+ { id: 'Meta Ads', label: 'Meta Ads', Icon: Megaphone, tone: 'amber' },
+ { id: 'Otro', label: 'Otro', Icon: PackageOpen, tone: 'slate' }
+] as const;
+
+const productToneClasses: Record<string, string> = {
+ cyan: 'border-cyan-300/25 bg-cyan-400/10 text-cyan-200',
+ violet: 'border-violet-300/25 bg-violet-400/10 text-violet-200',
+ lime: 'border-lime-300/25 bg-lime-400/10 text-lime-200',
+ pink: 'border-pink-300/25 bg-pink-400/10 text-pink-200',
+ amber: 'border-amber-300/25 bg-amber-400/10 text-amber-200',
+ slate: 'border-slate-300/20 bg-slate-400/10 text-slate-200'
+};
 
 const formatCallbackDate = (date?: string) => {
  if (!date) return 'SIN FECHA';
@@ -389,14 +413,18 @@ const nachoAdmin = findAdminByName('nacho');
   closingStatus: 'Pendiente',
   needsWebsite: true,
   websiteReady: false,
+  requestedProducts: lead.requestedProducts || [],
+  requestedProductOther: lead.requestedProductOther,
   devStatus: 'backlog',
   devAssignedTo: nachoAdmin?.name || 'Por Asignar',
+  devDeadline: callCallbackDate || undefined,
   devNotes: [
    `Lead recibido desde Cold Calling y enviado a Closing.`,
    `Caller: ${originCommercial.name || 'Sin asignar'}`,
    `Contacto: ${cleanName}`,
    `Teléfono: ${lead.phone || 'Sin teléfono'}`,
    `Cita: ${callCallbackDate || 'Sin fecha'} ${callCallbackTime || ''}`.trim(),
+   lead.requestedProducts?.length ? `Productos: ${lead.requestedProducts.join(', ')}${lead.requestedProductOther ? ` (${lead.requestedProductOther})` : ''}` : '',
    lead.website ? `Web: ${lead.website}` : '',
    lead.mapsUrl ? `Maps: ${lead.mapsUrl}` : '',
    notes ? `Última nota: ${notes}` : '',
@@ -904,6 +932,8 @@ const nachoAdmin = findAdminByName('nacho');
  const [callCallbackTime, setCallCallbackTime] = useState('');
  const [callNotes, setCallNotes] = useState('');
  const [callCallsCount, setCallCallsCount] = useState<number>(0);
+ const [callRequestedProducts, setCallRequestedProducts] = useState<string[]>([]);
+ const [callRequestedProductOther, setCallRequestedProductOther] = useState('');
  const [expandedLeadLogs, setExpandedLeadLogs] = useState<Record<string, boolean>>({});
 
  // Inline Log actions states
@@ -1286,6 +1316,8 @@ const nachoAdmin = findAdminByName('nacho');
  setCallCallbackTime(lead.callbackTime || '');
  setCallNotes(''); // Clear call notes for the new call being registered
  setCallCallsCount(lead.callsCount || 0);
+ setCallRequestedProducts(lead.requestedProducts || []);
+ setCallRequestedProductOther(lead.requestedProductOther || '');
  setAppointmentAccessConfirmed(lead.callbackScheduled === 'Sí');
 
  // Reset inline actions states
@@ -1334,6 +1366,16 @@ const nachoAdmin = findAdminByName('nacho');
 
  if (callScheduled === 'Sí' && (!callCallbackDate || !callCallbackTime)) {
   alert('Para marcar una cita agendada tienes que indicar fecha y hora.');
+  return;
+ }
+
+ if (callScheduled === 'Sí' && callRequestedProducts.length === 0) {
+  alert('Selecciona al menos un producto que le interese al cliente.');
+  return;
+ }
+
+ if (callScheduled === 'Sí' && callRequestedProducts.includes('Otro') && !callRequestedProductOther.trim()) {
+  alert('Especifica manualmente qué otro producto necesita el cliente.');
   return;
  }
 
@@ -1387,7 +1429,9 @@ const nachoAdmin = findAdminByName('nacho');
   notes: Array.from(new Set([selectedLeadForCall.notes?.trim(), currentNotes].filter(Boolean))).join('\n'),
   callDate: new Date().toISOString().split('T')[0],
   callsCount: updatedLogs.length,
-  callsLog: updatedLogs
+  callsLog: updatedLogs,
+  requestedProducts: callRequestedProducts,
+  requestedProductOther: callRequestedProducts.includes('Otro') ? callRequestedProductOther.trim() : undefined
  };
 
  try {
@@ -1435,18 +1479,19 @@ const nachoAdmin = findAdminByName('nacho');
 
   const devIntakeNotification: CalendarEvent = {
    id: `dev_intake_${crmLead.id}`,
-   title: `Nuevo lead para Dev: ${crmLead.company}`,
-   date: new Date().toISOString().split('T')[0],
-   time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-   duration: '15m',
-   type: 'Other',
+   title: `Entrega Dev para cita: ${crmLead.company}`,
+   date: callCallbackDate,
+   time: callCallbackTime,
+   duration: '45m',
+   type: 'Deadline',
    description: [
-    `Nacho, se ha enviado un lead de Cold Calling a Closing y ya está disponible en Dev.`,
+    `Nacho, esta es la fecha de la cita con el closer y el plazo de entrega para Dev.`,
     `Negocio: ${crmLead.company}`,
     `Contacto: ${crmLead.name}`,
     `Teléfono: ${crmLead.phone || 'Sin teléfono'}`,
     `Caller: ${selectedLeadForCall.assignedToName || 'Sin asignar'}`,
     `Cita: ${callCallbackDate} ${callCallbackTime}`,
+    crmLead.requestedProducts?.length ? `Productos: ${crmLead.requestedProducts.join(', ')}${crmLead.requestedProductOther ? ` (${crmLead.requestedProductOther})` : ''}` : '',
     crmLead.website ? `Web: ${crmLead.website}` : '',
     crmLead.googleMapsUrl ? `Maps: ${crmLead.googleMapsUrl}` : '',
     currentNotes ? `Nota: ${currentNotes}` : ''
@@ -1818,6 +1863,7 @@ const nachoAdmin = findAdminByName('nacho');
   needsWebsite: status === 'Cerrado' ? true : base.needsWebsite,
   websiteReady: status === 'Cerrado' ? false : base.websiteReady,
   devStatus: status === 'Cerrado' ? 'backlog' : (base.devStatus || 'backlog'),
+  devDeadline: appointmentChanged ? draft.date : base.devDeadline,
   closerName: activeCloser?.name || base.closerName || 'Carlos',
   closerEmail: activeCloser?.email || base.closerEmail,
   contactedByComercialEmail: originCommercial.email || base.contactedByComercialEmail,
@@ -1858,6 +1904,26 @@ const nachoAdmin = findAdminByName('nacho');
    if (originalAppointment && onUpdateEvent) await onUpdateEvent(rescheduledAppointment);
    else if (onAddEvent) await onAddEvent(rescheduledAppointment);
    else throw new Error('No hay conexión con el calendario del closer.');
+
+   const devIntakeEvent = events.find(event =>
+    event.id === `dev_intake_crm_from_${lead.id}` ||
+    (event.alias === 'Lead Dev desde Cold Calling' && event.linkedContactId === `crm_from_${lead.id}`)
+   );
+   if (devIntakeEvent && onUpdateEvent) {
+    const updatedDescription = (devIntakeEvent.description || '')
+     .split('\n')
+     .map(line => line.startsWith('Cita:') ? `Cita: ${draft.date} ${draft.time}` : line)
+     .join('\n');
+    await onUpdateEvent({
+     ...devIntakeEvent,
+     title: `Entrega Dev para cita: ${draft.company}`,
+     date: draft.date,
+     time: draft.time,
+     duration: '45m',
+     type: 'Deadline',
+     description: updatedDescription
+    });
+   }
    await onUpdateColdLead({
     ...lead,
     callbackDate: draft.date,
@@ -4030,6 +4096,16 @@ const nachoAdmin = findAdminByName('nacho');
       </div>
      </div>
 
+      {(contact?.requestedProducts?.length || lead.requestedProducts?.length) ? (
+       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] px-3 py-2">
+        <span className="text-[8px] font-black uppercase tracking-[.15em] text-cyan-300/70">Productos solicitados</span>
+        {(contact?.requestedProducts || lead.requestedProducts || []).map(product => (
+         <span key={product} className="rounded-lg border border-cyan-300/20 bg-cyan-400/10 px-2 py-1 text-[9px] font-bold text-cyan-100">{product}</span>
+        ))}
+        {(contact?.requestedProductOther || lead.requestedProductOther) && <span className="text-[9px] text-slate-300">{contact?.requestedProductOther || lead.requestedProductOther}</span>}
+       </div>
+      ) : null}
+
       {expandedClosingLeadId === lead.id && <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
        <div className="md:col-span-2 rounded-xl border border-white/10 bg-black/35 p-3">
@@ -4798,6 +4874,46 @@ const nachoAdmin = findAdminByName('nacho');
       </div>
      </div>
      )}
+
+     {/* PRODUCT INTEREST */}
+     <div className="space-y-3 rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.06] via-violet-400/[0.035] to-transparent p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+       <div>
+        <label className="font-mono text-[9px] font-black uppercase tracking-[.16em] text-cyan-200">Productos que necesita</label>
+        <p className="mt-1 text-[9px] leading-4 text-slate-500">Puedes seleccionar varios. Esta información llegará al closer y al equipo Dev.</p>
+       </div>
+       {callScheduled === 'Sí' && <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-amber-200">Obligatorio para agendar</span>}
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+       {PRODUCT_OPTIONS.map(({ id, label, Icon, tone }) => {
+        const active = callRequestedProducts.includes(id);
+        return (
+         <button
+          key={id}
+          type="button"
+          aria-pressed={active}
+          onClick={() => setCallRequestedProducts(current => active ? current.filter(item => item !== id) : [...current, id])}
+          className={`flex min-h-[62px] items-center gap-2.5 rounded-2xl border px-3 py-2.5 text-left transition-all ${active ? `${productToneClasses[tone]} shadow-lg shadow-black/15` : 'border-white/[0.07] bg-black/30 text-slate-500 hover:border-white/15 hover:bg-white/[0.035] hover:text-slate-300'}`}
+         >
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${active ? productToneClasses[tone] : 'border-white/[0.06] bg-white/[0.03]'}`}><Icon className="h-4 w-4" /></span>
+          <span className="text-[10px] font-black leading-tight">{label}</span>
+          {active && <Check className="ml-auto h-3.5 w-3.5 shrink-0" />}
+         </button>
+        );
+       })}
+      </div>
+      {callRequestedProducts.includes('Otro') && (
+       <div className="animate-fade-in">
+        <label className="mb-1.5 block font-mono text-[8px] font-black uppercase tracking-[.14em] text-slate-400">Especifica el producto</label>
+        <input
+         value={callRequestedProductOther}
+         onChange={event => setCallRequestedProductOther(event.target.value)}
+         placeholder="Ej. automatización de WhatsApp, app móvil..."
+         className="h-11 w-full rounded-xl border border-white/[0.09] bg-black/40 px-3.5 text-xs font-bold text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/50"
+        />
+       </div>
+      )}
+     </div>
 
      {/* PERSONA CONTACTADA (FREE TEXT INPUT WRITER) */}
      <div className="space-y-2.5 rounded-2xl border border-violet-400/15 bg-violet-400/[0.045] p-4 text-left">

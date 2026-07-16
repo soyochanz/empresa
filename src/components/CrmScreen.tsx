@@ -354,13 +354,40 @@ export default function CrmScreen({
  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
  const [convSelectedComercialId, setConvSelectedComercialId] = useState('');
 
+ const originCommissionCommercial = convertingLead ? (comercialesList || []).find(commercial => {
+  const originEmail = convertingLead.contactedByComercialEmail?.trim().toLowerCase();
+  if (originEmail && commercial.email.toLowerCase() === originEmail) return true;
+  const originName = convertingLead.contactedByComercialName?.trim().toLocaleLowerCase('es-ES');
+  return Boolean(originName && commercial.name.trim().toLocaleLowerCase('es-ES') === originName);
+ }) : undefined;
+
+ const eligibleCommissionCommercials = (comercialesList || []).filter(commercial => {
+  const closerEmail = convertingLead?.closerEmail?.trim().toLowerCase();
+  const closerName = convertingLead?.closerName?.trim().toLocaleLowerCase('es-ES');
+  if (closerEmail && commercial.email.toLowerCase() === closerEmail) return false;
+  if (closerName && commercial.name.trim().toLocaleLowerCase('es-ES') === closerName) return false;
+  return true;
+ });
+
+ const effectiveCommissionCommercialId = originCommissionCommercial?.id || convSelectedComercialId;
+
+ useEffect(() => {
+  if (!convertingLead) {
+   setConvSelectedComercialId('');
+   return;
+  }
+  // En leads de Cold Calling la comisión pertenece al caller de origen.
+  // assignedUserEmail identifica al closer operativo y nunca debe usarse aquí.
+  setConvSelectedComercialId(originCommissionCommercial?.id || '');
+ }, [convertingLead?.id, originCommissionCommercial?.id]);
+
  // Handle lead to client conversion
  const handleConfirmConvertToClient = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!convertingLead) return;
 
  // 1. Get chosen commercial
- const matchedCom = (comercialesList || []).find(c => c.id === convSelectedComercialId);
+ const matchedCom = originCommissionCommercial || (comercialesList || []).find(c => c.id === convSelectedComercialId);
  const assignedEmail = matchedCom ? matchedCom.email : '';
  const commPct = matchedCom?.commissionPercentage ?? 10;
 
@@ -538,7 +565,9 @@ export default function CrmScreen({
  const updatedContact: ClientContact = {
   ...convertingLead,
   status: 'Client',
-  assignedUserEmail: assignedEmail || convertingLead.assignedUserEmail,
+  // El closer conserva la responsabilidad operativa del contacto; la atribución
+  // comercial se almacena exclusivamente en contactedByComercial*.
+  assignedUserEmail: convertingLead.assignedUserEmail,
   contactedByComercialEmail: assignedEmail || convertingLead.contactedByComercialEmail,
   contactedByComercialName: matchedCom ? matchedCom.name : convertingLead.contactedByComercialName,
   stripeSubscriptionStatus: convPaymentMethod === 'stripe' && convInstallments > 1 ? 'active' : convertingLead.stripeSubscriptionStatus,
@@ -4086,22 +4115,26 @@ export default function CrmScreen({
 
     {/* Comercial a asignar */}
     <div className="space-y-1.5">
-    <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Comercial de Venta (Comisión)</label>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Comercial de origen (Comisión)</label>
+     {originCommissionCommercial && <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-violet-200">Detectado automáticamente</span>}
+    </div>
     <select
      required
-     value={convSelectedComercialId}
+     disabled={Boolean(originCommissionCommercial)}
+     value={effectiveCommissionCommercialId}
      onChange={(e) => setConvSelectedComercialId(e.target.value)}
-     className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer font-sans"
+     className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer font-sans disabled:cursor-not-allowed disabled:border-violet-400/20 disabled:bg-violet-950/15 disabled:text-violet-100"
     >
      <option value="">-- Seleccionar Comercial --</option>
-     {(comercialesList || []).map(com => (
+     {eligibleCommissionCommercials.map(com => (
      <option key={com.id} value={com.id}>
       {com.name} ({com.email}) - Comisión: {com.commissionPercentage ?? 10}%
      </option>
      ))}
     </select>
-    {convSelectedComercialId && (() => {
-     const com = (comercialesList || []).find(c => c.id === convSelectedComercialId);
+    {effectiveCommissionCommercialId && (() => {
+     const com = (comercialesList || []).find(c => c.id === effectiveCommissionCommercialId);
      if (com) {
      const pct = com.commissionPercentage ?? 10;
      const commVal = (convSalePrice * pct) / 100;
@@ -4113,6 +4146,7 @@ export default function CrmScreen({
      }
      return null;
     })()}
+    {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Este comercial fue quien captó y gestionó inicialmente el lead. El closer mantiene la gestión de cierre, pero no recibe comisión.</p>}
     </div>
 
     {/* Buttons */}
@@ -4126,7 +4160,7 @@ export default function CrmScreen({
     </button>
     <button
      type="submit"
-     disabled={!convSelectedComercialId}
+     disabled={!effectiveCommissionCommercialId}
      className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5 uppercase tracking-wider"
     >
      <Check className="w-4 h-4" />

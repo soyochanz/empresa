@@ -707,6 +707,8 @@ export const db = {
  let supabaseCredentials: string | undefined = undefined;
  let companyEmailCredentials: string | undefined = undefined;
  let platformCredentials: string | undefined = undefined;
+ let requestedProducts: string[] | undefined = undefined;
+ let requestedProductOther: string | undefined = undefined;
  
  // Stripe metadata properties
  let stripeCustomerId: string | undefined = undefined;
@@ -792,6 +794,8 @@ export const db = {
    if (key === 'supabaseCredentials') supabaseCredentials = decodeURIComponent(val) || undefined;
    if (key === 'companyEmailCredentials') companyEmailCredentials = decodeURIComponent(val) || undefined;
    if (key === 'platformCredentials') platformCredentials = decodeURIComponent(val) || undefined;
+   if (key === 'requestedProducts') requestedProducts = JSON.parse(decodeURIComponent(val));
+   if (key === 'requestedProductOther') requestedProductOther = decodeURIComponent(val) || undefined;
    } catch (e) {
    if (key === 'notes') notes = val || undefined;
    if (key === 'contactedByComercialName') contactedByComercialName = val || undefined;
@@ -810,6 +814,8 @@ export const db = {
    if (key === 'supabaseCredentials') supabaseCredentials = val || undefined;
    if (key === 'companyEmailCredentials') companyEmailCredentials = val || undefined;
    if (key === 'platformCredentials') platformCredentials = val || undefined;
+   if (key === 'requestedProducts') requestedProducts = val.split(',').map(item => item.trim()).filter(Boolean);
+   if (key === 'requestedProductOther') requestedProductOther = val || undefined;
    }
   }
   });
@@ -853,6 +859,8 @@ export const db = {
   supabaseCredentials,
   companyEmailCredentials,
   platformCredentials,
+  requestedProducts,
+  requestedProductOther,
   stripeCustomerId,
   stripeSubscriptionId,
   stripeSubscriptionStatus,
@@ -903,6 +911,8 @@ export const db = {
   contact.supabaseCredentials ||
   contact.companyEmailCredentials ||
   contact.platformCredentials ||
+  contact.requestedProducts?.length ||
+  contact.requestedProductOther ||
   contact.stripeCustomerId ||
   contact.stripeSubscriptionId ||
   contact.stripeSubscriptionStatus ||
@@ -947,6 +957,8 @@ export const db = {
   if (contact.supabaseCredentials) metadataStr += `\nsupabaseCredentials: ${encodeURIComponent(contact.supabaseCredentials)}`;
   if (contact.companyEmailCredentials) metadataStr += `\ncompanyEmailCredentials: ${encodeURIComponent(contact.companyEmailCredentials)}`;
   if (contact.platformCredentials) metadataStr += `\nplatformCredentials: ${encodeURIComponent(contact.platformCredentials)}`;
+  if (contact.requestedProducts?.length) metadataStr += `\nrequestedProducts: ${encodeURIComponent(JSON.stringify(contact.requestedProducts))}`;
+  if (contact.requestedProductOther) metadataStr += `\nrequestedProductOther: ${encodeURIComponent(contact.requestedProductOther)}`;
   if (contact.stripeCustomerId) metadataStr += `\nstripeCustomerId: ${contact.stripeCustomerId}`;
   if (contact.stripeSubscriptionId) metadataStr += `\nstripeSubscriptionId: ${contact.stripeSubscriptionId}`;
   if (contact.stripeSubscriptionStatus) metadataStr += `\nstripeSubscriptionStatus: ${contact.stripeSubscriptionStatus}`;
@@ -2080,7 +2092,12 @@ export const db = {
  if (!lead) return lead;
  const callsCount = lead.callsCount || 0;
  const callsLog = lead.callsLog || [];
- const metadataObj = { callsCount, callsLog };
+ const metadataObj = {
+  callsCount,
+  callsLog,
+  requestedProducts: lead.requestedProducts || [],
+  requestedProductOther: lead.requestedProductOther || undefined
+ };
  const metadataStr = `\n\n---METADATA---\n${JSON.stringify(metadataObj)}`;
  const cleanNotes = (lead.notes || '').split('\n\n---METADATA---')[0];
  return {
@@ -2096,11 +2113,15 @@ export const db = {
  const cleanNotes = parts[0];
  let callsCount = 0;
  let callsLog: any[] = [];
+ let requestedProducts: string[] = [];
+ let requestedProductOther: string | undefined;
  if (parts.length > 1) {
   try {
   const metadataObj = JSON.parse(parts[1]);
   callsCount = metadataObj.callsCount || 0;
   callsLog = metadataObj.callsLog || [];
+  requestedProducts = Array.isArray(metadataObj.requestedProducts) ? metadataObj.requestedProducts : [];
+  requestedProductOther = metadataObj.requestedProductOther || undefined;
   } catch (e) {
   // Ignore
   }
@@ -2110,6 +2131,8 @@ export const db = {
   notes: cleanNotes,
   callsCount,
   callsLog,
+  requestedProducts,
+  requestedProductOther,
   prospectGroupId: lead.prospect_group_id || lead.prospectGroupId || undefined,
   createdAt: lead.created_at || lead.createdAt || new Date().toISOString()
  };

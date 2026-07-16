@@ -94,7 +94,7 @@ export default function SalesRewardsScreen({ comercial, comercialesList, finTran
   const topCash = [...rows].sort((a, b) => b.cashCollected - a.cashCollected)[0];
   const topAppointments = [...rows].sort((a, b) => b.appointments - a.appointments)[0];
   const topEvolution = [...rows]
-    .map(row => ({ row, delta: Math.round((row.score - (previousScores.get(row.comercial.id) || 0)) * 10) / 10 }))
+    .map(row => ({ row, delta: Math.round((row.score - (previousScores.get(row.comercial.id) || 0)) * 100) / 100 }))
     .sort((a, b) => b.delta - a.delta)[0];
   const myPosition = rows.findIndex(row => row.comercial.id === liveComercial.id) + 1;
   const monthLabel = new Date(`${month}-02`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
@@ -118,8 +118,8 @@ export default function SalesRewardsScreen({ comercial, comercialesList, finTran
       <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div><p className="text-[10px] font-black uppercase tracking-[.28em] text-amber-300">Althera Rewards · {monthLabel}</p>
           <h2 className="mt-2 text-3xl font-black text-white">Tu carrera hacia el MVP</h2>
-          <p className="mt-2 max-w-xl text-xs leading-5 text-slate-400">El resultado combina Cash Collected (50%), citas (20%), Show Rate (15%) y profesionalidad (15%). El saldo pending no participa hasta consolidarse como cobrado.</p></div>
-        <div className="rounded-2xl border border-white/10 bg-black/25 px-6 py-4 text-center backdrop-blur-xl"><p className="text-[9px] uppercase tracking-widest text-slate-500">Score mensual</p><p className="text-4xl font-black text-amber-300">{me.score}</p><p className="text-[10px] text-slate-400">Posición #{myPosition}</p></div>
+          <p className="mt-2 max-w-xl text-xs leading-5 text-slate-400">El MVP usa un índice abierto: Cash Collected 50%, citas agendadas 20%, Show Rate 15% y profesionalidad 15%. La referencia es 100, pero no existe máximo.</p></div>
+        <div className="rounded-2xl border border-white/10 bg-black/25 px-6 py-4 text-center backdrop-blur-xl"><p className="text-[9px] uppercase tracking-widest text-slate-500">Score MVP · sin máximo</p><p className="text-4xl font-black text-amber-300">{me.score.toFixed(2)}</p><p className="text-[10px] text-slate-400">{me.kpiPoints} puntos acumulados · Posición #{myPosition}</p></div>
       </div>
     </section>
 
@@ -131,7 +131,7 @@ export default function SalesRewardsScreen({ comercial, comercialesList, finTran
 
     <div className="grid gap-6 lg:grid-cols-[1.35fr_.65fr]">
       <section className="rounded-3xl border border-white/7 bg-white/[0.025] p-5"><div className="mb-5 flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.2em] text-violet-300">Clasificación mensual</p><h3 className="mt-1 text-lg font-bold text-white">Leaderboard Althera</h3></div><Award className="h-6 w-6 text-amber-300"/></div>
-        <div className="space-y-2">{rows.map((row, index) => <div key={row.comercial.id} className={`flex items-center gap-3 rounded-2xl border p-3 ${row.comercial.id === comercial.id ? 'border-violet-400/30 bg-violet-500/10' : 'border-white/5 bg-black/20'}`}><span className="w-7 text-center text-lg">{['🥇','🥈','🥉'][index] || `#${index + 1}`}</span><div className="flex-1 min-w-0"><p className="truncate text-xs font-bold text-white">{row.comercial.name}</p><p className="text-[9px] text-slate-500">{row.cashCollected.toLocaleString('es-ES')} € · {row.appointments} citas</p></div><div className="text-right"><p className="font-mono text-sm font-black text-amber-300">{row.score}</p>{row.cashPrize > 0 && <p className="text-[9px] font-bold text-emerald-300">+{row.cashPrize} €</p>}</div></div>)}</div>
+        <div className="space-y-2">{rows.map((row, index) => <div key={row.comercial.id} className={`flex items-center gap-3 rounded-2xl border p-3 ${row.comercial.id === comercial.id ? 'border-violet-400/30 bg-violet-500/10' : 'border-white/5 bg-black/20'}`}><span className="w-7 text-center text-lg">{['🥇','🥈','🥉'][index] || `#${index + 1}`}</span><div className="flex-1 min-w-0"><p className="truncate text-xs font-bold text-white">{row.comercial.name}</p><p className="text-[9px] text-slate-500">{row.cashCollected.toLocaleString('es-ES')} € · {row.appointments} citas</p></div><div className="text-right"><p className="font-mono text-sm font-black text-amber-300">{row.score.toFixed(2)}</p>{row.cashPrize > 0 && <p className="text-[9px] font-bold text-emerald-300">+{row.cashPrize} €</p>}</div></div>)}</div>
       </section>
       <div className="space-y-4"><section className="rounded-3xl border border-amber-400/20 bg-amber-500/[0.07] p-5"><Trophy className="h-7 w-7 text-amber-300"/><p className="mt-4 text-[9px] font-black uppercase tracking-widest text-amber-300">MVP provisional</p><h3 className="mt-1 text-xl font-black text-white">{mvp?.comercial.name || 'Pendiente'}</h3><p className="mt-2 text-xs text-slate-400">Solo participan perfiles con profesionalidad ≥ 8/10.</p></section>
         <section className="rounded-3xl border border-white/7 bg-white/[0.025] p-5"><p className="text-[10px] font-black uppercase tracking-widest text-cyan-300">Actividad</p><div className="mt-4 space-y-3">{[[PhoneCall,'Llamadas contactadas',me.calls],[MessageCircle,'Conversaciones',me.conversations],[Clock3,'Horas Available',`${me.effectiveHours} h`]].map(([Icon,label,value]: any) => <div key={label} className="flex items-center gap-3"><Icon className="h-4 w-4 text-slate-400"/><span className="flex-1 text-xs text-slate-400">{label}</span><strong className="text-sm text-white">{value}</strong></div>)}</div></section>

@@ -10,10 +10,30 @@ export interface SalesRewardRow {
   calls: number;
   conversations: number;
   effectiveHours: number;
+  kpiPoints: number;
   score: number;
   eligible: boolean;
   cashPrize: number;
 }
+
+export const calculateKpiBreakdown = (row: Pick<SalesRewardRow, 'cashCollected' | 'appointments' | 'shows' | 'professionalism'>) => ({
+  cash: Math.round((row.cashCollected / 100) * 10) / 10,
+  appointments: row.appointments * 20,
+  shows: row.shows * 15,
+  professionalism: Math.round(row.professionalism * 1.5 * 10) / 10,
+});
+
+// Referencias de rendimiento, no límites. Superarlas continúa aumentando el score.
+export const MVP_CASH_REFERENCE = 10_000;
+export const MVP_APPOINTMENTS_REFERENCE = 5;
+
+export const calculateMvpScore = (row: Pick<SalesRewardRow, 'cashCollected' | 'appointments' | 'showRate' | 'professionalism'>): number => {
+  const cash = (row.cashCollected / MVP_CASH_REFERENCE) * 50;
+  const appointments = (row.appointments / MVP_APPOINTMENTS_REFERENCE) * 20;
+  const showRate = (row.showRate / 100) * 15;
+  const professionalism = (row.professionalism / 10) * 15;
+  return Math.round((cash + appointments + showRate + professionalism) * 100) / 100;
+};
 
 export const PROFESSIONALISM_FACTORS: Array<keyof Pick<MonthlyPerformanceReview,
   'punctuality' | 'meetingAttendance' | 'processCompliance' | 'attitude' | 'communication' | 'taskCompletion'>> = [
@@ -314,17 +334,17 @@ export function buildSalesRewards(
     };
   });
 
-  const maxCash = Math.max(1, ...raw.map(row => row.cashCollected));
-  const maxAppointments = Math.max(1, ...raw.map(row => row.appointments));
   const cashOrder = [...raw].sort((a, b) => b.cashCollected - a.cashCollected);
 
   return raw.map(row => {
-    const score = (row.cashCollected / maxCash) * 50 + (row.appointments / maxAppointments) * 20 +
-      (row.showRate / 100) * 15 + (row.professionalism / 10) * 15;
+    const kpi = calculateKpiBreakdown(row);
+    const kpiPoints = kpi.cash + kpi.appointments + kpi.shows + kpi.professionalism;
+    const score = calculateMvpScore(row);
     const cashPosition = cashOrder.findIndex(item => item.comercial.id === row.comercial.id);
     return {
       ...row,
-      score: Math.round(score * 10) / 10,
+      kpiPoints: Math.round(kpiPoints * 10) / 10,
+      score,
       eligible: row.professionalism >= 8,
       cashPrize: row.cashCollected > 0 ? ([200, 100, 50][cashPosition] || 0) : 0,
     };

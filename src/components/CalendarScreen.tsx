@@ -626,6 +626,13 @@ export default function CalendarScreen({
       <div className="space-y-3">
        {hourEvents.map((ev) => {
        const isSelected = selectedEventId === ev.id;
+       const isDevIntake = ev.alias === 'Lead Dev desde Cold Calling';
+       const linkedContact = isDevIntake ? contacts.find(contact => contact.id === ev.linkedContactId) : undefined;
+       const descriptionLines = (ev.description || '').split('\n').map(line => line.trim()).filter(Boolean);
+       const getDetail = (label: string) => descriptionLines.find(line => line.startsWith(`${label}:`))?.slice(label.length + 1).trim();
+       const productsFromDescription = (getDetail('Productos') || '').split(',').map(product => product.trim()).filter(Boolean);
+       const devProducts = linkedContact?.requestedProducts?.length ? linkedContact.requestedProducts : productsFromDescription;
+       const devOtherProduct = linkedContact?.requestedProductOther;
        
        // Highly visual customized badge colors and glows based on status and types
        let statusBadgeColor = "text-blue-400 border-blue-500/20 bg-blue-500/5";
@@ -644,19 +651,23 @@ export default function CalendarScreen({
         statusBadgeColor = "text-fuchsia-200 border-fuchsia-400/30 bg-fuchsia-500/15";
         cardBorderColor = isSelected ? "border-fuchsia-400/55 shadow-lg shadow-fuchsia-500/10" : "border-fuchsia-500/20 hover:border-fuchsia-400/40";
         cardBgColor = isSelected ? "bg-fuchsia-950/25" : "bg-fuchsia-950/10 hover:bg-fuchsia-950/20";
+       } else if (isDevIntake) {
+        statusBadgeColor = "text-violet-200 border-violet-400/30 bg-violet-500/15";
+        cardBorderColor = isSelected ? "border-violet-400/55 shadow-xl shadow-violet-500/10" : "border-violet-400/20 hover:border-violet-400/40";
+        cardBgColor = isSelected ? "bg-violet-950/25" : "bg-gradient-to-br from-violet-950/20 to-slate-950/70 hover:from-violet-950/30";
        }
 
        return (
         <div
         key={ev.id}
         onClick={() => setSelectedEventId(ev.id)}
-        className={`p-4 rounded-2xl border ${cardBorderColor} ${cardBgColor} transition-all duration-300 relative group/card flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer`}
+        className={`p-4 rounded-2xl border ${cardBorderColor} ${cardBgColor} transition-all duration-300 relative group/card flex justify-between gap-4 cursor-pointer ${isDevIntake ? 'flex-col items-stretch' : 'flex-col items-start md:flex-row md:items-center'}`}
         >
         <div className="space-y-2 flex-1 min-w-0">
          {/* Top line metadata row */}
          <div className="flex items-center gap-2 flex-wrap text-[9px] font-mono">
          <span className={`px-2 py-0.5 rounded-full uppercase font-bold tracking-wider border ${statusBadgeColor}`}>
-          {ev.recurrence === 'daily' ? 'Diario' : ev.type}
+          {isDevIntake ? 'Entrada Dev' : ev.recurrence === 'daily' ? 'Diario' : ev.type}
          </span>
          <span className="text-slate-400">
           {ev.time} · {getDurationMinutes(ev.duration)} min
@@ -669,17 +680,32 @@ export default function CalendarScreen({
          </div>
 
          {/* Title & Description */}
-         <div className="space-y-1">
-         <h4 className="text-base font-bold text-white group-hover/card:text-blue-400 transition-colors tracking-tight truncate">
+         <div className="space-y-2">
+         <h4 className={`text-base font-bold text-white transition-colors tracking-tight ${isDevIntake ? 'group-hover/card:text-violet-200' : 'truncate group-hover/card:text-blue-400'}`}>
           {ev.title}
          </h4>
-         <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed font-light">
-          {ev.description || 'Sin descripción.'}
-         </p>
+         {isDevIntake ? (
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+           <div className="rounded-xl border border-white/[0.07] bg-black/20 px-3 py-2"><span className="block text-[8px] font-black uppercase tracking-wider text-slate-500">Negocio</span><strong className="mt-1 block break-words text-[11px] text-white">{linkedContact?.company || getDetail('Negocio') || ev.linkedContactName || 'Sin especificar'}</strong></div>
+           <div className="rounded-xl border border-white/[0.07] bg-black/20 px-3 py-2"><span className="block text-[8px] font-black uppercase tracking-wider text-slate-500">Contacto</span><strong className="mt-1 block break-words text-[11px] text-white">{linkedContact?.name || getDetail('Contacto') || 'Sin especificar'}</strong><span className="mt-0.5 block break-words text-[9px] text-slate-400">{linkedContact?.phone || getDetail('Teléfono') || 'Sin teléfono'}</span></div>
+           <div className="rounded-xl border border-white/[0.07] bg-black/20 px-3 py-2"><span className="block text-[8px] font-black uppercase tracking-wider text-slate-500">Comercial de origen</span><strong className="mt-1 block break-words text-[11px] text-violet-200">{linkedContact?.contactedByComercialName || getDetail('Caller') || 'Sin asignar'}</strong></div>
+           <div className="rounded-xl border border-white/[0.07] bg-black/20 px-3 py-2"><span className="block text-[8px] font-black uppercase tracking-wider text-slate-500">Cita con closer</span><strong className="mt-1 block break-words text-[11px] text-cyan-200">{getDetail('Cita') || 'Sin fecha'}</strong></div>
+          </div>
+         ) : (
+          <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed font-light">{ev.description || 'Sin descripción.'}</p>
+         )}
+         {isDevIntake && (devProducts.length > 0 || devOtherProduct) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+           <span className="mr-1 text-[8px] font-black uppercase tracking-wider text-slate-500">Productos</span>
+           {devProducts.map(product => <span key={product} className="rounded-lg border border-cyan-300/15 bg-cyan-400/[0.08] px-2 py-1 text-[9px] font-bold text-cyan-100">{product}</span>)}
+           {devOtherProduct && <span className="rounded-lg border border-violet-300/15 bg-violet-400/[0.08] px-2 py-1 text-[9px] font-bold text-violet-100">{devOtherProduct}</span>}
+          </div>
+         )}
+         {isDevIntake && getDetail('Nota') && <p className="break-words rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-[10px] leading-4 text-slate-400"><span className="font-bold text-slate-300">Nota: </span>{getDetail('Nota')}</p>}
          </div>
 
          {/* Details footer block inside event card */}
-         <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-500 font-medium">
+         <div className="flex flex-wrap items-center gap-3 pt-1 text-[10px] text-slate-500 font-medium">
          {ev.linkedContactName && (
           <div className="flex items-center gap-1 bg-slate-900 border border-white/5 py-0.5 px-2 rounded-lg text-slate-400">
           <User className="w-3 h-3 text-indigo-400" />

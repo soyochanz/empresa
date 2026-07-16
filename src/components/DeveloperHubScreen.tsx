@@ -596,7 +596,7 @@ export default function DeveloperHubScreen({
      <div
      key={contact.id}
      onClick={() => setSelectedContactId(contact.id)}
-     className={`p-5 rounded-2xl transition-all duration-300 text-left cursor-pointer border relative flex flex-col justify-between h-[230px] group ${
+     className={`p-5 rounded-2xl transition-all duration-300 text-left cursor-pointer border relative flex min-h-[250px] flex-col justify-between group ${
       isSelected  ?
       'bg-violet-950/[0.12] border-violet-500/40 shadow-xl shadow-black/40 shadow-[inset_0_1px_3px_rgba(139,92,246,0.1)]' 
       : 'bg-white/[0.01] hover:bg-white/[0.025] border-white/5 hover:border-white/10'
@@ -641,6 +641,22 @@ export default function DeveloperHubScreen({
        </p>
       </div>
       </div>
+
+      {contact.devDeadline && (
+       <div className="mt-3 flex items-center gap-2 rounded-xl border border-violet-300/15 bg-violet-400/[0.06] px-3 py-2">
+        <Calendar className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+        <div className="min-w-0"><span className="block text-[7px] font-black uppercase tracking-[.14em] text-violet-300/70">Cita con closer · Fecha de entrega</span><strong className="mt-0.5 block text-[10px] text-violet-100">{new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${contact.devDeadline}T00:00:00`))}</strong></div>
+       </div>
+      )}
+
+      {(contact.requestedProducts?.length || contact.requestedProductOther) && (
+       <div className="mt-3 flex flex-wrap gap-1.5">
+        {(contact.requestedProducts || []).map(product => (
+         <span key={product} className="rounded-lg border border-cyan-300/15 bg-cyan-400/[0.07] px-2 py-1 text-[8px] font-bold text-cyan-200">{product}</span>
+        ))}
+        {contact.requestedProductOther && <span className="rounded-lg border border-violet-300/15 bg-violet-400/[0.07] px-2 py-1 text-[8px] font-bold text-violet-200">{contact.requestedProductOther}</span>}
+       </div>
+      )}
 
       {/* Web/App Requirements Detail */}
       <p className="text-[10px] text-slate-400 mt-2.5 line-clamp-2 italic leading-relaxed">
@@ -1186,18 +1202,32 @@ export default function DeveloperHubScreen({
     </div>
 
     {/* Developer Technical Notes */}
-    <div className="space-y-1.5 text-left">
-    <label className="text-[10px] uppercase tracking-wider font-bold text-slate-450 font-mono block">
-     Bitácora de Desarrolladores (Anotaciones Técnicas)
-    </label>
-    <textarea
-     value={selectedContact.devNotes || ''}
-     onChange={(e) => handleUpdateDevNotes(selectedContact, e.target.value)}
-     placeholder="Aquí puedes almacenar requerimientos, credenciales del repo, enlaces a prototipos en Figma o notas internas..."
-     rows={4}
-     className="w-full bg-black/40 border border-white/10 hover:border-white/15 focus:border-violet-500 focus:outline-none text-xs text-slate-300 px-3 py-2 rounded-xl transition"
-    />
-    </div>
+    <section className="overflow-hidden rounded-2xl border border-violet-400/15 bg-gradient-to-br from-violet-950/[0.16] via-black/20 to-cyan-950/[0.08] text-left shadow-lg shadow-black/15">
+     <div className="flex flex-col gap-3 border-b border-white/[0.06] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-violet-300/20 bg-violet-400/10"><FileCode className="h-4 w-4 text-violet-300" /></span>
+       <div>
+        <h4 className="text-[11px] font-black uppercase tracking-[.12em] text-violet-100">Bitácora de desarrolladores</h4>
+        <p className="mt-1 text-[9px] leading-4 text-slate-500">Requisitos, decisiones técnicas, bloqueos, accesos y próximos pasos del proyecto.</p>
+       </div>
+      </div>
+      <span className="w-fit rounded-full border border-white/[0.07] bg-black/25 px-2.5 py-1 font-mono text-[8px] text-slate-500">{(selectedContact.devNotes || '').length} caracteres</span>
+     </div>
+     <div className="p-3 sm:p-4">
+      <textarea
+       value={selectedContact.devNotes || ''}
+       onChange={(e) => handleUpdateDevNotes(selectedContact, e.target.value)}
+       placeholder={'Escribe la bitácora de forma ordenada.\n\nREQUISITOS\n• ...\n\nBLOQUEOS\n• ...\n\nPRÓXIMOS PASOS\n• ...'}
+       rows={11}
+       spellCheck
+       className="min-h-[260px] w-full resize-y rounded-xl border border-white/10 bg-[#03070d]/85 px-4 py-3.5 text-[11px] leading-6 text-slate-200 outline-none transition placeholder:text-slate-700 hover:border-white/15 focus:border-violet-400/50 focus:ring-2 focus:ring-violet-500/10"
+      />
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-1 text-[8px] text-slate-600">
+       <span>Consejo: separa cada bloque con un título y utiliza una línea por tarea o decisión.</span>
+       <span className="font-mono text-violet-300/55">Guardado automático</span>
+      </div>
+     </div>
+    </section>
 
     {/* Development Tasks Checklist */}
     <div className="space-y-3">
