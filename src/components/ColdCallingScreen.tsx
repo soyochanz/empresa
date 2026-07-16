@@ -361,8 +361,21 @@ const nachoAdmin = findAdminByName('nacho');
   closerName: carlosAdmin?.name || 'Carlos',
   closerEmail: carlosAdmin?.email,
   closingStatus: 'Pendiente',
-  needsWebsite: false,
+  needsWebsite: true,
   websiteReady: false,
+  devStatus: 'backlog',
+  devAssignedTo: nachoAdmin?.name || 'Por Asignar',
+  devNotes: [
+   `Lead recibido desde Cold Calling y enviado a Closing.`,
+   `Caller: ${lead.assignedToName || 'Sin asignar'}`,
+   `Contacto: ${cleanName}`,
+   `Teléfono: ${lead.phone || 'Sin teléfono'}`,
+   `Cita: ${callCallbackDate || 'Sin fecha'} ${callCallbackTime || ''}`.trim(),
+   lead.website ? `Web: ${lead.website}` : '',
+   lead.mapsUrl ? `Maps: ${lead.mapsUrl}` : '',
+   notes ? `Última nota: ${notes}` : '',
+   lead.notes ? `Notas acumuladas: ${lead.notes}` : ''
+  ].filter(Boolean).join('\n'),
   googleMapsUrl: lead.mapsUrl,
   website: lead.website,
   notes: [
@@ -1321,7 +1334,7 @@ const nachoAdmin = findAdminByName('nacho');
   hour: '2-digit',
   minute: '2-digit'
   }),
-  notes: Array.from(new Set([selectedLeadForCall.notes?.trim(), currentNotes].filter(Boolean))).join('\n'),
+  notes: currentNotes,
   result: `Contactado: ${callContacted} | Dueño: ${callIsOwner} | Responde: ${callAnswered} | Agendada: ${callScheduled}`
  };
 
@@ -1347,7 +1360,7 @@ const nachoAdmin = findAdminByName('nacho');
   assignedToName: shouldSendToClosing ? closerAssigneeName : selectedLeadForCall.assignedToName,
   closingOriginComercialEmail: shouldSendToClosing ? (selectedLeadForCall.closingOriginComercialEmail || selectedLeadForCall.assignedToEmail) : selectedLeadForCall.closingOriginComercialEmail,
   closingOriginComercialName: shouldSendToClosing ? (selectedLeadForCall.closingOriginComercialName || selectedLeadForCall.assignedToName) : selectedLeadForCall.closingOriginComercialName,
-  notes: currentNotes,
+  notes: Array.from(new Set([selectedLeadForCall.notes?.trim(), currentNotes].filter(Boolean))).join('\n'),
   callDate: new Date().toISOString().split('T')[0],
   callsCount: updatedLogs.length,
   callsLog: updatedLogs
@@ -1391,6 +1404,39 @@ const nachoAdmin = findAdminByName('nacho');
   };
 
   onAddEvent?.(adminAppointment);
+
+  const devIntakeNotification: CalendarEvent = {
+   id: `dev_intake_${crmLead.id}`,
+   title: `Nuevo lead para Dev: ${crmLead.company}`,
+   date: new Date().toISOString().split('T')[0],
+   time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+   duration: '15m',
+   type: 'Other',
+   description: [
+    `Nacho, se ha enviado un lead de Cold Calling a Closing y ya está disponible en Dev.`,
+    `Negocio: ${crmLead.company}`,
+    `Contacto: ${crmLead.name}`,
+    `Teléfono: ${crmLead.phone || 'Sin teléfono'}`,
+    `Caller: ${selectedLeadForCall.assignedToName || 'Sin asignar'}`,
+    `Cita: ${callCallbackDate} ${callCallbackTime}`,
+    crmLead.website ? `Web: ${crmLead.website}` : '',
+    crmLead.googleMapsUrl ? `Maps: ${crmLead.googleMapsUrl}` : '',
+    currentNotes ? `Nota: ${currentNotes}` : ''
+   ].filter(Boolean).join('\n'),
+   linkedContactId: crmLead.id,
+   linkedContactName: crmLead.name,
+   linkedContactIds: [crmLead.id],
+   assignedUserId: nachoAdmin?.id,
+   assignedUserEmail: nachoAdmin?.email || 'todos-admins',
+   assignedUserEmails: nachoAdmin?.email ? [nachoAdmin.email] : ['todos-admins'],
+   status: 'pending',
+   color: '#8B5CF6',
+   alias: 'Lead Dev desde Cold Calling',
+   isAdminNotification: true,
+   notes: crmLead.devNotes
+  };
+
+  onAddEvent?.(devIntakeNotification);
  }
 
  setSelectedLeadForCall(null);
@@ -1753,9 +1799,9 @@ const nachoAdmin = findAdminByName('nacho');
   closingSocials: draft.socials?.trim() || undefined,
   googleMapsUrl: draft.mapsUrl?.trim() || undefined,
   status: status === 'Cerrado' ? 'Client' : 'Lead',
-  needsWebsite: status === 'Cerrado',
+  needsWebsite: status === 'Cerrado' ? true : base.needsWebsite,
   websiteReady: status === 'Cerrado' ? false : base.websiteReady,
-  devStatus: status === 'Cerrado' ? 'backlog' : base.devStatus,
+  devStatus: status === 'Cerrado' ? 'backlog' : (base.devStatus || 'backlog'),
   closerName: activeCloser?.name || base.closerName || 'Carlos',
   closerEmail: activeCloser?.email || base.closerEmail,
   closingSourceLeadId: lead.id,
