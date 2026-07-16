@@ -994,6 +994,19 @@ export default function App() {
  return list;
  }, [leadsList, coldLeads, currentUser, notifyHotLeads]);
 
+ const configuredCloser = useMemo(() => usersList.find(user => {
+  const identity = `${user.name || ''} ${user.email || ''}`.toLowerCase();
+  return identity.includes('carlos') || identity.includes('closer');
+ }), [usersList]);
+ const currentUserIdentity = `${currentUser?.name || ''} ${currentUser?.email || ''}`.toLowerCase();
+ const currentUserIsCloser = Boolean(currentUser && (
+  currentUserIdentity.includes('carlos') || currentUserIdentity.includes('closer') ||
+  (configuredCloser && (
+   currentUser.email.toLowerCase() === configuredCloser.email.toLowerCase() ||
+   (!!currentUser.id && currentUser.id === configuredCloser.id)
+  ))
+ ));
+
  const adminVisibleEvents = useMemo(() => {
   if (!currentUser) return [];
   const adminEmail = currentUser.email.toLowerCase();
@@ -1002,6 +1015,13 @@ export default function App() {
    const directEmail = event.assignedUserEmail?.toLowerCase();
    const assignedEmails = (event.assignedUserEmails || []).map(email => email.toLowerCase());
    const hasExplicitAssignment = !!directEmail || assignedEmails.length > 0 || !!event.assignedUserId;
+
+   // El closer trabaja con una agenda personal: no debe heredar eventos generales,
+   // sin asignar o destinados a otros administradores.
+   if (currentUserIsCloser) {
+    return directEmail === adminEmail || assignedEmails.includes(adminEmail) ||
+     Boolean(event.assignedUserId && currentUser.id && event.assignedUserId === currentUser.id);
+   }
 
    // Las asignaciones grupales no pertenecen a un admin concreto: forman parte
    // de la agenda general y deben ser visibles también para todos los admins.
@@ -1016,7 +1036,7 @@ export default function App() {
    // Los eventos sin destinatario continúan siendo agenda administrativa común.
    return !hasExplicitAssignment;
   });
- }, [events, currentUser]);
+ }, [events, currentUser, currentUserIsCloser]);
 
  const adminVisibleEventIds = useMemo(() => new Set(adminVisibleEvents.map(event => event.id)), [adminVisibleEvents]);
 
@@ -1487,21 +1507,26 @@ export default function App() {
  }
 
  // 3. Persistent Supabase write
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
+ if (supabaseStatus.connected && supabaseStatus.tablesExist) {
   try {
    if (alreadyExists) {
-    await db.updateContact(contactToSave, currentUser.id);
+    await db.updateContact(contactToSave, currentUser?.id || undefined);
    } else {
-    await db.insertContact(contactToSave, currentUser.id);
-   await db.insertActivity(activity, currentUser.id);
-  }
+    await db.insertContact(contactToSave, currentUser?.id || undefined);
+    if (currentUser?.id) await db.insertActivity(activity, currentUser.id);
+   }
   } catch (err) {
   console.error('Supabase failed to register contact:', err);
+  throw err;
   }
  }
  };
 
  const handleUpdateContact = async (updated: ClientContact) => {
+ const previousContact = contacts.find(contact => contact.id === updated.id);
+ const isWebsiteReady = updated.websiteReady === true || updated.devStatus === 'completed';
+ const shouldNotifyCarlos = isWebsiteReady && !previousContact?.webReadyNotifiedAt;
+
  // Completing a website only resolves the "Falta web" marker. The contact remains
  // active and its development status can be changed again at any time.
  if (updated.devStatus === 'completed') {
@@ -1524,11 +1549,54 @@ export default function App() {
  setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
 
  // 2. Persistent Supabase write
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
+ if (supabaseStatus.connected && supabaseStatus.tablesExist) {
   try {
-  await db.updateContact(updated, currentUser.id);
+  await db.updateContact(updated, currentUser?.id || undefined);
+
+  if (shouldNotifyCarlos) {
+   const carlosAdmin = usersList.find(user =>
+    (user.name || '').toLowerCase().includes('carlos') ||
+    (user.email || '').toLowerCase().includes('carlos')
+   );
+   const targetEmail = carlosAdmin?.email || updated.closerEmail || 'todos-admins';
+   const websiteUrl = updated.customWebsiteUrl || updated.website || 'pendiente de revisar';
+   const phoneDigits = (updated.phone || '').replace(/\D/g, '');
+   const whatsappUrl = phoneDigits
+    ? `https://wa.me/${phoneDigits.startsWith('34') ? phoneDigits : `34${phoneDigits}`}?text=${encodeURIComponent(`Hola ${updated.name}, tu web ya está lista: ${websiteUrl}.`)}`
+    : undefined;
+   const notification: CalendarEvent = {
+    id: `web_ready_${updated.id}`,
+    title: `Web lista: ${updated.company}`,
+    date: getLocalDateKey(),
+    time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+    duration: '10m',
+    type: 'Review',
+    description: `Carlos, el lead ${updated.company} ya tiene una página web asociada. URL: ${websiteUrl}.`,
+    linkedContactId: updated.id,
+    linkedContactName: updated.name,
+    linkedContactIds: [updated.id],
+    assignedUserId: carlosAdmin?.id,
+    assignedUserEmail: targetEmail,
+    assignedUserEmails: [targetEmail],
+    status: 'pending',
+    color: '#10B981',
+    alias: 'Web lista',
+    isAdminNotification: targetEmail === 'todos-admins',
+    whatsappUrl
+   };
+
+   await db.upsertEvent(notification, currentUser?.id || undefined);
+   setEvents(previous => previous.some(event => event.id === notification.id)
+    ? previous.map(event => event.id === notification.id ? notification : event)
+    : [...previous, notification]);
+
+   updated = { ...updated, webReadyNotifiedAt: new Date().toISOString() };
+   await db.updateContact(updated, currentUser?.id || undefined);
+   setContacts(previous => previous.map(contact => contact.id === updated.id ? updated : contact));
+  }
   } catch (err) {
   console.error('Supabase failed to update contact:', err);
+  throw err;
   }
  }
  };
@@ -1835,7 +1903,10 @@ export default function App() {
  }
 
  try {
-  await db.insertEvent(event, currentUser?.id || undefined);
+  const isAutomatedFlowEvent = event.id.startsWith('cc_appointment_') ||
+   event.id.startsWith('dev_intake_') || event.id.startsWith('web_ready_');
+  if (isAutomatedFlowEvent) await db.upsertEvent(event, currentUser?.id || undefined);
+  else await db.insertEvent(event, currentUser?.id || undefined);
   if (currentUser?.id) await db.insertActivity(activity, currentUser.id);
   if (!isCommercialPrivateEvent) setEvents(prev => prev.some(item => item.id === event.id) ? prev : [...prev, event]);
   if (currentUser?.id) setActivities(prev => [activity, ...prev]);
@@ -2141,7 +2212,7 @@ export default function App() {
    coldLeads={coldLeads}
    finTransactions={finTransactions}
    contacts={contacts}
-   events={adminVisibleEvents}
+   events={events}
    onAddComercial={handleAddComercialAccount}
    onUpdateComercial={handleUpdateComercialAccount}
    onDeleteComercial={handleDeleteComercialAccount}
@@ -2429,7 +2500,7 @@ export default function App() {
     </div>
 
     {/* Sub headers action steps */}
-    {userNotifications.length > 0 && unreadCount > 0 && (
+    {unreadNotifications.length > 0 && (
      <div className="flex items-center justify-between mb-4 flex-shrink-0">
      <span className="text-[10px] font-mono text-blue-400 uppercase tracking-wider font-semibold">
       {unreadCount} pendientes
@@ -2457,19 +2528,19 @@ export default function App() {
 
     {/* Notification Checklist list view wrap */}
     <div className="flex-grow overflow-y-auto space-y-3 pr-1">
-     {userNotifications.length === 0 ? (
+     {unreadNotifications.length === 0 ? (
      <div className="text-center py-16">
       <div className="w-12 h-12 rounded-full bg-white/[0.02] border border-white/5 flex items-center justify-center mx-auto mb-3 text-slate-500">
       <Bell className="w-5 h-5 text-slate-400" />
       </div>
-      <p className="text-slate-400 text-xs font-semibold">No tienes asignaciones de calendario.</p>
+      <p className="text-slate-400 text-xs font-semibold">Todo revisado.</p>
       <p className="text-[10px] text-slate-500 max-w-[200px] mx-auto mt-1 leading-relaxed">
-      Cuando un colega te asigne un evento del calendario, se listará aquí al instante.
+      Las nuevas notificaciones asignadas a ti aparecerán aquí.
       </p>
      </div>
      ) : (
-     userNotifications.map(ev => {
-      const isUnread = !readNotificationIds.includes(ev.id);
+     unreadNotifications.map(ev => {
+      const isUnread = true;
       return (
       <div 
        key={ev.id} 

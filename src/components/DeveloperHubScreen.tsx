@@ -242,35 +242,15 @@ export default function DeveloperHubScreen({
  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
  };
  const handleMarkWebsiteReady = (contact: ClientContact) => {
- const shareUrl = getWebsiteShareUrl(contact);
  const updated: ClientContact = {
   ...contact,
   needsWebsite: false,
   websiteReady: true,
-  webReadyNotifiedAt: new Date().toISOString(),
   devStatus: 'completed',
   devCompletedAt: contact.devCompletedAt || new Date().toISOString()
  };
  onUpdateContact(updated);
- onAddEvent?.({
-  id: `web_ready_${contact.id}_${Date.now()}`,
-  title: `Web lista: ${contact.company}`,
-  date: new Date().toISOString().split('T')[0],
-  time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-  duration: '10m',
-  type: 'Review',
-  description: `Carlos, la web de ${contact.company} ya está lista. URL: ${shareUrl || 'pendiente de revisar'}.`,
-  linkedContactId: contact.id,
-  linkedContactName: contact.name,
-  linkedContactIds: [contact.id],
-  assignedUserEmail: contact.closerEmail || 'todos-admins',
-  status: 'pending',
-  color: '#10B981',
-  alias: 'Web lista',
-  isAdminNotification: !contact.closerEmail,
-  whatsappUrl: buildWhatsAppUrl(contact)
- });
- };
+};
 
 
  // Generate automated stack blueprint recommendation

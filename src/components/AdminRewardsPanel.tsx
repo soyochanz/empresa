@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart3, CalendarDays, Handshake, Lightbulb, Plus, Save, ShieldCheck, Sparkles, Trash2, Trophy } from 'lucide-react';
+import { Award, Banknote, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, Coins, GraduationCap, Handshake, Lightbulb, Plus, Save, ShieldCheck, ShoppingBag, Sparkles, Trash2, TrendingUp, Trophy } from 'lucide-react';
 import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, CommercialPresence, CommercialWorkSession, LegacyBonusType, MonthlyPerformanceReview } from '../types';
-import { buildLegacyPointLedger, buildSalesRewards, calculateLegacyPoints, calculateProfessionalismScore, PROFESSIONALISM_FACTORS } from '../utils/salesRewards';
+import { buildLegacyPointLedger, buildSalesRewards, calculateLegacyPoints, calculateProfessionalismScore, LEGACY_RANKS, PROFESSIONALISM_FACTORS } from '../utils/salesRewards';
 
 interface Props {
   comercialesList: ComercialAccount[];
@@ -45,7 +45,7 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
     if (!selectedId && comercialesList[0]?.id) setSelectedId(comercialesList[0].id);
   }, [comercialesList, selectedId]);
 
-  const rows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, month, { workSessions, presence: commercialPresence, now: activityNow });
+  const rows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, month, contacts, { workSessions, presence: commercialPresence, now: activityNow });
   const winner = rows[0]?.eligible ? rows[0] : undefined;
   const selectedReward = rows.find(row => row.comercial.id === selectedId);
   const save = async () => {
@@ -88,6 +88,26 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
   };
   const selectedLegacy = selected ? calculateLegacyPoints(selected, finTransactions, events, coldLeads, contacts) : null;
   const selectedLedger = selected ? buildLegacyPointLedger(selected, finTransactions, events, coldLeads, contacts) : [];
+  const legacyProgressRows = comercialesList
+    .map(comercial => ({ comercial, legacy: calculateLegacyPoints(comercial, finTransactions, events, coldLeads, contacts) }))
+    .sort((a, b) => b.legacy.total - a.legacy.total);
+  const maxKpiCash = Math.max(1, ...rows.map(row => row.cashCollected));
+  const maxKpiAppointments = Math.max(1, ...rows.map(row => row.appointments));
+  const selectedKpiLedger = selectedReward ? [
+    { label: 'Cash Collected', points: Math.round((selectedReward.cashCollected / maxKpiCash) * 500) / 10, maximum: 50, detail: `${selectedReward.cashCollected.toLocaleString('es-ES')} € frente al máximo mensual de ${maxKpiCash.toLocaleString('es-ES')} €`, Icon: Banknote, style: 'text-emerald-300 border-emerald-400/15 bg-emerald-400/[0.05]' },
+    { label: 'Citas agendadas', points: Math.round((selectedReward.appointments / maxKpiAppointments) * 200) / 10, maximum: 20, detail: `${selectedReward.appointments} citas frente al máximo mensual de ${maxKpiAppointments}`, Icon: CalendarCheck, style: 'text-violet-300 border-violet-400/15 bg-violet-400/[0.05]' },
+    { label: 'Show Rate', points: Math.round((selectedReward.showRate / 100) * 150) / 10, maximum: 15, detail: `${selectedReward.shows} presentados de ${selectedReward.appointments} citas (${selectedReward.showRate}%) en ${month}`, Icon: Sparkles, style: 'text-cyan-300 border-cyan-400/15 bg-cyan-400/[0.05]' },
+    { label: 'Profesionalidad', points: Math.round((selectedReward.professionalism / 10) * 150) / 10, maximum: 15, detail: `${selectedReward.professionalism}/10 según los seis criterios mensuales`, Icon: ShieldCheck, style: 'text-amber-300 border-amber-400/15 bg-amber-400/[0.05]' },
+  ] : [];
+  const paGuide = [
+    { label: 'Cash cobrado', points: '1 PA / 1 €', detail: 'Solo venta inicial pagada y consolidada.', Icon: Coins },
+    { label: 'Cita agendada', points: '+50 PA', detail: 'Para el comercial que originó la cita.', Icon: CalendarCheck },
+    { label: 'Show confirmado', points: '+75 PA', detail: 'Cuando el closer confirma que contestó.', Icon: CheckCircle2 },
+    { label: 'Venta cobrada', points: '+250 PA', detail: 'Una vez por cada venta inicial única.', Icon: ShoppingBag },
+    { label: 'Ayuda en cierre', points: '+150 PA', detail: 'Validación manual del administrador.', Icon: Handshake },
+    { label: 'Formación', points: '+100 PA', detail: 'Por completar formación reconocida.', Icon: GraduationCap },
+    { label: 'Idea del mes', points: '+300 PA', detail: 'Para la propuesta elegida del mes.', Icon: Lightbulb },
+  ];
   const ledgerStyles = {
     cash: 'border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-300',
     agenda: 'border-violet-400/20 bg-violet-400/[0.06] text-violet-300',
@@ -98,13 +118,26 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
 
   return <div className="space-y-6 animate-fade-in">
     <section className="rounded-3xl border border-amber-400/20 bg-gradient-to-r from-amber-500/10 via-violet-500/5 to-transparent p-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2 text-amber-300"><Trophy className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.25em]">Althera Rewards</span></div><h3 className="mt-2 text-2xl font-black text-white">Cierre y valoración mensual</h3><p className="mt-1 text-xs text-slate-400">Introduce el Show Rate y valora los seis criterios. Profesionalidad, horas, score y ranking se recalculan automáticamente.</p></div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2 text-amber-300"><Trophy className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.25em]">Althera Rewards</span></div><h3 className="mt-2 text-2xl font-black text-white">Cierre y valoración mensual</h3><p className="mt-1 text-xs text-slate-400">El Show Rate se calcula con las asistencias confirmadas por el closer. Valora los seis criterios de profesionalidad; el score y el ranking se recalculan automáticamente.</p></div>
         <input type="month" value={month} onChange={event => setMonth(event.target.value)} className="rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-amber-400/50"/></div>
+    </section>
+
+    <section className="rounded-3xl border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(6,182,212,.08),rgba(124,58,237,.06),rgba(0,0,0,.2))] p-5 sm:p-6">
+      <div><div className="flex items-center gap-2 text-cyan-300"><Lightbulb className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.22em]">Guía de puntuación</span></div><h4 className="mt-2 text-xl font-black text-white">Qué suma PA y qué suma rendimiento KPI</h4><p className="mt-1 max-w-4xl text-xs leading-relaxed text-slate-400">Los PA construyen el Legado permanente. El score KPI se reinicia cada mes, mide rendimiento comparativo y alcanza un máximo de 100 puntos.</p></div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+        <div className="rounded-2xl border border-violet-400/15 bg-black/20 p-4"><div className="flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-widest text-violet-300">Puntos Althera</p><h5 className="mt-1 text-sm font-black text-white">Cómo se consiguen PA</h5></div><Award className="h-5 w-5 text-violet-300"/></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{paGuide.map(({ label, points, detail, Icon }) => <div key={label} className="flex gap-3 rounded-xl border border-white/5 bg-white/[0.025] p-3"><Icon className="mt-0.5 h-4 w-4 shrink-0 text-violet-300"/><div><div className="flex flex-wrap items-center gap-2"><p className="text-[10px] font-bold text-white">{label}</p><strong className="text-[9px] text-violet-300">{points}</strong></div><p className="mt-1 text-[8px] leading-relaxed text-slate-500">{detail}</p></div></div>)}</div></div>
+        <div className="rounded-2xl border border-amber-400/15 bg-black/20 p-4"><div className="flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-widest text-amber-300">Rendimiento mensual</p><h5 className="mt-1 text-sm font-black text-white">Cómo se calcula el KPI</h5></div><BarChart3 className="h-5 w-5 text-amber-300"/></div><div className="mt-4 space-y-2">{[
+          ['Cash Collected','Máx. 50 puntos','Cash del comercial ÷ mayor cash del mes × 50'],
+          ['Citas agendadas','Máx. 20 puntos','Citas del comercial ÷ mayor número de citas del mes × 20'],
+          ['Show Rate','Máx. 15 puntos','Porcentaje de Show Rate ÷ 100 × 15'],
+          ['Profesionalidad','Máx. 15 puntos','Media de 6 criterios ÷ 10 × 15'],
+        ].map(([label, points, formula]) => <div key={label} className="grid grid-cols-[1fr_auto] gap-3 rounded-xl border border-white/5 bg-white/[0.025] p-3"><div><p className="text-[10px] font-bold text-white">{label}</p><p className="mt-1 text-[8px] text-slate-500">{formula}</p></div><strong className="text-[9px] text-amber-300">{points}</strong></div>)}</div><p className="mt-3 rounded-xl border border-rose-400/15 bg-rose-400/[0.05] px-3 py-2 text-[9px] text-slate-400">Para ser elegible como MVP se necesita una profesionalidad mínima de <strong className="text-white">8/10</strong>.</p></div>
+      </div>
     </section>
 
     <div className="grid gap-6 xl:grid-cols-[.85fr_1.15fr]">
       <section className="rounded-3xl border border-white/7 bg-white/[0.025] p-5"><label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Comercial a valorar</label><select value={selectedId} onChange={event => setSelectedId(event.target.value)} className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none">{comercialesList.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-        <div className="mt-5 grid grid-cols-2 gap-3"><label className="rounded-2xl border border-cyan-500/15 bg-cyan-500/5 p-4"><span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-cyan-300"><Sparkles className="h-4 w-4"/>Show Rate</span><div className="mt-3 flex items-end gap-1"><input type="number" min="0" max="100" value={draft.showRate} onChange={event => updateNumber('showRate', Math.min(100, Math.max(0, Number(event.target.value))))} className="w-full bg-transparent text-3xl font-black text-white outline-none"/><span className="pb-1 text-slate-500">%</span></div></label>
+        <div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-2xl border border-cyan-500/15 bg-cyan-500/5 p-4"><span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-cyan-300"><Sparkles className="h-4 w-4"/>Show Rate automático</span><div className="mt-3 flex items-end gap-1"><strong className="text-3xl font-black text-white">{selectedReward?.showRate || 0}</strong><span className="pb-1 text-slate-500">%</span></div><p className="mt-1 text-[9px] text-slate-500">{selectedReward?.shows || 0} presentados de {selectedReward?.appointments || 0} citas</p></div>
           <div className={`rounded-2xl border p-4 ${draft.professionalism >= 8 ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-rose-500/20 bg-rose-500/5'}`}><span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-300"><ShieldCheck className="h-4 w-4"/>Profesionalidad automática</span><div className="mt-3 flex items-end gap-1"><strong className="text-3xl font-black text-white">{draft.professionalism}</strong><span className="pb-1 text-slate-500">/10</span></div><p className="mt-1 text-[9px] text-slate-500">{professionalismPoints}/60 puntos en los criterios</p></div></div>
         <div className="mt-3 rounded-2xl border border-lime-300/15 bg-lime-300/[0.05] p-4"><span className="text-[9px] font-black uppercase tracking-wider text-lime-300">Horas Available del mes · automático</span><p className="mt-2 text-xl font-black text-white">{selectedReward?.effectiveHours || 0} h</p></div>
         <div className="mt-5 border-t border-white/7 pt-5"><p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Detalle de profesionalidad</p><div className="mt-3 grid grid-cols-2 gap-2">{FACTORS.map(([key,label]) => <label key={key} className="rounded-xl border border-white/5 bg-black/20 p-3"><span className="block text-[9px] text-slate-400">{label}</span><input type="number" min="0" max="10" step="0.5" value={Number(draft[key] || 0)} onChange={event => updateNumber(key, Math.min(10, Math.max(0, Number(event.target.value))))} className="mt-1 w-full bg-transparent text-sm font-bold text-white outline-none"/></label>)}</div></div>
@@ -117,6 +150,31 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
         <div className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-500/[0.07] p-4"><p className="text-[9px] font-black uppercase tracking-widest text-amber-300">MVP provisional del mes</p><p className="mt-1 text-xl font-black text-white">{winner?.comercial.name || 'Sin candidato elegible'}</p><div className="mt-3 flex items-center gap-2 text-[10px] text-slate-400"><CalendarDays className="h-4 w-4"/>Se anuncia en el Daily del último día del mes.</div></div>
       </section>
     </div>
+
+    <section className="rounded-3xl border border-amber-400/15 bg-white/[0.025] p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2 text-amber-300"><BarChart3 className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.22em]">Registro de puntos KPI</span></div><h4 className="mt-2 text-xl font-black text-white">Justificación mensual de {selected?.name || 'comercial'}</h4><p className="mt-1 text-xs text-slate-400">Desglose auditable del score para {month}. Los componentes se recalculan al cambiar datos o mes.</p></div><div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.07] px-5 py-3 text-right"><p className="text-[8px] uppercase tracking-widest text-slate-500">Score KPI</p><strong className="text-2xl text-amber-300">{selectedReward?.score ?? 0} / 100</strong></div></div>
+      {!selectedKpiLedger.length ? <p className="mt-5 rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Este comercial no participa en el ranking KPI del mes seleccionado.</p> : <div className="mt-5 grid gap-3 md:grid-cols-2">{selectedKpiLedger.map(({ label, points, maximum, detail, Icon, style }) => <article key={label} className={`rounded-2xl border p-4 ${style}`}><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2"><Icon className="h-5 w-5"/><h5 className="text-xs font-black text-white">{label}</h5></div><strong className="font-mono text-sm">+{points} / {maximum}</strong></div><p className="mt-3 text-[9px] leading-relaxed text-slate-400">{detail}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40"><div className="h-full rounded-full bg-current" style={{ width: `${Math.min(100, (points / maximum) * 100)}%` }}/></div></article>)}</div>}
+    </section>
+
+    <section className="rounded-3xl border border-violet-400/20 bg-[linear-gradient(135deg,rgba(124,58,237,.1),rgba(0,0,0,.18))] p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-4"><div><div className="flex items-center gap-2 text-violet-300"><TrendingUp className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.22em]">Progreso de Legado</span></div><h4 className="mt-2 text-xl font-black text-white">Todos los comerciales</h4><p className="mt-1 text-xs text-slate-400">PA acumulados, rango actual y distancia hasta el siguiente nivel.</p></div><Award className="hidden h-8 w-8 text-violet-300 sm:block"/></div>
+      {!legacyProgressRows.length ? <p className="mt-5 rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay comerciales registrados.</p> : (
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">{legacyProgressRows.map(({ comercial, legacy }, index) => (
+          <article key={comercial.id} className="rounded-2xl border border-white/7 bg-black/25 p-4">
+            <div className="flex items-center gap-4">
+              <img src={legacy.rank.asset} alt={`Rango ${legacy.rank.name}`} className="h-16 w-16 shrink-0 object-contain"/>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2"><span className="text-[9px] text-slate-600">#{index + 1}</span><h5 className="truncate text-sm font-black text-white">{comercial.name}</h5><span className="rounded-md border border-white/10 px-2 py-0.5 text-[8px] font-black uppercase" style={{ color: legacy.rank.accent }}>{legacy.rank.name}</span></div>
+                <div className="mt-2 flex items-end justify-between gap-3"><strong className="font-mono text-lg text-violet-200">{legacy.total.toLocaleString('es-ES')} PA</strong><span className="text-right text-[8px] text-slate-500">{legacy.nextRank ? `${legacy.pointsToNext.toLocaleString('es-ES')} PA para ${legacy.nextRank.name}` : 'Rango máximo'}</span></div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/10 bg-black/50"><div className="h-full rounded-full" style={{ width: `${legacy.progress}%`, background: `linear-gradient(90deg,${legacy.rank.accent},#a78bfa)` }}/></div>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-5 gap-1 text-center">{[['Cash',legacy.cashPoints],['Citas',legacy.agendaPoints],['Shows',legacy.showPoints],['Ventas',legacy.salesPoints],['Manual',legacy.manualPoints]].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-white/[0.025] px-1 py-1.5"><span className="block text-[7px] uppercase text-slate-600">{label}</span><strong className="text-[8px] text-slate-300">{Number(value).toLocaleString('es-ES')}</strong></div>)}</div>
+          </article>
+        ))}</div>
+      )}
+      <div className="mt-4 flex flex-wrap gap-2">{LEGACY_RANKS.map(rank => <span key={rank.name} className="rounded-lg border border-white/7 bg-black/20 px-2.5 py-1.5 text-[8px] text-slate-500"><strong style={{ color: rank.accent }}>{rank.name}</strong> · {rank.min.toLocaleString('es-ES')} PA{rank.max === Infinity ? '+' : ''}</span>)}</div>
+    </section>
 
     <section className="rounded-3xl border border-violet-400/20 bg-[linear-gradient(135deg,rgba(124,58,237,.12),rgba(0,0,0,.18))] p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2 text-violet-300"><Handshake className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.22em]">Gestión manual de PA</span></div><h4 className="mt-2 text-xl font-black text-white">Bonificaciones de Legado</h4><p className="mt-1 text-xs text-slate-400">Solo estas tres acciones requieren validación manual. Cash, agendas, shows y ventas se calculan automáticamente.</p></div>{selectedLegacy && <div className="rounded-2xl border border-white/10 bg-black/25 px-5 py-3 text-right"><p className="text-[9px] uppercase tracking-widest text-slate-500">PA de {selected?.name}</p><p className="text-2xl font-black text-violet-300">{selectedLegacy.total.toLocaleString('es-ES')} PA</p></div>}</div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Award, Banknote, CalendarDays, Clock3, MessageCircle, PhoneCall, ShieldCheck, Sparkles, Trophy } from 'lucide-react';
-import { CalendarEvent, ColdCallingLead, ComercialAccount, CommercialPresence, CommercialWorkSession, FinanceTransaction } from '../types';
+import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, CommercialPresence, CommercialWorkSession, FinanceTransaction } from '../types';
 import { buildSalesRewards } from '../utils/salesRewards';
 import { db } from '../supabaseClient';
 
@@ -10,6 +10,7 @@ interface Props {
   finTransactions: FinanceTransaction[] | any[];
   events: CalendarEvent[];
   coldLeads: ColdCallingLead[];
+  contacts: ClientContact[];
 }
 
 type KpiTrend = { direction: 'up' | 'down'; changedAt: number };
@@ -47,7 +48,7 @@ function useRecentKpiTrends(storageKey: string, values: Record<string, number>) 
   return trends;
 }
 
-export default function SalesRewardsScreen({ comercial, comercialesList, finTransactions, events, coldLeads }: Props) {
+export default function SalesRewardsScreen({ comercial, comercialesList, finTransactions, events, coldLeads, contacts }: Props) {
   const liveComercial = comercialesList.find(item => item.id === comercial.id) || comercial;
   const month = new Date().toISOString().slice(0, 7);
   const [workSessions, setWorkSessions] = useState<CommercialWorkSession[]>([]);
@@ -82,13 +83,13 @@ export default function SalesRewardsScreen({ comercial, comercialesList, finTran
   }, [liveComercial.id, month]);
 
   const activity = { workSessions, presence: presence ? [presence] : [], now: activityNow };
-  const rows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, month, activity);
+  const rows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, month, contacts, activity);
   const me = rows.find(row => row.comercial.id === liveComercial.id) || rows[0];
   const mvp = rows[0]?.eligible ? rows[0] : undefined;
   const previousMonthDate = new Date(`${month}-01T12:00:00`);
   previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
   const previousMonth = `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, '0')}`;
-  const previousRows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, previousMonth);
+  const previousRows = buildSalesRewards(comercialesList, finTransactions, events, coldLeads, previousMonth, contacts);
   const previousScores = new Map(previousRows.map(row => [row.comercial.id, row.score]));
   const topCash = [...rows].sort((a, b) => b.cashCollected - a.cashCollected)[0];
   const topAppointments = [...rows].sort((a, b) => b.appointments - a.appointments)[0];
@@ -107,7 +108,7 @@ export default function SalesRewardsScreen({ comercial, comercialesList, finTran
   const kpis = [
     { id: 'cash', label: 'Cash Collected', value: `${me.cashCollected.toLocaleString('es-ES')} €`, Icon: Banknote, style: 'bg-emerald-500/10 text-emerald-300' },
     { id: 'appointments', label: 'Citas agendadas', value: me.appointments, Icon: CalendarDays, style: 'bg-violet-500/10 text-violet-300' },
-    { id: 'showRate', label: 'Show Rate', value: `${me.showRate}%`, Icon: Sparkles, style: 'bg-cyan-500/10 text-cyan-300' },
+    { id: 'showRate', label: 'Show Rate', value: `${me.showRate}% (${me.shows}/${me.appointments})`, Icon: Sparkles, style: 'bg-cyan-500/10 text-cyan-300' },
     { id: 'professionalism', label: 'Profesionalidad', value: `${me.professionalism}/10`, Icon: ShieldCheck, style: me.eligible ? 'bg-amber-500/10 text-amber-300' : 'bg-rose-500/10 text-rose-300' },
   ];
 

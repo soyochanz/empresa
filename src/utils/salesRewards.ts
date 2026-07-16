@@ -4,6 +4,7 @@ export interface SalesRewardRow {
   comercial: ComercialAccount;
   cashCollected: number;
   appointments: number;
+  shows: number;
   showRate: number;
   professionalism: number;
   calls: number;
@@ -269,6 +270,7 @@ export function buildSalesRewards(
   events: CalendarEvent[],
   coldLeads: ColdCallingLead[],
   month: string,
+  contacts: ClientContact[] = [],
   activity: SalesRewardsActivity = {},
 ): SalesRewardRow[] {
   const raw = getRankableCommercials(comerciales).map(comercial => {
@@ -277,9 +279,20 @@ export function buildSalesRewards(
       .filter(tx => isCollectedSale(tx) && belongsToMonth(tx.date, month) &&
         (tx.comercialId === comercial.id || tx.comercialEmail?.toLowerCase() === comercial.email.toLowerCase()))
       .reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
-    const appointments = events.filter(event => isSalesAppointmentEvent(event) && belongsToMonth(event.date, month) &&
-      (event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === comercial.email.toLowerCase())).length;
     const commercialEmail = comercial.email.toLowerCase();
+    const monthlyAppointmentEvents = events.filter(event => isSalesAppointmentEvent(event) && belongsToMonth(event.date, month) &&
+      (event.comercialId === comercial.id || event.assignedUserEmail?.toLowerCase() === commercialEmail));
+    const appointments = monthlyAppointmentEvents.length;
+    const monthlyAppointmentLeadIds = new Set(monthlyAppointmentEvents.map(event => {
+      if (event.linkedContactId?.startsWith('crm_from_')) return event.linkedContactId.slice('crm_from_'.length);
+      if (event.id?.startsWith('cc_appointment_')) return event.id.slice('cc_appointment_'.length);
+      const rescheduleMatch = event.id?.match(/^cc_reschedule_(.+?)(?:_\d+)?$/);
+      return rescheduleMatch?.[1];
+    }).filter((leadId): leadId is string => Boolean(leadId)));
+    const shows = new Set(contacts
+      .filter(contact => contact.closingAnswered === true && !!contact.closingSourceLeadId && monthlyAppointmentLeadIds.has(contact.closingSourceLeadId))
+      .map(contact => contact.closingSourceLeadId)).size;
+    const showRate = appointments > 0 ? Math.round(Math.min(100, (shows / appointments) * 100) * 10) / 10 : 0;
     const commercialColdLeads = coldLeads.filter(lead =>
       lead.assignedToEmail?.toLowerCase() === commercialEmail ||
       lead.closingOriginComercialEmail?.toLowerCase() === commercialEmail);
@@ -292,7 +305,8 @@ export function buildSalesRewards(
       comercial,
       cashCollected,
       appointments,
-      showRate: Number(review?.showRate || 0),
+      shows,
+      showRate,
       professionalism: calculateProfessionalismScore(review),
       calls,
       conversations,

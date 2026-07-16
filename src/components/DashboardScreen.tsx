@@ -280,7 +280,8 @@ export default function DashboardScreen({
  const curMins = new Date().getMinutes().toString().padStart(2, '0');
  const currentTimeStr = `${curHours}:${curMins}`;
 
- const upcomingMeetings = events
+ const actionableEvents = events.filter(event => event.status !== 'done');
+ const upcomingMeetings = actionableEvents
  .filter(ev => {
   if (!ev.date) return false;
   if (ev.date > todayStr) return true;
@@ -298,7 +299,7 @@ export default function DashboardScreen({
 
  const recentTwoNotes = notes.slice(0, 2);
  const openLeads = leads.filter(lead => !lead.isDone && lead.status !== 'Ganado' && lead.status !== 'Perdido').length;
- const todayMeetingsCount = events.filter(ev => ev.date === todayStr).length;
+ const todayMeetingsCount = actionableEvents.filter(ev => ev.date === todayStr).length;
  const monthlyConversions = chartData.reduce((sum, item) => sum + item.conversions, 0);
  const platformActivities: Activity[] = React.useMemo(() => {
  const generated: Activity[] = [

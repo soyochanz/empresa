@@ -1061,7 +1061,7 @@ export default function ComercialesPanelScreen({
    />
    </div>
    ) : activeView === 'rewards' ? (
-    <SalesRewardsScreen comercial={comercial} comercialesList={comercialesList} finTransactions={finTransactions} events={events} coldLeads={coldLeads} />
+    <SalesRewardsScreen comercial={comercial} comercialesList={comercialesList} finTransactions={finTransactions} events={events} coldLeads={coldLeads} contacts={contacts} />
   ) : activeView === 'training' ? (
    <CommercialTrainingCenter onOpenDocumentation={() => setShowDossierModal(true)} />
   ) : activeView === 'settings' ? (

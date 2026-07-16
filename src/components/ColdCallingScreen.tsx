@@ -91,11 +91,11 @@ interface ColdCallingScreenProps {
  currentComercial?: ComercialAccount | null; // present if Comercial
  onNavigate?: (target: any, transition: any) => void;
  contacts?: ClientContact[];
- onAddContact?: (contact: ClientContact) => void;
- onUpdateContact?: (contact: ClientContact) => void;
- onAddEvent?: (event: CalendarEvent) => void;
+ onAddContact?: (contact: ClientContact) => void | Promise<void>;
+ onUpdateContact?: (contact: ClientContact) => void | Promise<void>;
+ onAddEvent?: (event: CalendarEvent) => void | Promise<void>;
  events?: CalendarEvent[];
- onUpdateEvent?: (event: CalendarEvent) => void;
+ onUpdateEvent?: (event: CalendarEvent) => void | Promise<void>;
  onDeleteEvent?: (id: string) => void;
  onRefreshFinance?: () => void;
  focusLeadId?: string;
@@ -147,6 +147,10 @@ const nachoAdmin = findAdminByName('nacho');
  // Determine role
  const isAdmin = !!currentUser;
  const comercialEmail = currentComercial?.email || '';
+ const isConfiguredCloserAdmin = Boolean(currentUser && carlosAdmin && (
+  currentUser.email.toLowerCase() === carlosAdmin.email.toLowerCase() ||
+  (!!currentUser.id && currentUser.id === carlosAdmin.id)
+ ));
 
  // Active view tab inside Cold Calling Screen
  const [activeTab, setActiveTab] = useState<'leads' | 'tasks' | 'closing' | 'metrics'>('leads');
@@ -248,6 +252,8 @@ const nachoAdmin = findAdminByName('nacho');
  const [postponingClosingLead, setPostponingClosingLead] = useState<ColdCallingLead | null>(null);
  const [postponeClosingDate, setPostponeClosingDate] = useState(() => new Date().toISOString().split('T')[0]);
  const [postponeClosingTime, setPostponeClosingTime] = useState('');
+ const [isPostponingClosing, setIsPostponingClosing] = useState(false);
+ const [savingClosingAnswerLeadId, setSavingClosingAnswerLeadId] = useState<string | null>(null);
  const [deleteConfirmLeadId, setDeleteConfirmLeadId] = useState<string | null>(null);
  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
  const [bulkAssigneeEmail, setBulkAssigneeEmail] = useState('unassigned');
@@ -1299,7 +1305,7 @@ const nachoAdmin = findAdminByName('nacho');
  }, [focusClosingLeadId, coldLeads]);
 
  // Submit Logger Update
- const handleSaveCallLog = (e: React.FormEvent) => {
+ const handleSaveCallLog = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!selectedLeadForCall) return;
 
@@ -1366,15 +1372,19 @@ const nachoAdmin = findAdminByName('nacho');
   callsLog: updatedLogs
  };
 
- onUpdateColdLead(updatedLead);
+ try {
+  await onUpdateColdLead(updatedLead);
 
- if (callScheduled === 'Sí') {
+  if (callScheduled === 'Sí') {
   const crmLead = buildLeadContactFromColdLead({
   ...updatedLead,
   assignedToEmail: selectedLeadForCall.assignedToEmail,
   assignedToName: selectedLeadForCall.assignedToName
   }, currentNotes);
-  onAddContact?.(crmLead);
+   if (!onAddContact || !onAddEvent) {
+    throw new Error('El flujo CRM/Notificaciones no está disponible.');
+   }
+   await onAddContact(crmLead);
 
   const adminAppointment: CalendarEvent = {
   id: `cc_appointment_${selectedLeadForCall.id}`,
@@ -1403,7 +1413,7 @@ const nachoAdmin = findAdminByName('nacho');
   notes: currentNotes
   };
 
-  onAddEvent?.(adminAppointment);
+   await onAddEvent(adminAppointment);
 
   const devIntakeNotification: CalendarEvent = {
    id: `dev_intake_${crmLead.id}`,
@@ -1436,10 +1446,14 @@ const nachoAdmin = findAdminByName('nacho');
    notes: crmLead.devNotes
   };
 
-  onAddEvent?.(devIntakeNotification);
- }
+   await onAddEvent(devIntakeNotification);
+  }
 
- setSelectedLeadForCall(null);
+  setSelectedLeadForCall(null);
+ } catch (error) {
+  console.error('No se pudo completar la transferencia automática del lead:', error);
+  alert('No se pudo completar toda la transferencia. La ficha seguirá abierta para que puedas volver a intentarlo.');
+ }
  };
 
  // Archive / Unarchive toggle
@@ -1590,6 +1604,7 @@ const nachoAdmin = findAdminByName('nacho');
  const dayCallbackLeads = coldLeads.filter(lead => {
  if (lead.archived) return false;
  if (!isAdmin && lead.assignedToEmail.toLowerCase() !== comercialEmail.toLowerCase()) return false;
+ if (isConfiguredCloserAdmin && lead.assignedToEmail.toLowerCase() !== currentUser?.email.toLowerCase()) return false;
  return lead.callbackScheduled === 'Llamar más tarde' && lead.callbackDate === selectedTaskDate;
  });
 
@@ -1602,6 +1617,7 @@ const nachoAdmin = findAdminByName('nacho');
  const todayCallbackLeads = coldLeads.filter(lead => {
  if (lead.archived) return false;
  if (!isAdmin && lead.assignedToEmail.toLowerCase() !== comercialEmail.toLowerCase()) return false;
+ if (isConfiguredCloserAdmin && lead.assignedToEmail.toLowerCase() !== currentUser?.email.toLowerCase()) return false;
  return lead.callbackScheduled === 'Llamar más tarde' && lead.callbackDate === todayTaskDate;
  });
  const todayTaskNotificationsCount = todayCallbackLeads.length;
@@ -1741,46 +1757,23 @@ const nachoAdmin = findAdminByName('nacho');
  setClosingDrafts(prev => ({ ...prev, [leadId]: { ...(prev[leadId] || {}), ...patch } }));
  };
 
- const saveClosingLead = (
+ const saveClosingLead = async (
   lead: ColdCallingLead,
   forcedStatus?: ClientContact['closingStatus'],
   draftPatch?: Partial<ReturnType<typeof getClosingDraft>>
- ) => {
+ ): Promise<boolean> => {
  if (!onUpdateContact) {
   alert('No hay conexión de actualización CRM disponible para guardar Closing.');
-  return;
+  return false;
  }
  const draft = { ...getClosingDraft(lead), ...(draftPatch || {}) };
  const status = forcedStatus || draft.status || 'Pendiente';
- if (draft.date && draft.time && (draft.date !== lead.callbackDate || draft.time !== lead.callbackTime)) {
+ const appointmentChanged = Boolean(draft.date && draft.time && (draft.date !== lead.callbackDate || draft.time !== lead.callbackTime));
+ if (appointmentChanged) {
   if (isSlotBusy(draft.date, draft.time)) {
   alert('Esa hora ya está ocupada en calendario. Elige otra franja.');
-  return;
+  return false;
   }
-  onUpdateColdLead({ ...lead, callbackDate: draft.date, callbackTime: draft.time });
-  const originalAppointment = events.find(event =>
-   event.id === `cc_appointment_${lead.id}` || event.linkedContactId === `crm_from_${lead.id}`
-  );
-  const rescheduledAppointment: CalendarEvent = {
-  ...(originalAppointment || {}),
-  id: originalAppointment?.id || `cc_reschedule_${lead.id}_${Date.now()}`,
-  title: `Cita reagendada: ${draft.company}`,
-  date: draft.date,
-  time: draft.time,
-  duration: '45m',
-  type: 'Meeting',
-  description: `Reagenda desde Closing para ${draft.company}. Teléfono: ${draft.phone}`,
-  linkedContactId: `crm_from_${lead.id}`,
-  linkedContactName: draft.name,
-  assignedUserId: activeCloser?.id || undefined,
-  assignedUserEmail: activeCloser?.email || 'todos-admins',
-  status: 'pending',
-  color: '#38BDF8',
-  alias: 'Closing Reagendado',
-  isAdminNotification: !activeCloser
-  };
-  if (originalAppointment && onUpdateEvent) onUpdateEvent(rescheduledAppointment);
-  else onAddEvent?.(rescheduledAppointment);
  }
 
  const existing = getClosingContact(lead);
@@ -1811,11 +1804,46 @@ const nachoAdmin = findAdminByName('nacho');
   notes: [base.notes, draft.notes ? `[Closing] ${draft.notes}` : ''].filter(Boolean).join('\n')
  };
 
- if (existing) onUpdateContact(updatedContact);
- else onAddContact?.(updatedContact);
+ try {
+  if (appointmentChanged) {
+   const originalAppointment = events.find(event =>
+    event.id === `cc_appointment_${lead.id}` || event.linkedContactId === `crm_from_${lead.id}`
+   );
+   const originCommercialEmail = lead.closingOriginComercialEmail || existing?.contactedByComercialEmail;
+   const originCommercial = comercialesList.find(comercial => comercial.email.toLowerCase() === originCommercialEmail?.toLowerCase());
+   const rescheduledAppointment: CalendarEvent = {
+    ...(originalAppointment || {}),
+    id: originalAppointment?.id || `cc_reschedule_${lead.id}`,
+    title: `Cita reagendada: ${draft.company}`,
+    date: draft.date,
+    time: draft.time,
+    duration: '45m',
+    type: 'Meeting',
+    description: `Reagenda desde Closing para ${draft.company}. Teléfono: ${draft.phone}`,
+    linkedContactId: `crm_from_${lead.id}`,
+    linkedContactName: draft.name,
+    linkedContactIds: [`crm_from_${lead.id}`],
+    assignedUserId: activeCloser?.id || undefined,
+    assignedUserEmail: activeCloser?.email || 'todos-admins',
+    assignedUserEmails: activeCloser?.email ? [activeCloser.email] : ['todos-admins'],
+    comercialId: originalAppointment?.comercialId || originCommercial?.id,
+    status: 'pending',
+    color: '#38BDF8',
+    alias: 'Closing Reagendado',
+    isAdminNotification: !activeCloser
+   };
+   if (originalAppointment && onUpdateEvent) await onUpdateEvent(rescheduledAppointment);
+   else if (onAddEvent) await onAddEvent(rescheduledAppointment);
+   else throw new Error('No hay conexión con el calendario del closer.');
+   await onUpdateColdLead({ ...lead, callbackDate: draft.date, callbackTime: draft.time });
+  }
 
- if (status === 'Cerrado') {
-  onAddEvent?.({
+  if (existing) await onUpdateContact(updatedContact);
+  else if (onAddContact) await onAddContact(updatedContact);
+  else throw new Error('No hay conexión para crear el lead en CRM.');
+
+  if (status === 'Cerrado' && existing?.closingStatus !== 'Cerrado') {
+   await onAddEvent?.({
   id: `web_needed_${updatedContact.id}_${Date.now()}`,
   title: `Web pendiente: ${updatedContact.company}`,
   date: new Date().toISOString().split('T')[0],
@@ -1834,8 +1862,25 @@ const nachoAdmin = findAdminByName('nacho');
   alias: 'Falta Web',
   isAdminNotification: !nachoAdmin,
   notes: draft.notes
-  });
+   });
+  }
+  return true;
+ } catch (error) {
+  console.error('Could not save closer lead:', error);
+  alert(error instanceof Error ? error.message : 'No se pudo guardar la ficha del closer. Inténtalo de nuevo.');
+  return false;
  }
+ };
+
+ const toggleClosingAnswered = async (lead: ColdCallingLead, value: boolean) => {
+  if (savingClosingAnswerLeadId) return;
+  const current = getClosingDraft(lead).answered;
+  const next = current === value ? undefined : value;
+  updateClosingDraft(lead.id, { answered: next });
+  setSavingClosingAnswerLeadId(lead.id);
+  const saved = await saveClosingLead(lead, undefined, { answered: next });
+  if (!saved) updateClosingDraft(lead.id, { answered: current });
+  setSavingClosingAnswerLeadId(null);
  };
 
  const postponeClosingLead = (lead: ColdCallingLead) => {
@@ -1844,7 +1889,7 @@ const nachoAdmin = findAdminByName('nacho');
   setPostponeClosingTime('');
  };
 
- const confirmPostponeClosingLead = () => {
+ const confirmPostponeClosingLead = async () => {
   if (!postponingClosingLead || !postponeClosingDate || !postponeClosingTime) return;
   if (postponeClosingDate === postponingClosingLead.callbackDate && postponeClosingTime === postponingClosingLead.callbackTime) {
    alert('Selecciona una fecha u hora diferente antes de posponer.');
@@ -1855,9 +1900,15 @@ const nachoAdmin = findAdminByName('nacho');
    alert(`La franja ${postponeClosingTime} está ocupada por “${conflict.title}”.`);
    return;
   }
-  updateClosingDraft(postponingClosingLead.id, { date: postponeClosingDate, time: postponeClosingTime });
-  saveClosingLead(postponingClosingLead, 'Pendiente', { date: postponeClosingDate, time: postponeClosingTime });
-  setPostponingClosingLead(null);
+  setIsPostponingClosing(true);
+  const lead = postponingClosingLead;
+  const saved = await saveClosingLead(lead, 'Pendiente', { date: postponeClosingDate, time: postponeClosingTime });
+  if (saved) {
+   updateClosingDraft(lead.id, { date: postponeClosingDate, time: postponeClosingTime });
+   setClosingScope('all');
+   setPostponingClosingLead(null);
+  }
+  setIsPostponingClosing(false);
  };
 
  // Update a private task/event
@@ -3922,6 +3973,8 @@ const nachoAdmin = findAdminByName('nacho');
     const draft = getClosingDraft(lead);
     const contact = getClosingContact(lead);
     const status = draft.status || 'Pendiente';
+    const originCommercialName = contact?.contactedByComercialName || lead.closingOriginComercialName || lead.assignedToName || 'Sin identificar';
+    const originCommercialEmail = contact?.contactedByComercialEmail || lead.closingOriginComercialEmail || '';
     const statusClass = status === 'Cerrado' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25' : status === 'Perdido' ? 'bg-rose-500/15 text-rose-300 border-rose-500/25' : 'bg-amber-500/15 text-amber-300 border-amber-500/25';
     return (
      <div key={lead.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 shadow-xl shadow-black/15 space-y-4">
@@ -3930,6 +3983,10 @@ const nachoAdmin = findAdminByName('nacho');
       <div className="flex items-center gap-2 flex-wrap">
        <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wider ${statusClass}`}>{status}</span>
        <span className="px-2 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-[9px] text-cyan-300 font-mono">{activeCloser?.name || 'Closer'} closer</span>
+       <span title={originCommercialEmail || undefined} className="inline-flex items-center gap-2 rounded-lg border border-violet-300/30 bg-violet-500/15 px-2.5 py-1.5 text-violet-100 shadow-[0_0_20px_rgba(139,92,246,.08)]">
+        <Users className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+        <span><span className="block text-[7px] font-black uppercase tracking-[.16em] text-violet-400">Comercial de origen</span><strong className="block text-[10px]">{originCommercialName}</strong>{originCommercialEmail && <span className="block text-[8px] font-normal text-violet-300/70">{originCommercialEmail}</span>}</span>
+       </span>
       </div>
       <h4 className="text-lg font-black text-white mt-2 truncate">{draft.company}</h4>
       <p className="text-xs text-slate-400 truncate">{draft.name} · {draft.phone}</p>
@@ -3950,8 +4007,8 @@ const nachoAdmin = findAdminByName('nacho');
           <p className="mt-1 text-[10px] text-slate-500">Solo una cita agendada marcada como Sí por el closer cuenta como Show.</p>
          </div>
          <div className="grid grid-cols-2 gap-2">
-          <button type="button" disabled={isClosingReadOnly} onClick={() => updateClosingDraft(lead.id, { answered: true })} className={`rounded-xl border px-4 py-2 text-[10px] font-black transition disabled:cursor-not-allowed ${draft.answered === true ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-200' : 'border-white/10 bg-white/[0.03] text-slate-400'}`}>Sí</button>
-          <button type="button" disabled={isClosingReadOnly} onClick={() => updateClosingDraft(lead.id, { answered: false })} className={`rounded-xl border px-4 py-2 text-[10px] font-black transition disabled:cursor-not-allowed ${draft.answered === false ? 'border-rose-400/40 bg-rose-500/20 text-rose-200' : 'border-white/10 bg-white/[0.03] text-slate-400'}`}>No</button>
+          <button type="button" disabled={isClosingReadOnly || savingClosingAnswerLeadId === lead.id} onClick={() => void toggleClosingAnswered(lead, true)} className={`rounded-xl border px-4 py-2 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${draft.answered === true ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-200' : 'border-white/10 bg-white/[0.03] text-slate-400'}`}>Sí</button>
+          <button type="button" disabled={isClosingReadOnly || savingClosingAnswerLeadId === lead.id} onClick={() => void toggleClosingAnswered(lead, false)} className={`rounded-xl border px-4 py-2 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${draft.answered === false ? 'border-rose-400/40 bg-rose-500/20 text-rose-200' : 'border-white/10 bg-white/[0.03] text-slate-400'}`}>No</button>
          </div>
         </div>
        </div>
@@ -5188,7 +5245,7 @@ const nachoAdmin = findAdminByName('nacho');
       <h3 className="mt-2 text-2xl font-black text-white">Posponer cita</h3>
       <p className="mt-1 text-xs text-slate-400">Selecciona una nueva fecha para <strong className="text-slate-200">{postponingClosingLead.businessName}</strong>. Las horas ocupadas de Carlos aparecen en rojo.</p>
      </div>
-     <button type="button" onClick={() => setPostponingClosingLead(null)} className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"><X className="h-4 w-4"/></button>
+     <button type="button" disabled={isPostponingClosing} onClick={() => setPostponingClosingLead(null)} className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-40"><X className="h-4 w-4"/></button>
     </div>
 
     <div className="space-y-6 p-6 sm:p-7">
@@ -5218,8 +5275,8 @@ const nachoAdmin = findAdminByName('nacho');
      </div>
 
      <div className="flex flex-col-reverse gap-3 border-t border-white/[0.06] pt-5 sm:flex-row sm:justify-end">
-      <button type="button" onClick={() => setPostponingClosingLead(null)} className="rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-3 text-xs font-black text-slate-400 transition hover:bg-white/[0.07] hover:text-white">Cancelar</button>
-      <button type="button" disabled={!postponeClosingDate || !postponeClosingTime} onClick={confirmPostponeClosingLead} className="rounded-2xl bg-amber-300 px-5 py-3 text-xs font-black text-slate-950 shadow-[0_14px_36px_rgba(252,211,77,.16)] transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-35">Confirmar nueva cita</button>
+      <button type="button" disabled={isPostponingClosing} onClick={() => setPostponingClosingLead(null)} className="rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-3 text-xs font-black text-slate-400 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-40">Cancelar</button>
+      <button type="button" disabled={!postponeClosingDate || !postponeClosingTime || isPostponingClosing} onClick={() => void confirmPostponeClosingLead()} className="rounded-2xl bg-amber-300 px-5 py-3 text-xs font-black text-slate-950 shadow-[0_14px_36px_rgba(252,211,77,.16)] transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-35">{isPostponingClosing ? 'Guardando…' : 'Confirmar nueva cita'}</button>
      </div>
     </div>
    </div>

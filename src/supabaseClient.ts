@@ -1757,6 +1757,15 @@ export const db = {
  invalidateCache('events');
  },
 
+ async upsertEvent(event: CalendarEvent, userId?: string): Promise<void> {
+  const serialized = this.serializeEventMetadata(event);
+  const { status, parentEventId, ...cleanEvent } = serialized;
+  const payload = { ...cleanEvent, user_id: userId || null };
+  const { error } = await supabase.from('events').upsert(payload, { onConflict: 'id' });
+  if (error) throw error;
+  invalidateCache('events');
+ },
+
  async updateEvent(event: CalendarEvent, userId?: string): Promise<void> {
  const serialized = this.serializeEventMetadata(event);
  // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
