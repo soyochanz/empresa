@@ -88,6 +88,19 @@ const getCallbackTimestamp = (lead: ColdCallingLead) => {
  return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
 };
 
+const getLocalDateKey = (date = new Date()) => {
+ const year = date.getFullYear();
+ const month = String(date.getMonth() + 1).padStart(2, '0');
+ const day = String(date.getDate()).padStart(2, '0');
+ return `${year}-${month}-${day}`;
+};
+
+const getFollowUpSection = (lead: ColdCallingLead, todayKey: string): 'today' | 'upcoming' | 'overdue' => {
+ if (lead.callbackDate === todayKey) return 'today';
+ if (lead.callbackDate && lead.callbackDate < todayKey) return 'overdue';
+ return 'upcoming';
+};
+
 const isOwnWebsite = (website?: string) => {
  if (!website?.trim()) return false;
  try {
@@ -1137,6 +1150,8 @@ const nachoAdmin = findAdminByName('nacho');
  updateLeadCallsLog(lead, updatedLogs);
  };
 
+ const postponedTodayKey = getLocalDateKey();
+
  // Filtering leads based on permissions and filters
  const visibleLeads = coldLeads.filter(lead => {
  const myEmail = (currentUser?.email || currentComercial?.email || '').toLowerCase();
@@ -1151,16 +1166,17 @@ const nachoAdmin = findAdminByName('nacho');
   return false;
  }
 
- // List modes: active, postponed, archived.
+ // List modes: general prospects, managed/rescheduled prospects, archived.
+ // A rescheduled prospect stays out of the general inbox even after its
+ // callback time has passed. It only leaves this view when its status changes.
  const isPostponed = lead.callbackScheduled === 'Llamar más tarde';
- const isPostponedDue = isPostponed && getCallbackTimestamp(lead) <= filterNow;
  const isAppointment = lead.callbackScheduled === 'Sí';
  if (showArchived) {
   if (!lead.archived && !isAppointment) return false;
  } else if (showPostponed) {
-  if (lead.archived || !isPostponed || isPostponedDue) return false;
+  if (lead.archived || !isPostponed) return false;
  } else {
-  if (lead.archived || (isPostponed && !isPostponedDue) || isAppointment) return false;
+  if (lead.archived || isPostponed || isAppointment) return false;
  }
 
  // Fast search filter
@@ -1186,16 +1202,33 @@ const nachoAdmin = findAdminByName('nacho');
 
  return matchesSearch && matchesTemp && matchesAssigned && matchesGroup;
  }).sort((a, b) => {
+ if (showPostponed) {
+  const sectionOrder = { today: 0, upcoming: 1, overdue: 2 } as const;
+  const aSection = getFollowUpSection(a, postponedTodayKey);
+  const bSection = getFollowUpSection(b, postponedTodayKey);
+  if (aSection !== bSection) return sectionOrder[aSection] - sectionOrder[bSection];
+ }
  const aCallback = getCallbackTimestamp(a);
  const bCallback = getCallbackTimestamp(b);
- if (!showPostponed) {
-  const aDue = a.callbackScheduled === 'Llamar más tarde' && aCallback <= filterNow;
-  const bDue = b.callbackScheduled === 'Llamar más tarde' && bCallback <= filterNow;
-  if (aDue !== bDue) return aDue ? -1 : 1;
- }
  if (!Number.isFinite(aCallback) && !Number.isFinite(bCallback)) return 0;
+ if (showPostponed && getFollowUpSection(a, postponedTodayKey) === 'overdue' && getFollowUpSection(b, postponedTodayKey) === 'overdue') {
+  return bCallback - aCallback;
+ }
  return aCallback - bCallback;
  });
+
+ const todayManagedProspectsCount = coldLeads.filter(lead => {
+  const myEmail = (currentUser?.email || currentComercial?.email || '').toLowerCase();
+  if (lead.archived || lead.callbackScheduled !== 'Llamar más tarde') return false;
+  if (lead.callbackDate !== postponedTodayKey) return false;
+  if (currentComercial && lead.assignedToEmail.toLowerCase() !== myEmail) return false;
+  if (showOnlySelf && lead.assignedToEmail.toLowerCase() !== myEmail) return false;
+  if (isAdmin && assignedFilter !== 'todos' && lead.assignedToEmail !== assignedFilter) return false;
+  if (currentComercial && groupFilter !== 'all') {
+   if (groupFilter === 'ungrouped' ? !!lead.prospectGroupId : lead.prospectGroupId !== groupFilter) return false;
+  }
+  return true;
+ }).length;
 
  const visibleLeadIds = visibleLeads.map(lead => lead.id);
  const allVisibleSelected = visibleLeadIds.length > 0 && visibleLeadIds.every(id => selectedLeadIds.includes(id));
@@ -1809,6 +1842,9 @@ const nachoAdmin = findAdminByName('nacho');
  const todayClosingKey = new Date().toISOString().split('T')[0];
  const isClosingReadOnly = !!currentComercial;
  const openClosingLeads = closingLeads.filter(lead => {
+ // Keep the card mounted while the admin is using it, even if a realtime
+ // update changes its status and it no longer matches the current filter.
+ if (lead.id === expandedClosingLeadId) return true;
  if (isClosingReadOnly) return true;
  const contact = getClosingContact(lead);
  const status = closingDrafts[lead.id]?.status || contact?.closingStatus || 'Pendiente';
@@ -1816,7 +1852,7 @@ const nachoAdmin = findAdminByName('nacho');
  });
  const visibleClosingLeads = isClosingReadOnly
   ? openClosingLeads
-  : openClosingLeads.filter(lead => closingScope === 'all' || lead.callbackDate === todayClosingKey);
+  : openClosingLeads.filter(lead => lead.id === expandedClosingLeadId || closingScope === 'all' || lead.callbackDate === todayClosingKey);
  const todayClosingCount = closingLeads.filter(lead => {
   const contact = getClosingContact(lead);
   const status = closingDrafts[lead.id]?.status || contact?.closingStatus || 'Pendiente';
@@ -2321,22 +2357,38 @@ const nachoAdmin = findAdminByName('nacho');
     </button>
     )}
 
-    {/* Archived toggle */}
+    {/* Prospect inbox tabs */}
     <button
     onClick={() => {
-     const next = !showPostponed;
-     setShowPostponed(next);
-     if (next) setShowArchived(false);
+     setShowPostponed(false);
+     setShowArchived(false);
+    }}
+    className={`p-2 rounded-xl border font-bold transition-all flex items-center justify-center gap-1 bg-slate-950 cursor-pointer ${
+     !showPostponed && !showArchived
+      ? 'border-cyan-500 text-cyan-300 bg-cyan-600/5'
+      : 'border-white/5 text-slate-400 hover:text-white'
+    }`}
+    title="Ver prospectos generales"
+    >
+    <Users className="w-3.5 h-3.5" />
+    <span className="text-[10px] uppercase font-mono tracking-wider">Generales</span>
+    </button>
+
+    <button
+    onClick={() => {
+     setShowPostponed(true);
+     setShowArchived(false);
     }}
     className={`p-2 rounded-xl border font-bold transition-all flex items-center justify-center gap-1 bg-slate-950 cursor-pointer ${
      showPostponed ?
       'border-amber-500 text-amber-300 bg-amber-600/5'
      : 'border-white/5 text-slate-400 hover:text-white'
     }`}
-    title="Ver llamadas pospuestas"
+    title="Ver prospectos reagendados que siguen en gestión"
     >
     <Clock className="w-3.5 h-3.5" />
-    <span className="text-[10px] uppercase font-mono tracking-wider">Pospuestos</span>
+    <span className="text-[10px] uppercase font-mono tracking-wider">Reagendados / En gestión</span>
+    {todayManagedProspectsCount > 0 && <span className="min-w-5 rounded-full bg-amber-400 px-1.5 py-0.5 text-center text-[9px] font-black text-slate-950">{todayManagedProspectsCount}</span>}
     </button>
 
     <button
@@ -2454,7 +2506,7 @@ const nachoAdmin = findAdminByName('nacho');
     </div>
 
     {/* LIST ROWS */}
-    {visibleLeads.map(lead => {
+    {visibleLeads.map((lead, leadIndex) => {
     
     // Styling corresponding to visual temperature
     let tempBadge = '';
@@ -2472,10 +2524,21 @@ const nachoAdmin = findAdminByName('nacho');
     const isAdminLockedAppointment = lead.archived && lead.callbackScheduled === 'Sí';
     const lockedForComercial = !isAdmin && isAdminLockedAppointment;
     const callbackIsDue = lead.callbackScheduled === 'Llamar más tarde' && getCallbackTimestamp(lead) <= filterNow;
+    const followUpSection = getFollowUpSection(lead, postponedTodayKey);
+    const previousFollowUpSection = leadIndex > 0 ? getFollowUpSection(visibleLeads[leadIndex - 1], postponedTodayKey) : null;
+    const showFollowUpSection = showPostponed && followUpSection !== previousFollowUpSection;
+    const followUpSectionLabel = followUpSection === 'today' ? 'Hoy' : followUpSection === 'overdue' ? 'Vencidos' : 'Próximos';
 
     return (
+     <React.Fragment key={lead.id}>
+     {showFollowUpSection && (
+      <div className="flex items-center gap-3 bg-[#080b12] px-5 py-3 sm:px-6">
+       <span className={`h-2 w-2 rounded-full ${followUpSection === 'today' ? 'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,.65)]' : followUpSection === 'overdue' ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,.45)]' : 'bg-cyan-400'}`} />
+       <span className={`text-[10px] font-black uppercase tracking-[0.22em] ${followUpSection === 'overdue' ? 'text-rose-300' : 'text-slate-200'}`}>{followUpSectionLabel}</span>
+       <span className="h-px flex-1 bg-white/10" />
+      </div>
+     )}
      <div 
-     key={lead.id}
      className={`grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 px-5 py-4 sm:px-6 items-center text-left transition duration-200 ${bgStyle} ${lead.archived ? 'opacity-65 border-dashed border-red-500/10' : ''}`}
      >
      <div className="col-span-1 flex items-center gap-2">
@@ -2869,13 +2932,14 @@ const nachoAdmin = findAdminByName('nacho');
      )}
 
      </div>
+     </React.Fragment>
     );
     })}
    </div>
    ) : (
    /* GRID VIEW (MOSAICO) */
    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-   {visibleLeads.map(lead => {
+   {visibleLeads.map((lead, leadIndex) => {
     
     // Styling corresponding to visual temperature (Aesthetic colors)
     let tempBadge = '';
@@ -2893,10 +2957,21 @@ const nachoAdmin = findAdminByName('nacho');
     const callbackIsDue = lead.callbackScheduled === 'Llamar más tarde' && getCallbackTimestamp(lead) <= filterNow;
     const isAdminLockedAppointment = lead.archived && lead.callbackScheduled === 'Sí';
     const lockedForComercial = !isAdmin && isAdminLockedAppointment;
+    const followUpSection = getFollowUpSection(lead, postponedTodayKey);
+    const previousFollowUpSection = leadIndex > 0 ? getFollowUpSection(visibleLeads[leadIndex - 1], postponedTodayKey) : null;
+    const showFollowUpSection = showPostponed && followUpSection !== previousFollowUpSection;
+    const followUpSectionLabel = followUpSection === 'today' ? 'Hoy' : followUpSection === 'overdue' ? 'Vencidos' : 'Próximos';
 
     return (
+     <React.Fragment key={lead.id}>
+     {showFollowUpSection && (
+      <div className="col-span-full flex items-center gap-3 rounded-xl border border-white/5 bg-[#080b12] px-4 py-3">
+       <span className={`h-2 w-2 rounded-full ${followUpSection === 'today' ? 'bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,.65)]' : followUpSection === 'overdue' ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,.45)]' : 'bg-cyan-400'}`} />
+       <span className={`text-[10px] font-black uppercase tracking-[0.22em] ${followUpSection === 'overdue' ? 'text-rose-300' : 'text-slate-200'}`}>{followUpSectionLabel}</span>
+       <span className="h-px flex-1 bg-white/10" />
+      </div>
+     )}
      <div 
-     key={lead.id} 
      className={`border ${lead.archived ? 'border-dashed border-red-500/20' : 'border-white/5'} ${bgStyle} p-5 rounded-2.5xl transition-all duration-200 flex flex-col justify-between text-left`}
      >
      <div>
@@ -3298,6 +3373,7 @@ const nachoAdmin = findAdminByName('nacho');
      )}
 
      </div>
+     </React.Fragment>
     );
     })}
    </div>
