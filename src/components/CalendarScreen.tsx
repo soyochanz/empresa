@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CalendarEvent, ClientContact, Screen, Note } from '../types';
 import { REGISTERED_USERS, PanelUser } from '../mockData';
+import ProductNeedsSummary from './ProductNeedsSummary';
 import {
  Plus, 
  ChevronLeft, 
@@ -16,7 +17,8 @@ import {
  ChevronRight as ChevronRightIcon,
  X,
  Calendar,
- Archive
+ Archive,
+ Edit3
 } from 'lucide-react';
 
 const getDurationMinutes = (duration?: string) => {
@@ -25,6 +27,17 @@ const getDurationMinutes = (duration?: string) => {
  if (raw.endsWith('h')) return Math.max(15, Math.round((Number.parseFloat(raw) || 1) * 60));
  return Math.max(15, Number.parseInt(raw, 10) || 60);
 };
+
+const getEventTimeInMinutes = (time?: string) => {
+ const match = (time || '').match(/^(\d{1,2}):(\d{2})/);
+ if (!match) return Number.POSITIVE_INFINITY;
+ const hours = Number(match[1]);
+ const minutes = Number(match[2]);
+ return Number.isFinite(hours) && Number.isFinite(minutes) ? (hours * 60) + minutes : Number.POSITIVE_INFINITY;
+};
+
+const compareEventsByTime = (a: CalendarEvent, b: CalendarEvent) =>
+ getEventTimeInMinutes(a.time) - getEventTimeInMinutes(b.time) || a.title.localeCompare(b.title, 'es');
 
 interface CalendarScreenProps {
  events: CalendarEvent[];
@@ -140,6 +153,8 @@ export default function CalendarScreen({
  const [editContactIds, setEditContactIds] = useState<string[]>([]);
  const [editNoteIds, setEditNoteIds] = useState<string[]>([]);
  const [editAssignedUserEmail, setEditAssignedUserEmail] = useState('');
+ const [editStatus, setEditStatus] = useState<'pending' | 'done' | 'postponed'>('pending');
+ const [editColor, setEditColor] = useState('#8B5CF6');
 
  // Array of linked contacts and notes IDs
  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
@@ -248,6 +263,8 @@ export default function CalendarScreen({
  setEditContactIds(selectedEvent.linkedContactIds || (selectedEvent.linkedContactId ? [selectedEvent.linkedContactId] : []));
  setEditNoteIds(selectedEvent.linkedNoteIds || []);
  setEditAssignedUserEmail(selectedEvent.assignedUserEmail || '');
+ setEditStatus(selectedEvent.status || 'pending');
+ setEditColor(selectedEvent.color || '#8B5CF6');
  setContactSearch('');
  setNoteSearch('');
  setShowEditModal(true);
@@ -274,7 +291,10 @@ export default function CalendarScreen({
   linkedContactIds: editContactIds,
   linkedNoteIds: editNoteIds,
   assignedUserEmail: editAssignedUserEmail || undefined,
+  assignedUserEmails: editAssignedUserEmail ? [editAssignedUserEmail] : [],
   assignedUserId: matchedUser ? matchedUser.id : undefined,
+  status: editStatus,
+  color: editColor,
  };
 
  setIsUpdatingEvent(true);
@@ -318,7 +338,7 @@ export default function CalendarScreen({
  const isArchived = archivedEventIds.includes(ev.id);
  if (isArchived && !showArchivedEvents) return false;
  return matchesDate;
- });
+ }).sort(compareEventsByTime);
 
  const getEventsForHour = (hourStr: string) => {
  const hr = parseInt(hourStr.split(':')[0], 10);
@@ -497,7 +517,7 @@ export default function CalendarScreen({
      const isArchived = archivedEventIds.includes(ev.id);
      if (isArchived && !showArchivedEvents) return false;
      return matchesDate;
-    });
+    }).sort(compareEventsByTime);
 
     const todayRaw = new Date();
     const isToday = 
@@ -694,13 +714,7 @@ export default function CalendarScreen({
          ) : (
           <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed font-light">{ev.description || 'Sin descripción.'}</p>
          )}
-         {isDevIntake && (devProducts.length > 0 || devOtherProduct) && (
-          <div className="flex flex-wrap items-center gap-1.5">
-           <span className="mr-1 text-[8px] font-black uppercase tracking-wider text-slate-500">Productos</span>
-           {devProducts.map(product => <span key={product} className="rounded-lg border border-cyan-300/15 bg-cyan-400/[0.08] px-2 py-1 text-[9px] font-bold text-cyan-100">{product}</span>)}
-           {devOtherProduct && <span className="rounded-lg border border-violet-300/15 bg-violet-400/[0.08] px-2 py-1 text-[9px] font-bold text-violet-100">{devOtherProduct}</span>}
-          </div>
-         )}
+         {isDevIntake && <ProductNeedsSummary compact products={devProducts} otherDetail={devOtherProduct} />}
          {isDevIntake && getDetail('Nota') && <p className="break-words rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-[10px] leading-4 text-slate-400"><span className="font-bold text-slate-300">Nota: </span>{getDetail('Nota')}</p>}
          </div>
 
@@ -798,7 +812,7 @@ export default function CalendarScreen({
   {/* Right Side Panel: Day Details Panel Inspector */}
   <aside 
   id="detailPanel" 
-  className="w-[340px] bg-white/5 backdrop-blur-xl rounded-3xl p-6 flex flex-col border border-white/10 transition-all duration-300 shadow-2xl shadow-black/10"
+  className="h-full w-[340px] overflow-y-auto bg-white/5 backdrop-blur-xl rounded-3xl p-6 flex flex-col border border-white/10 transition-all duration-300 shadow-2xl shadow-black/10 scrollbar-thin"
   >
   {selectedEvent ? (
    <div className="flex-1 flex flex-col justify-between">
@@ -824,8 +838,16 @@ export default function CalendarScreen({
      </span>
      )}
     </div>
-    <div className="flex items-center gap-1.5">
-     <button 
+     <div className="flex items-center gap-1.5">
+      <button
+      onClick={handleOpenEditModal}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-400/20 bg-blue-500/10 px-2 py-1.5 text-[9px] font-bold text-blue-200 transition hover:bg-blue-500/20"
+      title="Editar únicamente esta cita"
+      >
+      <Edit3 className="h-3.5 w-3.5" />
+      <span>Editar</span>
+      </button>
+      <button
      onClick={() => toggleArchiveEvent(selectedEvent.id)}
      className="p-1 rounded-lg hover:bg-white/5 transition cursor-pointer"
      title={archivedEventIds.includes(selectedEvent.id) ? "Desarchivar Evento" : "Archivar Evento"}
@@ -1633,12 +1655,12 @@ export default function CalendarScreen({
   {showEditModal && selectedEvent && (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditModal(false)} />
-   <div className="relative bg-[#111827]/95 backdrop-blur-3xl border border-white/15 rounded-3xl p-6 shadow-2xl shadow-black/50 max-w-md w-full animate-in zoom-in-95 duration-200 text-slate-300 overflow-y-auto max-h-[90vh] scrollbar-thin">
+    <div className="relative bg-[#111827]/95 backdrop-blur-3xl border border-white/15 rounded-3xl p-6 shadow-2xl shadow-black/50 max-w-lg w-full animate-in zoom-in-95 duration-200 text-slate-300 overflow-y-auto max-h-[90vh] scrollbar-thin">
    
    <div className="flex justify-between items-center mb-5 border-b border-white/5 pb-2">
     <h3 className="text-lg font-bold text-white flex items-center gap-2">
     <Calendar className="w-5 h-5 text-blue-400" />
-    <span>Edit Calendar Event</span>
+     <span>Editar cita</span>
     </h3>
     <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/5">
     <X className="w-5 h-5" />
@@ -1646,10 +1668,11 @@ export default function CalendarScreen({
    </div>
 
    <form onSubmit={handleUpdateEventSubmit} className="space-y-4">
+    {(selectedEvent.alias === 'Lead Dev desde Cold Calling' || selectedEvent.id.startsWith('dev_intake_')) && <div className="rounded-xl border border-cyan-300/15 bg-cyan-400/[0.06] px-3 py-2.5 text-[10px] leading-4 text-cyan-100"><strong>Edición interna de Dev.</strong> Estos cambios solo afectan a la planificación de Nacho; la cita del closer y la del comercial no se modifican.</div>}
     
     {/* Event Title */}
     <div className="space-y-1">
-    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Event Title</label>
+    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Título</label>
     <input 
      type="text"
      required
@@ -1698,8 +1721,9 @@ export default function CalendarScreen({
     </div>
 
     {/* Event Classification */}
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
     <div className="space-y-1">
-    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Type</label>
+    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Tipo</label>
     <select 
      value={editType}
      onChange={(e) => setEditType(e.target.value as any)}
@@ -1711,6 +1735,22 @@ export default function CalendarScreen({
      <option value="Deadline">Deadline</option>
      <option value="Other">Other</option>
     </select>
+    </div>
+    <div className="space-y-1">
+     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Estado</label>
+     <select value={editStatus} onChange={(e) => setEditStatus(e.target.value as 'pending' | 'done' | 'postponed')} className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500 [color-scheme:dark]">
+      <option value="pending">Pendiente</option>
+      <option value="done">Completada</option>
+      <option value="postponed">Pospuesta</option>
+     </select>
+    </div>
+    <div className="space-y-1">
+     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Color</label>
+     <div className="flex h-[38px] items-center gap-2 rounded-xl border border-white/10 bg-[#060e20] px-2.5">
+      <input type="color" value={editColor} onChange={(e) => setEditColor(e.target.value)} className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0" />
+      <span className="font-mono text-[9px] text-slate-500">{editColor.toUpperCase()}</span>
+     </div>
+    </div>
     </div>
 
     {/* Conditional Meeting URL Field */}
@@ -1730,7 +1770,7 @@ export default function CalendarScreen({
     {/* Assign Panel User dropdown */}
     <div className="space-y-1">
     <div className="flex justify-between items-center mb-0.5">
-     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Assign Panel User</label>
+     <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Responsable</label>
      <button 
      type="button" 
      onClick={() => setShowQuickAddCollab(!showQuickAddCollab)}
@@ -1952,7 +1992,7 @@ export default function CalendarScreen({
 
     {/* Description */}
     <div className="space-y-1">
-    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Description</label>
+    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Descripción</label>
     <textarea 
      rows={2.5}
      placeholder="Describa el objetivo de la reunión..."
@@ -1968,7 +2008,7 @@ export default function CalendarScreen({
      onClick={() => setShowEditModal(false)}
      className="flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs font-semibold text-slate-300 transition-all cursor-pointer"
     >
-     Cancel
+     Cancelar
     </button>
     <button 
      type="submit"

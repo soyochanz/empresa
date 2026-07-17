@@ -32,6 +32,7 @@ import {
  Image
 } from 'lucide-react';
 import DemoSitesCatalog from './DemoSitesCatalog';
+import ProductNeedsSummary from './ProductNeedsSummary';
 import { db } from '../supabaseClient';
 import { DemoWebsiteConfig, DemoWebsiteTemplate, parseDemoWebsiteConfig, TEMPLATE_BANNERS, TEMPLATE_DEFAULTS, TEMPLATE_VARIANTS, HEADER_STYLES, HEADER_BACKGROUNDS } from './WebsitePreviewScreen';
 
@@ -645,18 +646,11 @@ export default function DeveloperHubScreen({
       {contact.devDeadline && (
        <div className="mt-3 flex items-center gap-2 rounded-xl border border-violet-300/15 bg-violet-400/[0.06] px-3 py-2">
         <Calendar className="h-3.5 w-3.5 shrink-0 text-violet-300" />
-        <div className="min-w-0"><span className="block text-[7px] font-black uppercase tracking-[.14em] text-violet-300/70">Cita con closer · Fecha de entrega</span><strong className="mt-0.5 block text-[10px] text-violet-100">{new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${contact.devDeadline}T00:00:00`))}</strong></div>
+        <div className="min-w-0"><span className="block text-[7px] font-black uppercase tracking-[.14em] text-violet-300/70">Referencia de cita con closer</span><strong className="mt-0.5 block text-[10px] text-violet-100">{new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(`${contact.devDeadline}T00:00:00`))}</strong></div>
        </div>
       )}
 
-      {(contact.requestedProducts?.length || contact.requestedProductOther) && (
-       <div className="mt-3 flex flex-wrap gap-1.5">
-        {(contact.requestedProducts || []).map(product => (
-         <span key={product} className="rounded-lg border border-cyan-300/15 bg-cyan-400/[0.07] px-2 py-1 text-[8px] font-bold text-cyan-200">{product}</span>
-        ))}
-        {contact.requestedProductOther && <span className="rounded-lg border border-violet-300/15 bg-violet-400/[0.07] px-2 py-1 text-[8px] font-bold text-violet-200">{contact.requestedProductOther}</span>}
-       </div>
-      )}
+      <ProductNeedsSummary compact className="mt-3" products={contact.requestedProducts || []} otherDetail={contact.requestedProductOther} />
 
       {/* Web/App Requirements Detail */}
       <p className="text-[10px] text-slate-400 mt-2.5 line-clamp-2 italic leading-relaxed">

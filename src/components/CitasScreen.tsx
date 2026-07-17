@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CalendarEvent, ClientContact } from '../types';
+import ProductNeedsSummary from './ProductNeedsSummary';
 import { 
  Calendar, 
  Clock, 
@@ -357,6 +358,9 @@ export default function CitasScreen({
       const products = linkedContact?.requestedProducts?.length
        ? linkedContact.requestedProducts
        : (getDetail('Productos') || '').split(',').map(product => product.trim()).filter(Boolean);
+      const closerReference = getDetail('Cita')?.match(/^(\d{4}-\d{2}-\d{2})(?:\s+(\d{2}:\d{2}))?/);
+      const closerReferenceDate = closerReference?.[1];
+      const closerReferenceTime = closerReference?.[2];
       const statusStyles = item.status === 'done'
        ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-200'
        : item.status === 'postponed'
@@ -381,14 +385,15 @@ export default function CitasScreen({
            </div>
           </div>
 
-          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-           <div className="rounded-xl border border-cyan-300/15 bg-cyan-400/[0.055] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300/65">Cita closer · Entrega</span><strong className="mt-1.5 flex items-center gap-2 text-[11px] text-cyan-100"><Calendar className="h-3.5 w-3.5" />{formatCivilDate(item.date)}</strong><span className="mt-1 flex items-center gap-2 text-[9px] text-cyan-200/70"><Clock className="h-3 w-3" />{item.time || 'Sin hora'}</span></div>
+          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+           <div className="rounded-xl border border-cyan-300/20 bg-cyan-400/[0.07] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300/70">Planificación interna Dev</span><strong className="mt-1.5 flex items-center gap-2 text-[11px] text-cyan-100"><Calendar className="h-3.5 w-3.5" />{formatCivilDate(item.date)}</strong><span className="mt-1 flex items-center gap-2 text-[9px] text-cyan-200/70"><Clock className="h-3 w-3" />{item.time || 'Sin hora'}</span><span className="mt-1.5 block text-[8px] leading-3 text-slate-500">Nacho puede cambiar este horario sin modificar Closing.</span></div>
+           <div className="rounded-xl border border-amber-300/15 bg-amber-400/[0.055] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300/70">Referencia · Cita con closer</span><strong className="mt-1.5 flex items-center gap-2 text-[11px] text-amber-100"><Calendar className="h-3.5 w-3.5" />{closerReferenceDate ? formatCivilDate(closerReferenceDate) : 'Sin referencia'}</strong><span className="mt-1 flex items-center gap-2 text-[9px] text-amber-200/70"><Clock className="h-3 w-3" />{closerReferenceTime || 'Sin hora'}</span></div>
            <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Contacto</span><strong className="mt-1.5 block break-words text-[11px] text-white">{linkedContact?.name || getDetail('Contacto') || item.linkedContactName || 'Sin especificar'}</strong><span className="mt-1 block break-words text-[9px] text-slate-400">{linkedContact?.phone || getDetail('Teléfono') || 'Sin teléfono'}</span></div>
            <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Comercial de origen</span><strong className="mt-1.5 block break-words text-[11px] text-violet-200">{linkedContact?.contactedByComercialName || getDetail('Caller') || 'Sin asignar'}</strong></div>
            <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Responsable Dev</span><strong className="mt-1.5 flex items-center gap-2 break-words text-[11px] text-white"><User className="h-3.5 w-3.5 text-violet-300" />{assignedName}</strong></div>
           </div>
 
-          {(products.length > 0 || linkedContact?.requestedProductOther) && <div className="flex flex-wrap items-center gap-2 px-4 pb-4"><span className="mr-1 text-[8px] font-black uppercase tracking-wider text-slate-500">Productos</span>{products.map(product => <span key={product} className="rounded-lg border border-cyan-300/15 bg-cyan-400/[0.07] px-2.5 py-1 text-[9px] font-bold text-cyan-100">{product}</span>)}{linkedContact?.requestedProductOther && <span className="rounded-lg border border-violet-300/15 bg-violet-400/[0.07] px-2.5 py-1 text-[9px] font-bold text-violet-100">{linkedContact.requestedProductOther}</span>}</div>}
+          <ProductNeedsSummary compact className="mx-4 mb-4" products={products} otherDetail={linkedContact?.requestedProductOther} />
           {getDetail('Nota') && <div className="mx-4 mb-4 rounded-xl border border-white/[0.06] bg-white/[0.025] px-3 py-2.5 text-[10px] leading-5 text-slate-400"><span className="font-bold text-slate-200">Nota comercial: </span><span className="break-words">{getDetail('Nota')}</span></div>}
          </article>
         </td>

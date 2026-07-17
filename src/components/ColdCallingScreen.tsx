@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import { ColdCallingLead, ColdCallingProspectGroup, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
+import ProductNeedsSummary from './ProductNeedsSummary';
 
 const HOURLY_SLOTS = [
  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
@@ -4131,15 +4132,7 @@ const nachoAdmin = findAdminByName('nacho');
       </div>
      </div>
 
-      {(contact?.requestedProducts?.length || lead.requestedProducts?.length) ? (
-       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] px-3 py-2">
-        <span className="text-[8px] font-black uppercase tracking-[.15em] text-cyan-300/70">Productos solicitados</span>
-        {(contact?.requestedProducts || lead.requestedProducts || []).map(product => (
-         <span key={product} className="rounded-lg border border-cyan-300/20 bg-cyan-400/10 px-2 py-1 text-[9px] font-bold text-cyan-100">{product}</span>
-        ))}
-        {(contact?.requestedProductOther || lead.requestedProductOther) && <span className="text-[9px] text-slate-300">{contact?.requestedProductOther || lead.requestedProductOther}</span>}
-       </div>
-      ) : null}
+      <ProductNeedsSummary products={contact?.requestedProducts || lead.requestedProducts || []} otherDetail={contact?.requestedProductOther || lead.requestedProductOther} />
 
       {expandedClosingLeadId === lead.id && <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
