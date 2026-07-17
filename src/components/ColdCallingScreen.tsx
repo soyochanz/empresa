@@ -119,6 +119,7 @@ interface ColdCallingScreenProps {
  onUpdateContact?: (contact: ClientContact) => void | Promise<void>;
  onAddEvent?: (event: CalendarEvent) => void | Promise<void>;
  events?: CalendarEvent[];
+ allEvents?: CalendarEvent[];
  onUpdateEvent?: (event: CalendarEvent) => void | Promise<void>;
  onDeleteEvent?: (id: string) => void;
  onRefreshFinance?: () => void;
@@ -142,6 +143,7 @@ export default function ColdCallingScreen({
  onUpdateContact,
  onAddEvent,
  events = [],
+ allEvents,
  onUpdateEvent,
  onDeleteEvent,
  onRefreshFinance,
@@ -1905,25 +1907,58 @@ const nachoAdmin = findAdminByName('nacho');
    else if (onAddEvent) await onAddEvent(rescheduledAppointment);
    else throw new Error('No hay conexión con el calendario del closer.');
 
-   const devIntakeEvent = events.find(event =>
-    event.id === `dev_intake_crm_from_${lead.id}` ||
-    (event.alias === 'Lead Dev desde Cold Calling' && event.linkedContactId === `crm_from_${lead.id}`)
-   );
-   if (devIntakeEvent && onUpdateEvent) {
-    const updatedDescription = (devIntakeEvent.description || '')
+    // El closer solo recibe sus eventos visibles. Para sincronizar a Nacho hay
+    // que buscar la entrega Dev en el calendario completo, donde está asignada.
+    const synchronizationEvents = allEvents || events;
+    const linkedContactIds = new Set([updatedContact.id, base.id, `crm_from_${lead.id}`]);
+    const devIntakeEvent = synchronizationEvents.find(event =>
+     event.id === `dev_intake_${updatedContact.id}` ||
+     event.id === `dev_intake_crm_from_${lead.id}` ||
+     (event.alias === 'Lead Dev desde Cold Calling' && (
+      (!!event.linkedContactId && linkedContactIds.has(event.linkedContactId)) ||
+      (event.linkedContactIds || []).some(contactId => linkedContactIds.has(contactId))
+     ))
+    );
+    const devDescriptionLines = (devIntakeEvent?.description || '')
      .split('\n')
-     .map(line => line.startsWith('Cita:') ? `Cita: ${draft.date} ${draft.time}` : line)
-     .join('\n');
-    await onUpdateEvent({
-     ...devIntakeEvent,
+     .map(line => line.trim())
+     .filter(Boolean)
+     .filter(line => !line.startsWith('Cita:'));
+    const synchronizedDevEvent: CalendarEvent = {
+     ...(devIntakeEvent || {}),
+     id: devIntakeEvent?.id || `dev_intake_${updatedContact.id}`,
      title: `Entrega Dev para cita: ${draft.company}`,
      date: draft.date,
      time: draft.time,
      duration: '45m',
      type: 'Deadline',
-     description: updatedDescription
-    });
-   }
+     description: [
+      ...(devDescriptionLines.length ? devDescriptionLines : [
+       'Nacho, esta es la fecha de la cita con el closer y el plazo de entrega para Dev.',
+       `Negocio: ${draft.company}`,
+       `Contacto: ${draft.name}`,
+       `Teléfono: ${draft.phone || 'Sin teléfono'}`,
+       `Caller: ${originCommercial.name || 'Sin asignar'}`,
+      ]),
+      `Cita: ${draft.date} ${draft.time}`,
+     ].join('\n'),
+     linkedContactId: updatedContact.id,
+     linkedContactName: updatedContact.name,
+     linkedContactIds: [updatedContact.id],
+     assignedUserId: devIntakeEvent?.assignedUserId || nachoAdmin?.id,
+     assignedUserEmail: devIntakeEvent?.assignedUserEmail || nachoAdmin?.email || 'todos-admins',
+     assignedUserEmails: devIntakeEvent?.assignedUserEmails?.length
+      ? devIntakeEvent.assignedUserEmails
+      : [nachoAdmin?.email || 'todos-admins'],
+     status: devIntakeEvent?.status || 'pending',
+     color: devIntakeEvent?.color || '#8B5CF6',
+     alias: 'Lead Dev desde Cold Calling',
+     isAdminNotification: true,
+     notes: devIntakeEvent?.notes || updatedContact.devNotes || draft.notes,
+    };
+    if (devIntakeEvent && onUpdateEvent) await onUpdateEvent(synchronizedDevEvent);
+    else if (!devIntakeEvent && onAddEvent) await onAddEvent(synchronizedDevEvent);
+    else throw new Error('No hay conexión con el calendario de Dev para sincronizar la cita.');
    await onUpdateColdLead({
     ...lead,
     callbackDate: draft.date,

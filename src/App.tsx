@@ -1952,6 +1952,7 @@ export default function App() {
  };
 
  const handleUpdateEvent = async (updated: CalendarEvent) => {
+ const previousEvent = events.find(event => event.id === updated.id);
  // 1. Optimistic UI update
  setEvents(prev => prev.map(ev => ev.id === updated.id ? updated : ev));
  if (updated.isPrivate && updated.comercialId) upsertPrivateEventCache(updated);
@@ -1962,6 +1963,8 @@ export default function App() {
   await db.updateEvent(updated, currentUser?.id || undefined);
   } catch (err) {
   console.error('Supabase failed to update event:', err);
+  if (previousEvent) setEvents(prev => prev.map(event => event.id === previousEvent.id ? previousEvent : event));
+  throw err;
   }
  }
  };
@@ -2239,9 +2242,10 @@ export default function App() {
    onNavigate={navigateTo}
    onAddEvent={handleAddEvent}
    onUpdateEvent={handleUpdateEvent}
-   onDeleteEvent={handleDeleteEvent}
-   events={adminVisibleEvents}
-   contacts={contacts}
+    onDeleteEvent={handleDeleteEvent}
+    events={adminVisibleEvents}
+    allEvents={events}
+    contacts={contacts}
    onAddContact={handleAddContact}
    onUpdateContact={handleUpdateContact}
    onRefreshFinance={handleRefreshFinance}
