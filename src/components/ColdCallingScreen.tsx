@@ -2036,7 +2036,7 @@ const nachoAdmin = findAdminByName('nacho');
  };
 
  return (
- <div className={`p-6 md:p-8 space-y-6 text-left h-full overflow-y-auto font-sans relative`}>
+ <div className={`${isAdmin ? 'h-full overflow-y-auto' : 'h-auto overflow-visible'} relative space-y-4 p-3 text-left font-sans sm:space-y-6 sm:p-6 md:p-8`}>
   
   {/* Decorative localized glows */}
   <div className="absolute top-[5%] right-[10%] w-[40%] h-[40%] rounded-full bg-violet-600/10 blur-[130px] pointer-events-none" />
@@ -2085,7 +2085,7 @@ const nachoAdmin = findAdminByName('nacho');
   )}
 
   {/* THREE MODULE SECTIONS TAB CONTROLLERS */}
-  <div className="flex gap-1.5 p-1 bg-[#050508]/80 backdrop-blur-md rounded-xl border border-white/5 max-w-2xl relative z-10">
+  <div className="relative z-10 grid max-w-2xl grid-cols-2 gap-1.5 rounded-xl border border-white/5 bg-[#050508]/80 p-1 backdrop-blur-md sm:flex">
   <button
    onClick={() => setActiveTab('leads')}
    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
@@ -2146,7 +2146,7 @@ const nachoAdmin = findAdminByName('nacho');
   </div>
 
   {/* METRICS ROW (SUMMARY PRE-HEADER) */}
-  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+  <div className="relative z-10 grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
   <div className="bg-[#030306] border border-white/5 p-4 rounded-2xl flex flex-col text-left">
    <span className="text-[10px] text-slate-500 uppercase font-mono font-bold tracking-wider">Total Prospectos</span>
    <span className="text-xl font-bold font-mono text-white mt-1">{totalCount}</span>

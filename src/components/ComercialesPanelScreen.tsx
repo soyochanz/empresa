@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
  Users, 
  TrendingUp, 
@@ -69,6 +69,14 @@ const COMMERCIAL_VIEW_PATHS: Record<CommercialView, string> = {
  rewards: '/comerciales/panel/recompensas',
  training: '/comerciales/panel/formacion',
  settings: '/comerciales/panel/ajustes',
+};
+const COMMERCIAL_VIEW_LABELS: Record<CommercialView, string> = {
+ pipeline: 'Overview',
+ calendar: 'Calendario',
+ cold_calling: 'Cold Calling',
+ rewards: 'Recompensas',
+ training: 'Formación',
+ settings: 'Ajustes',
 };
 const getCommercialViewFromPath = (path: string): CommercialView => {
  const normalized = path.replace(/\/+$/, '');
@@ -233,6 +241,7 @@ export default function ComercialesPanelScreen({
 }: ComercialesPanelScreenProps) {
  // Local state
  const [activeView, setActiveView] = useState<CommercialView>(() => getCommercialViewFromPath(window.location.pathname));
+ const mainScrollRef = useRef<HTMLElement>(null);
  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
   const saved = localStorage.getItem('althera_commercial_sidebar_collapsed');
   if (window.innerWidth < 1280) return true;
@@ -252,6 +261,9 @@ export default function ComercialesPanelScreen({
  useEffect(() => {
   localStorage.setItem('althera_commercial_sidebar_collapsed', String(sidebarCollapsed));
  }, [sidebarCollapsed]);
+ useEffect(() => {
+  mainScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+ }, [activeView]);
  const [showMonthlyRecap, setShowMonthlyRecap] = useState(false);
  const [recapStep, setRecapStep] = useState(0);
  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
@@ -833,7 +845,7 @@ export default function ComercialesPanelScreen({
  });
 
  return (
- <div className="h-screen bg-[#030308] text-slate-100 flex flex-col font-sans relative overflow-hidden">
+ <div className="h-[100dvh] min-h-0 bg-[#030308] text-slate-100 flex flex-col font-sans relative overflow-hidden">
   <style>{`@keyframes tierFlow { 0% { background-position: 0% 50%; } 100% { background-position: 220% 50%; } }`}</style>
   
   {/* Elegant glassmorphism and modern gradient overlays */}
@@ -910,10 +922,10 @@ export default function ComercialesPanelScreen({
   )}
 
   {/* VIEWPORT CANVAS */}
-  <main className={`relative min-h-0 w-full flex-1 space-y-6 overflow-y-auto p-4 pb-28 transition-[margin,width] duration-300 sm:p-6 sm:pb-28 lg:p-7 xl:p-9 ${sidebarCollapsed ? 'lg:ml-20 lg:w-[calc(100%_-_5rem)]' : 'lg:ml-64 lg:w-[calc(100%_-_16rem)]'}`}>
+  <main ref={mainScrollRef} className={`relative min-h-0 min-w-0 w-full flex-1 space-y-4 overflow-x-hidden overflow-y-auto overscroll-contain p-3 pb-[calc(7rem+env(safe-area-inset-bottom))] transition-[margin,width] duration-300 sm:space-y-6 sm:p-6 sm:pb-28 lg:p-7 xl:p-9 ${sidebarCollapsed ? 'lg:ml-20 lg:w-[calc(100%_-_5rem)]' : 'lg:ml-64 lg:w-[calc(100%_-_16rem)]'}`}>
   
   {/* WELCOME BANNER WITH ANALYTICS BRIEF */}
-  <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-4">
+  <div className={`${activeView === 'pipeline' ? 'flex' : 'hidden lg:flex'} flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-4`}>
    <div>
    <h2 className="text-2xl font-bold tracking-tight text-white">¡Hola de nuevo, {comercial.name}!</h2>
    <p className="text-xs text-slate-400 mt-1">Este es tu panel centralizado de carteras de clientes rápidos. Sigue tus objetivos de conversión.</p>
@@ -924,7 +936,7 @@ export default function ComercialesPanelScreen({
    </div>
   </div>
 
-  <div className="bg-gradient-to-r from-amber-500/10 via-violet-500/10 to-cyan-500/10 border border-amber-500/15 rounded-2xl p-5 overflow-hidden relative">
+  <div className={`${activeView === 'pipeline' ? 'block' : 'hidden lg:block'} bg-gradient-to-r from-amber-500/10 via-violet-500/10 to-cyan-500/10 border border-amber-500/15 rounded-2xl p-4 sm:p-5 overflow-hidden relative`}>
    <div className="absolute right-3 top-2 sm:right-5 sm:top-3 h-20 w-20 sm:h-24 sm:w-24 flex items-center justify-center">
    <div className="absolute inset-3 rounded-full blur-2xl opacity-25" style={{ backgroundColor: myLegacy.rank.accent }} />
    <img src={myLegacy.rank.asset} alt={`Rango ${myLegacy.rank.name}`} className="relative h-full w-full object-contain drop-shadow-xl" />
@@ -963,23 +975,25 @@ export default function ComercialesPanelScreen({
    </div>
   </div>
 
+  {activeView !== 'pipeline' && <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 lg:hidden"><p className="text-[8px] font-black uppercase tracking-[.22em] text-slate-500">Workspace comercial</p><h2 className="mt-1 text-lg font-black text-white">{COMMERCIAL_VIEW_LABELS[activeView]}</h2></div>}
+
   {/* VIEW MODE TABS FOR COMERCIAL (CRM vs COLD CALLING vs SETTINGS) */}
-  <div className="fixed bottom-3 left-3 right-3 z-50 flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-[#090d13]/95 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-2xl lg:hidden">
+  <div className="fixed bottom-[max(.75rem,env(safe-area-inset-bottom))] left-2 right-2 z-50 grid grid-cols-7 gap-0.5 overflow-hidden rounded-2xl border border-white/10 bg-[#090d13]/95 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-2xl lg:hidden">
    <button
    onClick={() => navigateCommercialView('pipeline')}
-    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+     className={`min-w-0 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'pipeline' ?
      'bg-violet-650/20 text-violet-400 border border-violet-500/30'
      : 'text-slate-400 hover:text-white'
    }`}
    >
    <Layers className="w-3.5 h-3.5" />
-   <span>Pipeline CRM</span>
+    <span>CRM</span>
    </button>
 
    <button
    onClick={() => navigateCommercialView('calendar')}
-    className={`min-w-[58px] flex-1 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+     className={`min-w-0 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'calendar' ? 'bg-lime-300 text-slate-950' : 'text-slate-400 hover:text-white'
    }`}
    >
@@ -989,7 +1003,7 @@ export default function ComercialesPanelScreen({
 
    <button
    onClick={() => navigateCommercialView('training')}
-    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+     className={`min-w-0 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'training' ? 'bg-lime-300 text-slate-950' : 'text-slate-400 hover:text-white'
    }`}
    >
@@ -999,21 +1013,21 @@ export default function ComercialesPanelScreen({
 
    <button
    onClick={() => navigateCommercialView('rewards')}
-    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+     className={`min-w-0 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'rewards' ?
      'bg-amber-500/15 text-amber-300 border border-amber-400/30 shadow-[0_0_18px_rgba(251,191,36,0.08)]'
      : 'text-slate-400 hover:text-amber-300 hover:bg-amber-950/20'
    }`}
    >
    <Trophy className="w-3.5 h-3.5" />
-    <span>Recompensas</span>
+     <span>Rewards</span>
     </button>
 
     <button
     type="button"
     disabled
     aria-label="Legado, próximamente"
-    className="flex min-w-[58px] flex-1 cursor-not-allowed flex-col items-center justify-center gap-1 rounded-xl border border-white/[0.04] px-1 py-2 text-[9px] font-bold text-slate-600"
+    className="flex min-w-0 cursor-not-allowed flex-col items-center justify-center gap-1 rounded-xl border border-white/[0.04] px-0.5 py-2 text-[8px] font-bold text-slate-600"
     >
     <div className="relative"><Award className="h-3.5 w-3.5"/><Lock className="absolute -right-2 -top-1 h-2.5 w-2.5"/></div>
     <span>Legado</span>
@@ -1021,14 +1035,14 @@ export default function ComercialesPanelScreen({
    
    <button
    onClick={() => navigateCommercialView('cold_calling')}
-    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer relative ${
+     className={`min-w-0 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer relative ${
     activeView === 'cold_calling' ?
      'bg-cyan-500/10 text-cyan-300 border border-cyan-400/30 shadow-[0_0_18px_rgba(34,211,238,0.08)]'
      : 'text-slate-400 hover:text-cyan-300 hover:bg-cyan-950/20'
    }`}
    >
    <Snowflake className="w-3.5 h-3.5" />
-   <span>Cold Calling</span>
+    <span className="leading-tight">Cold</span>
    {coldLeads.filter(l => !l.archived && l.assignedToEmail.toLowerCase() === comercial.email.toLowerCase() && l.callbackScheduled === 'Llamar más tarde' && l.callbackDate === new Date().toISOString().split('T')[0]).length > 0 && (
     <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-[9px] text-white font-extrabold flex items-center justify-center rounded-full animate-bounce">
     {coldLeads.filter(l => !l.archived && l.assignedToEmail.toLowerCase() === comercial.email.toLowerCase() && l.callbackScheduled === 'Llamar más tarde' && l.callbackDate === new Date().toISOString().split('T')[0]).length}
@@ -1038,7 +1052,7 @@ export default function ComercialesPanelScreen({
 
    <button
    onClick={() => navigateCommercialView('settings')}
-    className={`min-w-[58px] flex-1 py-2 px-1 rounded-xl text-[9px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+     className={`min-w-0 py-2 px-0.5 rounded-xl text-[8px] font-bold transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
     activeView === 'settings' ?
      'bg-violet-650/20 text-violet-400 border border-violet-500/30'
      : 'text-slate-400 hover:text-white'
@@ -1052,7 +1066,7 @@ export default function ComercialesPanelScreen({
   {activeView === 'calendar' ? (
    <CommercialCalendarWorkspace comercial={comercial} events={events} coldLeads={coldLeads} onAddEvent={onAddEvent} onUpdateEvent={onUpdateEvent} onDeleteEvent={onDeleteEvent} />
   ) : activeView === 'cold_calling' ? (
-   <div className="bg-[#020205]/40 rounded-3xl border border-white/5 overflow-hidden">
+   <div className="min-w-0 overflow-x-hidden rounded-2xl border border-white/5 bg-[#020205]/40 sm:rounded-3xl">
    <ColdCallingScreen
     coldLeads={coldLeads}
     comercialesList={comercialesList}
