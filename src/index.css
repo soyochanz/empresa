@@ -492,3 +492,109 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #BF953F;
 }
+
+/* Commercial workspace theme -------------------------------------------------
+   The commercial area was originally designed entirely with dark Tailwind
+   utilities. This scoped layer provides a complete light counterpart without
+   changing the visual language of the admin or developer workspaces. */
+.commercial-theme-light {
+  color-scheme: light;
+  background: #f4f7fb !important;
+  color: #172033 !important;
+}
+
+.commercial-theme-light aside,
+.commercial-theme-light main {
+  color: #172033;
+}
+
+.commercial-theme-light aside {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border-color: #dbe3ef !important;
+  box-shadow: 12px 0 36px rgba(15, 23, 42, 0.06);
+}
+
+.commercial-theme-light [class*="bg-[#0"],
+.commercial-theme-light [class*="bg-black"],
+.commercial-theme-light .bg-slate-950,
+.commercial-theme-light .bg-slate-900,
+.commercial-theme-light .bg-slate-800 {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+.commercial-theme-light [class*="from-[#0"],
+.commercial-theme-light [class*="via-[#0"],
+.commercial-theme-light [class*="to-[#0"] {
+  background-image: none !important;
+  background-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+.commercial-theme-light [class*="bg-white/["],
+.commercial-theme-light [class*="bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.commercial-theme-light .text-white,
+.commercial-theme-light .text-slate-100,
+.commercial-theme-light .text-slate-200,
+.commercial-theme-light .text-slate-300 {
+  color: #172033 !important;
+}
+
+.commercial-theme-light .text-slate-400,
+.commercial-theme-light .text-slate-500,
+.commercial-theme-light .text-slate-600 {
+  color: #5d6b82 !important;
+}
+
+.commercial-theme-light [class*="border-white"],
+.commercial-theme-light [class*="divide-white"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #dbe3ef !important;
+}
+
+.commercial-theme-light input,
+.commercial-theme-light textarea,
+.commercial-theme-light select {
+  color: #172033 !important;
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color-scheme: light;
+}
+
+.commercial-theme-light input::placeholder,
+.commercial-theme-light textarea::placeholder {
+  color: #8793a7 !important;
+}
+
+.commercial-theme-light option {
+  color: #172033;
+  background: #ffffff;
+}
+
+.commercial-theme-light .shadow-black\/60,
+.commercial-theme-light [class*="shadow-black"] {
+  --tw-shadow-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+.commercial-theme-light .bg-violet-600,
+.commercial-theme-light .bg-cyan-600,
+.commercial-theme-light .bg-blue-600,
+.commercial-theme-light .bg-emerald-600,
+.commercial-theme-light .bg-rose-600 {
+  color: #ffffff !important;
+}
+
+.commercial-theme-light .commercial-theme-dark-control,
+.commercial-theme-light button.bg-slate-800 {
+  background-color: #e8edf5 !important;
+  color: #172033 !important;
+}
+
+.commercial-theme-light ::-webkit-scrollbar-track {
+  background: #eef2f7;
+}
+
+.commercial-theme-light ::-webkit-scrollbar-thumb {
+  background: #c4cfdd;
+  border-color: #aab7c8;
+}

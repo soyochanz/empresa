@@ -39,7 +39,9 @@ import {
  ,AlertTriangle
  ,PanelLeftClose
  ,PanelLeftOpen
-} from 'lucide-react';
+ ,Moon
+ ,Sun
+ } from 'lucide-react';
 import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact, CommercialPresence } from '../types';
 import { db } from '../supabaseClient';
 import ColdCallingScreen from './ColdCallingScreen';
@@ -62,6 +64,7 @@ const safeConfirm = (msg: string): boolean => {
 
 const STRIPE_CONNECT_TEMPORARILY_DISABLED = true;
 type CommercialView = 'pipeline' | 'calendar' | 'cold_calling' | 'rewards' | 'training' | 'settings';
+type CommercialTheme = 'dark' | 'light';
 const COMMERCIAL_VIEW_PATHS: Record<CommercialView, string> = {
  pipeline: '/comerciales/panel',
  calendar: '/comerciales/panel/calendario',
@@ -247,6 +250,9 @@ export default function ComercialesPanelScreen({
   if (window.innerWidth < 1280) return true;
   return saved === 'true';
  });
+ const [commercialTheme, setCommercialTheme] = useState<CommercialTheme>(() =>
+  localStorage.getItem('althera_commercial_theme') === 'light' ? 'light' : 'dark'
+ );
  const navigateCommercialView = (view: CommercialView) => {
   setActiveView(view);
   const nextPath = COMMERCIAL_VIEW_PATHS[view];
@@ -261,6 +267,9 @@ export default function ComercialesPanelScreen({
  useEffect(() => {
   localStorage.setItem('althera_commercial_sidebar_collapsed', String(sidebarCollapsed));
  }, [sidebarCollapsed]);
+ useEffect(() => {
+  localStorage.setItem('althera_commercial_theme', commercialTheme);
+ }, [commercialTheme]);
  useEffect(() => {
   mainScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
  }, [activeView]);
@@ -845,7 +854,7 @@ export default function ComercialesPanelScreen({
  });
 
  return (
- <div className="h-[100dvh] min-h-0 bg-[#030308] text-slate-100 flex flex-col font-sans relative overflow-hidden">
+ <div className={`h-[100dvh] min-h-0 bg-[#030308] text-slate-100 flex flex-col font-sans relative overflow-hidden ${commercialTheme === 'light' ? 'commercial-theme-light' : 'commercial-theme-dark'}`}>
   <style>{`@keyframes tierFlow { 0% { background-position: 0% 50%; } 100% { background-position: 220% 50%; } }`}</style>
   
   {/* Elegant glassmorphism and modern gradient overlays */}
@@ -875,6 +884,10 @@ export default function ComercialesPanelScreen({
     {!sidebarCollapsed && <span>Colapsar menú</span>}
     {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4"/> : <PanelLeftClose className="h-4 w-4"/>}
    </button>
+   <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl border border-white/[0.07] bg-black/20 p-1" aria-label="Tema del panel">
+    <button type="button" onClick={() => setCommercialTheme('dark')} className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[9px] font-black uppercase transition ${commercialTheme === 'dark' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-white'}`}><Moon className="h-3.5 w-3.5"/>Dark</button>
+    <button type="button" onClick={() => setCommercialTheme('light')} className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[9px] font-black uppercase transition ${commercialTheme === 'light' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-white'}`}><Sun className="h-3.5 w-3.5"/>Light</button>
+   </div>
    <div className="mt-8 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-3"><div className="flex items-center gap-3">{comercial.avatarUrl ? <img src={comercial.avatarUrl} alt={`Perfil de ${comercial.name}`} className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" /> : <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-lime-300 to-emerald-500 text-xs font-black text-slate-950">{comercial.name.slice(0,2).toUpperCase()}</div>}<div className="min-w-0"><p className="truncate text-xs font-bold text-white">{comercial.name}</p><p className="truncate text-[9px] text-slate-500">{comercial.email}</p></div></div><div className="mt-3 flex items-center justify-between border-t border-white/5 pt-3"><span className="text-[9px] text-slate-500">Legado {myLegacy.rank.name}</span><strong className="text-[10px] text-violet-300">{myLegacy.total.toLocaleString('es-ES')} PA</strong></div></div>
    <div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 p-2">
     <div className="grid grid-cols-2 gap-1 rounded-xl bg-[#05080d] p-1">
@@ -903,6 +916,7 @@ export default function ComercialesPanelScreen({
   <aside className="fixed inset-y-0 left-0 z-30 hidden w-20 flex-col items-center border-r border-white/[0.07] bg-[#080b10]/95 px-2 py-5 backdrop-blur-2xl lg:flex">
    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-lime-400/20 bg-lime-400/10"><img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="Althera" className="h-8 w-8 object-contain" /></div>
    <button type="button" onClick={() => setSidebarCollapsed(false)} aria-label="Expandir menú lateral" title="Expandir menú" className="mt-5 flex h-9 w-11 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.025] text-slate-400 transition hover:bg-white/[0.06] hover:text-white"><PanelLeftOpen className="h-4 w-4"/></button>
+   <button type="button" onClick={() => setCommercialTheme(current => current === 'dark' ? 'light' : 'dark')} aria-label={`Cambiar a tema ${commercialTheme === 'dark' ? 'claro' : 'oscuro'}`} title={`Tema ${commercialTheme === 'dark' ? 'claro' : 'oscuro'}`} className="mt-2 flex h-9 w-11 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.025] text-slate-400 transition hover:bg-white/[0.06] hover:text-white">{commercialTheme === 'dark' ? <Sun className="h-4 w-4"/> : <Moon className="h-4 w-4"/>}</button>
    <div className="mt-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.07] bg-white/[0.025]" title={`${comercial.name} · ${myLegacy.total.toLocaleString('es-ES')} PA`}>{comercial.avatarUrl ? <img src={comercial.avatarUrl} alt={`Perfil de ${comercial.name}`} className="h-10 w-10 rounded-xl object-cover ring-1 ring-white/10" /> : <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-lime-300 to-emerald-500 text-xs font-black text-slate-950">{comercial.name.slice(0,2).toUpperCase()}</div>}</div>
    <div className="mt-3 grid w-12 grid-cols-1 gap-1 rounded-2xl border border-white/[0.07] bg-black/20 p-1">
     <button type="button" title="Available" disabled={presenceBusy} onClick={() => changePresence('available')} className={`flex items-center justify-center rounded-lg py-2 transition ${isPresenceFresh ? 'bg-lime-300 text-slate-950' : 'text-slate-500 hover:text-lime-300'}`}><Radio className={`h-3.5 w-3.5 ${isPresenceFresh ? 'animate-pulse' : ''}`}/></button>
@@ -923,6 +937,12 @@ export default function ComercialesPanelScreen({
 
   {/* VIEWPORT CANVAS */}
   <main ref={mainScrollRef} className={`relative min-h-0 min-w-0 w-full flex-1 space-y-4 overflow-x-hidden overflow-y-auto overscroll-contain p-3 pb-[calc(7rem+env(safe-area-inset-bottom))] transition-[margin,width] duration-300 sm:space-y-6 sm:p-6 sm:pb-28 lg:p-7 xl:p-9 ${sidebarCollapsed ? 'lg:ml-20 lg:w-[calc(100%_-_5rem)]' : 'lg:ml-64 lg:w-[calc(100%_-_16rem)]'}`}>
+   <div className="flex justify-end lg:hidden">
+    <div className="inline-grid grid-cols-2 gap-1 rounded-xl border border-white/[0.08] bg-[#090d13]/95 p-1 shadow-lg backdrop-blur-xl" aria-label="Tema del panel">
+     <button type="button" onClick={() => setCommercialTheme('dark')} className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9px] font-black uppercase ${commercialTheme === 'dark' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><Moon className="h-3 w-3"/>Dark</button>
+     <button type="button" onClick={() => setCommercialTheme('light')} className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9px] font-black uppercase ${commercialTheme === 'light' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}><Sun className="h-3 w-3"/>Light</button>
+    </div>
+   </div>
   
   {/* WELCOME BANNER WITH ANALYTICS BRIEF */}
   <div className={`${activeView === 'pipeline' ? 'flex' : 'hidden lg:flex'} flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-4`}>
