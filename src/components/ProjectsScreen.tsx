@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Screen, ClientContact } from '../types';
+import { Screen, ClientContact, PartnerCompany } from '../types';
 import { 
  Plus, 
  Search, 
@@ -52,6 +52,9 @@ interface ProjectsScreenProps {
  onAddProject: (newProj: AgencyProject) => void;
  onUpdateProject: (updatedProj: AgencyProject) => void;
  onDeleteProject: (id: string) => void;
+ partners: PartnerCompany[];
+ onUpsertPartner: (partner: PartnerCompany) => void;
+ onDeletePartner: (id: string) => void;
 }
 
 export const INITIAL_PROJECTS: AgencyProject[] = [
@@ -194,7 +197,10 @@ export default function ProjectsScreen({
  projects,
  onAddProject,
  onUpdateProject,
- onDeleteProject
+ onDeleteProject,
+ partners,
+ onUpsertPartner,
+ onDeletePartner
 }: ProjectsScreenProps) {
  // Search and filter states
  const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -222,8 +228,50 @@ export default function ProjectsScreen({
  const [formAddonsMsg, setFormAddonsMsg] = useState('Stripe Payment, Framer Motion');
  const [formStatus, setFormStatus] = useState<'In Development' | 'Completed' | 'Beta Active'>('Completed');
  const [formShowOnLanding, setFormShowOnLanding] = useState<boolean>(true);
+ const [partnerName, setPartnerName] = useState('');
+ const [partnerLogo, setPartnerLogo] = useState('');
+ const [partnerWebsite, setPartnerWebsite] = useState('');
+ const [editingPartnerId, setEditingPartnerId] = useState<string | null>(null);
 
  const categories = ['All', 'SaaS', 'Luxury Portals', 'E-Commerce', 'Fintech'];
+
+ const resetPartnerForm = () => {
+  setPartnerName('');
+  setPartnerLogo('');
+  setPartnerWebsite('');
+  setEditingPartnerId(null);
+ };
+
+ const handleSavePartner = (event: React.FormEvent) => {
+  event.preventDefault();
+  if (!partnerName.trim() || !partnerLogo.trim()) return;
+  onUpsertPartner({
+   id: editingPartnerId || `partner_${Date.now().toString(36)}`,
+   name: partnerName.trim(),
+   logoUrl: partnerLogo.trim(),
+   website: partnerWebsite.trim() || undefined,
+   created_at: new Date().toISOString()
+  });
+  resetPartnerForm();
+ };
+
+ const handleEditPartner = (partner: PartnerCompany) => {
+  setEditingPartnerId(partner.id);
+  setPartnerName(partner.name);
+  setPartnerLogo(partner.logoUrl);
+  setPartnerWebsite(partner.website || '');
+ };
+
+ const handlePartnerLogoUpload = (file?: File) => {
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {
+   window.alert('El logo no puede superar los 2 MB. Usa preferiblemente SVG, PNG o WebP.');
+   return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => typeof reader.result === 'string' && setPartnerLogo(reader.result);
+  reader.readAsDataURL(file);
+ };
 
  const filteredProjects = projects.filter(project => {
  const matchesCategory = selectedCategory === 'All' || project.category.toLowerCase().includes(selectedCategory.toLowerCase());
@@ -393,6 +441,46 @@ export default function ProjectsScreen({
    <span>Registrar Nuevo Proyecto</span>
   </button>
   </div>
+
+  <section className="rounded-3xl border border-white/[0.07] bg-white/[0.025] p-5 sm:p-6">
+   <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+     <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-300">Landing · Prueba social</p>
+     <h3 className="mt-1 text-lg font-bold text-white">Empresas que han trabajado con nosotros</h3>
+     <p className="mt-1 text-xs text-slate-400">Estos logos aparecen automáticamente en el carrusel de la web pública.</p>
+    </div>
+    <span className="text-[10px] uppercase tracking-widest text-slate-500">{partners.length} empresas</span>
+   </div>
+
+   <form onSubmit={handleSavePartner} className="mt-5 grid gap-3 lg:grid-cols-[1fr_1.3fr_1.2fr_auto]">
+    <input value={partnerName} onChange={event => setPartnerName(event.target.value)} required placeholder="Nombre de la empresa" className="rounded-xl border border-white/10 bg-[#060c1c] px-3.5 py-2.5 text-xs text-white outline-none transition focus:border-amber-300/50" />
+    <div className="flex min-w-0 gap-2">
+     <input value={partnerLogo} onChange={event => setPartnerLogo(event.target.value)} required placeholder="URL del logo o sube un archivo" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#060c1c] px-3.5 py-2.5 text-xs text-white outline-none transition focus:border-amber-300/50" />
+     <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700">
+      <Upload className="h-3.5 w-3.5" /> Subir
+      <input type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp" className="hidden" onChange={event => handlePartnerLogoUpload(event.target.files?.[0])} />
+     </label>
+    </div>
+    <input value={partnerWebsite} onChange={event => setPartnerWebsite(event.target.value)} placeholder="Web opcional · https://..." className="rounded-xl border border-white/10 bg-[#060c1c] px-3.5 py-2.5 text-xs text-white outline-none transition focus:border-amber-300/50" />
+    <div className="flex gap-2">
+     {editingPartnerId && <button type="button" onClick={resetPartnerForm} className="rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-400 transition hover:text-white">Cancelar</button>}
+     <button type="submit" className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-amber-200"><Plus className="h-4 w-4" />{editingPartnerId ? 'Guardar' : 'Añadir'}</button>
+    </div>
+   </form>
+
+   <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    {partners.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 px-5 py-8 text-center text-xs text-slate-500">Todavía no hay empresas. Añade la primera con su logo.</div> : partners.map(partner => (
+     <div key={partner.id} className="group flex min-w-0 items-center gap-4 rounded-2xl border border-white/[0.07] bg-black/20 p-3.5">
+      <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.04] p-2"><img src={partner.logoUrl} alt={partner.name} className="max-h-full max-w-full object-contain grayscale" /></div>
+      <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-white">{partner.name}</p><p className="mt-1 truncate text-[10px] text-slate-500">{partner.website || 'Sin enlace'}</p></div>
+      <div className="flex gap-1 opacity-70 transition group-hover:opacity-100">
+       <button type="button" onClick={() => handleEditPartner(partner)} className="rounded-lg p-2 text-slate-400 transition hover:bg-white/5 hover:text-white" aria-label={`Editar ${partner.name}`}><Edit3 className="h-4 w-4" /></button>
+       <button type="button" onClick={() => window.confirm(`¿Eliminar ${partner.name} del carrusel?`) && onDeletePartner(partner.id)} className="rounded-lg p-2 text-slate-500 transition hover:bg-red-500/10 hover:text-red-400" aria-label={`Eliminar ${partner.name}`}><Trash2 className="h-4 w-4" /></button>
+      </div>
+     </div>
+    ))}
+   </div>
+  </section>
 
   {/* Main Filter & Search Hub */}
   <div className="bg-white/[0.02] border border-white/5 p-4 rounded-3xl flex flex-col md:flex-row items-center gap-4 justify-between backdrop-blur-2xl">

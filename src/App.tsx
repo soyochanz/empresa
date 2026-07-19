@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead, Invoice, FinanceTransaction } from './types';
+import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead, Invoice, FinanceTransaction, PartnerCompany } from './types';
 import { 
  initialContacts, 
  initialEvents, 
@@ -12,6 +12,7 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import LoginScreen from './components/LoginScreen';
 import LandingScreen from './components/LandingScreen';
+import PortalAccessScreen from './components/PortalAccessScreen';
 import DashboardScreen from './components/DashboardScreen';
 import CalendarScreen from './components/CalendarScreen';
 import CrmScreen from './components/CrmScreen';
@@ -31,7 +32,7 @@ import DepartmentsScreen from './components/DepartmentsScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
 import SupabaseInfoModal from './components/SupabaseInfoModal';
-import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase } from 'lucide-react';
+import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall } from 'lucide-react';
 
 const PRIVATE_EVENTS_CACHE_KEY = 'althera_commercial_private_events';
 const EVENTS_CACHE_KEY = 'althera_events_cache';
@@ -152,6 +153,10 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
  return { screen: 'landing' };
  }
 
+ if (path === '/portal' || path === '/area-privada') {
+ return { screen: 'portal' };
+ }
+
  if (path === '/acceso' || path === '/login') {
  if (isLoggedIn) {
   return { screen: 'dashboard', redirectedPath: '/admin/dashboard' };
@@ -216,6 +221,7 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
 function getPathFromScreen(screen: Screen): string {
  switch (screen) {
  case 'landing': return '/';
+ case 'portal': return '/portal';
  case 'acceso': return '/acceso';
  case 'comerciales_acceso': return '/comerciales/acceso';
  case 'comerciales_panel': return '/comerciales/panel';
@@ -329,6 +335,17 @@ export default function App() {
   return INITIAL_PROJECTS;
  }
  });
+
+ const [partners, setPartners] = useState<PartnerCompany[]>(() => {
+  try { return JSON.parse(localStorage.getItem('althera_landing_partners') || '[]'); }
+  catch { return []; }
+ });
+
+ useEffect(() => {
+  let active = true;
+  db.getPartners().then(items => { if (active) setPartners(items); }).catch(error => console.warn('No se pudieron cargar las empresas colaboradoras:', error));
+  return () => { active = false; };
+ }, []);
 
  // Dynamic users state
  const [usersList, setUsersList] = useState<PanelUser[]>(REGISTERED_USERS);
@@ -1648,6 +1665,24 @@ export default function App() {
  }
  };
 
+ const handleUpsertPartner = async (partner: PartnerCompany) => {
+ setPartners(previous => {
+  const next = [...previous.filter(item => item.id !== partner.id), partner];
+  try { localStorage.setItem('althera_landing_partners', JSON.stringify(next)); } catch { /* noop */ }
+  return next;
+ });
+ await db.upsertPartner(partner);
+ };
+
+ const handleDeletePartner = async (id: string) => {
+ setPartners(previous => {
+  const next = previous.filter(item => item.id !== id);
+  try { localStorage.setItem('althera_landing_partners', JSON.stringify(next)); } catch { /* noop */ }
+  return next;
+ });
+ await db.deletePartner(id);
+ };
+
  const handleAddColdLead = async (newLead: ColdCallingLead) => {
  setColdLeads(prev => [newLead, ...prev]);
  const activity: Activity = {
@@ -2177,6 +2212,9 @@ export default function App() {
    onAddProject={handleAddProject}
    onUpdateProject={handleUpdateProject}
    onDeleteProject={handleDeleteProject}
+   partners={partners}
+   onUpsertPartner={handleUpsertPartner}
+   onDeletePartner={handleDeletePartner}
    />
   );
   case 'finanzas':
@@ -2284,8 +2322,18 @@ export default function App() {
    exit="exit"
    className="w-full h-full min-h-screen"
   >
-   <LandingScreen onNavigate={navigateTo} projects={projects} />
+   <LandingScreen onNavigate={navigateTo} projects={projects} partners={partners} />
   </motion.div>
+  </AnimatePresence>
+ );
+ }
+
+ if (currentScreen === 'portal') {
+ return (
+  <AnimatePresence mode="wait">
+   <motion.div key="portal-access-view" custom={transitionType} variants={screenVariants} initial="initial" animate="animate" exit="exit" className="min-h-screen w-full">
+    <PortalAccessScreen onAdmin={() => navigateTo('acceso','push')} onCommercial={() => navigateTo('comerciales_acceso','push')} onBack={() => navigateTo('landing','push_back')} />
+   </motion.div>
   </AnimatePresence>
  );
  }
@@ -2381,13 +2429,13 @@ export default function App() {
  }
 
  return (
- <div className="admin-shell relative min-h-screen bg-[#071018] text-slate-100 flex font-sans overflow-hidden">
+ <div className="admin-shell relative min-h-screen bg-[#050608] text-slate-100 flex font-sans overflow-hidden">
   
   {/* Professional app shell background */}
   <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
-  <div className="absolute inset-0 bg-[linear-gradient(120deg,#091521_0%,#0b111d_42%,#111827_100%)]" />
-  <div className="absolute inset-0 opacity-[0.18] bg-[linear-gradient(rgba(255,255,255,.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.045)_1px,transparent_1px)] bg-[size:32px_32px]" />
-  <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-sky-500/10 to-transparent" />
+  <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(214,185,111,.09),transparent_28%),radial-gradient(circle_at_86%_12%,rgba(99,213,242,.065),transparent_30%),linear-gradient(135deg,#050608_0%,#08090d_48%,#06080b_100%)]" />
+  <div className="absolute inset-0 opacity-[0.14] bg-[linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px)] bg-[size:38px_38px]" />
+  <div className="absolute inset-x-0 top-0 h-52 bg-gradient-to-b from-[#d6b96f]/[0.035] to-transparent" />
   </div>
 
   {/* Sidebar Navigation */}
@@ -2406,8 +2454,8 @@ export default function App() {
   {mobileSidebarOpen && <button aria-label="Cerrar menú" onClick={() => setMobileSidebarOpen(false)} className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm lg:hidden" />}
 
   {/* Main Content Pane wrapper */}
-  <div className="flex-1 ml-0 lg:ml-[260px] flex flex-col h-screen min-w-0 overflow-hidden">
-  <div className="lg:hidden h-16 shrink-0 px-4 flex items-center justify-between border-b border-white/10 bg-[#08111b]/95 backdrop-blur-xl z-30">
+  <div className="flex-1 ml-0 lg:ml-[288px] flex flex-col h-screen min-w-0 overflow-hidden">
+  <div className="lg:hidden h-16 shrink-0 px-4 flex items-center justify-between border-b border-white/[0.07] bg-[#07080b]/95 backdrop-blur-xl z-30">
    <button onClick={() => setMobileSidebarOpen(true)} className="w-11 h-11 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" aria-label="Abrir menú">
    <Menu className="w-5 h-5" />
    </button>
@@ -2418,10 +2466,10 @@ export default function App() {
    </button>
   </div>
 
-  <header className="hidden lg:flex h-[72px] shrink-0 items-center justify-between gap-6 border-b border-white/10 bg-[#08111b]/80 px-7 backdrop-blur-xl">
+  <header className="hidden lg:flex h-[78px] shrink-0 items-center justify-between gap-6 border-b border-white/[0.07] bg-[#07080b]/75 px-7 backdrop-blur-xl">
    <div className="min-w-0">
-    <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">{activeMeta.eyebrow}</p>
-    <h1 className="mt-1 truncate text-xl font-semibold tracking-tight text-white">{activeMeta.title}</h1>
+    <p className="text-[9px] font-bold uppercase tracking-[0.24em] text-[#d6b96f]">{activeMeta.eyebrow}</p>
+    <h1 className="mt-1 truncate text-xl font-semibold tracking-[-.02em] text-white">{activeMeta.title}</h1>
    </div>
    <div className="flex flex-1 items-center justify-end gap-3">
     <div className="relative w-full max-w-md">
@@ -2430,14 +2478,16 @@ export default function App() {
       value={globalSearch}
       onChange={(event) => setGlobalSearch(event.target.value)}
       placeholder="Buscar clientes, citas, notas..."
-      className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400/40 focus:bg-white/[0.07]"
+      className="h-11 w-full rounded-2xl border border-white/[0.08] bg-white/[0.028] pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-[#d6b96f]/35 focus:bg-white/[0.045]"
      />
     </div>
-    <button onClick={() => navigateTo('citas', 'none')} className="inline-flex h-10 items-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-3 text-xs font-bold text-cyan-100 transition hover:bg-cyan-400/15">
-     <Plus className="h-4 w-4" />
-     Citas
-    </button>
-    <button onClick={() => setIsNotificationsOpen(true)} className="relative inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.08] hover:text-white" aria-label="Notificaciones">
+    <div className="hidden items-center gap-2 rounded-2xl border border-white/[0.065] bg-white/[0.018] p-1.5 xl:flex">
+     <button onClick={() => navigateTo('comerciales_admin','none')} className="inline-flex h-8 items-center gap-2 rounded-xl px-2.5 text-[10px] font-semibold text-white/55 transition hover:bg-[#d6b96f]/10 hover:text-[#e5cb8b]"><BriefcaseBusiness className="h-3.5 w-3.5" />Comerciales</button>
+     <button onClick={() => navigateTo('cold_calling','none')} className="inline-flex h-8 items-center gap-2 rounded-xl px-2.5 text-[10px] font-semibold text-white/55 transition hover:bg-[#d6b96f]/10 hover:text-[#e5cb8b]"><PhoneCall className="h-3.5 w-3.5" />Calling</button>
+     <button onClick={() => navigateTo('developer_hub','none')} className="inline-flex h-8 items-center gap-2 rounded-xl px-2.5 text-[10px] font-semibold text-white/55 transition hover:bg-cyan-300/[0.08] hover:text-cyan-200"><Code2 className="h-3.5 w-3.5" />Dev</button>
+    </div>
+    <button onClick={() => navigateTo('citas', 'none')} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#d6b96f]/20 bg-[#d6b96f]/[0.08] px-3 text-xs font-bold text-[#ead49c] transition hover:bg-[#d6b96f]/[0.13]"><Plus className="h-4 w-4" />Cita</button>
+    <button onClick={() => setIsNotificationsOpen(true)} className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.028] text-slate-400 transition hover:border-white/15 hover:text-white" aria-label="Notificaciones">
      <Bell className="h-4 w-4" />
      {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-cyan-300" />}
     </button>

@@ -1,17 +1,6 @@
+import { ComponentType } from 'react';
+import { Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, PhoneCall, Receipt, Settings, UsersRound, X } from 'lucide-react';
 import { Screen } from '../types';
-import { 
- LayoutDashboard, 
- Calendar, 
- Users, 
- FileText, 
- LogOut,
- Settings,
- Mail,
- Receipt,
- Home,
- Building2
- ,X
-} from 'lucide-react';
 
 interface SidebarProps {
  currentScreen: Screen;
@@ -26,246 +15,76 @@ interface SidebarProps {
  onMobileClose?: () => void;
 }
 
-export default function Sidebar({ 
- currentScreen, 
- onNavigate, 
- supabaseStatus, 
- onOpenSupabase,
- currentUser,
- onLogout,
- onOpenNotifications,
- unreadCount,
- mobileOpen = false,
- onMobileClose
-}: SidebarProps) {
- const navigate = (target: Screen, transition: 'none' | 'push' | 'push_back' = 'none') => {
- onNavigate(target, transition);
- onMobileClose?.();
- };
- return (
- <aside id="sidebar" className={`fixed left-0 top-0 bottom-0 flex flex-col w-[min(280px,86vw)] lg:w-[260px] bg-[#07111b]/95 border-r border-white/10 z-[60] lg:z-40 text-slate-200 shadow-2xl shadow-black/40 backdrop-blur-xl transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-  
-  {/* Brand Header */}
-  <div className="px-5 py-5 flex items-center justify-between border-b border-white/10">
-  <div className="flex items-center gap-3">
-   <div className="w-10 h-10 flex items-center justify-center bg-white/[0.04] rounded-lg border border-white/10 p-1">
-   <img 
-    src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" 
-    alt="Althera Logo" 
-    className="w-8 h-8 object-contain"
-    referrerPolicy="no-referrer"
-   />
-   </div>
-   <div>
-   <h1 className="font-semibold text-base tracking-tight text-white uppercase">Althera</h1>
-   <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">Admin OS</p>
+type NavItem = { screen: Screen; label: string; icon: ComponentType<{ className?: string }>; hint?: string };
+
+const groups: { label: string; items: NavItem[] }[] = [
+ { label: 'Principal', items: [
+  { screen: 'dashboard', label: 'Centro de mando', icon: LayoutDashboard },
+  { screen: 'departamentos', label: 'Departamentos', icon: Building2 }
+ ]},
+ { label: 'Ventas y crecimiento', items: [
+  { screen: 'comerciales_admin', label: 'Comerciales', icon: BriefcaseBusiness, hint: 'Equipo' },
+  { screen: 'cold_calling', label: 'Cold Calling', icon: PhoneCall, hint: 'Leads' },
+  { screen: 'crm', label: 'Clientes y CRM', icon: UsersRound },
+  { screen: 'marketing', label: 'Marketing', icon: Megaphone }
+ ]},
+ { label: 'Producto y tecnología', items: [
+  { screen: 'developer_hub', label: 'Dev Section', icon: Code2, hint: 'Demos' },
+  { screen: 'projects', label: 'Proyectos', icon: FolderKanban }
+ ]},
+ { label: 'Operaciones', items: [
+  { screen: 'citas', label: 'Control de citas', icon: CalendarDays },
+  { screen: 'calendar', label: 'Calendario', icon: CalendarDays },
+  { screen: 'contratos', label: 'Contratos y facturas', icon: FileText },
+  { screen: 'finanzas', label: 'Finanzas', icon: Receipt },
+  { screen: 'contactos', label: 'Contactos web', icon: Mail },
+  { screen: 'notes', label: 'Notas internas', icon: NotebookPen }
+ ]}
+];
+
+const quickAccess: NavItem[] = [
+ { screen: 'comerciales_admin', label: 'Comerciales', icon: BriefcaseBusiness },
+ { screen: 'cold_calling', label: 'Calling', icon: PhoneCall },
+ { screen: 'developer_hub', label: 'Dev', icon: Code2 }
+];
+
+export default function Sidebar({ currentScreen, onNavigate, supabaseStatus, onOpenSupabase, currentUser, onLogout, onOpenNotifications, unreadCount = 0, mobileOpen = false, onMobileClose }: SidebarProps) {
+ const navigate = (screen: Screen) => { onNavigate(screen, 'none'); onMobileClose?.(); };
+
+ return <aside id="sidebar" className={`fixed inset-y-0 left-0 z-[60] flex w-[min(300px,88vw)] flex-col border-r border-white/[0.07] bg-[#07080b]/95 text-slate-200 shadow-[24px_0_80px_rgba(0,0,0,.38)] backdrop-blur-2xl transition-transform duration-300 lg:z-40 lg:w-[288px] lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+  <div className="pointer-events-none absolute inset-0 overflow-hidden"><div className="absolute -left-24 -top-20 h-64 w-64 rounded-full bg-[#d6b96f]/[0.075] blur-[90px]" /><div className="absolute -right-24 top-1/3 h-64 w-64 rounded-full bg-cyan-400/[0.045] blur-[100px]" /><div className="absolute inset-0 opacity-[0.12] althera-grid" /></div>
+
+  <div className="relative flex items-center justify-between border-b border-white/[0.07] px-5 py-5">
+   <button onClick={() => navigate('dashboard')} className="group flex min-w-0 items-center gap-3 text-left">
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#d6b96f]/20 bg-[#d6b96f]/[0.07] p-1.5 shadow-[0_0_30px_rgba(214,185,111,.08)]"><img src="/althera-logo.png" alt="Althera" className="h-full w-full rounded-xl object-cover" /></div>
+    <div className="min-w-0"><p className="truncate text-sm font-semibold uppercase tracking-[.2em] text-white">Althera</p><p className="mt-1 truncate text-[8px] uppercase tracking-[.2em] text-[#d6b96f]">Soluciones digitales</p></div>
+   </button>
+   <div className="flex items-center gap-1">
+    <button onClick={onOpenNotifications} className="relative hidden h-9 w-9 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.025] text-slate-400 transition hover:border-[#d6b96f]/20 hover:text-white sm:flex" aria-label="Notificaciones"><Bell className="h-4 w-4" />{unreadCount > 0 && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#e5cb8b]" />}</button>
+    <button onClick={onMobileClose} className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.035] lg:hidden" aria-label="Cerrar menú"><X className="h-4 w-4" /></button>
    </div>
   </div>
-  <button onClick={onMobileClose} className="lg:hidden w-11 h-11 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" aria-label="Cerrar menú">
-   <X className="w-5 h-5" />
-  </button>
+
+  <div className="relative px-4 pb-3 pt-4">
+   <p className="mb-2 px-1 text-[8px] font-semibold uppercase tracking-[.24em] text-white/25">Accesos rápidos</p>
+   <div className="grid grid-cols-3 gap-2">{quickAccess.map(item => { const Icon = item.icon; const active = currentScreen === item.screen; return <button key={item.screen} onClick={() => navigate(item.screen)} className={`group flex min-w-0 flex-col items-center gap-2 rounded-2xl border px-2 py-3 transition ${active ? 'border-[#d6b96f]/35 bg-[#d6b96f]/[0.11] text-[#f1d995]' : 'border-white/[0.065] bg-white/[0.025] text-slate-400 hover:border-white/15 hover:bg-white/[0.05] hover:text-white'}`}><Icon className="h-4 w-4" /><span className="truncate text-[9px] font-medium">{item.label}</span></button>; })}</div>
   </div>
 
-  {/* Main Navigation - MUST be wrapped in <nav> for xpath targeting */}
-  <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-  
-  {/* Dashboard */}
-  <button
-   onClick={() => navigate('dashboard')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'dashboard' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <LayoutDashboard className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'dashboard' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Dashboard</span>
-  </button>
+  <nav className="relative flex-1 overflow-y-auto px-3 pb-5 pt-1">{groups.map(group => <div key={group.label} className="mt-5 first:mt-2">
+   <p className="mb-1.5 px-3 text-[8px] font-semibold uppercase tracking-[.24em] text-white/22">{group.label}</p>
+   <div className="space-y-1">{group.items.map(item => { const Icon = item.icon; const active = currentScreen === item.screen; return <button key={item.screen} onClick={() => navigate(item.screen)} className={`group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${active ? 'border-[#d6b96f]/25 bg-gradient-to-r from-[#d6b96f]/[0.13] to-cyan-300/[0.035] text-white shadow-[inset_2px_0_0_#d6b96f]' : 'border-transparent text-slate-400 hover:border-white/[0.055] hover:bg-white/[0.035] hover:text-white'}`}>
+    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${active ? 'border-[#d6b96f]/20 bg-[#d6b96f]/[0.08] text-[#e5cb8b]' : 'border-white/[0.055] bg-white/[0.018] text-slate-500 group-hover:text-cyan-200'}`}><Icon className="h-4 w-4" /></span>
+    <span className="min-w-0 flex-1 truncate text-xs font-medium">{item.label}</span>{item.hint && <span className="rounded-full border border-white/[0.06] px-2 py-0.5 text-[7px] uppercase tracking-wider text-white/25">{item.hint}</span>}<ChevronRight className={`h-3.5 w-3.5 transition ${active ? 'text-[#d6b96f]' : 'text-white/10 group-hover:translate-x-0.5 group-hover:text-white/35'}`} />
+   </button>; })}</div>
+  </div>)}</nav>
 
-  {/* Departamentos */}
-  <button
-   onClick={() => navigate('departamentos')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'departamentos' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <Building2 className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'departamentos' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Departamentos</span>
-  </button>
-
-  {/* Control de Citas (Formato Lista) */}
-  <button
-   onClick={() => onNavigate('citas', 'none')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'citas' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <Calendar className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'citas' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Control de Citas</span>
-  </button>
-
-  {/* Calendario Visual */}
-  <button
-   onClick={() => onNavigate('calendar', 'none')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'calendar' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <Calendar className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'calendar' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Calendario Visual</span>
-  </button>
-
-  {/* CRM */}
-  <button
-   onClick={() => onNavigate('crm', 'none')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'crm' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <Users className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'crm' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Clientes</span>
-  </button>
-
-  {/* Contratos e Invoices */}
-  <button
-   onClick={() => onNavigate('contratos', 'none')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'contratos' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <FileText className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'contratos' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Contratos y Facturas</span>
-  </button>
-
-  {/* Contactos de Landing */}
-  <button
-   onClick={() => onNavigate('contactos', 'none')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'contactos' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <Mail className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'contactos' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Contactos</span>
-  </button>
-
-  {/* Notes */}
-  <button
-   onClick={() => onNavigate('notes', 'none')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'notes' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <FileText className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'notes' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Notas Internas</span>
-  </button>
-
-
-  {/* Finanzas (Ingresos, Gastos, Gastos Recurrentes, Facturas) */}
-  <button
-   onClick={() => onNavigate('finanzas', 'none')}
-   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group text-left cursor-pointer ${
-   currentScreen === 'finanzas' ?
-    'bg-cyan-400/10 text-cyan-100 border border-cyan-400/20 shadow-[inset_3px_0_0_rgba(34,211,238,0.8)] font-semibold'
-    : 'text-slate-400 hover:text-white hover:bg-white/[0.05] border border-transparent'
-   }`}
-  >
-   <Receipt className={`w-5 h-5 transition-transform duration-200 group-hover:translate-x-0.5 ${
-   currentScreen === 'finanzas' ? 'text-cyan-300' : 'text-slate-400 group-hover:text-slate-200'
-   }`} />
-   <span className="font-sans text-sm">Finanzas Globales</span>
-  </button>
-
-
-  </nav>
-
-  {/* Support & Logout Section */}
-  <div className="px-4 pt-4 border-t border-white/10 space-y-2">
-
-  {currentUser && (
-   <div className="mx-1 p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center gap-3">
-   <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-400/20 flex items-center justify-center font-bold text-xs text-blue-400">
-    {currentUser.name ? currentUser.name.slice(0, 2).toUpperCase() : 'AG'}
+  <div className="relative border-t border-white/[0.07] bg-black/15 px-3 py-3">
+   {currentUser && <div className="mb-2 flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.025] p-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#d6b96f]/20 bg-[#d6b96f]/[0.08] text-[10px] font-bold text-[#e5cb8b]">{currentUser.name?.slice(0,2).toUpperCase() || 'AL'}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-white">{currentUser.name}</p><p className="mt-0.5 truncate text-[9px] text-white/30">Administrador Althera</p></div></div>}
+   <div className="grid grid-cols-3 gap-1">
+    <button onClick={onOpenSupabase} className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[8px] text-slate-500 transition hover:bg-white/[0.035] hover:text-white"><span className={`h-1.5 w-1.5 rounded-full ${supabaseStatus.connected ? 'bg-emerald-400' : 'bg-amber-300'}`} /><Settings className="h-3.5 w-3.5" />Sistema</button>
+    <button onClick={() => navigate('landing')} className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[8px] text-slate-500 transition hover:bg-white/[0.035] hover:text-white"><Home className="mt-1.5 h-3.5 w-3.5" />Web</button>
+    <button onClick={() => onLogout ? onLogout() : onNavigate('acceso','push_back')} className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[8px] text-slate-500 transition hover:bg-red-500/[0.07] hover:text-red-300"><LogOut className="mt-1.5 h-3.5 w-3.5" />Salir</button>
    </div>
-   <div className="min-w-0 flex-1">
-    <p className="text-xs font-bold text-slate-200 truncate leading-snug">{currentUser.name}</p>
-    <p className="text-[10px] text-slate-400 truncate leading-none mt-0.5">
-    Cuenta Althera
-    </p>
-   </div>
-   </div>
-  )}
-
-  <button
-   onClick={() => onNavigate('landing', 'none')}
-   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 text-left cursor-pointer"
-  >
-   <Home className="w-5 h-5 text-slate-400" />
-   <span className="font-sans text-sm">Ir al Home</span>
-  </button>
-
-   <button
-   onClick={() => {
-   const el = document.getElementById('toast-msg');
-   if (el) {
-    el.innerText = "Portal Config - Althera v1.0 • Multi-Tenant CRM Engine Active";
-    el.classList.remove('opacity-0');
-    setTimeout(() => el.classList.add('opacity-0'), 3000);
-   } else {
-    alert("Portal Config - Althera v1.0");
-   }
-   }}
-   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 text-left cursor-pointer"
-  >
-   <Settings className="w-5 h-5 text-slate-400" />
-   <span className="font-sans text-sm">Configuration</span>
-  </button>
-
-  {/* Logout - Must resolve to push_back transition */}
-  <button
-   onClick={() => {
-   if (onLogout) {
-    onLogout();
-   } else {
-    onNavigate('acceso', 'push_back');
-   }
-   }}
-   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 text-left cursor-pointer"
-  >
-   <LogOut className="w-5 h-5 text-slate-400" />
-   <span className="font-sans text-sm">Logout</span>
-  </button>
   </div>
-
- </aside>
- );
+ </aside>;
 }

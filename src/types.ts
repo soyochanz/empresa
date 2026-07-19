@@ -1,4 +1,12 @@
-export type Screen = 'landing' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub' | 'marketing' | 'departamentos';
+export type Screen = 'landing' | 'portal' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub' | 'marketing' | 'departamentos';
+
+export interface PartnerCompany {
+ id: string;
+ name: string;
+ logoUrl: string;
+ website?: string;
+ created_at?: string;
+}
 
 export interface DemoSite {
  id: string;

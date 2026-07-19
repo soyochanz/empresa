@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ColdCallingProspectGroup, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog } from './types';
+import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ColdCallingProspectGroup, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog, PartnerCompany } from './types';
 
 // Use environment variables or fallback directly to the provided credentials
 const getSupabaseConfig = () => {
@@ -365,6 +365,24 @@ CREATE POLICY "Public Read Access" ON projects FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON projects FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON projects FOR UPDATE USING (true) WITH CHECK (true);
 CREATE POLICY "Public Delete Access" ON projects FOR DELETE USING (true);
+
+-- Empresas mostradas en el carrusel de la landing
+CREATE TABLE IF NOT EXISTS landing_partners (
+ id TEXT PRIMARY KEY,
+ name TEXT NOT NULL,
+ logo_url TEXT NOT NULL,
+ website TEXT,
+ created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE landing_partners ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Read Access" ON landing_partners;
+DROP POLICY IF EXISTS "Public Insert Access" ON landing_partners;
+DROP POLICY IF EXISTS "Public Update Access" ON landing_partners;
+DROP POLICY IF EXISTS "Public Delete Access" ON landing_partners;
+CREATE POLICY "Public Read Access" ON landing_partners FOR SELECT USING (true);
+CREATE POLICY "Public Insert Access" ON landing_partners FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Access" ON landing_partners FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Public Delete Access" ON landing_partners FOR DELETE USING (true);
 
 
 -- 11. Create cold_calling_leads table
@@ -2085,6 +2103,42 @@ export const db = {
  const { error } = await supabase.from('projects').delete().eq('id', id);
  if (error) throw error;
  invalidateCache('projects');
+ },
+
+ // --- LANDING PARTNERS ---
+ async getPartners(): Promise<PartnerCompany[]> {
+  let localPartners: PartnerCompany[] = [];
+  try {
+   const saved = localStorage.getItem('althera_landing_partners');
+   localPartners = saved ? JSON.parse(saved) : [];
+  } catch { /* local fallback remains empty */ }
+
+  const { data, error } = await supabase.from('landing_partners').select('*').order('created_at', { ascending: true });
+  if (error) {
+   console.warn('landing_partners table read error; using local data:', error.message);
+   return localPartners;
+  }
+  const partners = (data || []).map(row => ({ id: row.id, name: row.name, logoUrl: row.logo_url, website: row.website || undefined, created_at: row.created_at }));
+  try { localStorage.setItem('althera_landing_partners', JSON.stringify(partners)); } catch { /* noop */ }
+  return partners;
+ },
+
+ async upsertPartner(partner: PartnerCompany): Promise<void> {
+  try {
+   const saved = JSON.parse(localStorage.getItem('althera_landing_partners') || '[]') as PartnerCompany[];
+   localStorage.setItem('althera_landing_partners', JSON.stringify([...saved.filter(item => item.id !== partner.id), partner]));
+  } catch { /* Supabase remains the primary store */ }
+  const { error } = await supabase.from('landing_partners').upsert({ id: partner.id, name: partner.name, logo_url: partner.logoUrl, website: partner.website || null, created_at: partner.created_at || new Date().toISOString() });
+  if (error) console.warn('landing_partners upsert error; saved locally:', error.message);
+ },
+
+ async deletePartner(id: string): Promise<void> {
+  try {
+   const saved = JSON.parse(localStorage.getItem('althera_landing_partners') || '[]') as PartnerCompany[];
+   localStorage.setItem('althera_landing_partners', JSON.stringify(saved.filter(item => item.id !== id)));
+  } catch { /* Supabase remains the primary store */ }
+  const { error } = await supabase.from('landing_partners').delete().eq('id', id);
+  if (error) console.warn('landing_partners delete error; removed locally:', error.message);
  },
 
  // --- COLD LEADS ---
