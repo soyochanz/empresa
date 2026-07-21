@@ -1,12 +1,10 @@
 import { ComponentType } from 'react';
-import { Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, PhoneCall, Receipt, Settings, UsersRound, X } from 'lucide-react';
+import { Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, PhoneCall, Receipt, UsersRound, X } from 'lucide-react';
 import { Screen } from '../types';
 
 interface SidebarProps {
  currentScreen: Screen;
  onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
- supabaseStatus: { connected: boolean; tablesExist: boolean; loading: boolean };
- onOpenSupabase: () => void;
  currentUser?: { name: string; email: string; id: string | null } | null;
  onLogout?: () => void;
  onOpenNotifications?: () => void;
@@ -48,7 +46,7 @@ const quickAccess: NavItem[] = [
  { screen: 'developer_hub', label: 'Dev', icon: Code2 }
 ];
 
-export default function Sidebar({ currentScreen, onNavigate, supabaseStatus, onOpenSupabase, currentUser, onLogout, onOpenNotifications, unreadCount = 0, mobileOpen = false, onMobileClose }: SidebarProps) {
+export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogout, onOpenNotifications, unreadCount = 0, mobileOpen = false, onMobileClose }: SidebarProps) {
  const navigate = (screen: Screen) => { onNavigate(screen, 'none'); onMobileClose?.(); };
 
  return <aside id="sidebar" className={`fixed inset-y-0 left-0 z-[60] flex w-[min(300px,88vw)] flex-col border-r border-white/[0.07] bg-[#07080b]/95 text-slate-200 shadow-[24px_0_80px_rgba(0,0,0,.38)] backdrop-blur-2xl transition-transform duration-300 lg:z-40 lg:w-[288px] lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -80,8 +78,7 @@ export default function Sidebar({ currentScreen, onNavigate, supabaseStatus, onO
 
   <div className="relative border-t border-white/[0.07] bg-black/15 px-3 py-3">
    {currentUser && <div className="mb-2 flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.025] p-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#d6b96f]/20 bg-[#d6b96f]/[0.08] text-[10px] font-bold text-[#e5cb8b]">{currentUser.name?.slice(0,2).toUpperCase() || 'AL'}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-white">{currentUser.name}</p><p className="mt-0.5 truncate text-[9px] text-white/30">Administrador Althera</p></div></div>}
-   <div className="grid grid-cols-3 gap-1">
-    <button onClick={onOpenSupabase} className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[8px] text-slate-500 transition hover:bg-white/[0.035] hover:text-white"><span className={`h-1.5 w-1.5 rounded-full ${supabaseStatus.connected ? 'bg-emerald-400' : 'bg-amber-300'}`} /><Settings className="h-3.5 w-3.5" />Sistema</button>
+   <div className="grid grid-cols-2 gap-1">
     <button onClick={() => navigate('landing')} className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[8px] text-slate-500 transition hover:bg-white/[0.035] hover:text-white"><Home className="mt-1.5 h-3.5 w-3.5" />Web</button>
     <button onClick={() => onLogout ? onLogout() : onNavigate('acceso','push_back')} className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[8px] text-slate-500 transition hover:bg-red-500/[0.07] hover:text-red-300"><LogOut className="mt-1.5 h-3.5 w-3.5" />Salir</button>
    </div>

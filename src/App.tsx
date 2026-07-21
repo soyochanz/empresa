@@ -30,8 +30,7 @@ import DeveloperHubScreen from './components/DeveloperHubScreen';
 import MarketingScreen from './components/MarketingScreen';
 import DepartmentsScreen from './components/DepartmentsScreen';
 import { motion, AnimatePresence } from 'motion/react';
-import { db, supabase, checkSupabaseConnection, seedSupabaseDatabase, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
-import SupabaseInfoModal from './components/SupabaseInfoModal';
+import { db, supabase, checkSupabaseConnection, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall } from 'lucide-react';
 
 const PRIVATE_EVENTS_CACHE_KEY = 'althera_commercial_private_events';
@@ -270,7 +269,6 @@ export default function App() {
  loading: true,
  error: undefined
  });
- const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
  // Authentication state
  const [currentUser, setCurrentUser] = useState<{ id: string | null; email: string; name: string } | null>(() => {
@@ -1449,23 +1447,6 @@ export default function App() {
  navigateTo('acceso', 'push_back');
  };
 
- // Database Seeder handler scored with user id
- const handleSeedDatabase = async () => {
- try {
-  await seedSupabaseDatabase({
-  contacts: initialContacts,
-  events: initialEvents,
-  notes: initialNotes,
-  activities: initialActivities
-  }, currentUser?.id || undefined);
-  // Hydrate state after seeding
-  await syncWithSupabase();
- } catch (err: any) {
-  console.error('Database seeding failed:', err);
-  throw err;
- }
- };
-
  // Combined dynamic search value for header syncing
  const [globalSearch, setGlobalSearch] = useState('');
 
@@ -2442,8 +2423,6 @@ export default function App() {
   <Sidebar 
   currentScreen={currentScreen} 
   onNavigate={navigateTo} 
-  supabaseStatus={supabaseStatus}
-  onOpenSupabase={() => setIsSupabaseModalOpen(true)}
   currentUser={currentUser}
   onLogout={handleSignOutUser}
   onOpenNotifications={() => setIsNotificationsOpen(true)}
@@ -2512,15 +2491,6 @@ export default function App() {
   </div>
 
   </div>
-
-  {/* Supabase Control Center Integration Overlay */}
-  <SupabaseInfoModal
-  isOpen={isSupabaseModalOpen}
-  onClose={() => setIsSupabaseModalOpen(false)}
-  status={supabaseStatus}
-  onRefresh={() => syncWithSupabase()}
-  onSeed={handleSeedDatabase}
-  />
 
   {/* Dynamic Sliding Notifications Drawer Overlay */}
   <AnimatePresence>
