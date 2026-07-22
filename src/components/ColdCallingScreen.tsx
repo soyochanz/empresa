@@ -43,7 +43,8 @@ import {
  ,Share2
  ,Megaphone
  ,PackageOpen
-} from 'lucide-react';
+ ,ExternalLink
+ } from 'lucide-react';
 import { ColdCallingLead, ColdCallingProspectGroup, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
 import ProductNeedsSummary from './ProductNeedsSummary';
@@ -4186,6 +4187,21 @@ const nachoAdmin = findAdminByName('nacho');
     const originCommercialName = originCommercial.name || 'Sin identificar';
     const originCommercialEmail = originCommercial.email || '';
     const statusClass = status === 'Cerrado' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25' : status === 'Perdido' ? 'bg-rose-500/15 text-rose-300 border-rose-500/25' : 'bg-amber-500/15 text-amber-300 border-amber-500/25';
+    const relatedClosingEvents = (allEvents || events).filter(event =>
+     event.id === `cc_appointment_${lead.id}` ||
+     event.id === `cc_reschedule_${lead.id}` ||
+     event.linkedContactId === `crm_from_${lead.id}` ||
+     (contact && (event.linkedContactId === contact.id || (event.linkedContactIds || []).includes(contact.id)))
+    );
+    const isPostponed = relatedClosingEvents.some(event => event.alias === 'Closing Reagendado' || event.title?.startsWith('Cita reagendada:'));
+    const isWebsiteReady = contact?.websiteReady === true || contact?.devStatus === 'completed';
+    const websiteUrl = contact?.customWebsiteUrl?.trim() || contact?.website?.trim() || '';
+    const safeWebsiteUrl = websiteUrl ? (websiteUrl.startsWith('http://') || websiteUrl.startsWith('https://') ? websiteUrl : `https://${websiteUrl}`) : '';
+    const webProgressLabel = isWebsiteReady
+     ? 'Web terminada'
+     : status === 'Cerrado'
+      ? contact?.devStatus === 'development' ? 'En desarrollo' : contact?.devStatus === 'testing' ? 'En pruebas' : 'Pendiente de web'
+      : 'Se activa al cerrar';
     return (
      <div key={lead.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 shadow-xl shadow-black/15 space-y-4">
      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
@@ -4206,9 +4222,52 @@ const nachoAdmin = findAdminByName('nacho');
        {!isClosingReadOnly && <a href={`tel:${(draft.phone || '').replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/20"><Phone className="h-3.5 w-3.5"/>Llamar</a>}
        <button type="button" onClick={() => setExpandedClosingLeadId(current => current === lead.id ? null : lead.id)} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/10">{expandedClosingLeadId === lead.id ? 'Cerrar ficha' : 'Ver ficha'}</button>
       </div>
-     </div>
+      </div>
 
-      <ProductNeedsSummary products={contact?.requestedProducts || lead.requestedProducts || []} otherDetail={contact?.requestedProductOther || lead.requestedProductOther} />
+       {isClosingReadOnly && (
+       <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-black/25">
+        <div className="flex flex-col gap-2 border-b border-white/[0.07] bg-white/[0.025] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+         <div>
+          <p className="text-[9px] font-black uppercase tracking-[.2em] text-cyan-300">Seguimiento en tiempo real</p>
+          <p className="mt-1 text-[10px] text-slate-500">Así avanza tu lead después de enviarlo al closer.</p>
+         </div>
+         {isPostponed && <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-violet-400/25 bg-violet-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-violet-300"><RefreshCw className="h-3 w-3"/>Cita pospuesta</span>}
+        </div>
+
+        <div className="grid grid-cols-1 gap-px bg-white/[0.06] sm:grid-cols-3">
+         <div className={`bg-[#080b10] p-3.5 ${isPostponed ? 'shadow-[inset_0_2px_0_rgba(167,139,250,.65)]' : 'shadow-[inset_0_2px_0_rgba(34,211,238,.45)]'}`}>
+          <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${isPostponed ? 'border-violet-400/25 bg-violet-500/10 text-violet-300' : 'border-cyan-400/20 bg-cyan-500/10 text-cyan-300'}`}>
+           {isPostponed ? <RefreshCw className="h-4 w-4"/> : <CalendarCheck2 className="h-4 w-4"/>}
+          </div>
+          <p className="mt-3 text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Cita con closer</p>
+          <p className={`mt-1 text-xs font-black ${isPostponed ? 'text-violet-200' : 'text-white'}`}>{isPostponed ? 'Pospuesta' : 'Agendada'}</p>
+          <p className="mt-1 text-[9px] text-slate-500">{formatCallbackDate(lead.callbackDate)} · {lead.callbackTime || 'Sin hora'}</p>
+         </div>
+
+         <div className={`bg-[#080b10] p-3.5 ${status === 'Cerrado' ? 'shadow-[inset_0_2px_0_rgba(52,211,153,.65)]' : status === 'Perdido' ? 'shadow-[inset_0_2px_0_rgba(251,113,133,.55)]' : 'shadow-[inset_0_2px_0_rgba(251,191,36,.45)]'}`}>
+          <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${status === 'Cerrado' ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-300' : status === 'Perdido' ? 'border-rose-400/25 bg-rose-500/10 text-rose-300' : 'border-amber-400/20 bg-amber-500/10 text-amber-300'}`}>
+           {status === 'Cerrado' ? <CheckCircle2 className="h-4 w-4"/> : status === 'Perdido' ? <XCircle className="h-4 w-4"/> : <Clock className="h-4 w-4"/>}
+          </div>
+          <p className="mt-3 text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Resultado closing</p>
+          <p className={`mt-1 text-xs font-black ${status === 'Cerrado' ? 'text-emerald-300' : status === 'Perdido' ? 'text-rose-300' : 'text-amber-300'}`}>{status === 'Cerrado' ? 'Cliente cerrado' : status}</p>
+          <p className="mt-1 text-[9px] text-slate-500">{status === 'Cerrado' ? 'Venta confirmada por el closer.' : status === 'Perdido' ? 'La oportunidad no continuó.' : 'El closer sigue gestionándolo.'}</p>
+         </div>
+
+         <div className={`bg-[#080b10] p-3.5 ${isWebsiteReady ? 'shadow-[inset_0_2px_0_rgba(52,211,153,.65)]' : status === 'Cerrado' ? 'shadow-[inset_0_2px_0_rgba(34,211,238,.45)]' : ''}`}>
+          <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${isWebsiteReady ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-300' : status === 'Cerrado' ? 'border-cyan-400/20 bg-cyan-500/10 text-cyan-300' : 'border-white/10 bg-white/[0.03] text-slate-500'}`}>
+           {isWebsiteReady ? <CheckCircle2 className="h-4 w-4"/> : <Globe2 className="h-4 w-4"/>}
+          </div>
+          <p className="mt-3 text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Desarrollo web</p>
+          <p className={`mt-1 text-xs font-black ${isWebsiteReady ? 'text-emerald-300' : status === 'Cerrado' ? 'text-cyan-300' : 'text-slate-400'}`}>{webProgressLabel}</p>
+          {isWebsiteReady && safeWebsiteUrl ? (
+           <a href={safeWebsiteUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1.5 text-[9px] font-black text-emerald-300 transition hover:bg-emerald-500/20 hover:text-white">Ver página web <ExternalLink className="h-3 w-3"/></a>
+          ) : <p className="mt-1 text-[9px] text-slate-500">{isWebsiteReady ? 'Lista; falta publicar el enlace.' : status === 'Cerrado' ? 'El equipo Dev actualizará este estado.' : 'Disponible cuando la venta se cierre.'}</p>}
+         </div>
+        </div>
+       </section>
+       )}
+
+       <ProductNeedsSummary products={contact?.requestedProducts || lead.requestedProducts || []} otherDetail={contact?.requestedProductOther || lead.requestedProductOther} />
 
       {expandedClosingLeadId === lead.id && <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

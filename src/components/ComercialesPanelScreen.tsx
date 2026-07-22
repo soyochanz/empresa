@@ -1098,9 +1098,10 @@ export default function ComercialesPanelScreen({
     onAddEvent={onAddEvent}
     onUpdateEvent={onUpdateEvent}
     onDeleteEvent={onDeleteEvent}
-    usersList={usersList}
-    onAddContact={onAddContact}
-    focusLeadId={focusedColdLeadId}
+     usersList={usersList}
+     contacts={contacts}
+     onAddContact={onAddContact}
+     focusLeadId={focusedColdLeadId}
    />
    </div>
    ) : activeView === 'rewards' ? (
