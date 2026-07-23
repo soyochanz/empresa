@@ -875,7 +875,7 @@ export default function ComercialesPanelScreen({
 
   {/* DESKTOP APP SIDEBAR */}
   {!sidebarCollapsed && (
-  <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-white/[0.07] bg-[#080b10]/95 py-5 backdrop-blur-2xl transition-[width,padding] duration-300 lg:flex ${sidebarCollapsed ? 'w-20 px-2' : 'w-64 px-4'}`}>
+  <aside className={`fixed inset-y-0 left-0 z-30 hidden flex-col overflow-x-hidden overflow-y-auto overscroll-contain border-r border-white/[0.07] bg-[#080b10]/95 py-5 backdrop-blur-2xl transition-[width,padding] duration-300 lg:flex ${sidebarCollapsed ? 'w-20 px-2' : 'w-64 px-4'}`}>
    <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-2'}`}>
     <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-lime-400/20 bg-lime-400/10"><img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="Althera" className="h-8 w-8 object-contain" /></div>
     {!sidebarCollapsed && <div><p className="text-sm font-black tracking-[.12em] text-white">ALTHERA</p><p className="text-[8px] font-bold uppercase tracking-[.22em] text-lime-300">Sales workspace</p></div>}
@@ -913,7 +913,7 @@ export default function ComercialesPanelScreen({
   )}
 
   {sidebarCollapsed && (
-  <aside className="fixed inset-y-0 left-0 z-30 hidden w-20 flex-col items-center border-r border-white/[0.07] bg-[#080b10]/95 px-2 py-5 backdrop-blur-2xl lg:flex">
+  <aside className="fixed inset-y-0 left-0 z-30 hidden w-20 flex-col items-center overflow-x-hidden overflow-y-auto overscroll-contain border-r border-white/[0.07] bg-[#080b10]/95 px-2 py-5 backdrop-blur-2xl lg:flex">
    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-lime-400/20 bg-lime-400/10"><img src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="Althera" className="h-8 w-8 object-contain" /></div>
    <button type="button" onClick={() => setSidebarCollapsed(false)} aria-label="Expandir menú lateral" title="Expandir menú" className="mt-5 flex h-9 w-11 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.025] text-slate-400 transition hover:bg-white/[0.06] hover:text-white"><PanelLeftOpen className="h-4 w-4"/></button>
    <button type="button" onClick={() => setCommercialTheme(current => current === 'dark' ? 'light' : 'dark')} aria-label={`Cambiar a tema ${commercialTheme === 'dark' ? 'claro' : 'oscuro'}`} title={`Tema ${commercialTheme === 'dark' ? 'claro' : 'oscuro'}`} className="mt-2 flex h-9 w-11 items-center justify-center rounded-xl border border-white/[0.07] bg-white/[0.025] text-slate-400 transition hover:bg-white/[0.06] hover:text-white">{commercialTheme === 'dark' ? <Sun className="h-4 w-4"/> : <Moon className="h-4 w-4"/>}</button>
