@@ -286,7 +286,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
    linkedTxIds.includes(t.id) && !transactionIdsAlreadyRepresented.has(t.id)
   );
   const linkedTxsMapped = linkedTransactions.map(tx => {
-  const netPrice = tx.amount / (1 + taxPercentage / 100);
+  const netPrice = Math.round((tx.amount / (1 + taxPercentage / 100)) * 100) / 100;
   return {
    id: tx.id,
    description: `${tx.description} (${tx.status === 'pending' || tx.status === 'draft' ? 'Pendiente' : 'Cobrado'})`,
@@ -304,6 +304,9 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const isItemPending = !!item.isPending;
   let pTxId = item.pendingTxId;
   const savedItemId = item.id.startsWith('temp') || isNaN(Number(item.id)) ? 'item_' + idx + '_' + Date.now() : item.id;
+  const grossLineTotal = item.quantity * item.unitPrice;
+  const netUnitPrice = Math.round((item.unitPrice / (1 + taxPercentage / 100)) * 100) / 100;
+  const netLineTotal = Math.round((grossLineTotal / (1 + taxPercentage / 100)) * 100) / 100;
 
   if (isItemPending && !pTxId) {
    // Generate new pending transaction structure
@@ -312,7 +315,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
    id: pTxId,
    type: 'income',
    category: 'Desarrollo',
-   amount: item.quantity * item.unitPrice,
+   amount: grossLineTotal,
    date: showDueDate && invoiceDueDate ? invoiceDueDate : invoiceDate, // Will raise deadline notice nicely around due date
    description: `Cobro Pendiente: ${item.description} (${invoiceClientName})`,
    isRecurring: false,
@@ -327,8 +330,8 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
    id: savedItemId,
    description: item.description,
    quantity: item.quantity,
-   unitPrice: item.unitPrice,
-   total: item.quantity * item.unitPrice,
+   unitPrice: netUnitPrice,
+   total: netLineTotal,
    isPending: isItemPending,
    pendingTxId: pTxId,
    paymentMethod: item.paymentMethod || 'transfer'
@@ -603,12 +606,14 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  setInvoiceClientAddress(invoice.clientAddress || '');
  setInvoiceDate(invoice.date || new Date().toISOString().split('T')[0]);
  setInvoiceDueDate(invoice.dueDate || invoice.date || new Date().toISOString().split('T')[0]);
- setTaxPercentage(Number(invoice.taxPercentage) || 0);
+ const loadedTaxPercentage = Number(invoice.taxPercentage) || 0;
+ const loadedTaxMultiplier = 1 + loadedTaxPercentage / 100;
+ setTaxPercentage(loadedTaxPercentage);
  setInvoiceItems((invoice.items || []).map(item => ({
   id: item.id,
   description: item.description,
   quantity: item.quantity,
-  unitPrice: item.unitPrice,
+  unitPrice: Math.round((item.unitPrice * loadedTaxMultiplier) * 100) / 100,
   isPending: item.isPending,
   pendingTxId: item.pendingTxId,
   paymentMethod: item.paymentMethod === 'cash' ? 'cash' : 'transfer'
@@ -717,23 +722,20 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  const linkedTransactions = allTransactions.filter(t =>
   linkedTxIds.includes(t.id) && !transactionIdsAlreadyRepresented.has(t.id)
  );
- const linkedSubtotalContribution = linkedTransactions.reduce((acc, t) => {
- // Backcalculate net price before tax as transaction amount is VAT-inclusive
- const netAmount = t.amount / (1 + taxPercentage / 100);
- return acc + netAmount;
- }, 0);
-
- const subtotal = invoiceItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0) + linkedSubtotalContribution;
- const taxAmount = (subtotal * taxPercentage) / 100;
- const total = subtotal + taxAmount;
+ const taxMultiplier = 1 + taxPercentage / 100;
+ const invoiceItemsGrossTotal = invoiceItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+ const linkedTransactionsGrossTotal = linkedTransactions.reduce((acc, transaction) => acc + transaction.amount, 0);
+ const total = Math.round((invoiceItemsGrossTotal + linkedTransactionsGrossTotal) * 100) / 100;
+ const subtotal = Math.round((total / taxMultiplier) * 100) / 100;
+ const taxAmount = Math.round((total - subtotal) * 100) / 100;
 
  // Calculate pending transactions
  const pendingItemsGrossAmount = invoiceItems
  .filter(item => item.isPending)
- .reduce((acc, item) => acc + (item.quantity * item.unitPrice * (1 + taxPercentage / 100)), 0);
- const totalPendingTransactionsAmount = pendingItemsGrossAmount + linkedTransactions
+ .reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+ const totalPendingTransactionsAmount = Math.round((pendingItemsGrossAmount + linkedTransactions
  .filter(t => t.status === 'pending' || t.status === 'draft')
- .reduce((acc, t) => acc + t.amount, 0);
+ .reduce((acc, t) => acc + t.amount, 0)) * 100) / 100;
 
  // Print trigger
  const handlePrint = () => {
@@ -1695,7 +1697,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
        />
       </div>
       <div className="col-span-3">
-       <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Precio (€)</label>
+       <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Precio final (€ IVA incl.)</label>
       <input
        type="number"
        min="0"
@@ -2661,7 +2663,10 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       </tr>
      </thead>
      <tbody className="divide-y divide-neutral-200">
-      {invoiceItems.map((item) => (
+      {invoiceItems.map((item) => {
+      const netUnitPrice = item.unitPrice / taxMultiplier;
+      const netLineTotal = item.quantity * netUnitPrice;
+      return (
       <tr key={item.id} className="text-neutral-800">
        <td className="py-3 px-1 leading-relaxed">
        <div className="flex flex-col text-left">
@@ -2689,10 +2694,11 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
        </div>
        </td>
        <td className="py-3 px-2 text-center font-mono">{item.quantity}</td>
-       <td className="py-3 px-3 text-right font-mono">{item.unitPrice.toFixed(2)} €</td>
-       <td className="py-3 px-1 text-right font-bold font-mono text-neutral-950">{(item.quantity * item.unitPrice).toFixed(2)} €</td>
+       <td className="py-3 px-3 text-right font-mono">{netUnitPrice.toFixed(2)} €</td>
+       <td className="py-3 px-1 text-right font-bold font-mono text-neutral-950">{netLineTotal.toFixed(2)} €</td>
       </tr>
-      ))}
+      );
+      })}
       {linkedTransactions.map((tx) => {
       const netPrice = tx.amount / (1 + taxPercentage / 100);
       return (
