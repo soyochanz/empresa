@@ -607,8 +607,28 @@ export default function CrmScreen({
    };
    await db.insertComercialLead(newLead);
   }
-  } catch (leadErr) {
+ } catch (leadErr) {
   console.error('Error syncing ComercialLead in CrmScreen:', leadErr);
+ }
+ } else {
+  try {
+   const comLeads = await db.getComercialLeads();
+   const existingLead = comLeads.find(lead =>
+    lead.notes?.includes(`[SOURCE_CONTACT_ID:${convertingLead.id}]`) ||
+    (lead.email && convertingLead.email && lead.email.toLowerCase() === convertingLead.email.toLowerCase()) ||
+    lead.name?.toLowerCase() === convertingLead.name?.toLowerCase()
+   );
+   if (existingLead) {
+    await db.updateComercialLead({
+     ...existingLead,
+     status: 'Pendiente',
+     value: 0,
+     isDone: false,
+     notes: `${existingLead.notes || ''}\n[CIERRE_SIN_COMERCIAL:${convertingLead.id}]`.trim()
+    });
+   }
+  } catch (leadErr) {
+   console.error('Error removing commercial attribution in CrmScreen:', leadErr);
   }
  }
 
@@ -616,11 +636,11 @@ export default function CrmScreen({
  const updatedContact: ClientContact = {
   ...convertingLead,
   status: 'Client',
-  // El closer conserva la responsabilidad operativa del contacto; la atribución
-  // comercial se almacena exclusivamente en contactedByComercial*.
-  assignedUserEmail: convertingLead.assignedUserEmail,
-  contactedByComercialEmail: assignedEmail || convertingLead.contactedByComercialEmail,
-  contactedByComercialName: matchedCom ? matchedCom.name : convertingLead.contactedByComercialName,
+ // El closer conserva la responsabilidad operativa del contacto; la atribución
+ // comercial se almacena exclusivamente en contactedByComercial*.
+ assignedUserEmail: convertingLead.assignedUserEmail,
+ contactedByComercialEmail: matchedCom?.email || undefined,
+ contactedByComercialName: matchedCom?.name || undefined,
   stripeSubscriptionStatus: convPaymentMethod === 'stripe' && convInstallments > 1 ? 'active' : convertingLead.stripeSubscriptionStatus,
   stripeSubscriptionPrice: convPaymentMethod === 'stripe' ? pricePerInstallment.toFixed(2) : convertingLead.stripeSubscriptionPrice,
   stripeSubscriptionInterval: convPaymentMethod === 'stripe' && convInstallments > 1 ? 'month' : convertingLead.stripeSubscriptionInterval

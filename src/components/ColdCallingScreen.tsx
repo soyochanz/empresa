@@ -572,7 +572,7 @@ const nachoAdmin = findAdminByName('nacho');
  // 3. Find associated commercial account to resolve commission percentage
  const assignedEmail = convCommercialEmail || '';
  const matchedCom = comercialesList.find(c => c.email.toLowerCase() === assignedEmail.toLowerCase());
- const commPct = matchedCom?.commissionPercentage ?? 10; // defaults to 10% if not set
+ const commPct = matchedCom?.commissionPercentage ?? 0;
 
  if (convType === 'Client') {
   // 4. Generate the Invoice (Factura) and Transactions (Cobros) - only for Client
@@ -643,7 +643,7 @@ const nachoAdmin = findAdminByName('nacho');
   taxPercentage: 0,
   taxAmount: 0,
   total: convSalePrice,
-  notes: `Venta inicial generada automáticamente desde Cold Calling. Comercial: ${selectedCommercialName}. Comisión: ${commPct}%.`,
+  notes: `Venta inicial generada automáticamente desde Cold Calling. Comercial: ${matchedCom?.name || 'Sin asignar'}. ${matchedCom ? `Comisión: ${commPct}%.` : 'Sin comisión comercial.'}`,
   comercialId: matchedCom?.id,
   comercialEmail: assignedEmail,
   isInitialSale: true
@@ -724,6 +724,26 @@ const nachoAdmin = findAdminByName('nacho');
   }
   } catch (leadErr) {
   console.error('Error syncing ComercialLead in ColdCallingScreen:', leadErr);
+  }
+ } else {
+  try {
+   const comLeads = await db.getComercialLeads();
+   const existingLead = comLeads.find(lead =>
+    lead.notes?.includes(`[SOURCE_COLD_LEAD_ID:${convertingLead.id}]`) ||
+    (lead.email && convEmail && lead.email.toLowerCase() === convEmail.trim().toLowerCase()) ||
+    lead.name?.toLowerCase() === convName.trim().toLowerCase()
+   );
+   if (existingLead) {
+    await db.updateComercialLead({
+     ...existingLead,
+     status: 'Pendiente',
+     value: 0,
+     isDone: false,
+     notes: `${existingLead.notes || ''}\n[CIERRE_SIN_COMERCIAL:${newContact.id}]`.trim()
+    });
+   }
+  } catch (leadErr) {
+   console.error('Error removing commercial attribution in ColdCallingScreen:', leadErr);
   }
  }
 
@@ -5738,7 +5758,7 @@ const nachoAdmin = findAdminByName('nacho');
     {(() => {
     const assignedEmail = convCommercialEmail || '';
     const matchedCom = comercialesList.find(c => c.email.toLowerCase() === assignedEmail.toLowerCase());
-    const commPct = matchedCom?.commissionPercentage ?? 10;
+    const commPct = matchedCom?.commissionPercentage ?? 0;
     const totalComm = (convSalePrice * commPct) / 100;
     const installmentAmount = Math.round((convSalePrice / convInstallments) * 100) / 100;
 
@@ -5766,12 +5786,12 @@ const nachoAdmin = findAdminByName('nacho');
       <div className="border-t border-white/5 pt-2 flex justify-between items-center text-xs">
       <div>
        <span className="text-[10px] text-slate-400">Comercial Asignado:</span>
-       <p className="font-semibold text-slate-200">{matchedCom?.name || convertingLead.closingOriginComercialName || 'N/A'} ({assignedEmail || 'Sin email'})</p>
+       <p className="font-semibold text-slate-200">{matchedCom?.name || 'Sin asignar'} ({assignedEmail || 'Sin email'})</p>
       </div>
       <div className="text-right">
-       <span className="text-[10px] text-slate-400">Comisión Devengada ({commPct}%):</span>
+       <span className="text-[10px] text-slate-400">{matchedCom ? `Comisión Devengada (${commPct}%):` : 'Comisión comercial:'}</span>
        <p className="font-mono font-bold text-amber-400 text-sm mt-0.5">
-       {totalComm.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+       {matchedCom ? totalComm.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : 'Sin comisión'}
        </p>
       </div>
       </div>

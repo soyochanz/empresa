@@ -447,6 +447,18 @@ export default function ComercialesAdminScreen({
   if (lead.status === 'Ganado' && !matchingContact) return result;
   
   if (matchingContact && matchingContact.status === 'Client') {
+   const leadCommercial = (comercialesList || []).find(commercial =>
+    commercial.id === lead.comercialId ||
+    commercial.name.toLocaleLowerCase('es-ES') === lead.comercialName?.toLocaleLowerCase('es-ES')
+   );
+   const isAttributedToLeadCommercial = Boolean(leadCommercial && (
+    matchingContact.contactedByComercialEmail?.toLowerCase() === leadCommercial.email.toLowerCase() ||
+    matchingContact.contactedByComercialName?.toLocaleLowerCase('es-ES') === leadCommercial.name.toLocaleLowerCase('es-ES')
+   ));
+   if (!isAttributedToLeadCommercial) {
+    result.push({ ...lead, status: 'Pendiente', value: 0, isDone: false });
+    return result;
+   }
    const adminSaleTotal = getAdminSaleTotal(matchingContact);
    result.push({
    ...lead,
@@ -466,7 +478,7 @@ export default function ComercialesAdminScreen({
  contacts.forEach(c => {
   if (c.status === 'Client' || c.status === 'Lead') {
   // Find which commercial this client belongs to
-  const comEmail = c.contactedByComercialEmail || c.assignedUserEmail;
+  const comEmail = c.contactedByComercialEmail;
   const comName = c.contactedByComercialName;
   
   const matchedCom = (comercialesList || []).find(com => 

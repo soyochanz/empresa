@@ -281,7 +281,10 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  try {
   const validItems = invoiceItems.filter(item => item.description.trim() !== '');
 
-  const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
+  const transactionIdsAlreadyRepresented = new Set(validItems.map(item => item.pendingTxId).filter(Boolean));
+  const linkedTransactions = allTransactions.filter(t =>
+   linkedTxIds.includes(t.id) && !transactionIdsAlreadyRepresented.has(t.id)
+  );
   const linkedTxsMapped = linkedTransactions.map(tx => {
   const netPrice = tx.amount / (1 + taxPercentage / 100);
   return {
@@ -710,7 +713,10 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  };
 
  // Calc Totals
- const linkedTransactions = allTransactions.filter(t => linkedTxIds.includes(t.id));
+ const transactionIdsAlreadyRepresented = new Set(invoiceItems.map(item => item.pendingTxId).filter(Boolean));
+ const linkedTransactions = allTransactions.filter(t =>
+  linkedTxIds.includes(t.id) && !transactionIdsAlreadyRepresented.has(t.id)
+ );
  const linkedSubtotalContribution = linkedTransactions.reduce((acc, t) => {
  // Backcalculate net price before tax as transaction amount is VAT-inclusive
  const netAmount = t.amount / (1 + taxPercentage / 100);
@@ -722,7 +728,10 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  const total = subtotal + taxAmount;
 
  // Calculate pending transactions
- const totalPendingTransactionsAmount = linkedTransactions
+ const pendingItemsGrossAmount = invoiceItems
+ .filter(item => item.isPending)
+ .reduce((acc, item) => acc + (item.quantity * item.unitPrice * (1 + taxPercentage / 100)), 0);
+ const totalPendingTransactionsAmount = pendingItemsGrossAmount + linkedTransactions
  .filter(t => t.status === 'pending' || t.status === 'draft')
  .reduce((acc, t) => acc + t.amount, 0);
 

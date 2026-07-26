@@ -620,6 +620,13 @@ export default function ComercialesPanelScreen({
   if (lead.status === 'Ganado' && !matchingContact) return result;
   
   if (matchingContact && matchingContact.status === 'Client') {
+   const isAttributedToCurrentCommercial =
+    matchingContact.contactedByComercialEmail?.toLowerCase() === comercial.email.toLowerCase() ||
+    matchingContact.contactedByComercialName?.toLocaleLowerCase('es-ES') === comercial.name.toLocaleLowerCase('es-ES');
+   if (!isAttributedToCurrentCommercial) {
+    result.push({ ...lead, status: 'Pendiente', value: 0, isDone: false });
+    return result;
+   }
    const adminSaleTotal = getAdminSaleTotal(matchingContact);
    result.push({
    ...lead,
@@ -641,8 +648,7 @@ export default function ComercialesPanelScreen({
   // Check if this client is associated with the commercial
   const isAssociated = 
    (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === comercial.email.toLowerCase()) ||
-   (c.contactedByComercialName && c.contactedByComercialName.toLowerCase() === comercial.name.toLowerCase()) ||
-   (c.assignedUserEmail && c.assignedUserEmail.toLowerCase() === comercial.email.toLowerCase());
+   (c.contactedByComercialName && c.contactedByComercialName.toLowerCase() === comercial.name.toLowerCase());
 
   if (isAssociated) {
    // Check if already represented in updated leads list
