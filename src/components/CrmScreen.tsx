@@ -47,6 +47,28 @@ export const safeConfirm = (msg: string): boolean => {
  }
 };
 
+const toLocalDateKey = (date: Date): string => {
+ const year = date.getFullYear();
+ const month = String(date.getMonth() + 1).padStart(2, '0');
+ const day = String(date.getDate()).padStart(2, '0');
+ return `${year}-${month}-${day}`;
+};
+
+const addMonthsKeepingDay = (baseDate: Date, monthsToAdd: number): Date => {
+ const targetYear = baseDate.getFullYear();
+ const targetMonth = baseDate.getMonth() + monthsToAdd;
+ const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+ return new Date(
+  targetYear,
+  targetMonth,
+  Math.min(baseDate.getDate(), lastDayOfTargetMonth),
+  12,
+  0,
+  0,
+  0
+ );
+};
+
 export const AESTHETIC_COLORS = [
  { val: 'indigo', label: 'Indigo', hex: '#6366f1', activeStyle: 'bg-indigo-500/25 border-indigo-500 text-indigo-300 shadow-[0_0_12px_rgba(99,102,241,0.15)]', badgeStyle: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
  { val: 'emerald', label: 'Esmeralda Sutil', hex: '#10b981', activeStyle: 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]', badgeStyle: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
@@ -355,6 +377,18 @@ export default function CrmScreen({
 
  // Lead -> Client with Sale conversion states
  const [convertingLead, setConvertingLead] = useState<ClientContact | null>(null);
+ const [conversionSuccess, setConversionSuccess] = useState<{
+  clientName: string;
+  total: number;
+  baseAmount: number;
+  financingExtra: number;
+  paymentMethod: 'cash' | 'transfer' | 'stripe';
+  installments: number;
+  commercialName?: string;
+  commissionPercentage?: number;
+  commissionAmount?: number;
+  stripeUrl?: string;
+ } | null>(null);
  const [convSalePrice, setConvSalePrice] = useState(1500);
  const [convInstallments, setConvInstallments] = useState(1);
  const [convFinancingExtra, setConvFinancingExtra] = useState(0);
@@ -406,18 +440,17 @@ export default function CrmScreen({
  const invoiceId = 'inv_crm_' + Math.random().toString(36).substring(2, 9);
  const stripePlanId = 'plan_crm_' + Math.random().toString(36).substring(2, 9);
  const pricePerInstallment = Math.round((convFinancedTotal / convInstallments) * 100) / 100;
- const todayKey = new Date().toISOString().split('T')[0];
+ const firstInstallmentDate = new Date();
+ firstInstallmentDate.setHours(12, 0, 0, 0);
+ const todayKey = toLocalDateKey(firstInstallmentDate);
  const safeClientEmail = convertingLead.email?.trim() || `${convertingLead.id}@clientes.althera.local`;
  
  // Create Invoice Items
  const invoiceItems: any[] = [];
  const createdTransactions: FinanceTransaction[] = [];
-  const firstInstallmentDate = new Date();
-  firstInstallmentDate.setHours(0, 0, 0, 0);
  for (let i = 1; i <= convInstallments; i++) {
   const txId = 'tx_crm_' + Math.random().toString(36).substring(2, 9) + '_' + i;
-  const installmentDate = new Date(firstInstallmentDate);
-  installmentDate.setMonth(firstInstallmentDate.getMonth() + (i - 1));
+  const installmentDate = addMonthsKeepingDay(firstInstallmentDate, i - 1);
   
   invoiceItems.push({
   id: 'item_' + i + '_' + Date.now(),
@@ -436,7 +469,7 @@ export default function CrmScreen({
   type: 'income',
   category: 'Ventas',
   amount: pricePerInstallment,
-  date: todayKey,
+  date: toLocalDateKey(installmentDate),
   description: `${convConcept} - Cuota ${i} de ${convInstallments} (Pendiente)`,
   status: 'pending',
   paymentMethod: convPaymentMethod,
@@ -601,16 +634,18 @@ export default function CrmScreen({
   onRefreshFinance();
  }
 
- // Show beautiful toast / alert
- alert(`?Felicidades! Se ha convertido a "${convertingLead.name}" en Cliente.\n\n` +
-   ` Venta Registrada: ${convFinancedTotal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
-   (convInstallments > 1 && convFinancingExtra > 0 ? ` Extra por financiación: ${convFinancingExtra.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` : '') +
-   ` Forma de pago: ${convPaymentMethod === 'stripe' ? 'Stripe' : convPaymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}\n` +
-   ` Cuotas: ${convInstallments} cuota(s)\n` +
-   (generatedStripeUrl ? ` Link Stripe: ${generatedStripeUrl}\n` : '') +
-   ` Comercial: ${matchedCom ? matchedCom.name : 'Sin asignar'}\n` +
-   (matchedCom ? ` Comisión para el Comercial (${commPct}%): ${(convFinancedTotal * commPct / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` : ' Comisión comercial: Sin asignar\n') +
-   ` Se han generado las Facturas e Ingresos correspondientes.`);
+ setConversionSuccess({
+  clientName: convertingLead.name,
+  total: convFinancedTotal,
+  baseAmount: convSalePrice,
+  financingExtra: convInstallments > 1 ? convFinancingExtra : 0,
+  paymentMethod: convPaymentMethod,
+  installments: convInstallments,
+  commercialName: matchedCom?.name,
+  commissionPercentage: matchedCom ? commPct : undefined,
+  commissionAmount: matchedCom ? convFinancedTotal * commPct / 100 : undefined,
+  stripeUrl: generatedStripeUrl || undefined
+ });
  };
 
  // Connected Accounting & Invoice state definitions
@@ -809,14 +844,14 @@ export default function CrmScreen({
   // Create a manual installment plan when the client agreed to pay in 2 or 3 months.
   if (paymentStatus === 'pending' && paymentInstallments > 1) {
   const installmentAmount = Math.round((amt / paymentInstallments) * 100) / 100;
+  const firstPaymentDate = new Date(`${paymentDate}T12:00:00`);
   for (let index = 0; index < paymentInstallments; index++) {
-   const dueDate = new Date(`${paymentDate}T12:00:00`);
-   dueDate.setMonth(dueDate.getMonth() + index);
+   const dueDate = addMonthsKeepingDay(firstPaymentDate, index);
    await db.insertFinanceTransaction({
    ...newTx,
    id: `${txId}_${index + 1}`,
    amount: index === paymentInstallments - 1 ? Math.round((amt - installmentAmount * index) * 100) / 100 : installmentAmount,
-   date: dueDate.toISOString().split('T')[0],
+   date: toLocalDateKey(dueDate),
    description: `${newTx.description} Cuota ${index + 1}/${paymentInstallments}`,
    stripeInstallmentIndex: index + 1,
    stripeInstallmentCount: paymentInstallments
@@ -4274,6 +4309,121 @@ export default function CrmScreen({
     </button>
     </div>
    </form>
+   </div>
+  </div>
+  )}
+
+  {conversionSuccess && (
+  <div
+   className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-[#02050d]/90 p-4 backdrop-blur-md"
+   role="dialog"
+   aria-modal="true"
+   aria-labelledby="conversion-success-title"
+   onMouseDown={(event) => {
+    if (event.currentTarget === event.target) setConversionSuccess(null);
+   }}
+  >
+   <div className="relative my-auto w-full max-w-[540px] overflow-hidden rounded-[28px] border border-emerald-400/20 bg-[#0b101b] shadow-[0_30px_100px_rgba(0,0,0,0.7),0_0_70px_rgba(16,185,129,0.08)]">
+    <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.2),transparent_70%)]" />
+    <button
+     type="button"
+     onClick={() => setConversionSuccess(null)}
+     className="absolute right-5 top-5 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-400 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+     aria-label="Cerrar"
+    >
+     <X className="h-4 w-4" />
+    </button>
+
+    <div className="relative px-6 pb-6 pt-8 sm:px-8 sm:pb-8">
+     <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-300/25 bg-gradient-to-br from-emerald-400/25 to-teal-500/10 shadow-[0_0_35px_rgba(16,185,129,0.2)]">
+      <Check className="h-8 w-8 text-emerald-300" strokeWidth={2.4} />
+     </div>
+
+     <p className="mb-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-400">Venta registrada</p>
+     <h2 id="conversion-success-title" className="pr-10 text-2xl font-black tracking-tight text-white sm:text-[28px]">
+      ¡{conversionSuccess.clientName} ya es cliente!
+     </h2>
+     <p className="mt-2 text-sm leading-6 text-slate-400">
+      La conversión se ha completado y toda la información financiera ha quedado registrada.
+     </p>
+
+     <div className="my-6 rounded-2xl border border-emerald-400/15 bg-gradient-to-br from-emerald-400/[0.09] to-cyan-400/[0.03] px-5 py-4">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-300/70">Importe de la venta</p>
+      <p className="mt-1 text-3xl font-black tracking-tight text-white">
+       {conversionSuccess.total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+      </p>
+      {conversionSuccess.financingExtra > 0 && (
+       <p className="mt-1 text-xs text-slate-400">
+        Base {conversionSuccess.baseAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} · Extra de financiación {conversionSuccess.financingExtra.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+       </p>
+      )}
+     </div>
+
+     <div className="grid grid-cols-2 gap-3">
+      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+       <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Forma de pago</p>
+       <p className="mt-1.5 text-sm font-bold text-slate-100">
+        {conversionSuccess.paymentMethod === 'stripe' ? 'Stripe' : conversionSuccess.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}
+       </p>
+      </div>
+      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+       <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Plan de pago</p>
+       <p className="mt-1.5 text-sm font-bold text-slate-100">
+        {conversionSuccess.installments} {conversionSuccess.installments === 1 ? 'cuota' : 'cuotas'}
+       </p>
+      </div>
+      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+       <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Comercial</p>
+       <p className="mt-1.5 truncate text-sm font-bold text-slate-100">
+        {conversionSuccess.commercialName || 'Sin asignar'}
+       </p>
+      </div>
+      <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
+       <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Comisión</p>
+       <p className="mt-1.5 text-sm font-bold text-slate-100">
+        {conversionSuccess.commissionAmount !== undefined
+         ? `${conversionSuccess.commissionAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} (${conversionSuccess.commissionPercentage}%)`
+         : 'Sin comisión'}
+       </p>
+      </div>
+     </div>
+
+     {conversionSuccess.stripeUrl && (
+      <div className="mt-3 flex gap-2">
+       <a
+        href={conversionSuccess.stripeUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-violet-400/20 bg-violet-400/[0.08] px-4 py-3 text-xs font-bold text-violet-200 transition hover:bg-violet-400/[0.14]"
+       >
+        Abrir enlace de Stripe
+        <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+       </a>
+       <button
+        type="button"
+        onClick={() => navigator.clipboard.writeText(conversionSuccess.stripeUrl!)}
+        className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
+        title="Copiar enlace de Stripe"
+       >
+        <Copy className="h-4 w-4" />
+       </button>
+      </div>
+     )}
+
+     <div className="mt-6 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-black/20 px-4 py-3">
+      <Receipt className="h-4 w-4 shrink-0 text-emerald-400" />
+      <p className="text-[11px] leading-4 text-slate-400">Factura e ingresos creados correctamente.</p>
+     </div>
+
+     <button
+      type="button"
+      onClick={() => setConversionSuccess(null)}
+      className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-3.5 text-xs font-black uppercase tracking-[0.14em] text-slate-950 shadow-lg shadow-emerald-950/40 transition hover:from-emerald-400 hover:to-teal-400"
+     >
+      Cerrar y continuar
+      <ChevronRight className="h-4 w-4" />
+     </button>
+    </div>
    </div>
   </div>
   )}
