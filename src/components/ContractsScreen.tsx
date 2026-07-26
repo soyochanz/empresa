@@ -2383,46 +2383,27 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       2. PRECIO Y FORMAS DE PAGO
       </h4>
       <p>
-      El precio del servicio de desarrollo web pactado asciende a <strong>{priceSingle} €</strong> mediante pago único. Con el fin de facilitar la financiación y el correcto acceso tecnológico de EL CLIENTE, se ofrecen opcionalmente las siguientes modalidades de abono diferido:
+      La modalidad de pago formalmente acordada por EL CLIENTE para el servicio de desarrollo web es la siguiente:
       </p>
 
-      <div className="mt-3 pl-4 space-y-2 border-l-2 border-[#D4AF37] font-sans text-[11px]">
+      <div className="mt-3 border-l-2 border-[#D4AF37] pl-4 font-sans text-[11px]">
       <div className="flex items-center gap-2">
        <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
-       {selectedModality === 'single' ? '✓' : ''}
+       ✓
        </span>
        <span>
-       <strong>OPCIÓN A – PAGO ÚNICO:</strong> Importe total de <strong>{priceSingle} €</strong> en un único abono al formalizar la firma.
-       </span>
-      </div>
-
-      <div className="flex items-center gap-2">
-       <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
-       {selectedModality === 'fin3' ? '✓' : ''}
-       </span>
-       <span>
-       <strong>OPCIÓN B – FINANCIACIÓN A 3 MESES:</strong> Importe total financiado de <strong>{fin3Total} €</strong> devengados en 3 cuotas mensuales de <strong>{fin3Cuota} €</strong> (Coste de financiación acumulado: {fin3Coste} €).
-       </span>
-      </div>
-
-      <div className="flex items-center gap-2">
-       <span className="w-2.5 h-2.5 rounded-full border border-black flex items-center justify-center font-bold text-[8px] bg-neutral-100">
-       {selectedModality === 'fin4' ? '✓' : ''}
-       </span>
-       <span>
-       <strong>OPCIÓN C – FINANCIACIÓN A 4 MESES:</strong> Importe total financiado de <strong>{fin4Total} €</strong> devengados en 4 cuotas mensuales de <strong>{fin4Cuota} €</strong> (Coste de financiación acumulado: {fin4Coste} €).
+       {selectedModality === 'single' && (
+        <><strong>OPCIÓN A – PAGO ÚNICO:</strong> Importe total de <strong>{priceSingle} €</strong> en un único abono al formalizar la firma.</>
+       )}
+       {selectedModality === 'fin3' && (
+        <><strong>OPCIÓN B – FINANCIACIÓN A 3 MESES:</strong> Importe total financiado de <strong>{fin3Total} €</strong> devengados en 3 cuotas mensuales de <strong>{fin3Cuota} €</strong> (Coste de financiación acumulado: {fin3Coste} €).</>
+       )}
+       {selectedModality === 'fin4' && (
+        <><strong>OPCIÓN C – FINANCIACIÓN A 4 MESES:</strong> Importe total financiado de <strong>{fin4Total} €</strong> devengados en 4 cuotas mensuales de <strong>{fin4Cuota} €</strong> (Coste de financiación acumulado: {fin4Coste} €).</>
+       )}
        </span>
       </div>
       </div>
-
-      <p className="mt-3">
-      <strong className="font-sans">Modalidad formalmente elegida por EL CLIENTE: </strong> 
-      <span className="bg-neutral-100 px-2.5 py-0.5 rounded border border-neutral-300 font-sans font-bold">
-       {selectedModality === 'single' && 'Opción A - Pago único de ' + priceSingle + ' €'}
-       {selectedModality === 'fin3' && 'Opción B - Financiación 3 meses de ' + fin3Total + ' €'}
-       {selectedModality === 'fin4' && 'Opción C - Financiación 4 meses de ' + fin4Total + ' €'}
-      </span>
-      </p>
      </div>
 
      {/* Inicio de los trabajos */}
