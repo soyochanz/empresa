@@ -44,6 +44,8 @@ const INVOICE_ISSUER_NAME_TAG = /\s*\[ISSUER_NAME:([^\]]*)\]/g;
 const INVOICE_ISSUER_TAX_ID_TAG = /\s*\[ISSUER_TAX_ID:([^\]]*)\]/g;
 const INVOICE_ISSUER_ADDRESS_TAG = /\s*\[ISSUER_ADDRESS:([^\]]*)\]/g;
 const INVOICE_ISSUER_BRAND_TAG = /\s*\[ISSUER_BRAND:([^\]]*)\]/g;
+const INVOICE_ALIAS_TAG = /\s*\[INVOICE_ALIAS:([^\]]*)\]/g;
+const INVOICE_COLOR_TAG = /\s*\[INVOICE_COLOR:([^\]]*)\]/g;
 
 const decodeInvoiceMetadataValue = (value?: string): string => {
  try {
@@ -61,6 +63,8 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
   .replace(INVOICE_ISSUER_TAX_ID_TAG, '')
   .replace(INVOICE_ISSUER_ADDRESS_TAG, '')
   .replace(INVOICE_ISSUER_BRAND_TAG, '')
+  .replace(INVOICE_ALIAS_TAG, '')
+  .replace(INVOICE_COLOR_TAG, '')
   .trim();
  const metadata = [
   invoice.clientTaxId ? `[CLIENT_TAX_ID:${encodeURIComponent(invoice.clientTaxId)}]` : '',
@@ -68,7 +72,9 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
   invoice.issuerName ? `[ISSUER_NAME:${encodeURIComponent(invoice.issuerName)}]` : '',
   invoice.issuerTaxId ? `[ISSUER_TAX_ID:${encodeURIComponent(invoice.issuerTaxId)}]` : '',
   invoice.issuerAddress ? `[ISSUER_ADDRESS:${encodeURIComponent(invoice.issuerAddress)}]` : '',
-  invoice.issuerBrand ? `[ISSUER_BRAND:${encodeURIComponent(invoice.issuerBrand)}]` : ''
+  invoice.issuerBrand ? `[ISSUER_BRAND:${encodeURIComponent(invoice.issuerBrand)}]` : '',
+  invoice.alias ? `[INVOICE_ALIAS:${encodeURIComponent(invoice.alias)}]` : '',
+  invoice.color ? `[INVOICE_COLOR:${encodeURIComponent(invoice.color)}]` : ''
  ].filter(Boolean);
  return [cleanNotes, ...metadata].filter(Boolean).join('\n') || null;
 };
@@ -81,6 +87,8 @@ const deserializeInvoice = (row: any): Invoice => {
  const issuerTaxIdMatch = [...rawNotes.matchAll(INVOICE_ISSUER_TAX_ID_TAG)][0];
  const issuerAddressMatch = [...rawNotes.matchAll(INVOICE_ISSUER_ADDRESS_TAG)][0];
  const issuerBrandMatch = [...rawNotes.matchAll(INVOICE_ISSUER_BRAND_TAG)][0];
+ const aliasMatch = [...rawNotes.matchAll(INVOICE_ALIAS_TAG)][0];
+ const colorMatch = [...rawNotes.matchAll(INVOICE_COLOR_TAG)][0];
  return {
   ...row,
   notes: rawNotes
@@ -90,13 +98,17 @@ const deserializeInvoice = (row: any): Invoice => {
    .replace(INVOICE_ISSUER_TAX_ID_TAG, '')
    .replace(INVOICE_ISSUER_ADDRESS_TAG, '')
    .replace(INVOICE_ISSUER_BRAND_TAG, '')
+   .replace(INVOICE_ALIAS_TAG, '')
+   .replace(INVOICE_COLOR_TAG, '')
    .trim() || undefined,
   clientTaxId: row?.clientTaxId || decodeInvoiceMetadataValue(taxMatch?.[1]),
   clientAddress: row?.clientAddress || decodeInvoiceMetadataValue(addressMatch?.[1]),
   issuerName: row?.issuerName || decodeInvoiceMetadataValue(issuerNameMatch?.[1]),
   issuerTaxId: row?.issuerTaxId || decodeInvoiceMetadataValue(issuerTaxIdMatch?.[1]),
   issuerAddress: row?.issuerAddress || decodeInvoiceMetadataValue(issuerAddressMatch?.[1]),
-  issuerBrand: row?.issuerBrand || decodeInvoiceMetadataValue(issuerBrandMatch?.[1])
+  issuerBrand: row?.issuerBrand || decodeInvoiceMetadataValue(issuerBrandMatch?.[1]),
+  alias: row?.alias || decodeInvoiceMetadataValue(aliasMatch?.[1]),
+  color: row?.color || decodeInvoiceMetadataValue(colorMatch?.[1])
  };
 };
 
@@ -1597,9 +1609,7 @@ export const db = {
   taxPercentage: invoice.taxPercentage,
   taxAmount: invoice.taxAmount,
   total: invoice.total,
-  notes: serializeInvoiceNotes(invoice),
-  alias: invoice.alias || null,
-  color: invoice.color || null
+  notes: serializeInvoiceNotes(invoice)
  };
  const { error } = await supabase.from('finance_invoices').insert(payload);
  if (error) throw error;
@@ -1619,9 +1629,7 @@ export const db = {
   taxPercentage: invoice.taxPercentage,
   taxAmount: invoice.taxAmount,
   total: invoice.total,
-  notes: serializeInvoiceNotes(invoice),
-  alias: invoice.alias || null,
-  color: invoice.color || null
+  notes: serializeInvoiceNotes(invoice)
  };
  const { error } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id);
  if (error) throw error;

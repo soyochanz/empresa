@@ -453,11 +453,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const refreshWhenVisible = () => {
    if (document.visibilityState === 'visible') fetchDatabaseFinanceData();
   };
+  const refreshWhenInvoiceChanges = () => fetchDatabaseFinanceData();
   document.addEventListener('visibilitychange', refreshWhenVisible);
+  window.addEventListener('finance-invoices-updated', refreshWhenInvoiceChanges);
   return () => {
    active = false;
    window.clearInterval(refreshTimer);
    document.removeEventListener('visibilitychange', refreshWhenVisible);
+   window.removeEventListener('finance-invoices-updated', refreshWhenInvoiceChanges);
   };
  }, []);
 
@@ -1019,7 +1022,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Handler: Add or update invoice
- const handleSaveInvoice = (e: React.FormEvent) => {
+ const handleSaveInvoice = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!invClientName.trim()) {
   alert('Por favor especifica el nombre del cliente.');
@@ -1107,12 +1110,23 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   color: invColor || undefined
  };
 
- if (isEditingInv && editingInvId) {
-  setInvoices(prev => prev.map(inv => inv.id === editingInvId ? payload : inv));
-  db.updateFinanceInvoice(payload).catch(err => console.error('Error updating invoice in DB:', err));
- } else {
-  setInvoices(prev => [payload, ...prev]);
-  db.insertFinanceInvoice(payload).catch(err => console.error('Error inserting invoice into DB:', err));
+ try {
+  if (isEditingInv && editingInvId) {
+   await db.updateFinanceInvoice(payload);
+  } else {
+   await db.insertFinanceInvoice(payload);
+  }
+  const persistedInvoices = await db.getFinanceInvoices();
+  setInvoices(persistedInvoices);
+  setSyncStatus('synced');
+  setSyncError(null);
+  window.dispatchEvent(new CustomEvent('finance-invoices-updated', { detail: { invoiceId } }));
+ } catch (err: any) {
+  console.error('Error saving invoice in Supabase:', err);
+  setSyncStatus('error');
+  setSyncError(err?.hint || err?.message || 'No se pudo guardar la factura.');
+  alert(`No se pudo guardar la factura. ${err?.hint || err?.message || 'Revisa la conexión con la base de datos.'}`);
+  return;
  }
 
  // Insert any auto-created pending transactions

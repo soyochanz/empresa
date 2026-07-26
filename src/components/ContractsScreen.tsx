@@ -99,6 +99,31 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  };
  }, []);
 
+ useEffect(() => {
+ let active = true;
+ const refreshInvoices = async () => {
+  try {
+   const invoiceList = await db.getFinanceInvoices();
+   if (active) setSavedInvoices(invoiceList);
+  } catch (error) {
+   console.warn('No se pudo sincronizar el historial de facturas:', error);
+  }
+ };
+ const handleVisibility = () => {
+  if (document.visibilityState === 'visible') void refreshInvoices();
+ };
+ const handleInvoiceUpdate = () => void refreshInvoices();
+ const intervalId = window.setInterval(refreshInvoices, 15000);
+ document.addEventListener('visibilitychange', handleVisibility);
+ window.addEventListener('finance-invoices-updated', handleInvoiceUpdate);
+ return () => {
+  active = false;
+  window.clearInterval(intervalId);
+  document.removeEventListener('visibilitychange', handleVisibility);
+  window.removeEventListener('finance-invoices-updated', handleInvoiceUpdate);
+ };
+ }, []);
+
  const handleLoadContract = (id: string) => {
  setSelectedContractIdInDb(id);
  if (!id) {
@@ -348,6 +373,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   await db.insertFinanceInvoice(invoicePayload);
   }
   setSavedInvoices(prev => [invoicePayload, ...prev.filter(inv => inv.id !== invoicePayload.id)]);
+  window.dispatchEvent(new CustomEvent('finance-invoices-updated', { detail: { invoiceId: invoicePayload.id } }));
 
   // Synchronize associated transactions
   let updatedTxs = allTransactions.map(t => {
