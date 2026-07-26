@@ -132,8 +132,9 @@ const INITIAL_INVOICES: Invoice[] = [];
 const DEFAULT_INVOICE_ISSUER = {
  name: 'Carlos Ronco Meneses',
  taxId: '09104663K',
- address: 'Carrer dels Tamarells, Sant Antoni de Portmany, 07820, Ibiza, España',
- brand: 'Althera Solutions'
+ address: 'Carrer dels Tamarells 1, 07800 - Ibiza, España',
+ brand: 'Althera Solutions',
+ email: 'contacto@altherasolutions.com'
 };
 
 const getInvoiceCardStyles = (color: string | undefined) => {
@@ -517,6 +518,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invIssuerTaxId, setInvIssuerTaxId] = useState(DEFAULT_INVOICE_ISSUER.taxId);
  const [invIssuerAddress, setInvIssuerAddress] = useState(DEFAULT_INVOICE_ISSUER.address);
  const [invIssuerBrand, setInvIssuerBrand] = useState(DEFAULT_INVOICE_ISSUER.brand);
+ const [invIssuerEmail, setInvIssuerEmail] = useState(DEFAULT_INVOICE_ISSUER.email);
  const [invDate, setInvDate] = useState(() => new Date().toISOString().split('T')[0]);
  const [invDueDate, setInvDueDate] = useState(() => {
  const d = new Date();
@@ -561,6 +563,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    setInvIssuerTaxId(DEFAULT_INVOICE_ISSUER.taxId);
    setInvIssuerAddress(DEFAULT_INVOICE_ISSUER.address);
    setInvIssuerBrand(DEFAULT_INVOICE_ISSUER.brand);
+   setInvIssuerEmail(DEFAULT_INVOICE_ISSUER.email);
    setInvDate(new Date().toISOString().split('T')[0]);
    const d = new Date();
    d.setDate(d.getDate() + 15);
@@ -1097,6 +1100,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   issuerTaxId: invIssuerTaxId,
   issuerAddress: invIssuerAddress,
   issuerBrand: invIssuerBrand,
+  issuerEmail: invIssuerEmail,
   date: invDate,
   dueDate: invDueDate,
   status: calculatedStatus,
@@ -1221,6 +1225,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvIssuerTaxId(inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId);
  setInvIssuerAddress(inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address);
  setInvIssuerBrand(inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand);
+ setInvIssuerEmail(inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email);
  setInvDate(inv.date);
  setInvDueDate(inv.dueDate);
  setInvStatus(inv.status);
@@ -1460,6 +1465,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvIssuerTaxId(DEFAULT_INVOICE_ISSUER.taxId);
  setInvIssuerAddress(DEFAULT_INVOICE_ISSUER.address);
  setInvIssuerBrand(DEFAULT_INVOICE_ISSUER.brand);
+ setInvIssuerEmail(DEFAULT_INVOICE_ISSUER.email);
  setInvDate(new Date().toISOString().split('T')[0]);
  const d = new Date();
  d.setDate(d.getDate() + 30);
@@ -1548,6 +1554,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvIssuerTaxId(DEFAULT_INVOICE_ISSUER.taxId);
  setInvIssuerAddress(DEFAULT_INVOICE_ISSUER.address);
  setInvIssuerBrand(DEFAULT_INVOICE_ISSUER.brand);
+ setInvIssuerEmail(DEFAULT_INVOICE_ISSUER.email);
  
  // Find client in contacts list if possible
  const matchedContact = contacts.find(c =>
@@ -1862,6 +1869,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    ${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}<br>
    NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
    ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}
+   <br>${inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
    </div>
   </td>
   <td class="invoice-title-block" style="vertical-align: top;">
@@ -1883,7 +1891,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    <div class="box-detail">
    NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
    ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br>
-   ${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}
+   ${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}<br>
+   ${inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
    </div>
   </div>
   </div>
@@ -4425,6 +4434,16 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        />
       </div>
       <div className="space-y-1">
+       <label className="block text-[9px] font-mono font-semibold uppercase text-slate-400">Email de administración</label>
+       <input
+        type="email"
+        value={invIssuerEmail}
+        onChange={(e) => setInvIssuerEmail(e.target.value)}
+        required
+        className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+       />
+      </div>
+      <div className="space-y-1">
        <label className="block text-[9px] font-mono font-semibold uppercase text-slate-400">Dirección fiscal</label>
        <input
         type="text"
@@ -4869,6 +4888,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      {previewInvoice.issuerName || DEFAULT_INVOICE_ISSUER.name}<br />
      NIF/DNI: {previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
      {previewInvoice.issuerAddress || DEFAULT_INVOICE_ISSUER.address}
+     <br />{previewInvoice.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
      </p>
     </div>
 
@@ -4890,7 +4910,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <p className="text-neutral-500 leading-normal text-[10px]">
      NIF/DNI: {previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
      {previewInvoice.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br />
-     {previewInvoice.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}
+     {previewInvoice.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}<br />
+     {previewInvoice.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
      </p>
     </div>
 

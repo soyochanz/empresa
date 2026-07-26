@@ -72,8 +72,9 @@ const addMonthsKeepingDay = (baseDate: Date, monthsToAdd: number): Date => {
 const DEFAULT_INVOICE_ISSUER = {
  name: 'Carlos Ronco Meneses',
  taxId: '09104663K',
- address: 'Carrer dels Tamarells, Sant Antoni de Portmany, 07820, Ibiza, España',
- brand: 'Althera Solutions'
+ address: 'Carrer dels Tamarells 1, 07800 - Ibiza, España',
+ brand: 'Althera Solutions',
+ email: 'contacto@altherasolutions.com'
 };
 
 export const AESTHETIC_COLORS = [
@@ -1228,7 +1229,8 @@ export default function CrmScreen({
    <div class="company-sub">
    ${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}<br>
    NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
-   ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}
+   ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br>
+   ${inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
    </div>
   </td>
   <td class="invoice-title-block">
@@ -1253,7 +1255,8 @@ export default function CrmScreen({
    <div class="box-detail">
    NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
    ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br>
-   ${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}
+   ${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}<br>
+   ${inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
    </div>
   </div>
   </div>

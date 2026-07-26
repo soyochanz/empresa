@@ -44,6 +44,7 @@ const INVOICE_ISSUER_NAME_TAG = /\s*\[ISSUER_NAME:([^\]]*)\]/g;
 const INVOICE_ISSUER_TAX_ID_TAG = /\s*\[ISSUER_TAX_ID:([^\]]*)\]/g;
 const INVOICE_ISSUER_ADDRESS_TAG = /\s*\[ISSUER_ADDRESS:([^\]]*)\]/g;
 const INVOICE_ISSUER_BRAND_TAG = /\s*\[ISSUER_BRAND:([^\]]*)\]/g;
+const INVOICE_ISSUER_EMAIL_TAG = /\s*\[ISSUER_EMAIL:([^\]]*)\]/g;
 const INVOICE_ALIAS_TAG = /\s*\[INVOICE_ALIAS:([^\]]*)\]/g;
 const INVOICE_COLOR_TAG = /\s*\[INVOICE_COLOR:([^\]]*)\]/g;
 
@@ -63,6 +64,7 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
   .replace(INVOICE_ISSUER_TAX_ID_TAG, '')
   .replace(INVOICE_ISSUER_ADDRESS_TAG, '')
   .replace(INVOICE_ISSUER_BRAND_TAG, '')
+  .replace(INVOICE_ISSUER_EMAIL_TAG, '')
   .replace(INVOICE_ALIAS_TAG, '')
   .replace(INVOICE_COLOR_TAG, '')
   .trim();
@@ -73,6 +75,7 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
   invoice.issuerTaxId ? `[ISSUER_TAX_ID:${encodeURIComponent(invoice.issuerTaxId)}]` : '',
   invoice.issuerAddress ? `[ISSUER_ADDRESS:${encodeURIComponent(invoice.issuerAddress)}]` : '',
   invoice.issuerBrand ? `[ISSUER_BRAND:${encodeURIComponent(invoice.issuerBrand)}]` : '',
+  invoice.issuerEmail ? `[ISSUER_EMAIL:${encodeURIComponent(invoice.issuerEmail)}]` : '',
   invoice.alias ? `[INVOICE_ALIAS:${encodeURIComponent(invoice.alias)}]` : '',
   invoice.color ? `[INVOICE_COLOR:${encodeURIComponent(invoice.color)}]` : ''
  ].filter(Boolean);
@@ -87,6 +90,7 @@ const deserializeInvoice = (row: any): Invoice => {
  const issuerTaxIdMatch = [...rawNotes.matchAll(INVOICE_ISSUER_TAX_ID_TAG)][0];
  const issuerAddressMatch = [...rawNotes.matchAll(INVOICE_ISSUER_ADDRESS_TAG)][0];
  const issuerBrandMatch = [...rawNotes.matchAll(INVOICE_ISSUER_BRAND_TAG)][0];
+ const issuerEmailMatch = [...rawNotes.matchAll(INVOICE_ISSUER_EMAIL_TAG)][0];
  const aliasMatch = [...rawNotes.matchAll(INVOICE_ALIAS_TAG)][0];
  const colorMatch = [...rawNotes.matchAll(INVOICE_COLOR_TAG)][0];
  return {
@@ -98,6 +102,7 @@ const deserializeInvoice = (row: any): Invoice => {
    .replace(INVOICE_ISSUER_TAX_ID_TAG, '')
    .replace(INVOICE_ISSUER_ADDRESS_TAG, '')
    .replace(INVOICE_ISSUER_BRAND_TAG, '')
+   .replace(INVOICE_ISSUER_EMAIL_TAG, '')
    .replace(INVOICE_ALIAS_TAG, '')
    .replace(INVOICE_COLOR_TAG, '')
    .trim() || undefined,
@@ -107,6 +112,7 @@ const deserializeInvoice = (row: any): Invoice => {
   issuerTaxId: row?.issuerTaxId || decodeInvoiceMetadataValue(issuerTaxIdMatch?.[1]),
   issuerAddress: row?.issuerAddress || decodeInvoiceMetadataValue(issuerAddressMatch?.[1]),
   issuerBrand: row?.issuerBrand || decodeInvoiceMetadataValue(issuerBrandMatch?.[1]),
+  issuerEmail: row?.issuerEmail || decodeInvoiceMetadataValue(issuerEmailMatch?.[1]),
   alias: row?.alias || decodeInvoiceMetadataValue(aliasMatch?.[1]),
   color: row?.color || decodeInvoiceMetadataValue(colorMatch?.[1])
  };

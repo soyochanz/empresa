@@ -197,6 +197,7 @@ export interface Invoice {
  issuerTaxId?: string;
  issuerAddress?: string;
  issuerBrand?: string;
+ issuerEmail?: string;
  date: string;
  dueDate: string;
  status: 'draft' | 'sent' | 'paid' | 'overdue';

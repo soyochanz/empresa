@@ -39,6 +39,32 @@ interface FacturaItem {
  pendingTxId?: string;
 }
 
+const DEFAULT_INVOICE_PROVIDER = {
+ id: '1',
+ name: 'Carlos Ronco Meneses',
+ cif: '09104663K',
+ address: 'Carrer dels Tamarells 1',
+ postalCodeCity: '07800 - Ibiza, España',
+ email: 'contacto@altherasolutions.com',
+ isActive: true
+};
+
+const isLegacyDefaultProvider = (provider: any) =>
+ provider?.name === 'Althera Solutions S.L.'
+ && provider?.cif === 'B-18974534'
+ && provider?.email === 'administracion@althera.io';
+
+const splitIssuerAddress = (value?: string) => {
+ const address = value?.trim() || '';
+ const match = address.match(/^(.*?),\s*(\d{5}\s*-\s*.*)$/);
+ return match
+  ? { address: match[1], postalCodeCity: match[2] }
+  : {
+   address: address || DEFAULT_INVOICE_PROVIDER.address,
+   postalCodeCity: DEFAULT_INVOICE_PROVIDER.postalCodeCity
+  };
+};
+
 export default function ContractsScreen({ contacts, onNavigate }: ContractsScreenProps) {
  const [activeTab, setActiveTab] = useState<'contract' | 'invoice'>('contract');
 
@@ -346,6 +372,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   const anyPending = finalItems.some(it => !!it.isPending);
   const calculatedStatus = anyPending ? 'sent' : 'paid';
 
+  const primaryProvider = providers.find(provider => provider.isActive) || DEFAULT_INVOICE_PROVIDER;
   const invoicePayload: any = {
   id: invoiceNumber,
   clientId: invoiceClientId || undefined,
@@ -361,6 +388,11 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   taxPercentage: taxPercentage,
   taxAmount: taxAmount,
   total: total,
+  issuerName: primaryProvider.name,
+  issuerTaxId: primaryProvider.cif,
+  issuerAddress: [primaryProvider.address, primaryProvider.postalCodeCity].filter(Boolean).join(', '),
+  issuerBrand: 'Althera Solutions',
+  issuerEmail: primaryProvider.email,
   notes: `Creado desde el Generador de Contratos de Althera. Método de pago: ${
    paymentMethod === 'transferencia' ? 'Transferencia Bancaria' :
    paymentMethod === 'bizum' ? 'Bizum' :
@@ -539,21 +571,17 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  const [providers, setProviders] = useState<any[]>(() => {
  try {
   const saved = sessionStorage.getItem('agency_invoice_providers');
-  if (saved) return JSON.parse(saved);
+  if (saved) {
+   const parsed = JSON.parse(saved);
+   if (Array.isArray(parsed) && parsed.length === 1 && isLegacyDefaultProvider(parsed[0])) {
+    return [{ ...DEFAULT_INVOICE_PROVIDER }];
+   }
+   if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+  }
  } catch (e) {
   console.error('Error loading providers:', e);
  }
- return [
-  {
-  id: '1',
-  name: 'Althera Solutions S.L.',
-  cif: 'B-18974534',
-  address: 'Avenida de España, Nº 10, 1ºA',
-  postalCodeCity: '07800 - Ibiza, España',
-  email: 'administracion@althera.io',
-  isActive: true,
-  }
- ];
+ return [{ ...DEFAULT_INVOICE_PROVIDER }];
  });
 
  useEffect(() => {
@@ -606,6 +634,18 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  setInvoiceClientAddress(invoice.clientAddress || '');
  setInvoiceDate(invoice.date || new Date().toISOString().split('T')[0]);
  setInvoiceDueDate(invoice.dueDate || invoice.date || new Date().toISOString().split('T')[0]);
+ if (invoice.issuerName || invoice.issuerTaxId || invoice.issuerAddress || invoice.issuerEmail) {
+  const issuerAddress = splitIssuerAddress(invoice.issuerAddress);
+  setProviders([{
+   id: 'invoice-provider',
+   name: invoice.issuerName || DEFAULT_INVOICE_PROVIDER.name,
+   cif: invoice.issuerTaxId || DEFAULT_INVOICE_PROVIDER.cif,
+   address: issuerAddress.address,
+   postalCodeCity: issuerAddress.postalCodeCity,
+   email: invoice.issuerEmail || DEFAULT_INVOICE_PROVIDER.email,
+   isActive: true
+  }]);
+ }
  const loadedTaxPercentage = Number(invoice.taxPercentage) || 0;
  const loadedTaxMultiplier = 1 + loadedTaxPercentage / 100;
  setTaxPercentage(loadedTaxPercentage);
@@ -2437,13 +2477,13 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
        </span>
        <span>
        {selectedModality === 'single' && (
-        <><strong>OPCIÓN A – PAGO ÚNICO:</strong> Importe total de <strong>{priceSingle} €</strong> en un único abono al formalizar la firma.</>
+        <><strong>PAGO ÚNICO:</strong> Importe total de <strong>{priceSingle} €</strong> en un único abono al formalizar la firma.</>
        )}
        {selectedModality === 'fin3' && (
-        <><strong>OPCIÓN B – FINANCIACIÓN A 3 MESES:</strong> Importe total financiado de <strong>{fin3Total} €</strong> devengados en 3 cuotas mensuales de <strong>{fin3Cuota} €</strong> (Coste de financiación acumulado: {fin3Coste} €).</>
+        <><strong>FINANCIACIÓN A 3 MESES:</strong> Importe total financiado de <strong>{fin3Total} €</strong> devengados en 3 cuotas mensuales de <strong>{fin3Cuota} €</strong> (Coste de financiación acumulado: {fin3Coste} €).</>
        )}
        {selectedModality === 'fin4' && (
-        <><strong>OPCIÓN C – FINANCIACIÓN A 4 MESES:</strong> Importe total financiado de <strong>{fin4Total} €</strong> devengados en 4 cuotas mensuales de <strong>{fin4Cuota} €</strong> (Coste de financiación acumulado: {fin4Coste} €).</>
+        <><strong>FINANCIACIÓN A 4 MESES:</strong> Importe total financiado de <strong>{fin4Total} €</strong> devengados en 4 cuotas mensuales de <strong>{fin4Cuota} €</strong> (Coste de financiación acumulado: {fin4Coste} €).</>
        )}
        </span>
       </div>
