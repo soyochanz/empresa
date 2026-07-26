@@ -69,6 +69,13 @@ const addMonthsKeepingDay = (baseDate: Date, monthsToAdd: number): Date => {
  );
 };
 
+const DEFAULT_INVOICE_ISSUER = {
+ name: 'Carlos Ronco Meneses',
+ taxId: '09104663K',
+ address: 'Carrer dels Tamarells, Sant Antoni de Portmany, 07820, Ibiza, España',
+ brand: 'Althera Solutions'
+};
+
 export const AESTHETIC_COLORS = [
  { val: 'indigo', label: 'Indigo', hex: '#6366f1', activeStyle: 'bg-indigo-500/25 border-indigo-500 text-indigo-300 shadow-[0_0_12px_rgba(99,102,241,0.15)]', badgeStyle: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
  { val: 'emerald', label: 'Esmeralda Sutil', hex: '#10b981', activeStyle: 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]', badgeStyle: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
@@ -1197,11 +1204,11 @@ export default function CrmScreen({
  <table class="header-table">
   <tr>
   <td>
-   <h1 class="company-title">Ignacio Martin Gonzalez</h1>
+   <h1 class="company-title">${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}</h1>
    <div class="company-sub">
-   Desarrollo de Software & Consultoría Tecnológica<br>
-   NIF/CIF: ES45339281Z<br>
-   Ibiza, España
+   ${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}<br>
+   NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
+   ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}
    </div>
   </td>
   <td class="invoice-title-block">
@@ -1222,11 +1229,11 @@ export default function CrmScreen({
   <div class="stakeholder-column">
   <div class="stakeholder-box">
    <div class="box-title">EMISOR</div>
-   <div class="box-name">Ignacio Martin Gonzalez</div>
+   <div class="box-name">${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}</div>
    <div class="box-detail">
-   NIF: ES45339281Z<br>
-   Email: mgnacho96@gmail.com<br>
-   Dirección: Ibiza, Islas Baleares, España
+   NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
+   ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br>
+   ${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}
    </div>
   </div>
   </div>

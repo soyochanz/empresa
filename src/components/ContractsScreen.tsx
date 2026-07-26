@@ -2744,9 +2744,6 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       </div>
      </div>
 
-     <p className="pt-1.5 text-[9px] italic border-t border-neutral-200 mt-2">
-      Althera Solutions, S.L. inscrita en el Registro Mercantil de Ibiza, Tomo 1450, Folio 120, Hoja IB-45600. Condición de vencimiento a 15 días tras emisión del servicio.
-     </p>
      </div>
     )}
 

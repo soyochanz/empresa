@@ -40,6 +40,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const INVOICE_TAX_ID_TAG = /\s*\[CLIENT_TAX_ID:([^\]]*)\]/g;
 const INVOICE_ADDRESS_TAG = /\s*\[CLIENT_ADDRESS:([^\]]*)\]/g;
+const INVOICE_ISSUER_NAME_TAG = /\s*\[ISSUER_NAME:([^\]]*)\]/g;
+const INVOICE_ISSUER_TAX_ID_TAG = /\s*\[ISSUER_TAX_ID:([^\]]*)\]/g;
+const INVOICE_ISSUER_ADDRESS_TAG = /\s*\[ISSUER_ADDRESS:([^\]]*)\]/g;
+const INVOICE_ISSUER_BRAND_TAG = /\s*\[ISSUER_BRAND:([^\]]*)\]/g;
 
 const decodeInvoiceMetadataValue = (value?: string): string => {
  try {
@@ -53,10 +57,18 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
  const cleanNotes = (invoice.notes || '')
   .replace(INVOICE_TAX_ID_TAG, '')
   .replace(INVOICE_ADDRESS_TAG, '')
+  .replace(INVOICE_ISSUER_NAME_TAG, '')
+  .replace(INVOICE_ISSUER_TAX_ID_TAG, '')
+  .replace(INVOICE_ISSUER_ADDRESS_TAG, '')
+  .replace(INVOICE_ISSUER_BRAND_TAG, '')
   .trim();
  const metadata = [
   invoice.clientTaxId ? `[CLIENT_TAX_ID:${encodeURIComponent(invoice.clientTaxId)}]` : '',
-  invoice.clientAddress ? `[CLIENT_ADDRESS:${encodeURIComponent(invoice.clientAddress)}]` : ''
+  invoice.clientAddress ? `[CLIENT_ADDRESS:${encodeURIComponent(invoice.clientAddress)}]` : '',
+  invoice.issuerName ? `[ISSUER_NAME:${encodeURIComponent(invoice.issuerName)}]` : '',
+  invoice.issuerTaxId ? `[ISSUER_TAX_ID:${encodeURIComponent(invoice.issuerTaxId)}]` : '',
+  invoice.issuerAddress ? `[ISSUER_ADDRESS:${encodeURIComponent(invoice.issuerAddress)}]` : '',
+  invoice.issuerBrand ? `[ISSUER_BRAND:${encodeURIComponent(invoice.issuerBrand)}]` : ''
  ].filter(Boolean);
  return [cleanNotes, ...metadata].filter(Boolean).join('\n') || null;
 };
@@ -65,11 +77,26 @@ const deserializeInvoice = (row: any): Invoice => {
  const rawNotes = String(row?.notes || '');
  const taxMatch = [...rawNotes.matchAll(INVOICE_TAX_ID_TAG)][0];
  const addressMatch = [...rawNotes.matchAll(INVOICE_ADDRESS_TAG)][0];
+ const issuerNameMatch = [...rawNotes.matchAll(INVOICE_ISSUER_NAME_TAG)][0];
+ const issuerTaxIdMatch = [...rawNotes.matchAll(INVOICE_ISSUER_TAX_ID_TAG)][0];
+ const issuerAddressMatch = [...rawNotes.matchAll(INVOICE_ISSUER_ADDRESS_TAG)][0];
+ const issuerBrandMatch = [...rawNotes.matchAll(INVOICE_ISSUER_BRAND_TAG)][0];
  return {
   ...row,
-  notes: rawNotes.replace(INVOICE_TAX_ID_TAG, '').replace(INVOICE_ADDRESS_TAG, '').trim() || undefined,
+  notes: rawNotes
+   .replace(INVOICE_TAX_ID_TAG, '')
+   .replace(INVOICE_ADDRESS_TAG, '')
+   .replace(INVOICE_ISSUER_NAME_TAG, '')
+   .replace(INVOICE_ISSUER_TAX_ID_TAG, '')
+   .replace(INVOICE_ISSUER_ADDRESS_TAG, '')
+   .replace(INVOICE_ISSUER_BRAND_TAG, '')
+   .trim() || undefined,
   clientTaxId: row?.clientTaxId || decodeInvoiceMetadataValue(taxMatch?.[1]),
-  clientAddress: row?.clientAddress || decodeInvoiceMetadataValue(addressMatch?.[1])
+  clientAddress: row?.clientAddress || decodeInvoiceMetadataValue(addressMatch?.[1]),
+  issuerName: row?.issuerName || decodeInvoiceMetadataValue(issuerNameMatch?.[1]),
+  issuerTaxId: row?.issuerTaxId || decodeInvoiceMetadataValue(issuerTaxIdMatch?.[1]),
+  issuerAddress: row?.issuerAddress || decodeInvoiceMetadataValue(issuerAddressMatch?.[1]),
+  issuerBrand: row?.issuerBrand || decodeInvoiceMetadataValue(issuerBrandMatch?.[1])
  };
 };
 

@@ -129,6 +129,13 @@ function getNextPaymentDate(startDateStr: string, period?: string): string {
 
 const INITIAL_INVOICES: Invoice[] = [];
 
+const DEFAULT_INVOICE_ISSUER = {
+ name: 'Carlos Ronco Meneses',
+ taxId: '09104663K',
+ address: 'Carrer dels Tamarells, Sant Antoni de Portmany, 07820, Ibiza, España',
+ brand: 'Althera Solutions'
+};
+
 const getInvoiceCardStyles = (color: string | undefined) => {
  switch (color?.toLowerCase()) {
  case 'indigo':
@@ -503,6 +510,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invClientEmail, setInvClientEmail] = useState('');
  const [invClientTaxId, setInvClientTaxId] = useState('');
  const [invClientAddress, setInvClientAddress] = useState('');
+ const [invIssuerName, setInvIssuerName] = useState(DEFAULT_INVOICE_ISSUER.name);
+ const [invIssuerTaxId, setInvIssuerTaxId] = useState(DEFAULT_INVOICE_ISSUER.taxId);
+ const [invIssuerAddress, setInvIssuerAddress] = useState(DEFAULT_INVOICE_ISSUER.address);
+ const [invIssuerBrand, setInvIssuerBrand] = useState(DEFAULT_INVOICE_ISSUER.brand);
  const [invDate, setInvDate] = useState(() => new Date().toISOString().split('T')[0]);
  const [invDueDate, setInvDueDate] = useState(() => {
  const d = new Date();
@@ -543,6 +554,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    setInvClientEmail(client.email || '');
    setInvClientTaxId(client.taxId || '');
    setInvClientAddress(client.address || matchedContact?.location || '');
+   setInvIssuerName(DEFAULT_INVOICE_ISSUER.name);
+   setInvIssuerTaxId(DEFAULT_INVOICE_ISSUER.taxId);
+   setInvIssuerAddress(DEFAULT_INVOICE_ISSUER.address);
+   setInvIssuerBrand(DEFAULT_INVOICE_ISSUER.brand);
    setInvDate(new Date().toISOString().split('T')[0]);
    const d = new Date();
    d.setDate(d.getDate() + 15);
@@ -1075,6 +1090,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   clientEmail: invClientEmail,
   clientTaxId: invClientTaxId,
   clientAddress: invClientAddress,
+  issuerName: invIssuerName,
+  issuerTaxId: invIssuerTaxId,
+  issuerAddress: invIssuerAddress,
+  issuerBrand: invIssuerBrand,
   date: invDate,
   dueDate: invDueDate,
   status: calculatedStatus,
@@ -1184,6 +1203,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvClientEmail(inv.clientEmail);
  setInvClientTaxId(inv.clientTaxId || '');
  setInvClientAddress(inv.clientAddress || '');
+ setInvIssuerName(inv.issuerName || DEFAULT_INVOICE_ISSUER.name);
+ setInvIssuerTaxId(inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId);
+ setInvIssuerAddress(inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address);
+ setInvIssuerBrand(inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand);
  setInvDate(inv.date);
  setInvDueDate(inv.dueDate);
  setInvStatus(inv.status);
@@ -1419,6 +1442,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvClientEmail('');
  setInvClientTaxId('');
  setInvClientAddress('');
+ setInvIssuerName(DEFAULT_INVOICE_ISSUER.name);
+ setInvIssuerTaxId(DEFAULT_INVOICE_ISSUER.taxId);
+ setInvIssuerAddress(DEFAULT_INVOICE_ISSUER.address);
+ setInvIssuerBrand(DEFAULT_INVOICE_ISSUER.brand);
  setInvDate(new Date().toISOString().split('T')[0]);
  const d = new Date();
  d.setDate(d.getDate() + 30);
@@ -1503,6 +1530,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setIsEditingInv(false);
  setEditingInvId(null);
  setOriginatingTxId(tx.id);
+ setInvIssuerName(DEFAULT_INVOICE_ISSUER.name);
+ setInvIssuerTaxId(DEFAULT_INVOICE_ISSUER.taxId);
+ setInvIssuerAddress(DEFAULT_INVOICE_ISSUER.address);
+ setInvIssuerBrand(DEFAULT_INVOICE_ISSUER.brand);
  
  // Find client in contacts list if possible
  const matchedContact = contacts.find(c =>
@@ -1592,20 +1623,19 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  <style>
  body {
   font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  color: #334155;
+  color: #262626;
   margin: 0;
   padding: 40px;
   line-height: 1.6;
-  background-color: #f8fafc;
+  background-color: #f5f5f4;
  }
  .invoice-card {
-  max-width: 800px;
+  max-width: 794px;
   margin: 0 auto;
   background: #ffffff;
   padding: 50px;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.02);
+  border: 1px solid #e7e5e4;
+  box-shadow: 0 18px 50px rgba(28,25,23,0.08);
  }
  .header-table {
   width: 100%;
@@ -1613,10 +1643,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   margin-bottom: 40px;
  }
  .company-title {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 850;
-  color: #0f172a;
-  letter-spacing: -0.025em;
+  color: #171717;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   margin: 0;
  }
  .company-sub {
@@ -1629,11 +1660,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   text-align: right;
  }
  .invoice-label {
-  font-size: 10px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #3b82f6;
+  color: #171717;
  }
  .invoice-number {
   font-size: 20px;
@@ -1659,9 +1690,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  .stakeholder-box {
   margin-right: 15px;
   padding: 20px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 14px;
  }
  .stakeholder-box.recipient {
   margin-right: 0;
@@ -1693,12 +1724,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   margin-bottom: 30px;
  }
  .items-table th {
-  background: #f1f5f9;
+  background: #ffffff;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #475569;
+  color: #8a7031;
   padding: 12px;
   text-align: left;
   border-bottom: 2px solid #e2e8f0;
@@ -1748,19 +1779,19 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   clear: both;
  }
  .bank-box {
-  background: #fffbeb;
-  border: 1px dashed #f59e0b;
+  background: #fafafa;
+  border: 1px dashed #d6d3d1;
   border-radius: 12px;
   padding: 20px;
   font-size: 11px;
-  color: #5c3e03;
+  color: #525252;
   margin-bottom: 30px;
  }
  .bank-title {
   font-weight: 700;
   font-size: 12px;
   margin: 0 0 12px 0;
-  color: #b45309;
+  color: #8a7031;
   text-transform: uppercase;
   letter-spacing: 0.05em;
  }
@@ -1812,16 +1843,15 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  <table class="header-table">
   <tr>
   <td style="vertical-align: top;">
-   <h1 class="company-title">ALTHERA SOLUTIONS S.L.</h1>
+   <h1 class="company-title">${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}</h1>
    <div class="company-sub">
-   CIF: B-18974534<br>
-   Avenida de España, Nº 10, 1ºA<br>
-   07800 - Ibiza, España<br>
-   Inscrita en el Registro Mercantil de Ibiza (Tomo 1450, Folio 120, Hoja IB-45600)
+   ${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}<br>
+   NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
+   ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}
    </div>
   </td>
   <td class="invoice-title-block" style="vertical-align: top;">
-   <span class="invoice-label">Factura Simplificada</span>
+   <span class="invoice-label">Factura</span>
    <div class="invoice-number">${inv.id}</div>
    <div class="invoice-dates">
    Fecha de Emisión: ${inv.date}<br>
@@ -1835,10 +1865,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   <div class="stakeholder-column">
   <div class="stakeholder-box">
    <div class="box-title">Emisor (Proveedor)</div>
-   <div class="box-name">Althera Solutions S.L.</div>
+   <div class="box-name">${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}</div>
    <div class="box-detail">
-   Email: administracion@althera.io<br>
-   Soporte: info@althera.io
+   NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
+   ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br>
+   ${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}
    </div>
   </div>
   </div>
@@ -1928,9 +1959,6 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   </div>
  ` : ''}
 
- <div class="footer">
-  Althera Solutions, S.L. — Avenida de España, Nº 10, 1ºA, 07800 - Ibiza, España. Condición de vencimiento a 15 días tras emisión. ¡Gracias por confiar en Althera!
- </div>
  </div>
 </body>
 </html>`;
@@ -4328,7 +4356,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   {/* MODAL WINDOW 2: CREATE / EDIT INVOICE (FACTURA) */}
   {isInvModalOpen && (
   <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-   <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-2xl my-8 overflow-hidden shadow-2xl relative text-left">
+   <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-4xl my-8 overflow-hidden shadow-2xl relative text-left">
    <div className="absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
    
    <div className="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
@@ -4346,6 +4374,55 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
    <form onSubmit={handleSaveInvoice} className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
     
+    <div className="rounded-2xl border border-amber-400/15 bg-amber-400/[0.035] p-4">
+     <div className="mb-3">
+      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-400">Datos fiscales del emisor</p>
+      <p className="mt-1 text-[10px] text-slate-500">Estos datos aparecerán en esta factura y puedes modificarlos antes de guardarla.</p>
+     </div>
+     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="space-y-1">
+       <label className="block text-[9px] font-mono font-semibold uppercase text-slate-400">Nombre o razón social</label>
+       <input
+        type="text"
+        value={invIssuerName}
+        onChange={(e) => setInvIssuerName(e.target.value)}
+        required
+        className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+       />
+      </div>
+      <div className="space-y-1">
+       <label className="block text-[9px] font-mono font-semibold uppercase text-slate-400">DNI / NIF / CIF</label>
+       <input
+        type="text"
+        value={invIssuerTaxId}
+        onChange={(e) => setInvIssuerTaxId(e.target.value)}
+        required
+        className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+       />
+      </div>
+      <div className="space-y-1">
+       <label className="block text-[9px] font-mono font-semibold uppercase text-slate-400">Nombre comercial</label>
+       <input
+        type="text"
+        value={invIssuerBrand}
+        onChange={(e) => setInvIssuerBrand(e.target.value)}
+        required
+        className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+       />
+      </div>
+      <div className="space-y-1">
+       <label className="block text-[9px] font-mono font-semibold uppercase text-slate-400">Dirección fiscal</label>
+       <input
+        type="text"
+        value={invIssuerAddress}
+        onChange={(e) => setInvIssuerAddress(e.target.value)}
+        required
+        className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+       />
+      </div>
+     </div>
+    </div>
+
     {/* Client select block */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div className="space-y-1">
@@ -4763,74 +4840,72 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </div>
 
    {/* Printable Frame Box Container */}
-   <div id="invoice-modal-print-area" className="p-8 bg-neutral-900 text-slate-200 font-sans border border-neutral-800 rounded-2xl m-3 space-y-8 select-text relative">
+   <div id="invoice-modal-print-area" className="m-3 space-y-8 rounded-sm border border-neutral-200 bg-white p-8 font-sans text-neutral-800 shadow-[0_20px_60px_rgba(0,0,0,0.18)] select-text relative sm:p-12">
     
     {/* Logo & ID Banner Header */}
-    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b border-neutral-800">
+    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b border-neutral-200">
     <div className="text-left">
-     <div className="flex items-center gap-2">
-     <span className="h-5.5 w-5.5 rounded bg-blue-600 flex items-center justify-center text-slate-950 uppercase font-bold text-[10px]">
-      A
-     </span>
-     <span className="text-sm font-black text-white tracking-widest font-mono uppercase">ALTHERA SOLUTIONS</span>
-     </div>
-     <p className="text-[10px] text-slate-500 mt-1 leading-normal font-mono font-medium block">
-     Avenida de España, Nº 10, 1ºA<br />
-     Althera Solutions S.L. — CIF B-18974534<br />
-     07800 - Ibiza, España
+     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a7031]">Prestador del servicio</p>
+     <h3 className="mt-2 text-sm font-black uppercase tracking-wider text-neutral-950">
+      {previewInvoice.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}
+     </h3>
+     <p className="text-[10px] text-neutral-500 mt-1 leading-normal font-mono font-medium block">
+     {previewInvoice.issuerName || DEFAULT_INVOICE_ISSUER.name}<br />
+     NIF/DNI: {previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
+     {previewInvoice.issuerAddress || DEFAULT_INVOICE_ISSUER.address}
      </p>
     </div>
 
     <div className="text-left sm:text-right">
-     <span className="text-xs uppercase font-mono font-bold tracking-widest text-blue-400">FACTURA SIMPLIFICADA</span>
-     <h3 className="text-lg font-black text-white font-mono mt-1">{previewInvoice.id}</h3>
-     <p className="text-[10px] text-slate-500 font-mono mt-1">
-     Emisión: {previewInvoice.date}<br />
-     Vence: {previewInvoice.dueDate}
+     <span className="text-xl uppercase font-bold tracking-wider text-neutral-950">Factura</span>
+     <h3 className="text-[11px] font-black text-amber-700 font-mono mt-1">Nº {previewInvoice.id}</h3>
+     <p className="text-[10px] text-neutral-500 font-mono mt-2">
+     <strong>Fecha Emisión:</strong> {previewInvoice.date}<br />
+     <strong>Vencimiento:</strong> {previewInvoice.dueDate}
      </p>
     </div>
     </div>
 
     {/* Stakeholders Client metadata info block */}
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs text-left">
-    <div className="space-y-1 bg-neutral-950/40 p-3 rounded-xl border border-neutral-850">
-     <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block font-bold">EMISOR (PROVEEDOR)</span>
-     <h4 className="font-bold text-xs text-white">Althera Solutions S.L.</h4>
-     <p className="text-slate-400 leading-normal text-[11px]">
-     Email: admin@althera.io<br />
-     Soporte: +34 910 123 456
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-left">
+    <div className="space-y-1 bg-neutral-50 p-4 rounded-2xl border border-neutral-200">
+     <span className="text-[9px] font-mono text-[#8a7031] uppercase tracking-widest block font-bold">Emisor (Proveedor)</span>
+     <h4 className="font-bold text-xs text-neutral-950">{previewInvoice.issuerName || DEFAULT_INVOICE_ISSUER.name}</h4>
+     <p className="text-neutral-500 leading-normal text-[10px]">
+     NIF/DNI: {previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
+     {previewInvoice.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br />
+     {previewInvoice.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}
      </p>
     </div>
 
-    <div className="space-y-1 bg-neutral-950/40 p-3 rounded-xl border border-neutral-850">
-     <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block font-bold">CLIENTE (RECEPTOR)</span>
-     <h4 className="font-bold text-xs text-white">{previewInvoice.clientName}</h4>
-     <p className="text-slate-400 leading-normal text-[11px]">
+    <div className="space-y-1 bg-neutral-50 p-4 rounded-2xl border border-neutral-200">
+     <span className="text-[9px] font-mono text-[#8a7031] uppercase tracking-widest block font-bold">Cliente (Receptor)</span>
+     <h4 className="font-bold text-xs text-neutral-950">{previewInvoice.clientName}</h4>
+     <p className="text-neutral-500 leading-normal text-[10px]">
      CIF/NIF/DNI: {previewInvoice.clientTaxId || 'No indicado'}<br />
      Dirección fiscal: {previewInvoice.clientAddress || 'No indicada'}<br />
-     Email: {previewInvoice.clientEmail}<br />
-     ID Cliente CRM: {previewInvoice.clientId || 'Inscripción Directa'}
+     Email: {previewInvoice.clientEmail}
      </p>
     </div>
     </div>
 
     {/* Items List inside PDF preview */}
     <div className="space-y-2 text-left">
-    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block font-bold mb-1">Conceptos en Factura</span>
-    <div className="border border-neutral-800 rounded-xl overflow-hidden bg-neutral-950/30">
+    <span className="text-[9px] font-mono text-[#8a7031] uppercase tracking-widest block font-bold mb-1">Conceptos en factura</span>
+    <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white">
      <table className="w-full text-xs text-left border-collapse">
      <thead>
-      <tr className="border-b border-neutral-850 bg-neutral-950/50 font-mono text-slate-500 text-[10px]">
+      <tr className="border-b border-neutral-300 bg-white font-mono text-[#8a7031] text-[9px]">
       <th className="p-3 font-semibold uppercase">Descripción</th>
       <th className="p-3 font-semibold uppercase text-center w-16">Cant.</th>
       <th className="p-3 font-semibold uppercase text-right w-24">Precio Unit.</th>
       <th className="p-3 font-semibold uppercase text-right w-24">Total</th>
       </tr>
      </thead>
-     <tbody className="divide-y divide-neutral-850">
+     <tbody className="divide-y divide-neutral-200">
       {previewInvoice.items.map((it, idx) => (
-      <tr key={it.id || idx} className="text-[11px] text-slate-300">
-       <td className="p-3 font-medium text-white">
+      <tr key={it.id || idx} className="text-[11px] text-neutral-700">
+       <td className="p-3 font-medium text-neutral-950">
        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 flex-wrap">
         <span>{getCleanBillingConcept(it.description)}</span>
         {it.isPending ? (
@@ -4857,7 +4932,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        </td>
        <td className="p-3 text-center">{it.quantity}</td>
        <td className="p-3 text-right font-mono">{it.unitPrice.toLocaleString('es-ES')} €</td>
-       <td className="p-3 text-right font-mono text-white text-xs font-semibold">{it.total.toLocaleString('es-ES')} €</td>
+       <td className="p-3 text-right font-mono text-neutral-950 text-xs font-semibold">{it.total.toLocaleString('es-ES')} €</td>
       </tr>
       ))}
      </tbody>
@@ -4867,61 +4942,61 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
     {/* Subtotal, tax rate, and final total calc box block */}
     <div className="flex flex-col items-end gap-1.5 text-xs text-right pt-2">
-    <div className="w-full sm:w-64 space-y-1.5 border-t border-neutral-800 pt-4">
-     <div className="flex justify-between text-slate-400 font-mono">
+    <div className="w-full sm:w-64 space-y-1.5 border-t border-neutral-300 pt-4">
+     <div className="flex justify-between text-neutral-500 font-mono">
      <span>Subtotal Neto</span>
      <span>{previewInvoice.subtotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
      </div>
-     <div className="flex justify-between text-slate-400 font-mono">
+     <div className="flex justify-between text-neutral-500 font-mono">
      <span>IVA ({previewInvoice.taxPercentage}%)</span>
      <span>{previewInvoice.taxAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
      </div>
-     <div className="flex justify-between text-base font-black text-white pt-1.5 border-t border-neutral-850 font-serif">
+     <div className="flex justify-between text-base font-black text-neutral-950 pt-1.5 border-t border-neutral-200 font-serif">
      <span>TOTAL FACTURA</span>
-     <span>{previewInvoice.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
+     <span className="text-amber-700">{previewInvoice.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
      </div>
     </div>
     </div>
 
     {/* Instructions regarding payment / banking (Revolut) */}
-    <div className="bg-neutral-950/50 border border-amber-500/15 rounded-xl p-4 text-[10px] text-left space-y-2 text-slate-300">
-    <span className="font-bold text-amber-400 uppercase tracking-wider block border-b border-neutral-850 pb-1 select-none font-mono">
+    <div className="bg-neutral-50 border border-dashed border-neutral-200 rounded-xl p-4 text-[10px] text-left space-y-2 text-neutral-600">
+    <span className="font-bold text-[#8a7031] uppercase tracking-wider block border-b border-neutral-200 pb-1 select-none font-mono">
      Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)
     </span>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 font-mono">
      <div>
-     <span className="text-slate-500">Beneficiario:</span><br />
-     <strong className="text-white select-all">{bankBeneficiary}</strong>
+     <span className="text-neutral-400">Beneficiario:</span><br />
+     <strong className="text-neutral-800 select-all">{bankBeneficiary}</strong>
      </div>
      <div>
-     <span className="text-slate-500">IBAN Euro:</span><br />
-     <strong className="text-white select-all">{paymentDetails}</strong>
+     <span className="text-neutral-400">IBAN Euro:</span><br />
+     <strong className="text-neutral-800 select-all">{paymentDetails}</strong>
      </div>
      <div>
-     <span className="text-slate-500">Código BIC/SWIFT:</span><br />
-     <strong className="text-white select-all">{bankSwift}</strong>
+     <span className="text-neutral-400">Código BIC/SWIFT:</span><br />
+     <strong className="text-neutral-800 select-all">{bankSwift}</strong>
      </div>
      <div>
-     <span className="text-slate-500">BIC Corresponsal:</span><br />
-     <strong className="text-white select-all">{bankCorrespondentBic}</strong>
+     <span className="text-neutral-400">BIC Corresponsal:</span><br />
+     <strong className="text-neutral-800 select-all">{bankCorrespondentBic}</strong>
      </div>
-     <div className="sm:col-span-2 pt-1 border-t border-neutral-850">
-     <span className="text-slate-500">Nombre y Dirección del Banco:</span><br />
-     <span className="text-slate-400">{bankNameAddress}</span>
+     <div className="sm:col-span-2 pt-1 border-t border-neutral-200">
+     <span className="text-neutral-400">Nombre y Dirección del Banco:</span><br />
+     <span className="text-neutral-600">{bankNameAddress}</span>
      </div>
     </div>
     </div>
 
     {/* Conditions / notes of print preview */}
     {previewInvoice.notes && (
-    <div className="bg-neutral-950/50 p-3 rounded-xl border border-neutral-850 text-left">
-     <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block font-bold mb-1">Notas del emisor</span>
-     <p className="text-[10px] text-slate-400 leading-relaxed font-light">{previewInvoice.notes}</p>
+    <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 text-left">
+     <span className="text-[9px] font-mono text-[#8a7031] uppercase tracking-widest block font-bold mb-1">Notas del emisor</span>
+     <p className="text-[10px] text-neutral-600 leading-relaxed font-light">{previewInvoice.notes}</p>
     </div>
     )}
 
     {/* OPERACIONES DE FINANZAS VINCULADAS */}
-    <div className="bg-neutral-950/50 border border-blue-500/15 rounded-xl p-4 text-left space-y-3">
+    <div className="bg-neutral-950/50 border border-blue-500/15 rounded-xl p-4 text-left space-y-3 print:hidden">
     <div className="flex justify-between items-center border-b border-neutral-850 pb-2">
      <span className="font-bold text-blue-400 uppercase tracking-wider text-[10px] select-none font-mono">
      Operaciones de Finanzas Vinculadas (Pagos y Cobros)
@@ -4980,13 +5055,6 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </div>
      );
     })()}
-    </div>
-
-    {/* Watermark of authenticity */}
-    <div className="text-center pt-6 border-t border-neutral-850">
-    <p className="text-[8px] font-mono text-slate-600 uppercase tracking-widest">
-     Facturación Electrónica Sincronizada — Prototipo Althera v2.5
-    </p>
     </div>
 
    </div>
