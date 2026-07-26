@@ -31,7 +31,8 @@ import {
  UsersRound,
  Target,
  TrendingUp,
- BriefcaseBusiness
+ BriefcaseBusiness,
+ Receipt
 } from 'lucide-react';
 
 export const safeConfirm = (msg: string): boolean => {
@@ -356,9 +357,12 @@ export default function CrmScreen({
  const [convertingLead, setConvertingLead] = useState<ClientContact | null>(null);
  const [convSalePrice, setConvSalePrice] = useState(1500);
  const [convInstallments, setConvInstallments] = useState(1);
+ const [convFinancingExtra, setConvFinancingExtra] = useState(0);
  const [convPaymentMethod, setConvPaymentMethod] = useState<'cash' | 'transfer' | 'stripe'>('transfer');
  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
  const [convSelectedComercialId, setConvSelectedComercialId] = useState('');
+ const convFinancedTotal = Math.max(0, Number(convSalePrice) || 0) +
+  (convInstallments > 1 ? Math.max(0, Number(convFinancingExtra) || 0) : 0);
 
  const eligibleCommissionCommercials = (comercialesList || []).filter(commercial => {
   if (isCarlosExcludedFromSalesCommission(commercial)) return false;
@@ -393,19 +397,15 @@ export default function CrmScreen({
  e.preventDefault();
  if (!convertingLead) return;
 
- // 1. Get the explicitly chosen commercial. Carlos is never eligible for sales commission.
+ // 1. The commercial is optional. Carlos is never eligible for sales commission.
  const matchedCom = eligibleCommissionCommercials.find(c => c.id === convSelectedComercialId);
- if (!matchedCom) {
-  alert('Selecciona un comercial válido para asignar la comisión.');
-  return;
- }
  const assignedEmail = matchedCom ? matchedCom.email : '';
- const commPct = matchedCom?.commissionPercentage ?? 10;
+ const commPct = matchedCom?.commissionPercentage ?? 0;
 
  // 2. Generate the Invoice (Factura) and Transactions (Cobros)
  const invoiceId = 'inv_crm_' + Math.random().toString(36).substring(2, 9);
  const stripePlanId = 'plan_crm_' + Math.random().toString(36).substring(2, 9);
- const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
+ const pricePerInstallment = Math.round((convFinancedTotal / convInstallments) * 100) / 100;
  const todayKey = new Date().toISOString().split('T')[0];
  const safeClientEmail = convertingLead.email?.trim() || `${convertingLead.id}@clientes.althera.local`;
  
@@ -468,11 +468,11 @@ export default function CrmScreen({
   dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   status: 'sent',
   items: invoiceItems,
-  subtotal: convSalePrice,
+  subtotal: convFinancedTotal,
   taxPercentage: 0,
   taxAmount: 0,
-  total: convSalePrice,
-  notes: `Venta inicial generada desde CRM. Comercial: ${matchedCom ? matchedCom.name : 'Sin asignar'}. Comisión: ${commPct}%.`,
+  total: convFinancedTotal,
+  notes: `Venta inicial generada desde CRM. Importe base: ${convSalePrice} €. Extra por financiación: ${convInstallments > 1 ? convFinancingExtra : 0} €. Comercial: ${matchedCom ? matchedCom.name : 'Sin asignar'}. ${matchedCom ? `Comisión: ${commPct}%.` : 'Sin comisión comercial.'}`,
   comercialId: matchedCom?.id,
   comercialEmail: assignedEmail,
   isInitialSale: true
@@ -543,7 +543,7 @@ export default function CrmScreen({
    const updatedLead: ComercialLead = {
    ...existingLead,
    status: 'Ganado',
-   value: convSalePrice,
+   value: convFinancedTotal,
    comercialId: matchedCom.id,
    comercialName: matchedCom.name,
    notes: `${existingLead.notes || ''}\n[SOURCE_CONTACT_ID:${convertingLead.id}]`.trim()
@@ -559,7 +559,7 @@ export default function CrmScreen({
    email: convertingLead.email || '',
    phone: convertingLead.phone || '',
    status: 'Ganado',
-   value: convSalePrice,
+   value: convFinancedTotal,
    notes: `Creado al convertir desde CRM por ${matchedCom.name}\n[SOURCE_CONTACT_ID:${convertingLead.id}]`,
    createdAt: new Date().toISOString(),
    temperature: 'Caliente',
@@ -603,12 +603,13 @@ export default function CrmScreen({
 
  // Show beautiful toast / alert
  alert(`?Felicidades! Se ha convertido a "${convertingLead.name}" en Cliente.\n\n` +
-   ` Venta Registrada: ${convSalePrice.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+   ` Venta Registrada: ${convFinancedTotal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+   (convInstallments > 1 && convFinancingExtra > 0 ? ` Extra por financiación: ${convFinancingExtra.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` : '') +
    ` Forma de pago: ${convPaymentMethod === 'stripe' ? 'Stripe' : convPaymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}\n` +
    ` Cuotas: ${convInstallments} cuota(s)\n` +
    (generatedStripeUrl ? ` Link Stripe: ${generatedStripeUrl}\n` : '') +
    ` Comercial: ${matchedCom ? matchedCom.name : 'Sin asignar'}\n` +
-   ` Comisión para el Comercial (${commPct}%): ${(convSalePrice * commPct / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` +
+   (matchedCom ? ` Comisión para el Comercial (${commPct}%): ${(convFinancedTotal * commPct / 100).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}\n` : ' Comisión comercial: Sin asignar\n') +
    ` Se han generado las Facturas e Ingresos correspondientes.`);
  };
 
@@ -639,6 +640,49 @@ export default function CrmScreen({
  }
  };
 
+ const handleToggleClientTransactionPaid = async (tx: FinanceTransaction) => {
+  const nextStatus: FinanceTransaction['status'] = tx.status === 'paid' ? 'pending' : 'paid';
+  const updatedTx: FinanceTransaction = { ...tx, status: nextStatus };
+  try {
+   await db.updateFinanceTransaction(updatedTx);
+   setTransactions(current => current.map(item => item.id === tx.id ? updatedTx : item));
+
+   if (tx.invoiceId) {
+    const linkedInvoice = invoices.find(invoice => invoice.id === tx.invoiceId);
+    if (linkedInvoice) {
+     const updatedItems = linkedInvoice.items.map(item =>
+      item.pendingTxId === tx.id ? { ...item, isPending: nextStatus !== 'paid' } : item
+     );
+     const updatedInvoice: Invoice = {
+      ...linkedInvoice,
+      items: updatedItems,
+      status: updatedItems.some(item => item.isPending) ? 'sent' : 'paid'
+     };
+     await db.updateFinanceInvoice(updatedInvoice);
+     setInvoices(current => current.map(invoice => invoice.id === updatedInvoice.id ? updatedInvoice : invoice));
+    }
+   }
+  } catch (error) {
+   console.error('Error updating installment payment status:', error);
+   alert('No se pudo actualizar el estado del pago.');
+  }
+ };
+
+ const openInvoiceGeneratorForClientPayment = (tx: FinanceTransaction) => {
+  if (!selectedContact) return;
+  const pendingTransactionIds = selectedClientTransactions
+   .filter(item => item.id !== tx.id && item.type === 'income' && item.status === 'pending')
+   .map(item => item.id);
+  sessionStorage.setItem('preselected_client_for_invoice', JSON.stringify({
+   id: selectedContact.id,
+   name: selectedContact.company !== 'Independent' ? selectedContact.company : selectedContact.name,
+   email: selectedContact.email,
+   address: selectedContact.location || '',
+   transactionIds: [tx.id, ...pendingTransactionIds]
+  }));
+  onNavigate('finanzas', 'push');
+ };
+
  const handleDeleteTransaction = async (txId: string) => {
  if (safeConfirm('¿Estás seguro de que deseas eliminar este cobro?')) {
   try {
@@ -662,7 +706,16 @@ export default function CrmScreen({
  };
 
  useEffect(() => {
- fetchFinancials();
+  fetchFinancials();
+  const refreshTimer = window.setInterval(fetchFinancials, 15000);
+  const refreshWhenVisible = () => {
+   if (document.visibilityState === 'visible') fetchFinancials();
+  };
+  document.addEventListener('visibilitychange', refreshWhenVisible);
+  return () => {
+   window.clearInterval(refreshTimer);
+   document.removeEventListener('visibilitychange', refreshWhenVisible);
+  };
  }, []);
 
  // Update payment descriptions when the client selection changes
@@ -1437,6 +1490,7 @@ export default function CrmScreen({
   setConvertingLead(contact);
   setConvSalePrice(1500);
   setConvInstallments(1);
+  setConvFinancingExtra(0);
   setConvPaymentMethod('transfer');
   setConvConcept('Servicio de Consultoría Althera');
   setConvSelectedComercialId(comercialesList[0]?.id || '');
@@ -1565,6 +1619,7 @@ export default function CrmScreen({
      setConvertingLead(contact);
      setConvSalePrice(1500);
      setConvInstallments(1);
+     setConvFinancingExtra(0);
      setConvPaymentMethod('transfer');
      setConvConcept('Servicio de Consultoría Althera');
      setConvSelectedComercialId(comercialesList[0]?.id || '');
@@ -2124,6 +2179,7 @@ export default function CrmScreen({
         setConvertingLead(selectedContact);
         setConvSalePrice(1500);
         setConvInstallments(1);
+        setConvFinancingExtra(0);
         setConvPaymentMethod('transfer');
         setConvConcept('Servicio de Consultoría Althera');
         setConvSelectedComercialId(comercialesList[0]?.id || '');
@@ -2157,6 +2213,7 @@ export default function CrmScreen({
       setConvertingLead(selectedContact);
       setConvSalePrice(1500);
       setConvInstallments(1);
+      setConvFinancingExtra(0);
       setConvPaymentMethod('transfer');
       setConvConcept('Servicio de Consultoría Althera');
       setConvSelectedComercialId(comercialesList[0]?.id || '');
@@ -2945,7 +3002,7 @@ export default function CrmScreen({
       ) : (
       <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
        {clientTransactions.map(tx => {
-       const isPending = tx.status === 'pending' || tx.description.toLowerCase().includes('pendiente');
+       const isPending = tx.status === 'pending';
        const stripeUrl = tx.stripeCheckoutUrl || activeTxStripeUrl[tx.id];
        const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId, tx.stripeInvoiceId);
        const isLoading = txStripeLoading[tx.id];
@@ -2974,6 +3031,24 @@ export default function CrmScreen({
          <span className={`text-[11px] font-mono font-black ${isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
           {isPending ? '' : '+'}{tx.amount.toFixed(2)} ?
          </span>
+
+         <button
+          type="button"
+          onClick={() => handleToggleClientTransactionPaid(tx)}
+          className={`p-1 rounded-lg border transition-all cursor-pointer ${isPending ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' : 'border-amber-500/20 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15'}`}
+          title={isPending ? 'Marcar cuota como pagada' : 'Volver a marcar como pendiente'}
+         >
+          <Check className="w-3.5 h-3.5" />
+         </button>
+
+         <button
+          type="button"
+          onClick={() => openInvoiceGeneratorForClientPayment(tx)}
+          className="p-1 rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-all hover:bg-blue-500/20 hover:text-blue-300"
+          title="Generar factura con este pago y los importes pendientes"
+         >
+          <Receipt className="w-3.5 h-3.5" />
+         </button>
 
          {/* Stripe Button for Pending Installment */}
          {isPending && (
@@ -4058,7 +4133,7 @@ export default function CrmScreen({
     {/* Precio y Plazos */}
     <div className="grid grid-cols-2 gap-4">
     <div className="space-y-1.5">
-     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Importe Total (?)</label>
+     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Importe base (€)</label>
      <input
      type="number"
      min="1"
@@ -4073,7 +4148,11 @@ export default function CrmScreen({
      <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Plazos de Pago</label>
      <select
      value={convInstallments}
-     onChange={(e) => setConvInstallments(Number(e.target.value))}
+     onChange={(e) => {
+      const installments = Number(e.target.value);
+      setConvInstallments(installments);
+      if (installments === 1) setConvFinancingExtra(0);
+     }}
      className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
      >
      <option value={1}>Pago único (1 plazo)</option>
@@ -4083,8 +4162,24 @@ export default function CrmScreen({
      <option value={6}>6 plazos mensuales</option>
      <option value={12}>12 plazos mensuales</option>
      </select>
-    </div>
-    </div>
+     </div>
+     </div>
+
+    {convInstallments > 1 && (
+     <div className="space-y-1.5">
+      <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Extra por financiación (€)</label>
+      <input
+       type="number"
+       min="0"
+       step="0.01"
+       value={convFinancingExtra}
+       onChange={(e) => setConvFinancingExtra(Math.max(0, Number(e.target.value) || 0))}
+       placeholder="Ej. 50"
+       className="w-full bg-[#030305] text-slate-200 text-xs border border-amber-400/20 rounded-xl px-3 py-2.5 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+      />
+      <p className="text-[9px] text-slate-500">Se suma al importe base y se reparte entre todas las cuotas.</p>
+     </div>
+    )}
 
     {/* Cuotas de cálculo informativo */}
     <div className="space-y-1.5">
@@ -4111,7 +4206,7 @@ export default function CrmScreen({
     </div>
     {convPaymentMethod === 'stripe' && (
      <p className="text-[9px] text-violet-300 leading-relaxed bg-violet-500/5 border border-violet-500/15 rounded-xl p-2">
-     Se generara un unico link de Stripe. Si hay varias cuotas, Stripe cobrara una mensualidad de {(convSalePrice / Math.max(convInstallments, 1)).toFixed(2)} EUR y la suscripcion se programa para cancelarse al llegar al total.
+     Se generara un unico link de Stripe. Si hay varias cuotas, Stripe cobrara una mensualidad de {(convFinancedTotal / Math.max(convInstallments, 1)).toFixed(2)} EUR y la suscripcion se programa para cancelarse al llegar al total.
      </p>
     )}
     </div>
@@ -4119,8 +4214,10 @@ export default function CrmScreen({
     {convInstallments > 1 && (
     <div className="bg-amber-500/5 p-3 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 font-mono space-y-0.5">
      <span className="block font-bold">DISTRIBUCIÓN EN PLAZOS:</span>
-     <span> Cuota mensual: {(convSalePrice / convInstallments).toFixed(2)} EUR</span>
-     <span className="block"> Total: {convInstallments} cuotas hasta completar {Number(convSalePrice || 0).toFixed(2)} EUR.</span>
+     <span> Importe base: {Number(convSalePrice || 0).toFixed(2)} EUR</span>
+     {convFinancingExtra > 0 && <span className="block"> Extra por financiación: {convFinancingExtra.toFixed(2)} EUR</span>}
+     <span className="block"> Cuota mensual: {(convFinancedTotal / convInstallments).toFixed(2)} EUR</span>
+     <span className="block"> Total: {convInstallments} cuotas hasta completar {convFinancedTotal.toFixed(2)} EUR.</span>
     </div>
     )}
 
@@ -4131,12 +4228,11 @@ export default function CrmScreen({
      {originCommissionCommercial && <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-violet-200">Sugerido automáticamente</span>}
     </div>
     <select
-     required
      value={effectiveCommissionCommercialId}
      onChange={(e) => setConvSelectedComercialId(e.target.value)}
      className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer font-sans"
     >
-     <option value="">-- Seleccionar Comercial --</option>
+     <option value="">Sin comercial — sin comisión</option>
      {eligibleCommissionCommercials.map(com => (
      <option key={com.id} value={com.id}>
       {com.name} ({com.email}) - Comisión: {com.commissionPercentage ?? 10}%
@@ -4147,7 +4243,7 @@ export default function CrmScreen({
      const com = (comercialesList || []).find(c => c.id === effectiveCommissionCommercialId);
      if (com) {
      const pct = com.commissionPercentage ?? 10;
-     const commVal = (convSalePrice * pct) / 100;
+     const commVal = (convFinancedTotal * pct) / 100;
      return (
       <p className="text-[10px] text-emerald-400 font-mono mt-1">
       👉 Se asignará una comisión de <strong>{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> ({pct}%) a <strong>{com.name}</strong> en el balance del comercial.
@@ -4156,6 +4252,7 @@ export default function CrmScreen({
      }
      return null;
     })()}
+    {!effectiveCommissionCommercialId && <p className="text-[9px] text-slate-500">Puedes confirmar la venta sin asignar comisión a ningún comercial.</p>}
     {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Se ha preseleccionado al comercial que captó el lead. Puedes cambiarlo antes de confirmar la venta. Carlos nunca recibe comisión de ventas.</p>}
     </div>
 
@@ -4170,8 +4267,7 @@ export default function CrmScreen({
     </button>
     <button
      type="submit"
-     disabled={!effectiveCommissionCommercialId}
-     className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5 uppercase tracking-wider"
+     className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5 uppercase tracking-wider"
     >
      <Check className="w-4 h-4" />
      <span>Confirmar Venta 🎯</span>

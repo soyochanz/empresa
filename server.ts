@@ -327,6 +327,67 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
   return { updated: true, txId: targetTx.id };
 }
 
+async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session): Promise<{ updated: boolean; reason?: string; txId?: string }> {
+  const isPaid = session.payment_status === "paid" || session.payment_status === "no_payment_required";
+  if (!isPaid) return { updated: false, reason: "payment_not_confirmed" };
+
+  const pendingTxId = session.metadata?.pendingTxId || "";
+  if (!pendingTxId) return { updated: false, reason: "missing_pending_transaction" };
+
+  const { data: targetTx, error: txReadError } = await supabaseAdmin
+    .from("finance_transactions")
+    .select("*")
+    .eq("id", pendingTxId)
+    .maybeSingle();
+
+  if (txReadError) throw txReadError;
+  if (!targetTx) return { updated: false, reason: "transaction_not_found" };
+
+  let updatedDescription = (targetTx.description || "").replace(/\s*\(Pendiente\)/gi, "").trim();
+  updatedDescription = writeTag(updatedDescription, "STRIPESESSION", session.id);
+  const stripeInvoiceId = typeof session.invoice === "string" ? session.invoice : session.invoice?.id;
+  if (stripeInvoiceId) updatedDescription = writeTag(updatedDescription, "STRIPEINVOICE", stripeInvoiceId);
+
+  const { error: txUpdateError } = await supabaseAdmin
+    .from("finance_transactions")
+    .update({
+      status: "paid",
+      date: new Date().toISOString().split("T")[0],
+      description: updatedDescription,
+    })
+    .eq("id", pendingTxId);
+
+  if (txUpdateError) throw txUpdateError;
+
+  const { data: invoices, error: invoiceReadError } = await supabaseAdmin
+    .from("finance_invoices")
+    .select("*");
+
+  if (invoiceReadError) throw invoiceReadError;
+
+  await Promise.all(
+    (invoices || [])
+      .filter((financeInvoice: any) =>
+        Array.isArray(financeInvoice.items) &&
+        financeInvoice.items.some((item: any) => item.pendingTxId === pendingTxId),
+      )
+      .map((financeInvoice: any) => {
+        const items = financeInvoice.items.map((item: any) =>
+          item.pendingTxId === pendingTxId
+            ? { ...item, isPending: false, paymentMethod: "stripe" }
+            : item,
+        );
+        const status = items.some((item: any) => item.isPending) ? "sent" : "paid";
+        return supabaseAdmin
+          .from("finance_invoices")
+          .update({ items, status })
+          .eq("id", financeInvoice.id);
+      }),
+  );
+
+  return { updated: targetTx.status !== "paid", txId: pendingTxId };
+}
+
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const stripe = getStripe();
@@ -352,8 +413,11 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
       const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
-      const result = await ensureFiniteInstallmentSubscription(subscriptionId, session.metadata?.installments);
-      console.log("Processed Stripe checkout.session.completed webhook:", result);
+      const [subscriptionResult, paymentResult] = await Promise.all([
+        ensureFiniteInstallmentSubscription(subscriptionId, session.metadata?.installments),
+        markStripeCheckoutSessionAsPaid(session),
+      ]);
+      console.log("Processed Stripe checkout.session.completed webhook:", { subscriptionResult, paymentResult });
     }
 
     if (event.type === "invoice.payment_failed") {
@@ -761,15 +825,20 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
     }
 
     const stripe = getStripe();
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["invoice"] });
     const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
-    await ensureFiniteInstallmentSubscription(subscriptionId, session.metadata?.installments);
+    const [, paymentResult] = await Promise.all([
+      ensureFiniteInstallmentSubscription(subscriptionId, session.metadata?.installments),
+      markStripeCheckoutSessionAsPaid(session),
+    ]);
     
     res.json({
       customerId: session.customer,
       subscriptionId,
       paymentStatus: session.payment_status,
       status: session.status,
+      transactionUpdated: paymentResult.updated,
+      transactionId: paymentResult.txId,
     });
   } catch (error: any) {
     console.error("Error retrieving checkout session:", error);

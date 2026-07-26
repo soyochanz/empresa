@@ -191,6 +191,8 @@ export interface Invoice {
  clientId?: string;
  clientName: string;
  clientEmail: string;
+ clientTaxId?: string;
+ clientAddress?: string;
  date: string;
  dueDate: string;
  status: 'draft' | 'sent' | 'paid' | 'overdue';

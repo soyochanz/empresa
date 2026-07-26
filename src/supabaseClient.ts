@@ -38,6 +38,41 @@ const { url: SUPABASE_URL, key: SUPABASE_ANON_KEY } = getSupabaseConfig();
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const INVOICE_TAX_ID_TAG = /\s*\[CLIENT_TAX_ID:([^\]]*)\]/g;
+const INVOICE_ADDRESS_TAG = /\s*\[CLIENT_ADDRESS:([^\]]*)\]/g;
+
+const decodeInvoiceMetadataValue = (value?: string): string => {
+ try {
+  return value ? decodeURIComponent(value) : '';
+ } catch {
+  return value || '';
+ }
+};
+
+const serializeInvoiceNotes = (invoice: Invoice): string | null => {
+ const cleanNotes = (invoice.notes || '')
+  .replace(INVOICE_TAX_ID_TAG, '')
+  .replace(INVOICE_ADDRESS_TAG, '')
+  .trim();
+ const metadata = [
+  invoice.clientTaxId ? `[CLIENT_TAX_ID:${encodeURIComponent(invoice.clientTaxId)}]` : '',
+  invoice.clientAddress ? `[CLIENT_ADDRESS:${encodeURIComponent(invoice.clientAddress)}]` : ''
+ ].filter(Boolean);
+ return [cleanNotes, ...metadata].filter(Boolean).join('\n') || null;
+};
+
+const deserializeInvoice = (row: any): Invoice => {
+ const rawNotes = String(row?.notes || '');
+ const taxMatch = [...rawNotes.matchAll(INVOICE_TAX_ID_TAG)][0];
+ const addressMatch = [...rawNotes.matchAll(INVOICE_ADDRESS_TAG)][0];
+ return {
+  ...row,
+  notes: rawNotes.replace(INVOICE_TAX_ID_TAG, '').replace(INVOICE_ADDRESS_TAG, '').trim() || undefined,
+  clientTaxId: row?.clientTaxId || decodeInvoiceMetadataValue(taxMatch?.[1]),
+  clientAddress: row?.clientAddress || decodeInvoiceMetadataValue(addressMatch?.[1])
+ };
+};
+
 export const SQL_SETUP_SCRIPT = `-- SQL Script to create the required tables in your Supabase SQL Editor.
 -- Copy and paste this script directly into the Supabase SQL Editor and run it.
 
@@ -1515,7 +1550,7 @@ export const db = {
   console.error('finance_invoices table read error:', error);
   throw error;
  }
- const result = (data || []) as Invoice[];
+ const result = (data || []).map(deserializeInvoice);
  setCached(cacheKey, result);
  return result;
  },
@@ -1535,7 +1570,7 @@ export const db = {
   taxPercentage: invoice.taxPercentage,
   taxAmount: invoice.taxAmount,
   total: invoice.total,
-  notes: invoice.notes || null,
+  notes: serializeInvoiceNotes(invoice),
   alias: invoice.alias || null,
   color: invoice.color || null
  };
@@ -1557,7 +1592,7 @@ export const db = {
   taxPercentage: invoice.taxPercentage,
   taxAmount: invoice.taxAmount,
   total: invoice.total,
-  notes: invoice.notes || null,
+  notes: serializeInvoiceNotes(invoice),
   alias: invoice.alias || null,
   color: invoice.color || null
  };

@@ -320,6 +320,8 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   clientId: invoiceClientId || undefined,
   clientName: invoiceClientName,
   clientEmail: invoiceClientEmail,
+  clientTaxId: invoiceClientDni,
+  clientAddress: invoiceClientAddress,
   date: invoiceDate,
   dueDate: showDueDate ? invoiceDueDate : invoiceDate,
   status: calculatedStatus,
@@ -568,6 +570,8 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  setInvoiceNumber(invoice.id);
  setInvoiceClientName(invoice.clientName || '');
  setInvoiceClientEmail(invoice.clientEmail || '');
+ setInvoiceClientDni(invoice.clientTaxId || '');
+ setInvoiceClientAddress(invoice.clientAddress || '');
  setInvoiceDate(invoice.date || new Date().toISOString().split('T')[0]);
  setInvoiceDueDate(invoice.dueDate || invoice.date || new Date().toISOString().split('T')[0]);
  setTaxPercentage(Number(invoice.taxPercentage) || 0);

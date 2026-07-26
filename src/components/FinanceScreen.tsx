@@ -206,7 +206,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    clientEmail: matchedContact?.email || 'cliente@recurrente.com',
    amount: item.amount.toString(),
    interval: (item.recurrencePeriod as any) === 'weekly' || (item.recurrencePeriod as any) === 'semanal' ? 'week' : 'month',
-  }),
+   pendingTxId: item.id,
+   stripePlanId: item.stripePlanId || `recurring_${item.id}`,
+   }),
   });
 
   const data = await readStripeJson(response);
@@ -438,11 +440,18 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    setSyncError(err?.message || String(err));
   }
   }
- }
- fetchDatabaseFinanceData();
- return () => {
-  active = false;
- };
+  }
+  fetchDatabaseFinanceData();
+  const refreshTimer = window.setInterval(fetchDatabaseFinanceData, 15000);
+  const refreshWhenVisible = () => {
+   if (document.visibilityState === 'visible') fetchDatabaseFinanceData();
+  };
+  document.addEventListener('visibilitychange', refreshWhenVisible);
+  return () => {
+   active = false;
+   window.clearInterval(refreshTimer);
+   document.removeEventListener('visibilitychange', refreshWhenVisible);
+  };
  }, []);
 
  // Filters
@@ -492,6 +501,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invClientId, setInvClientId] = useState('');
  const [invClientName, setInvClientName] = useState('');
  const [invClientEmail, setInvClientEmail] = useState('');
+ const [invClientTaxId, setInvClientTaxId] = useState('');
+ const [invClientAddress, setInvClientAddress] = useState('');
  const [invDate, setInvDate] = useState(() => new Date().toISOString().split('T')[0]);
  const [invDueDate, setInvDueDate] = useState(() => {
  const d = new Date();
@@ -521,26 +532,51 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   try {
   const client = JSON.parse(preselectedStr);
   if (client && client.id) {
+   const requestedTransactionIds = Array.isArray(client.transactionIds) ? client.transactionIds.filter(Boolean) : [];
+   if (requestedTransactionIds.length > 0 && transactions.length === 0) return;
+   const requestedTransactions = requestedTransactionIds
+    .map((id: string) => transactions.find(transaction => transaction.id === id))
+    .filter(Boolean) as FinanceTransaction[];
+   const matchedContact = contacts.find(contact => contact.id === client.id);
    setInvClientId(client.id);
    setInvClientName(client.name || '');
    setInvClientEmail(client.email || '');
+   setInvClientTaxId(client.taxId || '');
+   setInvClientAddress(client.address || matchedContact?.location || '');
    setInvDate(new Date().toISOString().split('T')[0]);
    const d = new Date();
    d.setDate(d.getDate() + 15);
    setInvDueDate(d.toISOString().split('T')[0]);
-   setInvStatus('sent'); // default to sent (pending)
-   setInvItems([{ id: 'temp1', description: 'Servicios de consultoría / desarrollo', quantity: 1, unitPrice: 0, total: 0 }]);
+   setInvStatus(requestedTransactions.length > 0 && requestedTransactions.every(tx => tx.status === 'paid') ? 'paid' : 'sent');
+   setInvItems(requestedTransactions.length > 0
+    ? requestedTransactions.map(tx => {
+     const netPrice = Number((tx.amount / 1.21).toFixed(2));
+     return {
+      id: `item_${tx.id}`,
+      description: tx.description,
+      quantity: 1,
+      unitPrice: netPrice,
+      total: netPrice,
+      isPending: tx.status !== 'paid',
+      pendingTxId: tx.id,
+      paymentMethod: tx.paymentMethod || 'transfer'
+     };
+    })
+    : [{ id: 'temp1', description: 'Servicios de consultoría / desarrollo', quantity: 1, unitPrice: 0, total: 0 }]);
+   setSelectedTxIdsForInvoice(requestedTransactions.map(tx => tx.id));
+   setOriginatingTxId(requestedTransactions[0]?.id || null);
    setIsEditingInv(false);
    setEditingInvId(null);
+   setActiveTab('invoices');
    setIsInvModalOpen(true);
+   sessionStorage.removeItem('preselected_client_for_invoice');
   }
   } catch (err) {
   console.error('Error parsing preselected client for invoice:', err);
-  } finally {
   sessionStorage.removeItem('preselected_client_for_invoice');
   }
  }
- }, [contacts]);
+ }, [contacts, transactions]);
 
  // Reset pagination on search/filter changes
  useEffect(() => {
@@ -960,8 +996,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvClientId(clientId);
  const match = contacts.find(c => c.id === clientId);
  if (match) {
-  setInvClientName(match.name);
+  setInvClientName(match.company !== 'Independent' ? match.company : match.name);
   setInvClientEmail(match.email);
+  setInvClientAddress(match.location || '');
+  setInvClientTaxId('');
  }
  };
 
@@ -1035,6 +1073,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   clientId: invClientId || undefined,
   clientName: invClientName,
   clientEmail: invClientEmail,
+  clientTaxId: invClientTaxId,
+  clientAddress: invClientAddress,
   date: invDate,
   dueDate: invDueDate,
   status: calculatedStatus,
@@ -1142,6 +1182,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvClientId(inv.clientId || '');
  setInvClientName(inv.clientName);
  setInvClientEmail(inv.clientEmail);
+ setInvClientTaxId(inv.clientTaxId || '');
+ setInvClientAddress(inv.clientAddress || '');
  setInvDate(inv.date);
  setInvDueDate(inv.dueDate);
  setInvStatus(inv.status);
@@ -1375,6 +1417,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvClientId('');
  setInvClientName('');
  setInvClientEmail('');
+ setInvClientTaxId('');
+ setInvClientAddress('');
  setInvDate(new Date().toISOString().split('T')[0]);
  const d = new Date();
  d.setDate(d.getDate() + 30);
@@ -1461,19 +1505,34 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setOriginatingTxId(tx.id);
  
  // Find client in contacts list if possible
- const matchedContact = contacts.find(c => 
-  tx.description.toLowerCase().includes(c.name.toLowerCase()) || 
+ const matchedContact = contacts.find(c =>
+  c.id === tx.clientId ||
+  tx.description.toLowerCase().includes(c.name.toLowerCase()) ||
   tx.description.toLowerCase().includes(c.company.toLowerCase())
  );
+ const relatedTransactions = [
+  tx,
+  ...transactions.filter(candidate =>
+   candidate.id !== tx.id &&
+   candidate.type === 'income' &&
+   candidate.status === 'pending' &&
+   Boolean(matchedContact?.id) &&
+   candidate.clientId === matchedContact?.id
+  )
+ ];
  
  if (matchedContact) {
   setInvClientId(matchedContact.id);
   setInvClientName(matchedContact.company !== 'Independent' ? matchedContact.company : matchedContact.name);
   setInvClientEmail(matchedContact.email);
+  setInvClientAddress(matchedContact.location || '');
+  setInvClientTaxId('');
  } else {
   setInvClientId('');
   setInvClientName(tx.description || 'Cliente de Facturación');
   setInvClientEmail('');
+  setInvClientAddress('');
+  setInvClientTaxId('');
  }
  
  setInvDate(tx.date || new Date().toISOString().split('T')[0]);
@@ -1483,22 +1542,25 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvDueDate(issueDate.toISOString().split('T')[0]);
  
  // Default to paid/sent depending on transaction status
- setInvStatus(tx.status === 'paid' ? 'paid' : 'draft');
+ setInvStatus(relatedTransactions.some(item => item.status === 'pending') ? 'sent' : 'paid');
  setInvNotes(`Factura correspondiente al cobro registrado el ${tx.date}.\nForma de pago: Transferencia Bancaria.`);
  setInvTaxPercentage(21);
  
  // Calculate values (assuming amount includes 21% VAT)
- const basePrice = parseFloat((tx.amount / 1.21).toFixed(2));
- 
- setInvItems([
-  { 
-  id: 'item_auto_' + Date.now(), 
-  description: tx.description || 'Servicios profesionales prestados', 
-  quantity: 1, 
-  unitPrice: basePrice, 
-  total: basePrice 
-  }
- ]);
+ setInvItems(relatedTransactions.map((item, index) => {
+  const basePrice = parseFloat((item.amount / 1.21).toFixed(2));
+  return {
+   id: `item_auto_${item.id}_${index}`,
+   description: item.description || 'Servicios profesionales prestados',
+   quantity: 1,
+   unitPrice: basePrice,
+   total: basePrice,
+   isPending: item.status === 'pending',
+   pendingTxId: item.id,
+   paymentMethod: item.paymentMethod || 'transfer'
+  };
+ }));
+ setSelectedTxIdsForInvoice(relatedTransactions.map(item => item.id));
  
  // Force direct navigation / tab switch to 'invoices' to avoid confusion and let them edit it!
  setActiveTab('invoices');
@@ -1783,9 +1845,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   <div class="stakeholder-column">
   <div class="stakeholder-box recipient">
    <div class="box-title">Cliente (Receptor)</div>
-   <div class="box-name">${inv.clientName}</div>
-   <div class="box-detail">
-   Email: ${inv.clientEmail}<br>
+    <div class="box-name">${inv.clientName}</div>
+    <div class="box-detail">
+    CIF/NIF/DNI: ${inv.clientTaxId || 'No indicado'}<br>
+    Dirección fiscal: ${inv.clientAddress || 'No indicada'}<br>
+    Email: ${inv.clientEmail}<br>
    ID Cliente CRM: ${inv.clientId || 'Inscripción Directa'}
    </div>
   </div>
@@ -2937,10 +3001,47 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <strong className="text-2xl text-white">{metric.value}</strong>
      <span className="text-[9px] text-slate-500 ml-1">{metric.note}</span>
      </button>
-    ))}
-    </div>
+     ))}
+     </div>
 
-    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,.75fr)] gap-4">
+     <section className="rounded-3xl border border-amber-400/15 bg-amber-500/[0.035] p-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+       <div>
+        <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-amber-400">Cobros por facturar</span>
+        <h4 className="mt-1 text-base font-black text-white">Importes pendientes de clientes</h4>
+        <p className="mt-1 text-[10px] text-slate-500">Genera la factura con el pago seleccionado y todas las cuotas pendientes del mismo cliente.</p>
+       </div>
+       <strong className="font-mono text-lg text-amber-300">
+        {transactions.filter(tx => tx.type === 'income' && tx.status === 'pending').reduce((sum, tx) => sum + tx.amount, 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+       </strong>
+      </div>
+
+      <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+       {transactions.filter(tx => tx.type === 'income' && tx.status === 'pending').length === 0 ? (
+        <p className="rounded-2xl border border-white/5 bg-black/15 p-4 text-center text-[10px] text-slate-500">No hay importes pendientes.</p>
+       ) : transactions.filter(tx => tx.type === 'income' && tx.status === 'pending').map(tx => {
+        const client = contacts.find(contact => contact.id === tx.clientId);
+        return (
+         <div key={tx.id} className="flex flex-col gap-3 rounded-2xl border border-white/[0.06] bg-black/20 p-3 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+           <p className="truncate text-xs font-bold text-white">{client?.company || client?.name || tx.description}</p>
+           <p className="mt-1 truncate text-[9px] text-slate-500">{tx.description} · Vence {tx.date}</p>
+          </div>
+          <span className="font-mono text-sm font-black text-amber-300">{tx.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+          <button
+           type="button"
+           onClick={() => handleCreateInvoiceFromTransaction(tx)}
+           className="rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-[10px] font-black text-blue-300 transition hover:bg-blue-500/20 hover:text-white"
+          >
+           Generar factura
+          </button>
+         </div>
+        );
+       })}
+      </div>
+     </section>
+
+     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,.75fr)] gap-4">
     <div className="bg-[#080b16]/70 border border-white/5 rounded-3xl p-5 min-h-[300px]">
      <div className="flex items-center justify-between">
      <div>
@@ -4284,6 +4385,30 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
      />
     </div>
+
+    <div className="space-y-1">
+     <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">CIF / NIF / DNI</label>
+     <input
+      type="text"
+      placeholder="Identificación fiscal"
+      value={invClientTaxId}
+      onChange={(e) => setInvClientTaxId(e.target.value)}
+      required
+      className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+     />
+    </div>
+
+    <div className="space-y-1">
+     <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Dirección fiscal</label>
+     <input
+      type="text"
+      placeholder="Calle, número, CP, ciudad y país"
+      value={invClientAddress}
+      onChange={(e) => setInvClientAddress(e.target.value)}
+      required
+      className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+     />
+    </div>
     </div>
 
     {/* Alias & Color selection */}
@@ -4681,6 +4806,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block font-bold">CLIENTE (RECEPTOR)</span>
      <h4 className="font-bold text-xs text-white">{previewInvoice.clientName}</h4>
      <p className="text-slate-400 leading-normal text-[11px]">
+     CIF/NIF/DNI: {previewInvoice.clientTaxId || 'No indicado'}<br />
+     Dirección fiscal: {previewInvoice.clientAddress || 'No indicada'}<br />
      Email: {previewInvoice.clientEmail}<br />
      ID Cliente CRM: {previewInvoice.clientId || 'Inscripción Directa'}
      </p>

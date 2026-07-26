@@ -622,30 +622,33 @@ export default function App() {
   const clientName = client ? client.name : 'Cliente';
 
   if (stripeStatus === 'success' && sessionId && clientId) {
-  setStripeSuccessData({
-   show: true,
-   clientName,
-   amount,
-   interval,
-   status: 'success'
-  });
-
   try {
    // Retrieve Stripe details from backend to get customerId and subscriptionId
    let customerId = 'cus_mock_123';
    let subscriptionId = 'sub_mock_123';
+   let paymentConfirmed = sessionId.startsWith('cs_test_mock_');
    
    if (sessionId && sessionId.startsWith('cs_test_mock_')) {
    // Simulated mock payment session
    console.log("Processing simulated mock payment...");
    } else {
    const res = await fetch(`/api/stripe/retrieve-session?sessionId=${sessionId}`);
-   if (res.ok) {
-    const sessionData = await res.json();
-    customerId = sessionData.customerId;
-    subscriptionId = sessionData.subscriptionId;
+   const sessionData = await res.json();
+   if (!res.ok) throw new Error(sessionData.error || 'No se pudo verificar el pago con Stripe.');
+   customerId = sessionData.customerId;
+   subscriptionId = sessionData.subscriptionId;
+   paymentConfirmed = sessionData.paymentStatus === 'paid' || sessionData.paymentStatus === 'no_payment_required';
    }
-   }
+   if (!paymentConfirmed) throw new Error('Stripe todavía no ha confirmado este pago.');
+
+   setStripeSuccessData({
+    show: true,
+    clientName,
+    amount,
+    interval,
+    status: 'success'
+   });
+
    const isSubscription = interval !== 'once';
 
    if (client) {
@@ -691,7 +694,7 @@ export default function App() {
     status: 'paid',
     date: todayStr,
     description: selectedPendingTx.description.replace(/\s*\(Pendiente\)/gi, ''),
-    paymentMethod: 'transfer',
+    paymentMethod: 'stripe',
     stripeCheckoutSessionId: sessionId
     };
     await db.updateFinanceTransaction(paidTx);
@@ -709,7 +712,7 @@ export default function App() {
     isRecurring: isSubscription,
     recurrencePeriod: isSubscription ? (interval === 'year' ? 'yearly' : 'monthly') : undefined,
     status: 'paid',
-    paymentMethod: 'transfer',
+    paymentMethod: 'stripe',
     clientId,
     stripePlanId: stripePlanId || undefined,
     stripeCheckoutSessionId: sessionId,
@@ -745,7 +748,7 @@ export default function App() {
      description: `${cleanConcept} (Cobro Automático programado)`,
      isRecurring: false,
      status: 'pending',
-     paymentMethod: 'transfer',
+     paymentMethod: 'stripe',
      clientId,
      stripePlanId: generatedStripePlanId,
      stripeInstallmentIndex: i,
@@ -774,7 +777,7 @@ export default function App() {
      const updatedItems = inv.items.map(item => item.pendingTxId === paidTx.id ? ({
      ...item,
      isPending: false,
-     paymentMethod: 'transfer' as const
+     paymentMethod: 'stripe' as const
      }) : item);
      const hasPendingItems = updatedItems.some(item => item.isPending);
      const updatedInvoice: Invoice = {
