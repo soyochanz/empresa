@@ -1661,8 +1661,11 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       </div>
       <div className="col-span-3">
        <label className="text-[8px] font-mono text-slate-500 block mb-0.5">Precio (€)</label>
-       <input
+      <input
        type="number"
+       min="0"
+       step="0.01"
+       inputMode="decimal"
        value={item.unitPrice}
        onChange={(e) => handleUpdateItem(item.id, 'unitPrice', Number(e.target.value))}
        className="w-full bg-black border border-neutral-900 rounded-lg p-1.5 text-xs text-left text-slate-100"

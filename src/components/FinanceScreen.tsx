@@ -4659,6 +4659,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       <input
        type="number"
        min="0"
+       step="0.01"
+       inputMode="decimal"
        value={item.unitPrice}
        onChange={(e) => handleUpdateInvoiceItemField(index, 'unitPrice', Number(e.target.value))}
        required
