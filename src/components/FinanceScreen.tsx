@@ -4849,7 +4849,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   {/* MODAL WINDOW 3: DETAILED INVOICE LOOKUP PREVIEW (COSMIC PRINT COMD) */}
   {previewInvoice && (
   <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-   <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-2xl my-8 overflow-hidden shadow-2xl relative text-left">
+   <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-5xl my-8 overflow-hidden shadow-2xl relative text-left">
    
    {/* Action Bar inside view modal */}
    <div className="p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01] print:hidden">
@@ -4884,165 +4884,142 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </div>
 
    {/* Printable Frame Box Container */}
-   <div id="invoice-modal-print-area" className="m-3 space-y-8 rounded-sm border border-neutral-200 bg-white p-8 font-sans text-neutral-800 shadow-[0_20px_60px_rgba(0,0,0,0.18)] select-text relative sm:p-12">
-    
-    {/* Logo & ID Banner Header */}
-    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-6 border-b border-neutral-200">
-    <div className="text-left">
-     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a7031]">Prestador del servicio</p>
-     <h3 className="mt-2 text-sm font-black uppercase tracking-wider text-neutral-950">
-      {previewInvoice.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}
-     </h3>
-     <p className="text-[10px] text-neutral-500 mt-1 leading-normal font-mono font-medium block">
-     {previewInvoice.issuerName || DEFAULT_INVOICE_ISSUER.name}<br />
-     NIF/DNI: {previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
-     {previewInvoice.issuerAddress || DEFAULT_INVOICE_ISSUER.address}
-     <br />{previewInvoice.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
-     </p>
-    </div>
+    <div id="invoice-modal-print-area" className="m-3 mx-auto min-h-[1120px] max-w-[900px] space-y-6 rounded-3xl border border-amber-500/10 bg-white p-8 font-serif text-xs leading-relaxed tracking-normal text-neutral-800 shadow-2xl select-text md:p-14">
+     <div className="flex flex-col items-center justify-center border-b border-neutral-200 bg-white pb-8 text-center">
+      <img
+       src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png"
+       alt="Althera Solutions"
+       className="mb-3 h-16 w-auto bg-transparent object-contain"
+       referrerPolicy="no-referrer"
+      />
+      <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-[#8a7031]">Creamos soluciones. Impulsamos resultados.</span>
+     </div>
 
-    <div className="text-left sm:text-right">
-     <span className="text-xl uppercase font-bold tracking-wider text-neutral-950">Factura</span>
-     <h3 className="text-[11px] font-black text-amber-700 font-mono mt-1">Nº {previewInvoice.id}</h3>
-     <p className="text-[10px] text-neutral-500 font-mono mt-2">
-     <strong>Fecha Emisión:</strong> {previewInvoice.date}<br />
-     <strong>Vencimiento:</strong> {previewInvoice.dueDate}
-     </p>
-    </div>
-    </div>
-
-    {/* Stakeholders Client metadata info block */}
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-left">
-    <div className="space-y-1 bg-neutral-50 p-4 rounded-2xl border border-neutral-200">
-     <span className="text-[9px] font-mono text-[#8a7031] uppercase tracking-widest block font-bold">Emisor (Proveedor)</span>
-     <h4 className="font-bold text-xs text-neutral-950">{previewInvoice.issuerName || DEFAULT_INVOICE_ISSUER.name}</h4>
-     <p className="text-neutral-500 leading-normal text-[10px]">
-     NIF/DNI: {previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
-     {previewInvoice.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br />
-     {previewInvoice.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}<br />
-     {previewInvoice.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
-     </p>
-    </div>
-
-    <div className="space-y-1 bg-neutral-50 p-4 rounded-2xl border border-neutral-200">
-     <span className="text-[9px] font-mono text-[#8a7031] uppercase tracking-widest block font-bold">Cliente (Receptor)</span>
-     <h4 className="font-bold text-xs text-neutral-950">{previewInvoice.clientName}</h4>
-     <p className="text-neutral-500 leading-normal text-[10px]">
-     CIF/NIF/DNI: {previewInvoice.clientTaxId || 'No indicado'}<br />
-     Dirección fiscal: {previewInvoice.clientAddress || 'No indicada'}<br />
-     Email: {previewInvoice.clientEmail}
-     </p>
-    </div>
-    </div>
-
-    {/* Items List inside PDF preview */}
-    <div className="space-y-2 text-left">
-    <span className="text-[9px] font-mono text-[#8a7031] uppercase tracking-widest block font-bold mb-1">Conceptos en factura</span>
-    <div className="border border-neutral-200 rounded-xl overflow-hidden bg-white">
-     <table className="w-full text-xs text-left border-collapse">
-     <thead>
-      <tr className="border-b border-neutral-300 bg-white font-mono text-[#8a7031] text-[9px]">
-      <th className="p-3 font-semibold uppercase">Descripción</th>
-      <th className="p-3 font-semibold uppercase text-center w-16">Cant.</th>
-      <th className="p-3 font-semibold uppercase text-right w-24">Precio Unit.</th>
-      <th className="p-3 font-semibold uppercase text-right w-24">Total</th>
-      </tr>
-     </thead>
-     <tbody className="divide-y divide-neutral-200">
-      {previewInvoice.items.map((it, idx) => (
-      <tr key={it.id || idx} className="text-[11px] text-neutral-700">
-       <td className="p-3 font-medium text-neutral-950">
-       <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 flex-wrap">
-        <span>{getCleanBillingConcept(it.description)}</span>
-        {it.isPending ? (
-        <span className="inline-flex items-center gap-0.5 text-[8px] font-mono font-bold bg-amber-500/10 border border-amber-500/25 px-1.5 py-0.2 rounded text-amber-400 select-none leading-none">
-         <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
-         Pendiente
-        </span>
-        ) : it.pendingTxId ? (
-        <span className="inline-flex items-center gap-0.5 text-[8px] font-mono font-bold bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.2 rounded text-emerald-400 select-none leading-none">
-         <span className="w-1 h-1 rounded-full bg-emerald-400" />
-         Cobrado
-        </span>
-        ) : null}
-        {it.paymentMethod && (
-        <span className={`inline-flex items-center gap-0.5 text-[8px] font-mono font-bold px-1.5 py-0.2 rounded select-none leading-none uppercase ${
-         it.paymentMethod === 'cash'  ?
-         'bg-purple-500/10 border border-purple-500/25 text-purple-300' 
-         : 'bg-cyan-500/10 border border-cyan-500/25 text-cyan-300'
-        }`}>
-         {it.paymentMethod === 'cash' ? '💸 Efectivo / Cash' : '🏦 Trsf.'}
-        </span>
-        )}
+     <div className="grid grid-cols-1 gap-8 border-b border-neutral-200 bg-white pb-6 font-sans sm:grid-cols-2">
+      <div className="space-y-4">
+       <h3 className="text-xs font-bold uppercase tracking-wider text-[#8a7031]">Prestador(es) del servicio</h3>
+       <div className="border-l-2 border-[#D4AF37]/50 pl-2 text-left">
+        <p className="text-[11px] font-bold text-slate-900">{previewInvoice.issuerName || DEFAULT_INVOICE_ISSUER.name}</p>
+        <p className="mt-0.5 text-[10px] leading-normal text-slate-500">
+         CIF/NIF/DNI: {previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
+         {previewInvoice.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br />
+         {previewInvoice.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
+        </p>
        </div>
-       </td>
-       <td className="p-3 text-center">{it.quantity}</td>
-       <td className="p-3 text-right font-mono">{it.unitPrice.toLocaleString('es-ES')} €</td>
-       <td className="p-3 text-right font-mono text-neutral-950 text-xs font-semibold">{it.total.toLocaleString('es-ES')} €</td>
-      </tr>
-      ))}
-     </tbody>
-     </table>
-    </div>
+      </div>
+      <div className="text-left sm:text-right">
+       <h2 className="text-xl font-bold uppercase tracking-wider text-neutral-950">Factura</h2>
+       <p className="mt-1 font-mono text-[11px] font-bold text-amber-600">Nº {previewInvoice.id}</p>
+       <p className="mt-2 text-[10px] text-slate-500">
+        <strong>Fecha Emisión:</strong> {previewInvoice.date}<br />
+        <strong>Vencimiento:</strong> {previewInvoice.dueDate}<br />
+        <strong>Método de Pago:</strong> {
+         previewInvoice.items.some(item => item.paymentMethod === 'cash')
+          ? 'Efectivo (Cash)'
+          : previewInvoice.items.some(item => item.paymentMethod === 'stripe')
+           ? 'Stripe'
+           : 'Transferencia Bancaria'
+        }
+       </p>
+      </div>
+     </div>
+
+     <div className="grid grid-cols-1 gap-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-5 font-sans text-neutral-800 sm:grid-cols-2">
+      <div>
+       <h4 className="mt-1 text-xs font-bold text-neutral-950">{previewInvoice.clientName}</h4>
+       <span className="mt-0.5 block font-mono text-[10px] text-neutral-500">{previewInvoice.clientTaxId || 'CIF/NIF/DNI no indicado'}</span>
+      </div>
+      <div className="text-[10px] leading-relaxed text-neutral-600 sm:pt-4 sm:text-right">
+       <span>{previewInvoice.clientAddress || 'Dirección fiscal no indicada'}</span><br />
+       <span className="font-mono text-neutral-500">{previewInvoice.clientEmail}</span>
+      </div>
+     </div>
+
+     <div className="pt-2 font-sans">
+      <table className="w-full border-collapse text-left text-xs">
+       <thead>
+        <tr className="border-b border-neutral-300 text-[9px] font-bold uppercase tracking-wider text-[#8a7031]">
+         <th className="px-1 py-2">Concepto / Servicio Técnico Requerido</th>
+         <th className="w-16 px-2 py-2 text-center">Cant.</th>
+         <th className="w-24 px-3 py-2 text-right">Precio</th>
+         <th className="w-24 px-1 py-2 text-right">Total</th>
+        </tr>
+       </thead>
+       <tbody className="divide-y divide-neutral-200">
+        {previewInvoice.items.map((item, idx) => (
+         <tr key={item.id || idx} className="text-neutral-800">
+          <td className="px-1 py-3 leading-relaxed">
+           <span className="flex flex-wrap items-center gap-1.5 font-semibold text-neutral-900">
+            <span>{getCleanBillingConcept(item.description)}</span>
+            {item.isPending ? (
+             <span className="rounded border border-amber-200 bg-amber-100 px-1 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-amber-800">Pendiente</span>
+            ) : (
+             <span className="rounded border border-emerald-200 bg-emerald-100 px-1 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-emerald-800">Cobrado</span>
+            )}
+            {item.paymentMethod && (
+             <span className={`rounded border px-1 py-0.5 text-[8px] font-extrabold uppercase tracking-wider ${
+              item.paymentMethod === 'cash'
+               ? 'border-purple-200 bg-purple-100 text-purple-800'
+               : item.paymentMethod === 'stripe'
+                ? 'border-indigo-200 bg-indigo-100 text-indigo-800'
+                : 'border-cyan-200 bg-cyan-100 text-cyan-800'
+             }`}>
+              {item.paymentMethod === 'cash' ? 'Efectivo' : item.paymentMethod === 'stripe' ? 'Stripe' : 'Trsf.'}
+             </span>
+            )}
+           </span>
+          </td>
+          <td className="px-2 py-3 text-center font-mono">{item.quantity}</td>
+          <td className="px-3 py-3 text-right font-mono">{item.unitPrice.toFixed(2)} €</td>
+          <td className="px-1 py-3 text-right font-mono font-bold text-neutral-950">{item.total.toFixed(2)} €</td>
+         </tr>
+        ))}
+       </tbody>
+      </table>
+     </div>
+
+     <div className="flex justify-end border-t border-neutral-300 pt-4 font-sans">
+      <div className="w-64 space-y-1.5 text-right text-xs">
+       <div className="flex justify-between text-slate-500">
+        <span>Subtotal:</span>
+        <span className="font-mono">{previewInvoice.subtotal.toFixed(2)} €</span>
+       </div>
+       <div className="flex justify-between text-slate-500">
+        <span>IVA ({previewInvoice.taxPercentage}%):</span>
+        <span className="font-mono">{previewInvoice.taxAmount.toFixed(2)} €</span>
+       </div>
+       <div className="flex justify-between border-t border-neutral-200 pt-2 text-sm font-bold text-neutral-950">
+        <span>Total facturado:</span>
+        <span className="font-mono text-amber-700">{previewInvoice.total.toFixed(2)} €</span>
+       </div>
+       {previewInvoice.items.some(item => item.isPending) && (
+        <div className="flex justify-between text-sm font-extrabold text-amber-800">
+         <span>Por pagar (Pendiente):</span>
+         <span className="font-mono text-amber-700">
+          {previewInvoice.items.filter(item => item.isPending).reduce((sum, item) => sum + item.total, 0).toFixed(2)} €
+         </span>
+        </div>
+       )}
+      </div>
+     </div>
+
+     <div className="mt-6 space-y-2 rounded-xl border border-dashed border-neutral-200 bg-neutral-50 p-4 font-sans text-[10px] text-neutral-500">
+      <p className="flex items-center gap-1 border-b border-neutral-200 pb-1 font-bold uppercase tracking-wider text-neutral-700">
+       <DollarSign className="h-3.5 w-3.5 text-amber-700" />
+       <span>Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)</span>
+      </p>
+      <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-xl border border-neutral-200 bg-white p-3 text-[9.5px] sm:grid-cols-2">
+       <div><span className="text-neutral-400">Beneficiario:</span><br /><strong className="font-semibold text-neutral-800">{bankBeneficiary}</strong></div>
+       <div><span className="text-neutral-400">IBAN Euro:</span><br /><strong className="font-mono font-semibold text-neutral-800">{paymentDetails}</strong></div>
+       <div><span className="text-neutral-400">Código BIC/SWIFT:</span><br /><strong className="font-mono font-semibold text-neutral-800">{bankSwift}</strong></div>
+       <div><span className="text-neutral-400">BIC del Banco Corresponsal:</span><br /><strong className="font-mono font-semibold text-neutral-800">{bankCorrespondentBic}</strong></div>
+       <div className="border-t border-neutral-100 pt-1.5 sm:col-span-2"><span className="text-neutral-400">Nombre y Dirección del Banco:</span><br /><span className="text-neutral-700">{bankNameAddress}</span></div>
+      </div>
+     </div>
     </div>
 
-    {/* Subtotal, tax rate, and final total calc box block */}
-    <div className="flex flex-col items-end gap-1.5 text-xs text-right pt-2">
-    <div className="w-full sm:w-64 space-y-1.5 border-t border-neutral-300 pt-4">
-     <div className="flex justify-between text-neutral-500 font-mono">
-     <span>Subtotal Neto</span>
-     <span>{previewInvoice.subtotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
-     </div>
-     <div className="flex justify-between text-neutral-500 font-mono">
-     <span>IVA ({previewInvoice.taxPercentage}%)</span>
-     <span>{previewInvoice.taxAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
-     </div>
-     <div className="flex justify-between text-base font-black text-neutral-950 pt-1.5 border-t border-neutral-200 font-serif">
-     <span>TOTAL FACTURA</span>
-     <span className="text-amber-700">{previewInvoice.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</span>
-     </div>
-    </div>
-    </div>
-
-    {/* Instructions regarding payment / banking (Revolut) */}
-    <div className="bg-neutral-50 border border-dashed border-neutral-200 rounded-xl p-4 text-[10px] text-left space-y-2 text-neutral-600">
-    <span className="font-bold text-[#8a7031] uppercase tracking-wider block border-b border-neutral-200 pb-1 select-none font-mono">
-     Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)
-    </span>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 font-mono">
-     <div>
-     <span className="text-neutral-400">Beneficiario:</span><br />
-     <strong className="text-neutral-800 select-all">{bankBeneficiary}</strong>
-     </div>
-     <div>
-     <span className="text-neutral-400">IBAN Euro:</span><br />
-     <strong className="text-neutral-800 select-all">{paymentDetails}</strong>
-     </div>
-     <div>
-     <span className="text-neutral-400">Código BIC/SWIFT:</span><br />
-     <strong className="text-neutral-800 select-all">{bankSwift}</strong>
-     </div>
-     <div>
-     <span className="text-neutral-400">BIC Corresponsal:</span><br />
-     <strong className="text-neutral-800 select-all">{bankCorrespondentBic}</strong>
-     </div>
-     <div className="sm:col-span-2 pt-1 border-t border-neutral-200">
-     <span className="text-neutral-400">Nombre y Dirección del Banco:</span><br />
-     <span className="text-neutral-600">{bankNameAddress}</span>
-     </div>
-    </div>
-    </div>
-
-    {/* Conditions / notes of print preview */}
-    {previewInvoice.notes && (
-    <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 text-left">
-     <span className="text-[9px] font-mono text-[#8a7031] uppercase tracking-widest block font-bold mb-1">Notas del emisor</span>
-     <p className="text-[10px] text-neutral-600 leading-relaxed font-light">{previewInvoice.notes}</p>
-    </div>
-    )}
-
-    {/* OPERACIONES DE FINANZAS VINCULADAS */}
-    <div className="bg-neutral-950/50 border border-blue-500/15 rounded-xl p-4 text-left space-y-3 print:hidden">
+    {/* OPERACIONES DE FINANZAS VINCULADAS: fuera del documento A4 */}
+    <div className="m-3 mx-auto max-w-[900px] space-y-3 rounded-xl border border-blue-500/15 bg-neutral-950/50 p-4 text-left print:hidden">
     <div className="flex justify-between items-center border-b border-neutral-850 pb-2">
      <span className="font-bold text-blue-400 uppercase tracking-wider text-[10px] select-none font-mono">
      Operaciones de Finanzas Vinculadas (Pagos y Cobros)
@@ -5103,9 +5080,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     })()}
     </div>
 
-   </div>
-
-   {/* View modal close button footer */}
+    {/* View modal close button footer */}
    <div className="p-4 border-t border-white/5 flex justify-end items-center bg-white/[0.01] print:hidden">
     <button
     onClick={() => setPreviewInvoice(null)}
