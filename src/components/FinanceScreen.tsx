@@ -137,6 +137,20 @@ const DEFAULT_INVOICE_ISSUER = {
  email: 'contacto@altherasolutions.com'
 };
 
+const isConfirmedStripePayment = (transaction: FinanceTransaction) => {
+ const transactionId = String(transaction.id || '').toLowerCase();
+ const sessionId = String(transaction.stripeCheckoutSessionId || '').toLowerCase();
+ const hasStripeOrigin = transaction.paymentMethod === 'stripe' || transactionId.startsWith('tx_stripe_');
+ const hasStripeConfirmation = Boolean(transaction.stripeInvoiceId || transaction.stripeCheckoutSessionId || transactionId.startsWith('tx_stripe_'));
+ const isSimulated = sessionId.includes('mock') || transactionId.includes('mock');
+
+ return transaction.type === 'income'
+  && transaction.status === 'paid'
+  && hasStripeOrigin
+  && hasStripeConfirmation
+  && !isSimulated;
+};
+
 const getInvoiceCardStyles = (color: string | undefined) => {
  switch (color?.toLowerCase()) {
  case 'indigo':
@@ -687,7 +701,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const pendingBalance = pendingIncomes - pendingExpenses;
 
  const getClientStripePaymentProgress = (client: ClientContact) => {
- const clientTxs = transactions.filter(tx => tx.clientId === client.id);
+ const clientTxs = transactions.filter(tx => tx.clientId === client.id && isConfirmedStripePayment(tx));
  const installmentTxs = clientTxs.filter(tx => tx.stripeInstallmentCount && tx.stripeInstallmentCount > 1);
 
  if (installmentTxs.length > 0) {
@@ -722,17 +736,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  return sum + price;
  }, 0);
  const stripeVolume = transactions
- .filter(t => t.type === 'income' && t.status === 'paid' && (t.stripePlanId || t.stripeCheckoutSessionId || t.stripeInvoiceId || t.id?.includes('stripe')))
+ .filter(isConfirmedStripePayment)
  .reduce((sum, t) => sum + (t.amount || 0), 0);
- const stripeTransactions = transactions.filter(t =>
- t.type === 'income' &&
- (t.stripePlanId || t.stripeCheckoutSessionId || t.stripeInvoiceId || t.id?.includes('stripe'))
- );
+ const stripeTransactions = transactions.filter(isConfirmedStripePayment);
 
  const getClientStripeMoneySummary = (client: ClientContact) => {
  const clientTxs = transactions.filter(tx =>
-  tx.type === 'income' &&
-  (tx.clientId === client.id || tx.stripePlanId || tx.stripeCheckoutSessionId || tx.stripeInvoiceId) &&
+  isConfirmedStripePayment(tx) &&
   (
   tx.clientId === client.id ||
   (tx.description || '').toLowerCase().includes(client.name.toLowerCase()) ||
@@ -740,13 +750,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   )
  );
  const localPaid = clientTxs.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + (tx.amount || 0), 0);
- const localOpen = clientTxs.filter(tx => tx.status === 'pending').reduce((sum, tx) => sum + (tx.amount || 0), 0);
  const overview = stripeOverviewByClient[client.id];
  const stripePaid = overview?.totals?.paidInvoices || 0;
  const stripeOpen = overview?.totals?.openInvoices || 0;
  return {
   paid: Math.max(localPaid, stripePaid),
-  open: Math.max(localOpen, stripeOpen),
+  open: stripeOpen,
  };
  };
 
@@ -3707,7 +3716,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </tr>
      ) : (
      stripeTransactions.map(t => {
-      const isPaid = t.status === 'paid';
+      const isPaid = true;
       return (
       <tr key={t.id} className="hover:bg-white/[0.01] transition-colors">
        <td className="p-3 font-mono text-[9px] text-slate-400 select-all">{t.id}</td>

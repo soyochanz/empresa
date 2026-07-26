@@ -899,7 +899,16 @@ export default function App() {
  };
 
  finTransactions.forEach(tx => {
-  const isStripeTx = Boolean(tx.stripePlanId || tx.stripeCheckoutSessionId || tx.stripeInvoiceId || String(tx.id || '').includes('stripe'));
+  const stripeTxId = String(tx.id || '').toLowerCase();
+  const stripeSessionId = String(tx.stripeCheckoutSessionId || '').toLowerCase();
+  const isStripeTx = (
+   tx.paymentMethod === 'stripe'
+   || stripeTxId.startsWith('tx_stripe_')
+  ) && Boolean(
+   tx.stripeCheckoutSessionId
+   || tx.stripeInvoiceId
+   || stripeTxId.startsWith('tx_stripe_')
+  ) && !stripeSessionId.includes('mock') && !stripeTxId.includes('mock');
 
   if (tx.type === 'income' && tx.status === 'pending' && isStripeTx && isDatePastOrToday(tx.date)) {
   list.push({
