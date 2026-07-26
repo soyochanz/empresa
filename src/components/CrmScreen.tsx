@@ -71,6 +71,12 @@ const contactHasAssignedWebsite = (contact: ClientContact): boolean => Boolean(
  contact.demoWebsiteId?.trim()
 );
 
+const isCarlosExcludedFromSalesCommission = (commercial: ComercialAccount): boolean => {
+ const normalizedName = commercial.name.trim().toLocaleLowerCase('es-ES');
+ const normalizedEmail = commercial.email.trim().toLowerCase();
+ return normalizedName.includes('carlos ronco') || normalizedEmail === 'carlosronco14@gmail.com';
+};
+
 const readStripeJson = async (response: Response) => {
  const contentType = response.headers.get('content-type') || '';
  if (!contentType.includes('application/json')) {
@@ -354,14 +360,8 @@ export default function CrmScreen({
  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
  const [convSelectedComercialId, setConvSelectedComercialId] = useState('');
 
- const originCommissionCommercial = convertingLead ? (comercialesList || []).find(commercial => {
-  const originEmail = convertingLead.contactedByComercialEmail?.trim().toLowerCase();
-  if (originEmail && commercial.email.toLowerCase() === originEmail) return true;
-  const originName = convertingLead.contactedByComercialName?.trim().toLocaleLowerCase('es-ES');
-  return Boolean(originName && commercial.name.trim().toLocaleLowerCase('es-ES') === originName);
- }) : undefined;
-
  const eligibleCommissionCommercials = (comercialesList || []).filter(commercial => {
+  if (isCarlosExcludedFromSalesCommission(commercial)) return false;
   const closerEmail = convertingLead?.closerEmail?.trim().toLowerCase();
   const closerName = convertingLead?.closerName?.trim().toLocaleLowerCase('es-ES');
   if (closerEmail && commercial.email.toLowerCase() === closerEmail) return false;
@@ -369,7 +369,14 @@ export default function CrmScreen({
   return true;
  });
 
- const effectiveCommissionCommercialId = originCommissionCommercial?.id || convSelectedComercialId;
+ const originCommissionCommercial = convertingLead ? eligibleCommissionCommercials.find(commercial => {
+  const originEmail = convertingLead.contactedByComercialEmail?.trim().toLowerCase();
+  if (originEmail && commercial.email.toLowerCase() === originEmail) return true;
+  const originName = convertingLead.contactedByComercialName?.trim().toLocaleLowerCase('es-ES');
+  return Boolean(originName && commercial.name.trim().toLocaleLowerCase('es-ES') === originName);
+ }) : undefined;
+
+ const effectiveCommissionCommercialId = convSelectedComercialId;
 
  useEffect(() => {
   if (!convertingLead) {
@@ -386,8 +393,12 @@ export default function CrmScreen({
  e.preventDefault();
  if (!convertingLead) return;
 
- // 1. Get chosen commercial
- const matchedCom = originCommissionCommercial || (comercialesList || []).find(c => c.id === convSelectedComercialId);
+ // 1. Get the explicitly chosen commercial. Carlos is never eligible for sales commission.
+ const matchedCom = eligibleCommissionCommercials.find(c => c.id === convSelectedComercialId);
+ if (!matchedCom) {
+  alert('Selecciona un comercial válido para asignar la comisión.');
+  return;
+ }
  const assignedEmail = matchedCom ? matchedCom.email : '';
  const commPct = matchedCom?.commissionPercentage ?? 10;
 
@@ -4117,14 +4128,13 @@ export default function CrmScreen({
     <div className="space-y-1.5">
     <div className="flex flex-wrap items-center justify-between gap-2">
      <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Comercial de origen (Comisión)</label>
-     {originCommissionCommercial && <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-violet-200">Detectado automáticamente</span>}
+     {originCommissionCommercial && <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-violet-200">Sugerido automáticamente</span>}
     </div>
     <select
      required
-     disabled={Boolean(originCommissionCommercial)}
      value={effectiveCommissionCommercialId}
      onChange={(e) => setConvSelectedComercialId(e.target.value)}
-     className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer font-sans disabled:cursor-not-allowed disabled:border-violet-400/20 disabled:bg-violet-950/15 disabled:text-violet-100"
+     className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer font-sans"
     >
      <option value="">-- Seleccionar Comercial --</option>
      {eligibleCommissionCommercials.map(com => (
@@ -4146,7 +4156,7 @@ export default function CrmScreen({
      }
      return null;
     })()}
-    {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Este comercial fue quien captó y gestionó inicialmente el lead. El closer mantiene la gestión de cierre, pero no recibe comisión.</p>}
+    {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Se ha preseleccionado al comercial que captó el lead. Puedes cambiarlo antes de confirmar la venta. Carlos nunca recibe comisión de ventas.</p>}
     </div>
 
     {/* Buttons */}
