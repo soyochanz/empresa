@@ -63,6 +63,8 @@ const safeConfirm = (msg: string): boolean => {
 };
 
 const STRIPE_CONNECT_TEMPORARILY_DISABLED = true;
+const COMMERCIAL_INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+const COMMERCIAL_INACTIVITY_RESPONSE_MS = 60 * 1000;
 type CommercialView = 'pipeline' | 'calendar' | 'cold_calling' | 'rewards' | 'training' | 'settings';
 type CommercialTheme = 'dark' | 'light';
 const COMMERCIAL_VIEW_PATHS: Record<CommercialView, string> = {
@@ -298,6 +300,11 @@ export default function ComercialesPanelScreen({
  const [presenceBusy, setPresenceBusy] = useState(false);
  const [presenceError, setPresenceError] = useState('');
  const [presenceClock, setPresenceClock] = useState(() => Date.now());
+ const [inactivityWarningDeadline, setInactivityWarningDeadline] = useState<number | null>(null);
+ const [inactivitySecondsRemaining, setInactivitySecondsRemaining] = useState(60);
+ const lastCommercialActivityAtRef = useRef(Date.now());
+ const inactivityWarningDeadlineRef = useRef<number | null>(null);
+ const autoOfflineInFlightRef = useRef(false);
  const [handledCallbackKeys, setHandledCallbackKeys] = useState<Set<string>>(new Set());
  const [callbackAlertLead, setCallbackAlertLead] = useState<ColdCallingLead | null>(null);
  const [focusedColdLeadId, setFocusedColdLeadId] = useState<string>();
@@ -356,19 +363,26 @@ export default function ComercialesPanelScreen({
   if (nextDue) setCallbackAlertLead(nextDue);
  }, [coldLeads, comercial.email, handledCallbackKeys, isPresenceFresh, presenceClock, callbackAlertLead]);
 
- const changePresence = async (nextStatus: 'available' | 'offline') => {
+ const changePresence = async (nextStatus: 'available' | 'offline', reason: 'manual' | 'inactivity' = 'manual') => {
   if (presenceBusy || (presence?.status === nextStatus && (nextStatus === 'offline' || isPresenceFresh))) return;
   setPresenceBusy(true);
   setPresenceError('');
   try {
    const updated = await db.setCommercialPresence(comercial, nextStatus);
    setPresence(updated);
+   lastCommercialActivityAtRef.current = Date.now();
+   inactivityWarningDeadlineRef.current = null;
+   setInactivityWarningDeadline(null);
    await db.addCommercialActivityLog({
     commercial: comercial,
     action: nextStatus === 'available' ? 'presence_available' : 'presence_offline',
     entityType: 'presence',
     entityId: updated.sessionId,
-    description: nextStatus === 'available' ? 'Se puso Available e inició su jornada.' : 'Se puso Offline y cerró su sesión de trabajo.'
+    description: nextStatus === 'available'
+     ? 'Se puso Available e inició su jornada.'
+     : reason === 'inactivity'
+      ? 'Pasó a Offline automáticamente tras 15 minutos de inactividad y 1 minuto sin responder al aviso.'
+      : 'Se puso Offline y cerró su sesión de trabajo.'
    });
   } catch (error: any) {
    setPresenceError(error?.message || 'No se pudo actualizar el estado.');
@@ -376,6 +390,65 @@ export default function ComercialesPanelScreen({
    setPresenceBusy(false);
   }
  };
+
+ const confirmCommercialActivity = async () => {
+  const now = Date.now();
+  lastCommercialActivityAtRef.current = now;
+  inactivityWarningDeadlineRef.current = null;
+  setInactivityWarningDeadline(null);
+  setInactivitySecondsRemaining(60);
+  try {
+   await db.heartbeatCommercialPresence(comercial.id);
+   setPresence(current => current ? { ...current, lastSeenAt: new Date(now).toISOString() } : current);
+  } catch (error) {
+   console.error('Could not confirm commercial activity:', error);
+  }
+ };
+
+ useEffect(() => {
+  if (presence?.status !== 'available') {
+   inactivityWarningDeadlineRef.current = null;
+   setInactivityWarningDeadline(null);
+   setInactivitySecondsRemaining(60);
+   return;
+  }
+
+  lastCommercialActivityAtRef.current = Date.now();
+  const recordActivity = () => {
+   if (inactivityWarningDeadlineRef.current !== null) return;
+   lastCommercialActivityAtRef.current = Date.now();
+  };
+  const activityEvents: Array<keyof DocumentEventMap> = ['pointerdown', 'pointermove', 'keydown', 'scroll', 'touchstart'];
+  activityEvents.forEach(eventName => document.addEventListener(eventName, recordActivity, { capture: true, passive: true }));
+
+  const timer = window.setInterval(() => {
+   const now = Date.now();
+   const deadline = inactivityWarningDeadlineRef.current;
+   if (deadline === null) {
+    if (now - lastCommercialActivityAtRef.current >= COMMERCIAL_INACTIVITY_LIMIT_MS) {
+     const nextDeadline = now + COMMERCIAL_INACTIVITY_RESPONSE_MS;
+     inactivityWarningDeadlineRef.current = nextDeadline;
+     setInactivityWarningDeadline(nextDeadline);
+     setInactivitySecondsRemaining(60);
+    }
+    return;
+   }
+
+   const secondsRemaining = Math.max(0, Math.ceil((deadline - now) / 1000));
+   setInactivitySecondsRemaining(secondsRemaining);
+   if (secondsRemaining > 0 || autoOfflineInFlightRef.current) return;
+
+   autoOfflineInFlightRef.current = true;
+   void changePresence('offline', 'inactivity').finally(() => {
+    autoOfflineInFlightRef.current = false;
+   });
+  }, 1000);
+
+  return () => {
+   window.clearInterval(timer);
+   activityEvents.forEach(eventName => document.removeEventListener(eventName, recordActivity, { capture: true }));
+  };
+ }, [comercial.id, presence?.status]);
 
  const logoutCommercial = async () => {
   try {
@@ -867,6 +940,39 @@ export default function ComercialesPanelScreen({
   <div className="absolute top-[-20%] left-[-10%] w-[700px] h-[700px] rounded-full bg-violet-600/5 blur-[150px] pointer-events-none" />
   <div className="absolute bottom-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-blue-600/5 blur-[160px] pointer-events-none" />
   <div className="absolute top-[40%] left-[30%] w-[600px] h-[600px] rounded-full bg-indigo-500/[0.03] blur-[140px] pointer-events-none" />
+
+  {inactivityWarningDeadline && presence?.status === 'available' && (
+   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020307]/85 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="commercial-inactivity-title">
+    <div className="w-full max-w-md overflow-hidden rounded-3xl border border-amber-300/20 bg-[#0a0d13] shadow-[0_30px_100px_rgba(0,0,0,.65)]">
+     <div className="border-b border-white/[0.07] bg-gradient-to-r from-amber-400/10 via-orange-400/[0.06] to-transparent p-6">
+      <div className="flex items-start gap-4">
+       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-300/20 bg-amber-300/10">
+        <AlertTriangle className="h-6 w-6 text-amber-300" />
+       </div>
+       <div>
+        <p className="text-[9px] font-black uppercase tracking-[.24em] text-amber-300">Control de disponibilidad</p>
+        <h2 id="commercial-inactivity-title" className="mt-1 text-xl font-black text-white">¿Sigues disponible?</h2>
+        <p className="mt-2 text-xs leading-5 text-slate-400">Llevas 15 minutos sin actividad en el panel. Confirma que sigues trabajando para mantener tu estado Available.</p>
+       </div>
+      </div>
+     </div>
+     <div className="p-6">
+      <div className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-black/25 px-4 py-3">
+       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400"><Clock className="h-4 w-4 text-amber-300" />Cambio automático a Offline</div>
+       <strong className="font-mono text-2xl text-white">{inactivitySecondsRemaining}s</strong>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+       <button type="button" onClick={() => void changePresence('offline')} disabled={presenceBusy} className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs font-black text-slate-300 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50">
+        <WifiOff className="h-4 w-4" />Ponerme Offline
+       </button>
+       <button type="button" onClick={() => void confirmCommercialActivity()} disabled={presenceBusy} autoFocus className="flex items-center justify-center gap-2 rounded-xl bg-lime-300 px-4 py-3 text-xs font-black text-slate-950 shadow-[0_12px_35px_rgba(163,230,53,.15)] transition hover:bg-lime-200 disabled:opacity-50">
+        <Radio className="h-4 w-4" />Sí, sigo aquí
+       </button>
+      </div>
+     </div>
+    </div>
+   </div>
+  )}
 
   {/* Official Althera Large Transparent Watermark Background */}
   <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none select-none z-0">
