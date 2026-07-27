@@ -41,6 +41,7 @@ import {
 import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen, CommercialPresence, CommercialWorkSession, CommercialActivityLog } from '../types';
 import DossierModal from './DossierModal';
 import AdminRewardsPanel from './AdminRewardsPanel';
+import AdminCommercialEvolution from './AdminCommercialEvolution';
 import { db, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
 
@@ -677,11 +678,20 @@ export default function ComercialesAdminScreen({
  // Individual Cold Calling Stats
  const indColdLeads = currentComercial  ?
   coldLeads.filter(lead => coldLeadBelongsToCommercial(lead, currentComercial))
- : [];
- const indColdCallsLogged = indColdLeads.reduce((sum, l) => sum + (l.callsCount || 0), 0);
- const indColdContacted = indColdLeads.filter(l => l.contacted === 'Sí').length;
+  : [];
+ const indColdCallsLogged = indColdLeads.reduce((sum, lead) => sum + Math.max(Number(lead.callsCount || 0), lead.callsLog?.length || 0), 0);
+ const indColdContacted = indColdLeads.filter(lead => Number(lead.callsCount || 0) > 0 || (lead.callsLog?.length || 0) > 0).length;
+ const indColdAnswered = indColdLeads.filter(lead =>
+  lead.answered === 'Sí'
+  || (lead.callsLog || []).some(log => /Resultado:\s*Responde\b/i.test(log.result || '') && !/No responde/i.test(log.result || ''))
+ ).length;
  const indColdAppointments = currentComercial ? appointmentLeadIdsByCommercial.get(currentComercial.id)?.size || 0 : 0;
  const indColdCallbacks = indColdLeads.filter(l => l.callbackScheduled === 'Llamar más tarde').length;
+ const indColdLeadIds = new Set(indColdLeads.map(lead => lead.id));
+ const indColdClosed = new Set(contacts
+  .filter(contact => contact.status === 'Client' && !!contact.closingSourceLeadId && indColdLeadIds.has(contact.closingSourceLeadId))
+  .map(contact => contact.closingSourceLeadId)
+ ).size;
 
  const presenceByCommercial = new Map(commercialPresence.map(item => [item.commercialId, item]));
  const isAvailableNow = (item?: CommercialPresence) => !!item && item.status === 'available' && presenceNow - new Date(item.lastSeenAt).getTime() < 120_000;
@@ -904,9 +914,11 @@ export default function ComercialesAdminScreen({
     </p>
    </div>
 
-   </div>
+    </div>
 
-   {/* Leaderboard & Pipeline Breakdown Columns */}
+    <AdminCommercialEvolution comerciales={comercialesList} coldLeads={coldLeads} crmLeads={mappedLeadsList} contacts={contacts} />
+
+    {/* Leaderboard & Pipeline Breakdown Columns */}
    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
    
    {/* Sales leaderboard */}
@@ -1493,30 +1505,49 @@ export default function ComercialesAdminScreen({
       <span>Rendimiento en Puerta Fría</span>
      </h4>
 
-     <div className="grid grid-cols-2 gap-4">
+     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
       <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
       <span className="text-[8px] font-mono text-slate-500 block uppercase font-bold">Asignados</span>
       <span className="text-lg font-mono font-extrabold text-white block mt-0.5">{indColdLeads.length}</span>
       <span className="text-[8px] text-slate-500 font-mono block">Negocios asignados</span>
       </div>
       <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
-      <span className="text-[8px] font-mono text-slate-500 block uppercase font-bold">Llamadas Realizadas</span>
-      <span className="text-lg font-mono font-extrabold text-white block mt-0.5">{indColdCallsLogged}</span>
-      <span className="text-[8px] text-slate-500 font-mono block">Intentos/Seguimientos</span>
+      <span className="text-[8px] font-mono text-cyan-400 block uppercase font-bold">Contactados</span>
+      <span className="text-lg font-mono font-extrabold text-cyan-300 block mt-0.5">{indColdContacted}</span>
+      <span className="text-[8px] text-slate-500 font-mono block">Negocios llamados</span>
+      </div>
+      <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
+      <span className="text-[8px] font-mono text-blue-400 block uppercase font-bold">Contestan</span>
+      <span className="text-lg font-mono font-extrabold text-blue-300 block mt-0.5">{indColdAnswered}</span>
+      <span className="text-[8px] text-slate-500 font-mono block">Conversación real</span>
+      </div>
+      <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
+      <span className="text-[8px] font-mono text-violet-400 block uppercase font-bold">A closer</span>
+      <span className="text-lg font-mono font-extrabold text-violet-300 block mt-0.5">{indColdAppointments}</span>
+      <span className="text-[8px] text-slate-500 font-mono block">Citas enviadas</span>
+      </div>
+      <div className="col-span-2 bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center xl:col-span-1">
+      <span className="text-[8px] font-mono text-lime-400 block uppercase font-bold">Cerrados</span>
+      <span className="text-lg font-mono font-extrabold text-lime-300 block mt-0.5">{indColdClosed}</span>
+      <span className="text-[8px] text-slate-500 font-mono block">Clientes conseguidos</span>
       </div>
      </div>
 
      <div className="pt-2.5 border-t border-white/5 space-y-2">
       <div className="flex justify-between items-center text-[10px] font-mono">
-      <span className="text-slate-400">Tasa de Contacto:</span>
+      <span className="text-slate-400">Cobertura de cartera:</span>
       <span className="font-bold text-slate-200">
        {indColdLeads.length > 0 ? Math.round((indColdContacted / indColdLeads.length) * 100) : 0}% 
-       ({indColdContacted} eÉxitosos)
+       ({indColdContacted} negocios llamados)
       </span>
       </div>
       <div className="flex justify-between items-center text-[10px] font-mono">
-      <span className="text-slate-400">Citas/Callbacks Agendadas:</span>
-      <span className="font-bold text-violet-400">{indColdAppointments} a closer · {indColdCallbacks} callbacks</span>
+      <span className="text-slate-400">Respuesta / avance:</span>
+      <span className="font-bold text-violet-400">{indColdAnswered} contestan · {indColdAppointments} a closer · {indColdClosed} cierres</span>
+      </div>
+      <div className="flex justify-between items-center text-[10px] font-mono">
+      <span className="text-slate-400">Actividad total:</span>
+      <span className="font-bold text-amber-300">{indColdCallsLogged} intentos/seguimientos · {indColdCallbacks} callbacks</span>
       </div>
      </div>
      </div>

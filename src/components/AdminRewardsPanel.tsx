@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Award, Banknote, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, Coins, GraduationCap, Handshake, Lightbulb, Plus, Save, ShieldCheck, ShoppingBag, Sparkles, Trash2, TrendingUp, Trophy } from 'lucide-react';
+import { Award, Banknote, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, Coins, GraduationCap, Handshake, History, Lightbulb, Plus, Save, ShieldCheck, ShoppingBag, Sparkles, Trash2, TrendingUp, Trophy } from 'lucide-react';
 import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, CommercialPresence, CommercialWorkSession, LegacyBonusType, MonthlyPerformanceReview } from '../types';
 import { buildLegacyPointLedger, buildSalesRewards, calculateKpiBreakdown, calculateLegacyPoints, calculateProfessionalismScore, LEGACY_RANKS, MVP_APPOINTMENTS_REFERENCE, MVP_CASH_REFERENCE, PROFESSIONALISM_FACTORS } from '../utils/salesRewards';
 
@@ -33,6 +33,9 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
   const [bonusType, setBonusType] = useState<LegacyBonusType>('sale_assist');
   const [bonusQuantity, setBonusQuantity] = useState(1);
   const [bonusNote, setBonusNote] = useState('');
+  const [mvpAdjustmentPoints, setMvpAdjustmentPoints] = useState('');
+  const [mvpAdjustmentReason, setMvpAdjustmentReason] = useState('');
+  const [mvpAdjustmentError, setMvpAdjustmentError] = useState('');
 
   useEffect(() => {
     const review = selected?.monthlyPerformance?.[month] || { ...emptyReview, month };
@@ -98,6 +101,38 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
     { label: 'Shows confirmados', points: selectedKpiBreakdown.shows, rule: '+15 / show', detail: `${selectedReward.shows} presentados de ${selectedReward.appointments} citas (${selectedReward.showRate}%) × 15 puntos`, Icon: Sparkles, style: 'text-cyan-300 border-cyan-400/15 bg-cyan-400/[0.05]' },
     { label: 'Profesionalidad', points: selectedKpiBreakdown.professionalism, rule: '+1,5 / nivel', detail: `${selectedReward.professionalism}/10 según los seis criterios mensuales × 1,5 puntos`, Icon: ShieldCheck, style: 'text-amber-300 border-amber-400/15 bg-amber-400/[0.05]' },
   ] : [];
+  const automaticMvpEntries = selectedReward ? [
+   { id: `mvp_cash_${month}`, label: 'Cash Collected', points: Math.round(((selectedReward.cashCollected / MVP_CASH_REFERENCE) * 50) * 100) / 100, reason: `${selectedReward.cashCollected.toLocaleString('es-ES')} € cobrados en ventas iniciales`, automatic: true },
+   { id: `mvp_appointments_${month}`, label: 'Citas agendadas', points: Math.round(((selectedReward.appointments / MVP_APPOINTMENTS_REFERENCE) * 20) * 100) / 100, reason: `${selectedReward.appointments} citas válidas enviadas al closer`, automatic: true },
+   { id: `mvp_show_${month}`, label: 'Show Rate', points: Math.round(((selectedReward.showRate / 100) * 15) * 100) / 100, reason: `${selectedReward.shows} shows de ${selectedReward.appointments} citas (${selectedReward.showRate}%)`, automatic: true },
+   { id: `mvp_professionalism_${month}`, label: 'Profesionalidad', points: Math.round(((selectedReward.professionalism / 10) * 15) * 100) / 100, reason: `Valoración mensual ${selectedReward.professionalism}/10`, automatic: true },
+  ] : [];
+  const manualMvpEntries = (selected?.mvpPointAdjustments || [])
+   .filter(adjustment => adjustment.month === month)
+   .map(adjustment => ({ ...adjustment, label: adjustment.points >= 0 ? 'Bonificación MVP' : 'Penalización MVP', automatic: false }));
+  const mvpAuditEntries = [...manualMvpEntries, ...automaticMvpEntries];
+  const addMvpAdjustment = async () => {
+   const points = Number(mvpAdjustmentPoints);
+   const reason = mvpAdjustmentReason.trim();
+   if (!selected || !Number.isFinite(points) || points === 0 || !reason) {
+    setMvpAdjustmentError('Indica puntos distintos de 0 y un motivo obligatorio.');
+    return;
+   }
+   setMvpAdjustmentError('');
+   await onUpdateComercial({
+    ...selected,
+    mvpPointAdjustments: [
+     ...(selected.mvpPointAdjustments || []),
+     { id: `mvp_adjustment_${Date.now()}`, month, points, reason, createdAt: new Date().toISOString() }
+    ]
+   });
+   setMvpAdjustmentPoints('');
+   setMvpAdjustmentReason('');
+  };
+  const deleteMvpAdjustment = async (id: string) => {
+   if (!selected) return;
+   await onUpdateComercial({ ...selected, mvpPointAdjustments: (selected.mvpPointAdjustments || []).filter(item => item.id !== id) });
+  };
   const paGuide = [
     { label: 'Cash cobrado', points: '1 PA / 1 €', detail: 'Solo venta inicial pagada y consolidada.', Icon: Coins },
     { label: 'Cita agendada', points: '+50 PA', detail: 'Para el comercial que originó la cita.', Icon: CalendarCheck },
@@ -152,7 +187,28 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
 
     <section className="rounded-3xl border border-amber-400/15 bg-white/[0.025] p-5 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2 text-amber-300"><BarChart3 className="h-5 w-5"/><span className="text-[10px] font-black uppercase tracking-[.22em]">Registro de puntos KPI</span></div><h4 className="mt-2 text-xl font-black text-white">Justificación mensual de {selected?.name || 'comercial'}</h4><p className="mt-1 text-xs text-slate-400">Referencias del índice: {MVP_CASH_REFERENCE.toLocaleString('es-ES')} € de cash y {MVP_APPOINTMENTS_REFERENCE} citas. Superarlas aumenta el score por encima de 100.</p></div><div className="flex gap-2"><div className="rounded-2xl border border-violet-400/20 bg-violet-400/[0.07] px-4 py-3 text-right"><p className="text-[8px] uppercase tracking-widest text-slate-500">Puntos acumulados</p><strong className="text-2xl text-violet-200">{selectedReward?.kpiPoints ?? 0}</strong></div><div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-right"><p className="text-[8px] uppercase tracking-widest text-slate-500">Score MVP · abierto</p><strong className="text-2xl text-amber-300">{selectedReward?.score?.toFixed(2) ?? '0.00'}</strong></div></div></div>
-      {!selectedKpiLedger.length ? <p className="mt-5 rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Este comercial no participa en el ranking KPI del mes seleccionado.</p> : <div className="mt-5 grid gap-3 md:grid-cols-2">{selectedKpiLedger.map(({ label, points, rule, detail, Icon, style }) => { const share = selectedReward?.kpiPoints ? Math.round((points / selectedReward.kpiPoints) * 100) : 0; return <article key={label} className={`rounded-2xl border p-4 ${style}`}><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2"><Icon className="h-5 w-5"/><h5 className="text-xs font-black text-white">{label}</h5></div><div className="text-right"><strong className="block font-mono text-sm">+{points}</strong><span className="text-[8px] opacity-70">{rule}</span></div></div><p className="mt-3 text-[9px] leading-relaxed text-slate-400">{detail}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40"><div className="h-full rounded-full bg-current" style={{ width: `${share}%` }}/></div><p className="mt-1.5 text-[8px] text-slate-600">{share}% de los puntos de actividad</p></article>; })}</div>}
+      {!selectedKpiLedger.length ? <p className="mt-5 rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Este comercial no participa en el ranking KPI del mes seleccionado.</p> : <div className="mt-5 grid gap-3 md:grid-cols-2">{selectedKpiLedger.map(({ label, points, rule, detail, Icon, style }) => { const share = selectedReward?.kpiPoints ? Math.round((points / selectedReward.kpiPoints) * 100) : 0; return <article key={label} className={`rounded-2xl border p-4 ${style}`}><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2"><Icon className="h-5 w-5"/><h5 className="text-xs font-black text-white">{label}</h5></div><div className="text-right"><strong className="block font-mono text-sm">+{points}</strong><span className="text-[8px] opacity-70">{rule}</span></div></div><p className="mt-3 text-[9px] leading-relaxed text-slate-400">{detail}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/40"><div className="h-full rounded-full bg-current" style={{ width: `${Math.max(0, share)}%` }}/></div><p className="mt-1.5 text-[8px] text-slate-600">{share}% de los puntos de actividad</p></article>; })}</div>}
+      <div className="mt-6 grid gap-5 border-t border-white/[0.07] pt-5 lg:grid-cols-[.75fr_1.25fr]">
+       <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-4">
+        <p className="text-[9px] font-black uppercase tracking-widest text-amber-300">Ajuste manual de MVP</p>
+        <p className="mt-1 text-[9px] leading-4 text-slate-500">Usa una cantidad positiva para sumar o negativa para restar. El motivo es obligatorio y queda guardado.</p>
+        <label className="mt-4 block"><span className="text-[8px] font-bold uppercase text-slate-500">Puntos (+ / -)</span><input type="number" step="0.01" value={mvpAdjustmentPoints} onChange={event => setMvpAdjustmentPoints(event.target.value)} placeholder="Ej. -5 o 3,5" className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-xs font-bold text-white outline-none focus:border-amber-300/40" /></label>
+        <label className="mt-3 block"><span className="text-[8px] font-bold uppercase text-slate-500">Motivo del cambio</span><textarea value={mvpAdjustmentReason} onChange={event => setMvpAdjustmentReason(event.target.value)} placeholder="Ej. Incumplimiento del proceso de seguimiento" rows={3} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-xs text-white outline-none placeholder:text-slate-700 focus:border-amber-300/40" /></label>
+        {mvpAdjustmentError && <p className="mt-2 text-[9px] font-bold text-rose-300">{mvpAdjustmentError}</p>}
+        <button type="button" onClick={() => void addMvpAdjustment()} disabled={!selected} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 py-3 text-xs font-black text-slate-950 transition hover:bg-amber-200 disabled:opacity-40"><Plus className="h-4 w-4" />Registrar ajuste</button>
+       </div>
+       <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-4">
+        <div className="flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Libro mayor MVP · {month}</p><p className="mt-1 text-[9px] text-slate-600">Cada suma o resta incluye su cálculo o motivo.</p></div><History className="h-4 w-4 text-amber-300" /></div>
+        <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">{mvpAuditEntries.map(entry => (
+         <div key={entry.id} className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3">
+          <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${entry.points < 0 ? 'bg-rose-400' : entry.automatic ? 'bg-cyan-300' : 'bg-lime-300'}`} />
+          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-[10px] font-bold text-white">{entry.label}</p><span className="rounded-md border border-white/10 px-1.5 py-0.5 text-[7px] font-black uppercase text-slate-500">{entry.automatic ? 'Automático' : 'Manual'}</span></div><p className="mt-1 text-[9px] leading-4 text-slate-500">{entry.reason}</p>{'createdAt' in entry && <time className="mt-1 block text-[8px] text-slate-700">{new Date(String(entry.createdAt)).toLocaleString('es-ES')}</time>}</div>
+          <strong className={`whitespace-nowrap font-mono text-xs ${entry.points < 0 ? 'text-rose-300' : 'text-lime-300'}`}>{entry.points > 0 ? '+' : ''}{entry.points.toFixed(2)}</strong>
+          {!entry.automatic && <button type="button" onClick={() => void deleteMvpAdjustment(entry.id)} aria-label="Eliminar ajuste MVP" className="rounded-lg p-1.5 text-slate-600 transition hover:bg-rose-500/10 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>}
+         </div>
+        ))}</div>
+       </div>
+      </div>
     </section>
 
     <section className="rounded-3xl border border-violet-400/20 bg-[linear-gradient(135deg,rgba(124,58,237,.1),rgba(0,0,0,.18))] p-5 sm:p-6">

@@ -2610,6 +2610,18 @@ export const db = {
   }
   phone = phone.replace(legacyRegex, '').trim();
 
+  let mvpPointAdjustments: any[] = [];
+  const mvpAdjustmentsRegex = /\s*\[MVPADJ:([^\]]+)\]/g;
+  const mvpAdjustmentsMatch = mvpAdjustmentsRegex.exec(phone);
+  if (mvpAdjustmentsMatch) {
+   try {
+    mvpPointAdjustments = JSON.parse(decodeURIComponent(mvpAdjustmentsMatch[1]));
+   } catch (e) {
+    console.error('Error parsing commercial MVP point adjustments metadata', e);
+   }
+  }
+  phone = phone.replace(mvpAdjustmentsRegex, '').trim();
+
   let extraCommissions: any[] = [];
   const extrasRegex = /\s*\[EXTRAS:([^\]]+)\]/g;
   const extrasMatch = extrasRegex.exec(phone);
@@ -2652,6 +2664,7 @@ export const db = {
   payouts,
   monthlyPerformance,
   legacyBonuses,
+  mvpPointAdjustments,
   extraCommissions,
   createdAt: row.created_at || new Date().toISOString()
   };
@@ -2694,6 +2707,9 @@ export const db = {
  }
  if (account.legacyBonuses && account.legacyBonuses.length > 0) {
   phone += ` [LEGACY:${encodeURIComponent(JSON.stringify(account.legacyBonuses))}]`;
+ }
+ if (account.mvpPointAdjustments && account.mvpPointAdjustments.length > 0) {
+  phone += ` [MVPADJ:${encodeURIComponent(JSON.stringify(account.mvpPointAdjustments))}]`;
  }
  if (account.extraCommissions && account.extraCommissions.length > 0) {
   phone += ` [EXTRAS:${encodeURIComponent(JSON.stringify(account.extraCommissions))}]`;
@@ -2749,6 +2765,9 @@ export const db = {
  }
  if (account.legacyBonuses && account.legacyBonuses.length > 0) {
   phone += ` [LEGACY:${encodeURIComponent(JSON.stringify(account.legacyBonuses))}]`;
+ }
+ if (account.mvpPointAdjustments && account.mvpPointAdjustments.length > 0) {
+  phone += ` [MVPADJ:${encodeURIComponent(JSON.stringify(account.mvpPointAdjustments))}]`;
  }
  if (account.extraCommissions && account.extraCommissions.length > 0) {
   phone += ` [EXTRAS:${encodeURIComponent(JSON.stringify(account.extraCommissions))}]`;

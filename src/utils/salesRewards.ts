@@ -11,6 +11,7 @@ export interface SalesRewardRow {
   conversations: number;
   effectiveHours: number;
   kpiPoints: number;
+  mvpAdjustmentPoints: number;
   score: number;
   eligible: boolean;
   cashPrize: number;
@@ -340,12 +341,16 @@ export function buildSalesRewards(
 
   return raw.map(row => {
     const kpi = calculateKpiBreakdown(row);
-    const kpiPoints = kpi.cash + kpi.appointments + kpi.shows + kpi.professionalism;
-    const score = calculateMvpScore(row);
+    const mvpAdjustmentPoints = (row.comercial.mvpPointAdjustments || [])
+      .filter(adjustment => adjustment.month === month)
+      .reduce((sum, adjustment) => sum + Number(adjustment.points || 0), 0);
+    const kpiPoints = kpi.cash + kpi.appointments + kpi.shows + kpi.professionalism + mvpAdjustmentPoints;
+    const score = Math.round((calculateMvpScore(row) + mvpAdjustmentPoints) * 100) / 100;
     const cashPosition = cashOrder.findIndex(item => item.comercial.id === row.comercial.id);
     return {
       ...row,
       kpiPoints: Math.round(kpiPoints * 10) / 10,
+      mvpAdjustmentPoints: Math.round(mvpAdjustmentPoints * 100) / 100,
       score,
       eligible: row.professionalism >= 8,
       cashPrize: row.cashCollected > 0 ? ([200, 100, 50][cashPosition] || 0) : 0,

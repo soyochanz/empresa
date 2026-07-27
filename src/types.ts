@@ -259,6 +259,7 @@ export interface ComercialAccount {
  extraCommissions?: ExtraCommission[];
  monthlyPerformance?: Record<string, MonthlyPerformanceReview>;
  legacyBonuses?: LegacyBonus[];
+ mvpPointAdjustments?: MvpPointAdjustment[];
 }
 
 export type LegacyBonusType = 'sale_assist' | 'training' | 'monthly_idea';
@@ -285,6 +286,14 @@ export interface MonthlyPerformanceReview {
  communication?: number;
  taskCompletion?: number;
  updatedAt?: string;
+}
+
+export interface MvpPointAdjustment {
+ id: string;
+ month: string;
+ points: number;
+ reason: string;
+ createdAt: string;
 }
 
 export interface ComercialLead {
