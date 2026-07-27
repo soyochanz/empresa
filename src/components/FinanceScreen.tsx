@@ -30,7 +30,8 @@ import {
  ExternalLink,
  ShieldCheck,
  LayoutDashboard,
- Activity
+ Activity,
+ CalendarDays
 } from 'lucide-react';
 
 const safeConfirm = (msg: string): boolean => {
@@ -127,6 +128,53 @@ function getNextPaymentDate(startDateStr: string, period?: string): string {
  });
 }
 
+const parseFinanceDate = (value?: string): Date | null => {
+ if (!value) return null;
+ const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+ const parsed = isoDate
+  ? new Date(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3]), 12)
+  : new Date(value);
+ return Number.isFinite(parsed.getTime()) ? parsed : null;
+};
+
+const getMonthKey = (date: Date): string =>
+ `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const getRecurringIncomeOccurrences = (transaction: FinanceTransaction, monthKey: string): Date[] => {
+ const start = parseFinanceDate(transaction.date);
+ if (!start || !transaction.isRecurring || transaction.type !== 'income') return [];
+ const [year, month] = monthKey.split('-').map(Number);
+ const monthStart = new Date(year, month - 1, 1, 0, 0, 0, 0);
+ const monthEnd = new Date(year, month, 1, 0, 0, 0, 0);
+ const period = transaction.recurrencePeriod || 'monthly';
+ const occurrences: Date[] = [];
+
+ if (period === 'weekly') {
+  const occurrence = new Date(start);
+  occurrence.setDate(occurrence.getDate() + 7);
+  while (occurrence < monthStart) occurrence.setDate(occurrence.getDate() + 7);
+  while (occurrence < monthEnd) {
+   occurrences.push(new Date(occurrence));
+   occurrence.setDate(occurrence.getDate() + 7);
+  }
+  return occurrences;
+ }
+
+ if (period === 'yearly') {
+  const day = Math.min(start.getDate(), new Date(year, start.getMonth() + 1, 0).getDate());
+  const occurrence = new Date(year, start.getMonth(), day, 12);
+  if (occurrence > start && occurrence >= monthStart && occurrence < monthEnd) occurrences.push(occurrence);
+  return occurrences;
+ }
+
+ const monthsBetween = (year - start.getFullYear()) * 12 + (month - 1 - start.getMonth());
+ if (monthsBetween < 1) return [];
+ const targetDay = Math.min(start.getDate(), new Date(year, month, 0).getDate());
+ const occurrence = new Date(year, month - 1, targetDay, 12);
+ if (occurrence >= monthStart && occurrence < monthEnd) occurrences.push(occurrence);
+ return occurrences;
+};
+
 const INITIAL_INVOICES: Invoice[] = [];
 
 const DEFAULT_INVOICE_ISSUER = {
@@ -200,8 +248,14 @@ const getInvoiceCardStyles = (color: string | undefined) => {
 
 export default function FinanceScreen({ contacts, onNavigate, comercialesList = [], onRefreshFinance }: FinanceScreenProps) {
  const rankableComercialesList = getRankableCommercials(comercialesList);
- // Navigation tabs: 'transactions' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
- const [activeTab, setActiveTab] = useState<'transactions' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'>('transactions');
+ // Navigation tabs: 'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
+ const [activeTab, setActiveTab] = useState<'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'>('transactions');
+ const [forecastMonth, setForecastMonth] = useState(() => {
+  const nextMonth = new Date();
+  nextMonth.setDate(1);
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  return getMonthKey(nextMonth);
+ });
 
  // Dynamic Stripe link states for recurring transaction cards
  const [activeRecStripeUrl, setActiveRecStripeUrl] = useState<{[txId: string]: string}>({});
@@ -2133,6 +2187,42 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  });
 
  const recurringExpenses = transactions.filter(t => !!t.isRecurring);
+ const forecastMonths = Array.from({ length: 12 }, (_, index) => {
+  const monthDate = new Date();
+  monthDate.setDate(1);
+  monthDate.setHours(12, 0, 0, 0);
+  monthDate.setMonth(monthDate.getMonth() + index + 1);
+  const key = getMonthKey(monthDate);
+  const pendingItems = transactions.filter(transaction =>
+   transaction.type === 'income'
+   && transaction.status === 'pending'
+   && !transaction.isRecurring
+   && (() => {
+    const transactionDate = parseFinanceDate(transaction.date);
+    return transactionDate ? getMonthKey(transactionDate) === key : false;
+   })()
+  );
+  const recurringItems = transactions
+   .filter(transaction => transaction.type === 'income' && transaction.isRecurring)
+   .flatMap(transaction => getRecurringIncomeOccurrences(transaction, key).map(date => ({
+    transaction,
+    date,
+    amount: Number(transaction.nextAmount ?? transaction.amount ?? 0)
+   })));
+  const pendingTotal = pendingItems.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+  const recurringTotal = recurringItems.reduce((sum, item) => sum + item.amount, 0);
+  return {
+   key,
+   label: monthDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
+   shortLabel: monthDate.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' }).replace('.', ''),
+   pendingItems,
+   recurringItems,
+   pendingTotal,
+   recurringTotal,
+   total: pendingTotal + recurringTotal
+  };
+ });
+ const selectedForecast = forecastMonths.find(month => month.key === forecastMonth) || forecastMonths[0];
 
  return (
  <div className="w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin @container" id="finance-module-root">
@@ -2447,6 +2537,17 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </span>
    </button>
    <button
+   onClick={() => setActiveTab('forecast')}
+   className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
+    activeTab === 'forecast'
+    ? 'bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 shadow-sm shadow-cyan-500/5'
+    : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
+   }`}
+   >
+   <CalendarDays className="w-3.5 h-3.5" />
+   <span>Previsión por meses</span>
+   </button>
+   <button
    onClick={() => setActiveTab('invoices')}
    className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
     activeTab === 'invoices'  ?
@@ -2488,6 +2589,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   <span className="text-[11px] font-mono text-slate-500 text-left sm:text-right">
    {activeTab === 'transactions'  ?
    `Mostrando ${filteredTxs.length} registros` 
+   : activeTab === 'forecast' ?
+    `${selectedForecast?.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0,00'} € previstos`
    : activeTab === 'recurring'  ?
     `${recurringExpenses.length} suscripciones operativas` 
     : activeTab === 'stripe' ?
@@ -2495,6 +2598,55 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     : `${comercialesList.length} representantes comerciales`}
   </span>
   </div>
+
+  {/* Monthly income forecast */}
+  {activeTab === 'forecast' && selectedForecast && (
+  <div className="space-y-5">
+   <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-[#08111d]/80 to-emerald-400/[0.04] p-5 sm:p-6">
+    <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl pointer-events-none" />
+    <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+     <div>
+      <span className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Planificación de cobros</span>
+      <h3 className="mt-1 text-xl font-black capitalize text-white">{selectedForecast.label}</h3>
+      <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Suma los ingresos pendientes cuya fecha cae en el mes y las próximas cuotas de los conceptos recurrentes de ingresos.</p>
+     </div>
+     <div className="rounded-2xl border border-cyan-300/15 bg-black/25 px-5 py-3 text-right">
+      <span className="block text-[8px] font-black uppercase tracking-widest text-cyan-300">Cobro total previsto</span>
+      <strong className="mt-1 block text-3xl font-black text-white">{selectedForecast.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+     </div>
+    </div>
+    <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
+     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pendientes del mes</span><strong className="mt-2 block text-xl text-white">{selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.pendingItems.length} cobro{selectedForecast.pendingItems.length === 1 ? '' : 's'} pendiente{selectedForecast.pendingItems.length === 1 ? '' : 's'}</small></div>
+     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Ingresos recurrentes</span><strong className="mt-2 block text-xl text-white">{selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.recurringItems.length} cuota{selectedForecast.recurringItems.length === 1 ? '' : 's'} prevista{selectedForecast.recurringItems.length === 1 ? '' : 's'}</small></div>
+     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Peso recurrente</span><strong className="mt-2 block text-xl text-white">{selectedForecast.total > 0 ? Math.round(selectedForecast.recurringTotal / selectedForecast.total * 100) : 0}%</strong><small className="mt-1 block text-[9px] text-slate-500">del cobro previsto para el mes</small></div>
+    </div>
+   </section>
+
+   <section className="rounded-3xl border border-white/[0.06] bg-[#0b1329]/25 p-4 sm:p-5">
+    <div className="mb-4 flex items-center justify-between gap-3"><div><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Próximos 12 meses</span><h4 className="mt-1 text-sm font-bold text-white">Selecciona un mes para ver el desglose</h4></div><CalendarDays className="h-5 w-5 text-cyan-300" /></div>
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+     {forecastMonths.map((month, index) => (
+      <button key={month.key} type="button" onClick={() => setForecastMonth(month.key)} className={`rounded-2xl border p-3 text-left transition ${forecastMonth === month.key ? 'border-cyan-300/35 bg-cyan-300/10 shadow-lg shadow-cyan-400/5' : 'border-white/[0.06] bg-black/20 hover:border-white/15 hover:bg-white/[0.025]'}`}>
+       <span className={`block text-[8px] font-black uppercase tracking-wider ${forecastMonth === month.key ? 'text-cyan-300' : 'text-slate-500'}`}>{index === 0 ? 'Próximo mes' : month.shortLabel}</span>
+       <strong className="mt-2 block text-sm text-white">{month.total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} €</strong>
+       <span className="mt-1 block text-[8px] text-slate-600">{month.pendingItems.length + month.recurringItems.length} movimientos</span>
+      </button>
+     ))}
+    </div>
+   </section>
+
+   <div className="grid gap-5 xl:grid-cols-2">
+    <section className="overflow-hidden rounded-3xl border border-amber-300/10 bg-[#0b1329]/20">
+     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-amber-300">Pendientes con fecha en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.pendingItems.length} cobros · {selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
+     {selectedForecast.pendingItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos pendientes fechados para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.pendingItems.sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div><strong className="shrink-0 font-mono text-sm text-amber-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+    </section>
+    <section className="overflow-hidden rounded-3xl border border-violet-300/10 bg-[#0b1329]/20">
+     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-violet-300">Cuotas recurrentes previstas</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.recurringItems.length} cuotas · {selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
+     {selectedForecast.recurringItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos recurrentes previstos para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.recurringItems.sort((a, b) => a.date.getTime() - b.date.getTime()).map((item, index) => <div key={`${item.transaction.id}_${item.date.toISOString()}_${index}`} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(item.transaction.description)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{item.date.toLocaleDateString('es-ES')} · {item.transaction.recurrencePeriod === 'weekly' ? 'Semanal' : item.transaction.recurrencePeriod === 'yearly' ? 'Anual' : 'Mensual'}</p></div><strong className="shrink-0 font-mono text-sm text-violet-300">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+    </section>
+   </div>
+  </div>
+  )}
 
   {/* Tab Content 1: Transactions list */}
   {activeTab === 'transactions' && (
