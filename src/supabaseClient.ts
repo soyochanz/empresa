@@ -2222,9 +2222,19 @@ export const db = {
  if (!lead) return lead;
  const callsCount = lead.callsCount || 0;
  const callsLog = lead.callsLog || [];
+ const assignmentHistory = [...(lead.assignmentHistory || [])];
+ const currentAssignedEmail = (lead.assignedToEmail || '').trim();
+ if (currentAssignedEmail && currentAssignedEmail !== 'unassigned' && !assignmentHistory.some(record => record.commercialEmail?.toLowerCase() === currentAssignedEmail.toLowerCase())) {
+  assignmentHistory.push({
+   commercialEmail: currentAssignedEmail,
+   commercialName: lead.assignedToName,
+   assignedAt: lead.createdAt || new Date().toISOString()
+  });
+ }
  const metadataObj = {
   callsCount,
   callsLog,
+  assignmentHistory,
   requestedProducts: lead.requestedProducts || [],
   requestedProductOther: lead.requestedProductOther || undefined
  };
@@ -2243,6 +2253,7 @@ export const db = {
  const cleanNotes = parts[0];
  let callsCount = 0;
  let callsLog: any[] = [];
+ let assignmentHistory: any[] = [];
  let requestedProducts: string[] = [];
  let requestedProductOther: string | undefined;
  if (parts.length > 1) {
@@ -2250,6 +2261,7 @@ export const db = {
   const metadataObj = JSON.parse(parts[1]);
   callsCount = metadataObj.callsCount || 0;
   callsLog = metadataObj.callsLog || [];
+  assignmentHistory = Array.isArray(metadataObj.assignmentHistory) ? metadataObj.assignmentHistory : [];
   requestedProducts = Array.isArray(metadataObj.requestedProducts) ? metadataObj.requestedProducts : [];
   requestedProductOther = metadataObj.requestedProductOther || undefined;
   } catch (e) {
@@ -2261,6 +2273,7 @@ export const db = {
   notes: cleanNotes,
   callsCount,
   callsLog,
+  assignmentHistory,
   requestedProducts,
   requestedProductOther,
   prospectGroupId: lead.prospect_group_id || lead.prospectGroupId || undefined,

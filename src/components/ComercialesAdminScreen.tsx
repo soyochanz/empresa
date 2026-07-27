@@ -37,6 +37,8 @@ import {
  RefreshCw
  ,Radio
  ,WifiOff
+ ,Download
+ ,Printer
 } from 'lucide-react';
 import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen, CommercialPresence, CommercialWorkSession, CommercialActivityLog } from '../types';
 import DossierModal from './DossierModal';
@@ -44,6 +46,7 @@ import AdminRewardsPanel from './AdminRewardsPanel';
 import AdminCommercialEvolution from './AdminCommercialEvolution';
 import { db, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
+import { downloadCommercialAnalyticsReport, printCommercialAnalyticsReport } from '../utils/commercialAnalyticsReport';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -569,6 +572,7 @@ export default function ComercialesAdminScreen({
   appointmentLeadIdsByCommercial.set(event.comercialId, ids);
  });
  const coldLeadBelongsToCommercial = (lead: ColdCallingLead, commercial: ComercialAccount) => {
+  if ((lead.assignmentHistory || []).some(record => record.commercialEmail.toLowerCase() === commercial.email.toLowerCase())) return true;
   const originEmail = lead.closingOriginComercialEmail?.toLowerCase();
   if (originEmail) return originEmail === commercial.email.toLowerCase();
   if (appointmentLeadIdsByCommercial.get(commercial.id)?.has(lead.id)) return true;
@@ -626,6 +630,16 @@ export default function ComercialesAdminScreen({
 
  // --- COMPUTE INDIVIDUAL METRICS FOR SELECTED COMERCIAL ---
  const currentComercial = comercialesList.find(c => c.id === selectedComercialId);
+ const reportCommercials = getRankableCommercials(comercialesList)
+  .filter(comercial => comercial.name.trim().toLowerCase() !== 'prueba');
+ const createReportInput = (scope: 'general' | 'individual') => ({
+  commercials: scope === 'general' ? reportCommercials : (currentComercial ? [currentComercial] : []),
+  coldLeads,
+  crmLeads: mappedLeadsList,
+  contacts,
+  finTransactions,
+  scope
+ });
  
  const individualLeads = currentComercial  ?
  mappedLeadsList.filter(l => l.comercialId === currentComercial.id) 
@@ -659,15 +673,6 @@ export default function ComercialesAdminScreen({
   Math.round(individualLeads.reduce((sum, l) => sum + (l.value || 0), 0) / individualLeads.length)
   : 0;
 
- // Individual status distribution
- const indStatusCounts = {
- Pendiente: individualLeads.filter(l => l.status === 'Pendiente').length,
- Contactado: individualLeads.filter(l => l.status === 'Contactado').length,
- Negociación: individualLeads.filter(l => l.status === 'Negociación').length,
- Ganado: indWon.length,
- Perdido: indLost.length
- };
-
  // Individual temperature distribution
  const indTempCounts = {
  Caliente: individualLeads.filter(l => l.temperature === 'Caliente').length,
@@ -676,6 +681,9 @@ export default function ComercialesAdminScreen({
  };
 
  // Individual Cold Calling Stats
+ const indColdCurrentAssigned = currentComercial
+  ? coldLeads.filter(lead => !lead.archived && lead.assignedToEmail?.toLowerCase() === currentComercial.email.toLowerCase()).length
+  : 0;
  const indColdLeads = currentComercial  ?
   coldLeads.filter(lead => coldLeadBelongsToCommercial(lead, currentComercial))
   : [];
@@ -685,13 +693,23 @@ export default function ComercialesAdminScreen({
   lead.answered === 'Sí'
   || (lead.callsLog || []).some(log => /Resultado:\s*Responde\b/i.test(log.result || '') && !/No responde/i.test(log.result || ''))
  ).length;
- const indColdAppointments = currentComercial ? appointmentLeadIdsByCommercial.get(currentComercial.id)?.size || 0 : 0;
- const indColdCallbacks = indColdLeads.filter(l => l.callbackScheduled === 'Llamar más tarde').length;
  const indColdLeadIds = new Set(indColdLeads.map(lead => lead.id));
+ const indColdAppointments = currentComercial ? new Set([
+  ...indColdLeads.filter(lead => lead.callbackScheduled === 'Sí').map(lead => lead.id),
+  ...Array.from(appointmentLeadIdsByCommercial.get(currentComercial.id) || []).filter(leadId => indColdLeadIds.has(leadId))
+ ]).size : 0;
+ const indColdCallbacks = indColdLeads.filter(l => l.callbackScheduled === 'Llamar más tarde').length;
  const indColdClosed = new Set(contacts
   .filter(contact => contact.status === 'Client' && !!contact.closingSourceLeadId && indColdLeadIds.has(contact.closingSourceLeadId))
   .map(contact => contact.closingSourceLeadId)
  ).size;
+ const indColdFunnelRows = [
+  { label: 'Sin contactar', count: Math.max(0, indColdLeads.length - indColdContacted), colorClass: 'bg-slate-500', textClass: 'text-slate-400' },
+  { label: 'Contactados', count: indColdContacted, colorClass: 'bg-cyan-500', textClass: 'text-cyan-400' },
+  { label: 'Contestan', count: indColdAnswered, colorClass: 'bg-blue-500', textClass: 'text-blue-400' },
+  { label: 'A closer', count: indColdAppointments, colorClass: 'bg-violet-500', textClass: 'text-violet-400' },
+  { label: 'Cerrados', count: indColdClosed, colorClass: 'bg-emerald-500', textClass: 'text-emerald-400' }
+ ];
 
  const presenceByCommercial = new Map(commercialPresence.map(item => [item.commercialId, item]));
  const isAvailableNow = (item?: CommercialPresence) => !!item && item.status === 'available' && presenceNow - new Date(item.lastSeenAt).getTime() < 120_000;
@@ -829,6 +847,17 @@ export default function ComercialesAdminScreen({
   {/* TAB 1: GENERAL METRICS */}
   {activeTab === 'general' && (
   <div className="space-y-8 animate-fade-in">
+   <section className="flex flex-col gap-4 rounded-2xl border border-amber-400/15 bg-amber-400/[0.045] p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+     <p className="text-[9px] font-black uppercase tracking-[.23em] text-amber-300">Exportación de analítica</p>
+     <h3 className="mt-1 text-sm font-bold text-white">Reporte general del equipo comercial</h3>
+     <p className="mt-1 text-[10px] text-slate-500">Incluye histórico acumulado, embudo, resultados económicos y evolución de los últimos 6 meses.</p>
+    </div>
+    <div className="flex flex-wrap gap-2">
+     <button type="button" onClick={() => downloadCommercialAnalyticsReport(createReportInput('general'))} disabled={reportCommercials.length === 0} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[9px] font-black uppercase tracking-wider text-slate-200 transition hover:border-amber-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><Download className="h-4 w-4 text-amber-300"/>Descargar reporte</button>
+     <button type="button" onClick={() => printCommercialAnalyticsReport(createReportInput('general'))} disabled={reportCommercials.length === 0} className="inline-flex items-center gap-2 rounded-xl bg-amber-400 px-4 py-2.5 text-[9px] font-black uppercase tracking-wider text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"><Printer className="h-4 w-4"/>Imprimir / PDF</button>
+    </div>
+   </section>
    <section className="overflow-hidden rounded-3xl border border-lime-300/15 bg-gradient-to-br from-lime-300/[0.07] via-slate-950/50 to-cyan-400/[0.04] p-5 sm:p-6">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
      <div><p className="text-[9px] font-black uppercase tracking-[.25em] text-lime-300">Presencia en tiempo real</p><h3 className="mt-1 text-xl font-black text-white">Equipo Available</h3><p className="mt-1 text-[10px] text-slate-500">Solo aparecen conexiones con señal recibida durante los últimos 2 minutos.</p></div>
@@ -916,7 +945,7 @@ export default function ComercialesAdminScreen({
 
     </div>
 
-    <AdminCommercialEvolution comerciales={comercialesList} coldLeads={coldLeads} crmLeads={mappedLeadsList} contacts={contacts} />
+    <AdminCommercialEvolution comerciales={getRankableCommercials(comercialesList).filter(comercial => comercial.name.trim().toLowerCase() !== 'prueba')} coldLeads={coldLeads} crmLeads={mappedLeadsList} contacts={contacts} />
 
     {/* Leaderboard & Pipeline Breakdown Columns */}
    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -1076,17 +1105,21 @@ export default function ComercialesAdminScreen({
     </div>
    </div>
 
-   <select
-    value={selectedComercialId}
-    onChange={(e) => setSelectedComercialId(e.target.value)}
-    className="bg-[#05050a] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-amber-500 outline-none cursor-pointer max-w-xs font-mono font-bold"
-   >
-    {comercialesList.map(c => (
-    <option key={c.id} value={c.id}>
-     {c.name} ({c.email})
-    </option>
-    ))}
-   </select>
+   <div className="flex flex-wrap items-center justify-end gap-2">
+    <select
+     value={selectedComercialId}
+     onChange={(e) => setSelectedComercialId(e.target.value)}
+     className="bg-[#05050a] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:border-amber-500 outline-none cursor-pointer max-w-xs font-mono font-bold"
+    >
+     {comercialesList.map(c => (
+     <option key={c.id} value={c.id}>
+      {c.name} ({c.email})
+     </option>
+     ))}
+    </select>
+    <button type="button" onClick={() => downloadCommercialAnalyticsReport(createReportInput('individual'))} disabled={!currentComercial} title="Descargar reporte individual" className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[9px] font-black uppercase tracking-wider text-slate-200 transition hover:border-amber-300/30 disabled:opacity-40"><Download className="h-4 w-4 text-amber-300"/>Reporte</button>
+    <button type="button" onClick={() => printCommercialAnalyticsReport(createReportInput('individual'))} disabled={!currentComercial} title="Imprimir o guardar como PDF" className="inline-flex h-10 items-center gap-2 rounded-xl bg-amber-400 px-3 text-[9px] font-black uppercase tracking-wider text-slate-950 transition hover:bg-amber-300 disabled:opacity-40"><Printer className="h-4 w-4"/>PDF</button>
+   </div>
    </div>
 
    {comercialesList.length === 0 ? (
@@ -1470,24 +1503,17 @@ export default function ComercialesAdminScreen({
      <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-3.5">
      <h4 className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-extrabold flex items-center gap-2">
       <PieChart className="w-4 h-4 text-emerald-400" />
-      <span>Embudo de Ventas Individual</span>
+      <span>Embudo de Puerta Fría Individual</span>
      </h4>
 
      <div className="space-y-3 font-sans">
-      {Object.entries(indStatusCounts).map(([status, count]) => {
-      const pct = individualLeads.length > 0 ? Math.round((count / individualLeads.length) * 100) : 0;
-      let colorClass = 'bg-slate-500';
-      let textClass = 'text-slate-400';
-      if (status === 'Ganado') { colorClass = 'bg-emerald-500'; textClass = 'text-emerald-400'; }
-      if (status === 'Perdido') { colorClass = 'bg-rose-500'; textClass = 'text-rose-400'; }
-      if (status === 'Negociación') { colorClass = 'bg-amber-500'; textClass = 'text-amber-400'; }
-      if (status === 'Contactado') { colorClass = 'bg-blue-500'; textClass = 'text-blue-400'; }
-
+      {indColdFunnelRows.map(({ label, count, colorClass, textClass }) => {
+      const pct = indColdLeads.length > 0 ? Math.round((count / indColdLeads.length) * 100) : 0;
       return (
-       <div key={status} className="space-y-1">
+       <div key={label} className="space-y-1">
        <div className="flex justify-between text-[10px] font-mono">
-        <span className={`font-bold ${textClass}`}>{status}</span>
-        <span className="text-slate-400">{count} leads ({pct}%)</span>
+        <span className={`font-bold ${textClass}`}>{label}</span>
+        <span className="text-slate-400">{count} negocios ({pct}%)</span>
        </div>
        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
         <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${pct}%` }} />
@@ -1505,11 +1531,16 @@ export default function ComercialesAdminScreen({
       <span>Rendimiento en Puerta Fría</span>
      </h4>
 
-     <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+     <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
       <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
-      <span className="text-[8px] font-mono text-slate-500 block uppercase font-bold">Asignados</span>
+      <span className="text-[8px] font-mono text-slate-500 block uppercase font-bold">Asignados ahora</span>
+      <span className="text-lg font-mono font-extrabold text-white block mt-0.5">{indColdCurrentAssigned}</span>
+      <span className="text-[8px] text-slate-500 font-mono block">Cartera vigente</span>
+      </div>
+      <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
+      <span className="text-[8px] font-mono text-slate-500 block uppercase font-bold">Histórico total</span>
       <span className="text-lg font-mono font-extrabold text-white block mt-0.5">{indColdLeads.length}</span>
-      <span className="text-[8px] text-slate-500 font-mono block">Negocios asignados</span>
+      <span className="text-[8px] text-slate-500 font-mono block">Negocios trabajados</span>
       </div>
       <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
       <span className="text-[8px] font-mono text-cyan-400 block uppercase font-bold">Contactados</span>
@@ -1526,7 +1557,7 @@ export default function ComercialesAdminScreen({
       <span className="text-lg font-mono font-extrabold text-violet-300 block mt-0.5">{indColdAppointments}</span>
       <span className="text-[8px] text-slate-500 font-mono block">Citas enviadas</span>
       </div>
-      <div className="col-span-2 bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center xl:col-span-1">
+      <div className="bg-slate-950/50 p-3 rounded-xl border border-white/5 text-center">
       <span className="text-[8px] font-mono text-lime-400 block uppercase font-bold">Cerrados</span>
       <span className="text-lg font-mono font-extrabold text-lime-300 block mt-0.5">{indColdClosed}</span>
       <span className="text-[8px] text-slate-500 font-mono block">Clientes conseguidos</span>

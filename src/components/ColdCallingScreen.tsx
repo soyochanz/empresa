@@ -142,6 +142,19 @@ interface ColdCallingScreenProps {
  focusClosingLeadId?: string;
 }
 
+const withColdLeadAssignmentHistory = (lead: ColdCallingLead, assignedToEmail: string, assignedToName: string): ColdCallingLead => {
+ const now = new Date().toISOString();
+ const history = [...(lead.assignmentHistory || [])];
+ const remember = (email?: string, name?: string, assignedAt = now) => {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  if (!normalizedEmail || normalizedEmail === 'unassigned' || history.some(item => item.commercialEmail.toLowerCase() === normalizedEmail)) return;
+  history.push({ commercialEmail: email!.trim(), commercialName: name, assignedAt });
+ };
+ remember(lead.assignedToEmail, lead.assignedToName, lead.createdAt || now);
+ remember(assignedToEmail, assignedToName);
+ return { ...lead, assignedToEmail, assignedToName, assignmentHistory: history };
+};
+
 export default function ColdCallingScreen({
  coldLeads,
  comercialesList,
@@ -1267,11 +1280,9 @@ const nachoAdmin = findAdminByName('nacho');
  const assignee = allAssignees.find(item => item.email === bulkAssigneeEmail);
  setBulkActionRunning(true);
  try {
-  await Promise.all(selected.map(lead => onUpdateColdLead({
-  ...lead,
-  assignedToEmail: bulkAssigneeEmail,
-  assignedToName: assignee?.name || 'Sin asignar'
-  })));
+  await Promise.all(selected.map(lead => onUpdateColdLead(
+   withColdLeadAssignmentHistory(lead, bulkAssigneeEmail, assignee?.name || 'Sin asignar')
+  )));
   setSelectedLeadIds([]);
  } finally {
   setBulkActionRunning(false);
@@ -1626,11 +1637,9 @@ const nachoAdmin = findAdminByName('nacho');
     );
    } else {
     for (let index = 0; index < leadsToAssign.length; index += 20) {
-     await Promise.all(leadsToAssign.slice(index, index + 20).map(lead => onUpdateColdLead({
-      ...lead,
-      assignedToEmail: assignee.email,
-      assignedToName: assignee.name
-     })));
+     await Promise.all(leadsToAssign.slice(index, index + 20).map(lead => onUpdateColdLead(
+      withColdLeadAssignmentHistory(lead, assignee.email, assignee.name)
+     )));
     }
    }
    const selectionLabel = quantityAssignmentMode === 'random'
@@ -2663,11 +2672,7 @@ const nachoAdmin = findAdminByName('nacho');
        onChange={(e) => {
        const email = e.target.value;
        const matched = allAssignees.find(c => c.email === email);
-       onUpdateColdLead({
-        ...lead,
-        assignedToEmail: email,
-        assignedToName: matched ? matched.name : 'Sin asignar'
-       });
+       onUpdateColdLead(withColdLeadAssignmentHistory(lead, email, matched ? matched.name : 'Sin asignar'));
        }}
        className="text-[10px] bg-[#020205] border border-violet-500/25 text-violet-300 px-2 py-1.5 rounded-xl font-mono cursor-pointer focus:outline-none hover:border-violet-400 focus:border-violet-500 transition font-sans w-full max-w-[130px] truncate"
       >
@@ -3011,11 +3016,7 @@ const nachoAdmin = findAdminByName('nacho');
        onChange={(e) => {
         const email = e.target.value;
         const matched = allAssignees.find(c => c.email === email);
-        onUpdateColdLead({
-        ...lead,
-        assignedToEmail: email,
-        assignedToName: matched ? matched.name : 'Sin asignar'
-        });
+        onUpdateColdLead(withColdLeadAssignmentHistory(lead, email, matched ? matched.name : 'Sin asignar'));
        }}
        className="text-[9px] bg-[#020205] border border-violet-500/30 text-violet-300 px-2 py-0.5 rounded-md font-mono max-w-[130px] cursor-pointer focus:outline-none hover:border-violet-400 transition"
        >

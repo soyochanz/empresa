@@ -42,30 +42,36 @@ export default function AdminCommercialEvolution({ comerciales, coldLeads, crmLe
   const performanceRows = comerciales.map(comercial => {
    const email = normalized(comercial.email);
    const assigned = coldLeads.filter(lead => !lead.archived && normalized(lead.assignedToEmail) === email);
-   const contacted = assigned.filter(wasAttempted);
+   const historical = coldLeads.filter(lead =>
+    normalized(lead.assignedToEmail) === email
+    || normalized(lead.closingOriginComercialEmail) === email
+    || (lead.assignmentHistory || []).some(record => normalized(record.commercialEmail) === email)
+   );
+   const historicalIds = new Set(historical.map(lead => lead.id));
+   const contacted = historical.filter(wasAttempted);
    const answered = contacted.filter(wasAnswered);
    const closerLeadIds = new Set([
-    ...assigned.filter(lead => lead.callbackScheduled === 'Sí').map(lead => lead.id),
+    ...historical.filter(lead => lead.callbackScheduled === 'Sí').map(lead => lead.id),
     ...contacts
-     .filter(contact => contact.closingSourceLeadId && (
-      normalized(contact.contactedByComercialEmail) === email
-      || assigned.some(lead => lead.id === contact.closingSourceLeadId)
-     ))
+     .filter(contact => contact.closingSourceLeadId && historicalIds.has(contact.closingSourceLeadId))
      .map(contact => contact.closingSourceLeadId as string)
    ]);
-   const won = crmLeads.filter(lead => lead.comercialId === comercial.id && lead.status === 'Ganado').length;
+   const won = new Set(contacts
+    .filter(contact => contact.status === 'Client' && contact.closingSourceLeadId && historicalIds.has(contact.closingSourceLeadId))
+    .map(contact => contact.closingSourceLeadId as string)).size;
    const lost = crmLeads.filter(lead => lead.comercialId === comercial.id && lead.status === 'Perdido').length;
    const calls = assigned.reduce((sum, lead) => sum + Math.max(lead.callsLog?.length || 0, Number(lead.callsCount || 0)), 0);
    return {
     comercial,
     assigned: assigned.length,
+    historical: historical.length,
     contacted: contacted.length,
     answered: answered.length,
     closer: closerLeadIds.size,
     won,
     lost,
     calls,
-    contactRate: assigned.length ? Math.round((contacted.length / assigned.length) * 100) : 0,
+    contactRate: historical.length ? Math.round((contacted.length / historical.length) * 100) : 0,
     answerRate: contacted.length ? Math.round((answered.length / contacted.length) * 100) : 0,
     closerRate: answered.length ? Math.round((closerLeadIds.size / answered.length) * 100) : 0,
    };
@@ -77,7 +83,11 @@ export default function AdminCommercialEvolution({ comerciales, coldLeads, crmLe
     const email = normalized(comercial.email);
     const workedLeadIds = new Set<string>();
     coldLeads
-     .filter(lead => normalized(lead.assignedToEmail) === email || normalized(lead.closingOriginComercialEmail) === email)
+     .filter(lead =>
+      normalized(lead.assignedToEmail) === email
+      || normalized(lead.closingOriginComercialEmail) === email
+      || (lead.assignmentHistory || []).some(record => normalized(record.commercialEmail) === email)
+     )
      .forEach(lead => {
       const hasMonthlyCall = (lead.callsLog || []).some(log => monthKey(log.date) === month.key);
       const fallbackActivity = monthKey(lead.callDate || lead.createdAt) === month.key
@@ -97,7 +107,7 @@ export default function AdminCommercialEvolution({ comerciales, coldLeads, crmLe
     <div>
      <div className="flex items-center gap-2 text-cyan-300"><BarChart3 className="h-4 w-4" /><span className="text-[9px] font-black uppercase tracking-[.24em]">Rendimiento operativo</span></div>
      <h3 className="mt-1 text-xl font-black text-white">Embudo actual por comercial</h3>
-     <p className="mt-1 text-[10px] text-slate-500">Asignación vigente, contacto real, paso al closer y resultado en CRM.</p>
+     <p className="mt-1 text-[10px] text-slate-500">Distingue cartera actual y acumulado histórico; el trabajo realizado nunca desaparece al archivar o reasignar.</p>
     </div>
     <div className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-black/20 px-3 py-2 text-[9px] text-slate-500"><Target className="h-3.5 w-3.5 text-lime-300" />Actualizado con los datos guardados</div>
    </div>
@@ -105,19 +115,20 @@ export default function AdminCommercialEvolution({ comerciales, coldLeads, crmLe
    <div className="mt-5 overflow-x-auto">
     <table className="w-full min-w-[900px] text-left">
      <thead><tr className="border-b border-white/[0.07] text-[8px] font-black uppercase tracking-wider text-slate-600">
-      <th className="px-3 py-3">Comercial</th><th className="px-3 py-3 text-center">Asignados ahora</th><th className="px-3 py-3 text-center">Contactados</th><th className="px-3 py-3 text-center">Contestan</th><th className="px-3 py-3 text-center">Al closer</th><th className="px-3 py-3 text-center">Ganados</th><th className="px-3 py-3 text-center">Perdidos</th><th className="px-3 py-3 text-center">Llamadas</th><th className="px-3 py-3">Conversión operativa</th>
+      <th className="px-3 py-3">Comercial</th><th className="px-3 py-3 text-center">Asignados ahora</th><th className="px-3 py-3 text-center">Histórico total</th><th className="px-3 py-3 text-center">Contactados</th><th className="px-3 py-3 text-center">Contestan</th><th className="px-3 py-3 text-center">Al closer</th><th className="px-3 py-3 text-center">Cerrados</th><th className="px-3 py-3 text-center">Perdidos CRM</th><th className="px-3 py-3 text-center">Llamadas</th><th className="px-3 py-3">Conversión operativa</th>
      </tr></thead>
      <tbody className="divide-y divide-white/[0.05]">{rows.map((row, index) => (
       <tr key={row.comercial.id} className="transition hover:bg-white/[0.025]">
        <td className="px-3 py-4"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl text-[10px] font-black text-slate-950" style={{ backgroundColor: COLORS[index % COLORS.length] }}>{row.comercial.name.slice(0, 2).toUpperCase()}</span><div><p className="text-xs font-bold text-white">{row.comercial.name}</p><p className="text-[8px] text-slate-600">{row.comercial.email}</p></div></div></td>
        <td className="px-3 py-4 text-center"><strong className="text-sm text-white">{row.assigned}</strong></td>
+       <td className="px-3 py-4 text-center"><strong className="text-sm text-slate-200">{row.historical}</strong></td>
        <td className="px-3 py-4 text-center"><strong className="text-sm text-cyan-300">{row.contacted}</strong><span className="ml-1 text-[8px] text-slate-600">({row.contactRate}%)</span></td>
        <td className="px-3 py-4 text-center"><strong className="text-sm text-blue-300">{row.answered}</strong><span className="ml-1 text-[8px] text-slate-600">({row.answerRate}%)</span></td>
        <td className="px-3 py-4 text-center"><strong className="text-sm text-violet-300">{row.closer}</strong><span className="ml-1 text-[8px] text-slate-600">({row.closerRate}%)</span></td>
        <td className="px-3 py-4 text-center text-sm font-black text-lime-300">{row.won}</td>
        <td className="px-3 py-4 text-center text-sm font-black text-rose-300">{row.lost}</td>
        <td className="px-3 py-4 text-center text-sm font-black text-amber-300">{row.calls}</td>
-       <td className="px-3 py-4"><div className="flex items-center gap-2 text-[8px] text-slate-500"><Users className="h-3 w-3" />{row.assigned}<ArrowRight className="h-3 w-3" /><PhoneCall className="h-3 w-3 text-cyan-300" />{row.contacted}<ArrowRight className="h-3 w-3" /><span className="text-blue-300">{row.answered}</span><ArrowRight className="h-3 w-3" /><CheckCircle2 className="h-3 w-3 text-violet-300" />{row.closer}</div></td>
+       <td className="px-3 py-4"><div className="flex items-center gap-2 text-[8px] text-slate-500"><Users className="h-3 w-3" />{row.historical}<ArrowRight className="h-3 w-3" /><PhoneCall className="h-3 w-3 text-cyan-300" />{row.contacted}<ArrowRight className="h-3 w-3" /><span className="text-blue-300">{row.answered}</span><ArrowRight className="h-3 w-3" /><CheckCircle2 className="h-3 w-3 text-violet-300" />{row.closer}</div></td>
       </tr>
      ))}</tbody>
     </table>

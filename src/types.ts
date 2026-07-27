@@ -319,6 +319,12 @@ export interface CallLogItem {
  result: string;
 }
 
+export interface ColdLeadAssignmentRecord {
+ commercialEmail: string;
+ commercialName?: string;
+ assignedAt: string;
+}
+
 export interface ColdCallingLead {
  id: string;
  businessName: string;   // NOMBRE DE NEGOCIO
@@ -342,6 +348,7 @@ export interface ColdCallingLead {
  // Control fields
  assignedToEmail: string;   // Assigned comercial's email, or 'unassigned'
  assignedToName?: string;   // Assigned comercial's name
+ assignmentHistory?: ColdLeadAssignmentRecord[];
  closingOriginComercialEmail?: string;
  closingOriginComercialName?: string;
  archived?: boolean;    // archived flag

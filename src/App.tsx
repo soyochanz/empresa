@@ -1756,11 +1756,29 @@ export default function App() {
   }
 
   const assignedIdSet = new Set(assignedIds);
+  const assignmentTimestamp = new Date().toISOString();
+  const historicallyAssignedLeads = coldLeads
+   .filter(lead => assignedIdSet.has(lead.id) && (!lead.assignedToEmail || lead.assignedToEmail === 'unassigned'))
+   .map(lead => ({
+    ...lead,
+    assignedToEmail: assignee.email,
+    assignedToName: assignee.name,
+    assignmentHistory: [
+     ...(lead.assignmentHistory || []),
+     ...((lead.assignmentHistory || []).some(item => item.commercialEmail.toLowerCase() === assignee.email.toLowerCase())
+      ? []
+      : [{ commercialEmail: assignee.email, commercialName: assignee.name, assignedAt: assignmentTimestamp }])
+    ]
+   }));
+  const assignedLeadById = new Map(historicallyAssignedLeads.map(lead => [lead.id, lead]));
   setColdLeads(previous => previous.map(lead =>
-   assignedIdSet.has(lead.id) && (!lead.assignedToEmail || lead.assignedToEmail === 'unassigned')
-    ? { ...lead, assignedToEmail: assignee.email, assignedToName: assignee.name }
-    : lead
+   assignedLeadById.get(lead.id) || lead
   ));
+  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
+   for (let index = 0; index < historicallyAssignedLeads.length; index += 25) {
+    await Promise.all(historicallyAssignedLeads.slice(index, index + 25).map(lead => db.updateColdLead(lead)));
+   }
+  }
 
   if (assignedIds.length > 0) {
    const activity: Activity = {
