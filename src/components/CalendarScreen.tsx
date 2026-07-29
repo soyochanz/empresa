@@ -1026,7 +1026,7 @@ export default function CalendarScreen({
        </div>
       </section>
 
-      <ProductNeedsSummary products={selectedProducts} otherDetail={selectedLinkedContact?.requestedProductOther} />
+      <ProductNeedsSummary compact products={selectedProducts} otherDetail={selectedLinkedContact?.requestedProductOther} />
 
       {selectedCommercialNote && (
        <section className="rounded-2xl border border-amber-300/15 bg-amber-400/[0.05] p-4">
