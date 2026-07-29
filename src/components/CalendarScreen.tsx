@@ -18,7 +18,10 @@ import {
  X,
  Calendar,
  Archive,
- Edit3
+ Edit3,
+ Phone,
+ BriefcaseBusiness,
+ StickyNote
 } from 'lucide-react';
 
 const getDurationMinutes = (duration?: string) => {
@@ -166,6 +169,25 @@ export default function CalendarScreen({
 
  // Selected event calculation
  const selectedEvent = events.find(ev => ev.id === selectedEventId) || events[0];
+ const selectedDescriptionLines = (selectedEvent?.description || '').split('\n').map(line => line.trim()).filter(Boolean);
+ const getSelectedDetail = (label: string) =>
+  selectedDescriptionLines.find(line => line.toLocaleLowerCase('es-ES').startsWith(`${label.toLocaleLowerCase('es-ES')}:`))
+   ?.slice(label.length + 1).trim();
+ const isSelectedDevIntake = Boolean(selectedEvent && (
+  selectedEvent.alias === 'Lead Dev desde Cold Calling' || selectedEvent.id.startsWith('dev_intake_')
+ ));
+ const selectedLinkedContact = selectedEvent?.linkedContactId
+  ? contacts.find(contact => contact.id === selectedEvent.linkedContactId)
+  : undefined;
+ const selectedProductsFromDescription = (getSelectedDetail('Productos') || '')
+  .replace(/\s*\([^)]*\)\s*$/, '')
+  .split(',')
+  .map(product => product.trim())
+  .filter(Boolean);
+ const selectedProducts = selectedLinkedContact?.requestedProducts?.length
+  ? selectedLinkedContact.requestedProducts
+  : selectedProductsFromDescription;
+ const selectedCommercialNote = getSelectedDetail('Nota') || selectedEvent?.notes;
 
  const handleAddEventSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
@@ -989,15 +1011,36 @@ export default function CalendarScreen({
     {/* Details sections */}
     <div className="space-y-4">
     
-    {/* Description Box */}
-    <div className="p-4 bg-slate-950/40 rounded-xl border border-white/5">
-     <label className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block mb-1">
-     Description
-     </label>
-     <p className="text-xs text-slate-300 leading-relaxed">
-     {selectedEvent.description}
-     </p>
-    </div>
+    {isSelectedDevIntake ? (
+     <>
+      <section className="overflow-hidden rounded-2xl border border-violet-400/20 bg-gradient-to-br from-violet-500/[0.09] via-slate-950/70 to-cyan-500/[0.05]">
+       <div className="border-b border-white/[0.07] px-4 py-3">
+        <p className="text-[9px] font-black uppercase tracking-[.16em] text-violet-200">Ficha del cliente</p>
+        <p className="mt-1 text-[10px] text-slate-500">Información enviada por el comercial para preparar la entrega.</p>
+       </div>
+       <div className="grid grid-cols-2 gap-px bg-white/[0.06]">
+        <div className="bg-[#0a0d14] p-3"><BriefcaseBusiness className="h-4 w-4 text-violet-300" /><span className="mt-2 block text-[8px] font-black uppercase tracking-wider text-slate-600">Negocio</span><strong className="mt-1 block break-words text-[11px] leading-4 text-white">{selectedLinkedContact?.company || getSelectedDetail('Negocio') || selectedEvent.linkedContactName || 'Sin especificar'}</strong></div>
+        <div className="bg-[#0a0d14] p-3"><User className="h-4 w-4 text-cyan-300" /><span className="mt-2 block text-[8px] font-black uppercase tracking-wider text-slate-600">Contacto</span><strong className="mt-1 block break-words text-[11px] leading-4 text-white">{selectedLinkedContact?.name || getSelectedDetail('Contacto') || 'Sin especificar'}</strong></div>
+        <div className="bg-[#0a0d14] p-3"><Phone className="h-4 w-4 text-emerald-300" /><span className="mt-2 block text-[8px] font-black uppercase tracking-wider text-slate-600">Teléfono</span><strong className="mt-1 block break-words text-[11px] leading-4 text-white">{selectedLinkedContact?.phone || getSelectedDetail('Teléfono') || 'Sin teléfono'}</strong></div>
+        <div className="bg-[#0a0d14] p-3"><Users className="h-4 w-4 text-amber-300" /><span className="mt-2 block text-[8px] font-black uppercase tracking-wider text-slate-600">Comercial</span><strong className="mt-1 block break-words text-[11px] leading-4 text-white">{selectedLinkedContact?.contactedByComercialName || getSelectedDetail('Caller') || 'Sin asignar'}</strong></div>
+       </div>
+      </section>
+
+      <ProductNeedsSummary products={selectedProducts} otherDetail={selectedLinkedContact?.requestedProductOther} />
+
+      {selectedCommercialNote && (
+       <section className="rounded-2xl border border-amber-300/15 bg-amber-400/[0.05] p-4">
+        <div className="flex items-center gap-2 text-amber-200"><StickyNote className="h-4 w-4" /><span className="text-[9px] font-black uppercase tracking-[.15em]">Nota comercial</span></div>
+        <p className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-5 text-slate-300">{selectedCommercialNote}</p>
+       </section>
+      )}
+     </>
+    ) : (
+     <div className="p-4 bg-slate-950/40 rounded-xl border border-white/5">
+      <label className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block mb-1">Descripción</label>
+      <p className="whitespace-pre-wrap break-words text-xs text-slate-300 leading-relaxed">{selectedEvent.description || 'Sin descripción.'}</p>
+     </div>
+    )}
 
     {/* Assigned Panel User Block */}
     <div className="p-4 bg-slate-950/40 rounded-xl border border-white/5 flex items-center justify-between gap-2">

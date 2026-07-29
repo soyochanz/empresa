@@ -345,16 +345,17 @@ export default function CitasScreen({
     ) : (
     filteredEvents.map((item) => {
      const isEditing = editingEventId === item.id;
-     const isDevDelivery = item.alias === 'Lead Dev desde Cold Calling';
-     const linkedContact = isDevDelivery ? contacts.find(contact => contact.id === item.linkedContactId) : undefined;
+     const isDevDelivery = item.alias === 'Lead Dev desde Cold Calling' || item.id.startsWith('dev_intake_');
+     const isCloserAppointment = item.alias === 'Cita Cold Calling' || item.id.startsWith('cc_appointment_');
+     const linkedContact = (isDevDelivery || isCloserAppointment) ? contacts.find(contact => contact.id === item.linkedContactId) : undefined;
      const detailLines = (item.description || '').split('\n').map(line => line.trim()).filter(Boolean);
      const getDetail = (label: string) => detailLines.find(line => line.startsWith(`${label}:`))?.slice(label.length + 1).trim();
      
      // Color bullet
      const currentColor = item.color || '#D4AF37';
 
-     if (isDevDelivery) {
-      const assignedName = usersList.find(user => user.email === item.assignedUserEmail)?.name || item.assignedUserEmail || 'Nacho Dev';
+     if (isDevDelivery || isCloserAppointment) {
+      const assignedName = usersList.find(user => user.email === item.assignedUserEmail)?.name || item.assignedUserEmail || (isCloserAppointment ? 'Closer sin asignar' : 'Nacho Dev');
       const products = linkedContact?.requestedProducts?.length
        ? linkedContact.requestedProducts
        : (getDetail('Productos') || '').split(',').map(product => product.trim()).filter(Boolean);
@@ -365,15 +366,17 @@ export default function CitasScreen({
        ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-200'
        : item.status === 'postponed'
         ? 'border-amber-400/25 bg-amber-500/10 text-amber-200'
+       : isCloserAppointment
+        ? 'border-cyan-400/25 bg-cyan-500/10 text-cyan-200'
         : 'border-violet-400/25 bg-violet-500/10 text-violet-200';
       return (
-       <tr key={item.id} className="border-b border-violet-400/10 bg-violet-950/[0.08]">
+       <tr key={item.id} className={isCloserAppointment ? 'border-b border-cyan-400/10 bg-cyan-950/[0.08]' : 'border-b border-violet-400/10 bg-violet-950/[0.08]'}>
         <td colSpan={8} className="p-3 sm:p-4">
-         <article className="overflow-hidden rounded-2xl border border-violet-400/20 bg-gradient-to-br from-violet-950/30 via-[#080b12] to-[#05070b] shadow-xl shadow-black/20">
+         <article className={`overflow-hidden rounded-2xl border bg-gradient-to-br via-[#080b12] to-[#05070b] shadow-xl shadow-black/20 ${isCloserAppointment ? 'border-cyan-400/20 from-cyan-950/30' : 'border-violet-400/20 from-violet-950/30'}`}>
           <div className="flex flex-col gap-4 border-b border-white/[0.06] p-4 lg:flex-row lg:items-center lg:justify-between">
            <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-             <span className="rounded-full border border-violet-300/25 bg-violet-400/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-[.14em] text-violet-200">Entrega Dev</span>
+             <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[.14em] ${isCloserAppointment ? 'border-cyan-300/25 bg-cyan-400/10 text-cyan-200' : 'border-violet-300/25 bg-violet-400/10 text-violet-200'}`}>{isCloserAppointment ? 'Cita closer' : 'Entrega Dev'}</span>
              <span className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[.12em] ${statusStyles}`}>{item.status === 'done' ? 'Completada' : item.status === 'postponed' ? 'Pospuesta' : 'Pendiente'}</span>
             </div>
             <h3 className="mt-2 break-words text-sm font-black text-white sm:text-base">{linkedContact?.company || getDetail('Negocio') || item.title}</h3>
@@ -386,11 +389,11 @@ export default function CitasScreen({
           </div>
 
           <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
-           <div className="rounded-xl border border-cyan-300/20 bg-cyan-400/[0.07] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300/70">Planificación interna Dev</span><strong className="mt-1.5 flex items-center gap-2 text-[11px] text-cyan-100"><Calendar className="h-3.5 w-3.5" />{formatCivilDate(item.date)}</strong><span className="mt-1 flex items-center gap-2 text-[9px] text-cyan-200/70"><Clock className="h-3 w-3" />{item.time || 'Sin hora'}</span><span className="mt-1.5 block text-[8px] leading-3 text-slate-500">Nacho puede cambiar este horario sin modificar Closing.</span></div>
-           <div className="rounded-xl border border-amber-300/15 bg-amber-400/[0.055] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300/70">Referencia · Cita con closer</span><strong className="mt-1.5 flex items-center gap-2 text-[11px] text-amber-100"><Calendar className="h-3.5 w-3.5" />{closerReferenceDate ? formatCivilDate(closerReferenceDate) : 'Sin referencia'}</strong><span className="mt-1 flex items-center gap-2 text-[9px] text-amber-200/70"><Clock className="h-3 w-3" />{closerReferenceTime || 'Sin hora'}</span></div>
+           <div className="rounded-xl border border-cyan-300/20 bg-cyan-400/[0.07] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300/70">{isCloserAppointment ? 'Fecha de la cita' : 'Planificación interna Dev'}</span><strong className="mt-1.5 flex items-center gap-2 text-[11px] text-cyan-100"><Calendar className="h-3.5 w-3.5" />{formatCivilDate(item.date)}</strong><span className="mt-1 flex items-center gap-2 text-[9px] text-cyan-200/70"><Clock className="h-3 w-3" />{item.time || 'Sin hora'}</span>{!isCloserAppointment && <span className="mt-1.5 block text-[8px] leading-3 text-slate-500">Nacho puede cambiar este horario sin modificar Closing.</span>}</div>
+           <div className="rounded-xl border border-amber-300/15 bg-amber-400/[0.055] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300/70">{isCloserAppointment ? 'Responsable closer' : 'Referencia · Cita con closer'}</span>{isCloserAppointment ? <strong className="mt-1.5 flex items-center gap-2 break-words text-[11px] text-amber-100"><User className="h-3.5 w-3.5" />{assignedName}</strong> : <><strong className="mt-1.5 flex items-center gap-2 text-[11px] text-amber-100"><Calendar className="h-3.5 w-3.5" />{closerReferenceDate ? formatCivilDate(closerReferenceDate) : 'Sin referencia'}</strong><span className="mt-1 flex items-center gap-2 text-[9px] text-amber-200/70"><Clock className="h-3 w-3" />{closerReferenceTime || 'Sin hora'}</span></>}</div>
            <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Contacto</span><strong className="mt-1.5 block break-words text-[11px] text-white">{linkedContact?.name || getDetail('Contacto') || item.linkedContactName || 'Sin especificar'}</strong><span className="mt-1 block break-words text-[9px] text-slate-400">{linkedContact?.phone || getDetail('Teléfono') || 'Sin teléfono'}</span></div>
            <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Comercial de origen</span><strong className="mt-1.5 block break-words text-[11px] text-violet-200">{linkedContact?.contactedByComercialName || getDetail('Caller') || 'Sin asignar'}</strong></div>
-           <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Responsable Dev</span><strong className="mt-1.5 flex items-center gap-2 break-words text-[11px] text-white"><User className="h-3.5 w-3.5 text-violet-300" />{assignedName}</strong></div>
+           <div className="rounded-xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">{isCloserAppointment ? 'Asignado a' : 'Responsable Dev'}</span><strong className="mt-1.5 flex items-center gap-2 break-words text-[11px] text-white"><User className="h-3.5 w-3.5 text-violet-300" />{assignedName}</strong></div>
           </div>
 
           <ProductNeedsSummary compact className="mx-4 mb-4" products={products} otherDetail={linkedContact?.requestedProductOther} />
