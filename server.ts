@@ -856,9 +856,12 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { index: false }));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      const safeAppUrl = getAppUrl(req).replace(/[<>"']/g, "");
+      const html = fs.readFileSync(indexPath, "utf8").replaceAll("__APP_ORIGIN__", safeAppUrl);
+      res.type("html").send(html);
     });
   }
 

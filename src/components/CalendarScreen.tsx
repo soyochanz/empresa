@@ -21,7 +21,9 @@ import {
  Edit3,
  Phone,
  BriefcaseBusiness,
- StickyNote
+ StickyNote,
+ MapPin,
+ Globe2
 } from 'lucide-react';
 
 const getDurationMinutes = (duration?: string) => {
@@ -41,6 +43,12 @@ const getEventTimeInMinutes = (time?: string) => {
 
 const compareEventsByTime = (a: CalendarEvent, b: CalendarEvent) =>
  getEventTimeInMinutes(a.time) - getEventTimeInMinutes(b.time) || a.title.localeCompare(b.title, 'es');
+
+const normalizeExternalUrl = (url?: string) => {
+ const trimmed = (url || '').trim();
+ if (!trimmed) return '';
+ return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};
 
 interface CalendarScreenProps {
  events: CalendarEvent[];
@@ -188,6 +196,8 @@ export default function CalendarScreen({
   ? selectedLinkedContact.requestedProducts
   : selectedProductsFromDescription;
  const selectedCommercialNote = getSelectedDetail('Nota') || selectedEvent?.notes;
+ const selectedWebsiteUrl = normalizeExternalUrl(selectedLinkedContact?.website || getSelectedDetail('Web'));
+ const selectedMapsUrl = normalizeExternalUrl(selectedLinkedContact?.googleMapsUrl || getSelectedDetail('Maps'));
 
  const handleAddEventSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
@@ -1032,6 +1042,28 @@ export default function CalendarScreen({
        <section className="rounded-2xl border border-amber-300/15 bg-amber-400/[0.05] p-4">
         <div className="flex items-center gap-2 text-amber-200"><StickyNote className="h-4 w-4" /><span className="text-[9px] font-black uppercase tracking-[.15em]">Nota comercial</span></div>
         <p className="mt-2 whitespace-pre-wrap break-words text-[11px] leading-5 text-slate-300">{selectedCommercialNote}</p>
+       </section>
+      )}
+
+      {(selectedMapsUrl || selectedWebsiteUrl) && (
+       <section className="rounded-2xl border border-white/[0.07] bg-slate-950/40 p-3">
+        <p className="text-[8px] font-black uppercase tracking-[.16em] text-slate-500">Enlaces del negocio</p>
+        <div className="mt-2 grid gap-2">
+         {selectedMapsUrl && (
+          <a href={selectedMapsUrl} target="_blank" rel="noopener noreferrer" className="group flex min-w-0 items-center gap-2.5 rounded-xl border border-emerald-300/15 bg-emerald-400/[0.06] px-3 py-2.5 text-emerald-100 transition hover:border-emerald-300/30 hover:bg-emerald-400/10">
+           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-400/10"><MapPin className="h-3.5 w-3.5" /></span>
+           <span className="min-w-0 flex-1"><strong className="block text-[9px]">Google Maps</strong><span className="block truncate text-[8px] text-slate-500">{selectedMapsUrl}</span></span>
+           <ExternalLink className="h-3 w-3 shrink-0 opacity-50 transition group-hover:opacity-100" />
+          </a>
+         )}
+         {selectedWebsiteUrl && (
+          <a href={selectedWebsiteUrl} target="_blank" rel="noopener noreferrer" className="group flex min-w-0 items-center gap-2.5 rounded-xl border border-cyan-300/15 bg-cyan-400/[0.06] px-3 py-2.5 text-cyan-100 transition hover:border-cyan-300/30 hover:bg-cyan-400/10">
+           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-400/10"><Globe2 className="h-3.5 w-3.5" /></span>
+           <span className="min-w-0 flex-1"><strong className="block text-[9px]">Web / sistema de reservas</strong><span className="block truncate text-[8px] text-slate-500">{selectedWebsiteUrl}</span></span>
+           <ExternalLink className="h-3 w-3 shrink-0 opacity-50 transition group-hover:opacity-100" />
+          </a>
+         )}
+        </div>
        </section>
       )}
      </>
