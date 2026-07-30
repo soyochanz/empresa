@@ -710,11 +710,13 @@ export default function CrmScreen({
    await db.updateFinanceTransaction(updatedTx);
    setTransactions(current => current.map(item => item.id === tx.id ? updatedTx : item));
 
-   if (tx.invoiceId) {
-    const linkedInvoice = invoices.find(invoice => invoice.id === tx.invoiceId);
-    if (linkedInvoice) {
+   const linkedInvoice = invoices.find(invoice =>
+    invoice.id === tx.invoiceId ||
+    invoice.items.some(item => item.pendingTxId === tx.id || item.id === tx.id)
+   );
+   if (linkedInvoice) {
      const updatedItems = linkedInvoice.items.map(item =>
-      item.pendingTxId === tx.id ? { ...item, isPending: nextStatus !== 'paid' } : item
+      (item.pendingTxId === tx.id || item.id === tx.id) ? { ...item, isPending: nextStatus !== 'paid' } : item
      );
      const updatedInvoice: Invoice = {
       ...linkedInvoice,
@@ -723,7 +725,6 @@ export default function CrmScreen({
      };
      await db.updateFinanceInvoice(updatedInvoice);
      setInvoices(current => current.map(invoice => invoice.id === updatedInvoice.id ? updatedInvoice : invoice));
-    }
    }
   } catch (error) {
    console.error('Error updating installment payment status:', error);
@@ -2941,7 +2942,7 @@ export default function CrmScreen({
      if (invoice.status === 'paid') return true;
 
      const invoiceItemTransactionIds = new Set(
-      invoice.items.map(item => item.pendingTxId).filter((id): id is string => Boolean(id))
+      invoice.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
      );
      const linkedTransactions = clientTransactions.filter(
       tx => tx.invoiceId === invoice.id || invoiceItemTransactionIds.has(tx.id)
