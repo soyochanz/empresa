@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
-import { buildInvoiceHtml } from '../utils/invoiceHtml';
+import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { REGISTERED_USERS, PanelUser } from '../mockData';
 import { 
  Plus, 
@@ -1036,8 +1036,8 @@ export default function CrmScreen({
   }
  };
 
- const handleDownloadInvoiceHtml = (inv: Invoice) => {
- const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.html`;
+ const handleDownloadInvoiceHtml = async (inv: Invoice) => {
+ const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.pdf`;
  const invoiceTransactionIds = new Set(
   inv.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
  );
@@ -1414,16 +1414,7 @@ export default function CrmScreen({
   dueDate: effectiveDueDate
  });
 
- // Trigger file download
- const blob = new Blob([htmlContent], { type: 'text/html' });
- const url = URL.createObjectURL(blob);
- const link = document.createElement('a');
- link.href = url;
- link.download = filename;
- document.body.appendChild(link);
- link.click();
- document.body.removeChild(link);
- URL.revokeObjectURL(url);
+ await downloadInvoicePdf(htmlContent, filename);
 
  // Show toast message
  const toast = document.getElementById('toast-msg');

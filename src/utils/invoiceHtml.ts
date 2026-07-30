@@ -124,3 +124,40 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
 </body>
 </html>`;
 };
+
+export const downloadInvoicePdf = async (html: string, filename: string): Promise<void> => {
+ const [{ default: html2pdf }] = await Promise.all([import('html2pdf.js')]);
+ const parsed = new DOMParser().parseFromString(html, 'text/html');
+ const host = document.createElement('div');
+ host.style.position = 'fixed';
+ host.style.left = '-10000px';
+ host.style.top = '0';
+ host.style.width = '210mm';
+ host.style.height = '297mm';
+ host.style.background = '#ffffff';
+ host.style.zIndex = '-1';
+ host.innerHTML = `${Array.from(parsed.head.querySelectorAll('style')).map(style => style.outerHTML).join('')}${parsed.body.innerHTML}`;
+ document.body.appendChild(host);
+
+ try {
+  const images = Array.from(host.querySelectorAll('img'));
+  await Promise.all(images.map(image => image.complete
+   ? Promise.resolve()
+   : new Promise<void>(resolve => {
+    image.addEventListener('load', () => resolve(), { once: true });
+    image.addEventListener('error', () => resolve(), { once: true });
+   })
+  ));
+  await document.fonts.ready;
+  await html2pdf().set({
+   margin: 0,
+   filename: filename.replace(/\.html?$/i, '.pdf'),
+   image: { type: 'jpeg', quality: 0.98 },
+   html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+   jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+   pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+  }).from(host.querySelector('.invoice') || host).save();
+ } finally {
+  host.remove();
+ }
+};

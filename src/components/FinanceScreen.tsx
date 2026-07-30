@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
 import { db } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
-import { buildInvoiceHtml } from '../utils/invoiceHtml';
+import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { 
  DollarSign, 
  TrendingUp, 
@@ -1727,8 +1727,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Compile and trigger a local file download of the Invoice represented in clean self-contained HTML
- const handleDownloadInvoiceHtml = (inv: Invoice) => {
- const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.html`;
+ const handleDownloadInvoiceHtml = async (inv: Invoice) => {
+ const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.pdf`;
  const invoiceTransactionIds = new Set(
   inv.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
  );
@@ -2106,16 +2106,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   }
  });
 
- // Dynamic clean download anchor trigger
- const blob = new Blob([htmlContent], { type: 'text/html' });
- const url = URL.createObjectURL(blob);
- const link = document.createElement('a');
- link.href = url;
- link.download = filename;
- document.body.appendChild(link);
- link.click();
- document.body.removeChild(link);
- URL.revokeObjectURL(url);
+ await downloadInvoicePdf(htmlContent, filename);
 
  // Show toast message
  const toast = document.getElementById('toast-msg');
@@ -5099,10 +5090,10 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <button
      onClick={() => handleDownloadInvoiceHtml(previewInvoice)}
      className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-     title="Descargar Factura local (.html)"
+     title="Descargar factura en PDF"
     >
      <Download className="w-3.5 h-3.5" />
-     <span>Descargar Factura (HTML)</span>
+     <span>Descargar Factura (PDF)</span>
     </button>
     <button
      onClick={handlePrintPreview}
