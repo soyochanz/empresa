@@ -2937,8 +2937,23 @@ export default function CrmScreen({
      return containsName || containsCompany;
     });
 
-    const totalPaidFromInvoices = clientInvoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.total, 0);
-    const totalPendingFromInvoices = clientInvoices.filter(inv => inv.status !== 'paid').reduce((sum, inv) => sum + inv.total, 0);
+    const isInvoiceEffectivelyPaid = (invoice: Invoice) => {
+     if (invoice.status === 'paid') return true;
+
+     const invoiceItemTransactionIds = new Set(
+      invoice.items.map(item => item.pendingTxId).filter((id): id is string => Boolean(id))
+     );
+     const linkedTransactions = clientTransactions.filter(
+      tx => tx.invoiceId === invoice.id || invoiceItemTransactionIds.has(tx.id)
+     );
+     if (linkedTransactions.length === 0 || linkedTransactions.some(tx => tx.status !== 'paid')) return false;
+
+     const paidAmount = linkedTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+     return paidAmount + 0.005 >= Number(invoice.total || 0);
+    };
+
+    const totalPaidFromInvoices = clientInvoices.filter(isInvoiceEffectivelyPaid).reduce((sum, inv) => sum + inv.total, 0);
+    const totalPendingFromInvoices = clientInvoices.filter(inv => !isInvoiceEffectivelyPaid(inv)).reduce((sum, inv) => sum + inv.total, 0);
     const totalInvoicedFromInvoices = clientInvoices.reduce((sum, inv) => sum + inv.total, 0);
 
     const totalPaidFromTxs = clientTransactions.filter(t => t.status === 'paid').reduce((sum, t) => sum + t.amount, 0);
@@ -3001,15 +3016,17 @@ export default function CrmScreen({
       </div>
       ) : (
       <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-       {clientInvoices.map(inv => (
+       {clientInvoices.map(inv => {
+       const isEffectivelyPaid = isInvoiceEffectivelyPaid(inv);
+       return (
        <div key={inv.id} className="bg-[#030305] p-2.5 rounded-xl border border-white/5 flex justify-between items-center hover:border-white/10 transition-colors">
         <div className="space-y-0.5">
         <div className="flex items-center gap-2">
          <span className="text-[10px] font-mono font-bold text-slate-200">{inv.id}</span>
          <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-semibold ${
-         inv.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+         isEffectivelyPaid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
          }`}>
-         {inv.status === 'paid' ? 'COBRADA' : 'PENDIENTE'}
+         {isEffectivelyPaid ? 'COBRADA' : 'PENDIENTE'}
          </span>
         </div>
         <div className="text-[9px] font-mono text-slate-500">
@@ -3019,7 +3036,7 @@ export default function CrmScreen({
         <div className="flex items-center gap-1.5">
         <span className="text-xs font-mono font-bold text-slate-100 pr-1">{inv.total.toFixed(2)} ?</span>
         
-        {inv.status !== 'paid' && (
+        {!isEffectivelyPaid && (
          <button
          onClick={() => handleMarkInvoicePaid(inv)}
          title="Marcar como cobrada"
@@ -3038,7 +3055,8 @@ export default function CrmScreen({
         </button>
         </div>
        </div>
-       ))}
+       );
+       })}
       </div>
       )}
      </div>
