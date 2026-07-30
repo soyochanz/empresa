@@ -186,6 +186,7 @@ export interface InvoiceItem {
  quantity: number;
  unitPrice: number;
  total: number;
+ grossAmount?: number;
  isPending?: boolean;  // New: indicates if this item is currently pending payment (cobró pendiente)
  pendingTxId?: string; // New: matching pending FinanceTransaction ID
  paymentMethod?: 'cash' | 'transfer' | 'stripe'; // New: payment method 'cash', 'transfer' or 'stripe'

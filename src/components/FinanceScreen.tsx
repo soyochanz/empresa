@@ -658,6 +658,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
       quantity: 1,
       unitPrice: netPrice,
       total: netPrice,
+      grossAmount: tx.amount,
       isPending: tx.status !== 'paid',
       pendingTxId: tx.id,
       paymentMethod: tx.paymentMethod || 'transfer'
@@ -967,11 +968,38 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   if (field === 'quantity' || field === 'unitPrice') {
    const q = field === 'quantity' ? Number(value) : item.quantity;
    const p = field === 'unitPrice' ? Number(value) : item.unitPrice;
-   updated.total = (q || 0) * (p || 0);
+   if (field === 'quantity' && item.grossAmount !== undefined) {
+    updated.total = item.grossAmount / (1 + invTaxPercentage / 100);
+    updated.unitPrice = updated.total / Math.max(1, q || 1);
+   } else {
+    updated.total = (q || 0) * (p || 0);
+    updated.grossAmount = updated.total * (1 + invTaxPercentage / 100);
+   }
   }
   return updated;
   }
   return item;
+ }));
+ };
+
+ const handleUpdateInvoiceItemGross = (index: number, grossAmount: number) => {
+ setInvItems(prev => prev.map((item, i) => {
+  if (i !== index) return item;
+  const safeGross = Number.isFinite(grossAmount) ? Math.max(0, grossAmount) : 0;
+  const quantity = Math.max(1, Number(item.quantity) || 1);
+  const netLineTotal = safeGross / (1 + invTaxPercentage / 100);
+  return { ...item, grossAmount: safeGross, unitPrice: netLineTotal / quantity, total: netLineTotal };
+ }));
+ };
+
+ const handleInvoiceTaxChange = (taxPercentage: number) => {
+ const safeTax = Number.isFinite(taxPercentage) ? Math.max(0, taxPercentage) : 0;
+ setInvTaxPercentage(safeTax);
+ setInvItems(prev => prev.map(item => {
+  const grossAmount = item.grossAmount ?? item.total * (1 + invTaxPercentage / 100);
+  const quantity = Math.max(1, Number(item.quantity) || 1);
+  const netLineTotal = grossAmount / (1 + safeTax / 100);
+  return { ...item, grossAmount, unitPrice: netLineTotal / quantity, total: netLineTotal };
  }));
  };
 
@@ -985,8 +1013,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    id: 'temp_tx_' + tx.id + '_' + Date.now(), 
    description: tx.description, 
    quantity: 1, 
-   unitPrice: tx.amount, 
-   total: tx.amount 
+   unitPrice: tx.amount / (1 + invTaxPercentage / 100),
+   total: tx.amount / (1 + invTaxPercentage / 100),
+   grossAmount: tx.amount
   }
   ];
  });
@@ -1121,9 +1150,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   return;
  }
 
- const subtotal = validItems.reduce((sum, item) => sum + item.total, 0);
- const taxAmount = parseFloat((subtotal * (invTaxPercentage / 100)).toFixed(2));
- const total = parseFloat((subtotal + taxAmount).toFixed(2));
+ const total = parseFloat(validItems.reduce(
+  (sum, item) => sum + (item.grossAmount ?? item.total * (1 + invTaxPercentage / 100)),
+  0
+ ).toFixed(2));
+ const subtotal = parseFloat((total / (1 + invTaxPercentage / 100)).toFixed(2));
+ const taxAmount = parseFloat((total - subtotal).toFixed(2));
 
  const invoiceId = isEditingInv && editingInvId ? editingInvId : 'FAC-' + new Date().getFullYear() + '-' + String(invoices.length + 1).padStart(3, '0');
 
@@ -1141,7 +1173,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    id: pTxId,
    type: 'income',
    category: 'Desarrollo',
-   amount: item.total,
+   amount: item.grossAmount ?? item.total * (1 + invTaxPercentage / 100),
    date: invDueDate || invDate, // Will raise deadline notice nicely around due date
    description: `Cobro Pendiente: ${item.description} (${invClientName})`,
    isRecurring: false,
@@ -1157,6 +1189,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   quantity: item.quantity,
   unitPrice: item.unitPrice,
   total: item.total,
+  grossAmount: item.grossAmount ?? item.total * (1 + invTaxPercentage / 100),
   isPending: isItemPending,
   pendingTxId: pTxId
   };
@@ -1719,6 +1752,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    quantity: 1,
    unitPrice: basePrice,
    total: basePrice,
+   grossAmount: item.amount,
    isPending: item.status === 'pending',
    pendingTxId: item.id,
    paymentMethod: item.paymentMethod || 'transfer'
@@ -4851,7 +4885,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      min="0"
      max="100"
      value={invTaxPercentage}
-     onChange={(e) => setInvTaxPercentage(Number(e.target.value))}
+     onChange={(e) => handleInvoiceTaxChange(Number(e.target.value))}
      required
      className="w-full bg-slate-950 border border-white/10 rounded-xl py-1.5 px-3 text-xs text-slate-100 focus:outline-none font-mono text-left"
      />
@@ -4943,14 +4977,14 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       </div>
 
       <div className="col-span-2 space-y-0.5">
-      <span className="text-[8px] font-mono text-slate-500 uppercase">Precio Unit.</span>
+      <span className="text-[8px] font-mono text-emerald-400 uppercase">Importe pagado</span>
       <input
        type="number"
        min="0"
        step="0.01"
        inputMode="decimal"
-       value={item.unitPrice}
-       onChange={(e) => handleUpdateInvoiceItemField(index, 'unitPrice', Number(e.target.value))}
+       value={Number((item.grossAmount ?? item.total * (1 + invTaxPercentage / 100)).toFixed(2))}
+       onChange={(e) => handleUpdateInvoiceItemGross(index, Number(e.target.value))}
        required
        className="w-full bg-slate-950 border border-white/10 rounded-lg py-1 px-2 text-xs text-slate-200 font-mono text-left focus:outline-none"
       />
@@ -4983,8 +5017,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
       {/* Display of total row and remove action button */}
       <div className="col-span-2 text-right pt-4 flex items-center justify-end gap-1">
-      <span className="font-mono text-xs font-bold text-white mr-1 leading-none">
-       {item.total.toLocaleString('es-ES')} €
+      <span className="font-mono text-[10px] font-bold text-slate-400 mr-1 leading-none" title="Base imponible calculada">
+       Base {item.total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} €
       </span>
       <button
        type="button"
