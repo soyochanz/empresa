@@ -753,7 +753,11 @@ export default function CrmScreen({
    id: selectedContact.id,
    name: selectedContact.company !== 'Independent' ? selectedContact.company : selectedContact.name,
    email: selectedContact.email,
-   address: selectedContact.location || '',
+   taxId: selectedContact.taxId || '',
+   address: selectedContact.fiscalAddress || selectedContact.location || '',
+   currency: selectedContact.currency || 'EUR',
+   language: selectedContact.language || 'es',
+   taxPercentage: selectedContact.taxPercentage ?? 21,
    transactionIds: [tx.id, ...pendingTransactionIds]
   }));
   onNavigate('finanzas', 'push');
@@ -3107,7 +3111,12 @@ export default function CrmScreen({
        sessionStorage.setItem('preselected_client_for_invoice', JSON.stringify({
        id: selectedContact.id,
        name: selectedContact.name,
-       email: selectedContact.email
+       email: selectedContact.email,
+       taxId: selectedContact.taxId || '',
+       address: selectedContact.fiscalAddress || selectedContact.location || '',
+       currency: selectedContact.currency || 'EUR',
+       language: selectedContact.language || 'es',
+       taxPercentage: selectedContact.taxPercentage ?? 21
        }));
        if (onNavigate) {
        onNavigate('finanzas', 'push');

@@ -625,11 +625,20 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     .map((id: string) => transactions.find(transaction => transaction.id === id))
     .filter(Boolean) as FinanceTransaction[];
    const matchedContact = contacts.find(contact => contact.id === client.id);
+   const previousInvoice = invoices.find(invoice =>
+    invoice.clientId === client.id ||
+    (!!matchedContact?.email && invoice.clientEmail?.toLowerCase() === matchedContact.email.toLowerCase()) ||
+    (!!matchedContact?.name && invoice.clientName?.toLowerCase() === matchedContact.name.toLowerCase())
+   );
+   const taxPercentage = Number(client.taxPercentage ?? matchedContact?.taxPercentage ?? 21);
    setInvClientId(client.id);
-   setInvClientName(client.name || '');
-   setInvClientEmail(client.email || '');
-   setInvClientTaxId(client.taxId || '');
-   setInvClientAddress(client.address || matchedContact?.location || '');
+   setInvClientName(client.name || matchedContact?.name || '');
+   setInvClientEmail(client.email || matchedContact?.email || previousInvoice?.clientEmail || '');
+   setInvClientTaxId(client.taxId || matchedContact?.taxId || previousInvoice?.clientTaxId || '');
+   setInvClientAddress(client.address || matchedContact?.fiscalAddress || previousInvoice?.clientAddress || matchedContact?.location || '');
+   setInvCurrency(client.currency || matchedContact?.currency || previousInvoice?.currency || 'EUR');
+   setInvLanguage(client.language || matchedContact?.language || previousInvoice?.language || 'es');
+   setInvTaxPercentage(taxPercentage);
    setInvIssuerName(DEFAULT_INVOICE_ISSUER.name);
    setInvIssuerTaxId(DEFAULT_INVOICE_ISSUER.taxId);
    setInvIssuerAddress(DEFAULT_INVOICE_ISSUER.address);
@@ -642,7 +651,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    setInvStatus(requestedTransactions.length > 0 && requestedTransactions.every(tx => tx.status === 'paid') ? 'paid' : 'sent');
    setInvItems(requestedTransactions.length > 0
     ? requestedTransactions.map(tx => {
-     const netPrice = Number((tx.amount / 1.21).toFixed(2));
+     const netPrice = Number((tx.amount / (1 + taxPercentage / 100)).toFixed(2));
      return {
       id: `item_${tx.id}`,
       description: tx.description,
@@ -668,7 +677,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   sessionStorage.removeItem('preselected_client_for_invoice');
   }
  }
- }, [contacts, transactions]);
+ }, [contacts, transactions, invoices]);
 
  // Reset pagination on search/filter changes
  useEffect(() => {
@@ -1083,13 +1092,18 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvClientId(clientId);
  const match = contacts.find(c => c.id === clientId);
  if (match) {
+  const previousInvoice = invoices.find(invoice =>
+   invoice.clientId === match.id ||
+   (!!match.email && invoice.clientEmail?.toLowerCase() === match.email.toLowerCase()) ||
+   invoice.clientName?.toLowerCase() === match.name.toLowerCase()
+  );
   setInvClientName(match.company !== 'Independent' ? match.company : match.name);
-  setInvClientEmail(match.email);
-  setInvClientAddress(match.fiscalAddress || match.location || '');
-  setInvClientTaxId(match.taxId || '');
-  setInvCurrency(match.currency || 'EUR');
-  setInvLanguage(match.language || 'es');
-  setInvTaxPercentage(match.taxPercentage ?? 21);
+  setInvClientEmail(match.email || previousInvoice?.clientEmail || '');
+  setInvClientAddress(match.fiscalAddress || previousInvoice?.clientAddress || match.location || '');
+  setInvClientTaxId(match.taxId || previousInvoice?.clientTaxId || '');
+  setInvCurrency(match.currency || previousInvoice?.currency || 'EUR');
+  setInvLanguage(match.language || previousInvoice?.language || 'es');
+  setInvTaxPercentage(match.taxPercentage ?? previousInvoice?.taxPercentage ?? 21);
  }
  };
 
@@ -1666,13 +1680,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    candidate.clientId === matchedContact?.id
   )
  ];
+ const matchedTaxPercentage = matchedContact?.taxPercentage ?? 21;
  
  if (matchedContact) {
   setInvClientId(matchedContact.id);
-  setInvClientName(matchedContact.company !== 'Independent' ? matchedContact.company : matchedContact.name);
+  setInvClientName(matchedContact.name);
   setInvClientEmail(matchedContact.email);
-  setInvClientAddress(matchedContact.location || '');
-  setInvClientTaxId('');
+  setInvClientAddress(matchedContact.fiscalAddress || matchedContact.location || '');
+  setInvClientTaxId(matchedContact.taxId || '');
+  setInvCurrency(matchedContact.currency || 'EUR');
+  setInvLanguage(matchedContact.language || 'es');
+  setInvTaxPercentage(matchedTaxPercentage);
  } else {
   setInvClientId('');
   setInvClientName(tx.description || 'Cliente de Facturación');
@@ -1690,11 +1708,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  // Default to paid/sent depending on transaction status
  setInvStatus(relatedTransactions.some(item => item.status === 'pending') ? 'sent' : 'paid');
  setInvNotes(`Factura correspondiente al cobro registrado el ${tx.date}.\nForma de pago: Transferencia Bancaria.`);
- setInvTaxPercentage(21);
+ setInvTaxPercentage(matchedTaxPercentage);
  
- // Calculate values (assuming amount includes 21% VAT)
+ // Calculate net values using the client's configured tax level.
  setInvItems(relatedTransactions.map((item, index) => {
-  const basePrice = parseFloat((item.amount / 1.21).toFixed(2));
+  const basePrice = parseFloat((item.amount / (1 + matchedTaxPercentage / 100)).toFixed(2));
   return {
    id: `item_auto_${item.id}_${index}`,
    description: item.description || 'Servicios profesionales prestados',
