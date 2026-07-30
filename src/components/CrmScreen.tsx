@@ -1825,6 +1825,9 @@ export default function CrmScreen({
  const [newLocation, setNewLocation] = useState('San Francisco, CA');
  const [newTaxId, setNewTaxId] = useState('');
  const [newFiscalAddress, setNewFiscalAddress] = useState('');
+ const [newCurrency, setNewCurrency] = useState<NonNullable<ClientContact['currency']>>('EUR');
+ const [newLanguage, setNewLanguage] = useState<NonNullable<ClientContact['language']>>('es');
+ const [newTaxPercentage, setNewTaxPercentage] = useState(21);
  const [newWebsite, setNewWebsite] = useState('');
  const [newGithubRepo, setNewGithubRepo] = useState('');
  const [newHostingCredentials, setNewHostingCredentials] = useState('');
@@ -1843,6 +1846,9 @@ export default function CrmScreen({
  setNewLocation('San Francisco, CA');
  setNewTaxId('');
  setNewFiscalAddress('');
+ setNewCurrency('EUR');
+ setNewLanguage('es');
+ setNewTaxPercentage(21);
  setNewWebsite('');
  setNewGithubRepo('');
  setNewHostingCredentials('');
@@ -1919,6 +1925,9 @@ export default function CrmScreen({
   location: newLocation,
   taxId: newTaxId || undefined,
   fiscalAddress: newFiscalAddress || newLocation || undefined,
+  currency: newCurrency,
+  language: newLanguage,
+  taxPercentage: newTaxPercentage,
   website: newWebsite || (newCompany ? `${newCompany.toLowerCase().replace(/\s+/g, '')}.io` : ''),
   githubRepo: newGithubRepo,
   hostingCredentials: newHostingCredentials,
@@ -1945,6 +1954,11 @@ export default function CrmScreen({
    clientEmail: updatedContact.email,
    clientTaxId: updatedContact.taxId,
    clientAddress: updatedContact.fiscalAddress || updatedContact.location
+   ,currency: updatedContact.currency || invoice.currency || 'EUR'
+   ,language: updatedContact.language || invoice.language || 'es'
+   ,taxPercentage: updatedContact.taxPercentage ?? invoice.taxPercentage
+   ,taxAmount: Number((invoice.subtotal * ((updatedContact.taxPercentage ?? invoice.taxPercentage) / 100)).toFixed(2))
+   ,total: Number((invoice.subtotal + invoice.subtotal * ((updatedContact.taxPercentage ?? invoice.taxPercentage) / 100)).toFixed(2))
   }));
   await Promise.all(updatedInvoices.map(invoice => db.updateFinanceInvoice(invoice)));
   if (updatedInvoices.length > 0) {
@@ -1964,6 +1978,9 @@ export default function CrmScreen({
   location: newLocation,
   taxId: newTaxId || undefined,
   fiscalAddress: newFiscalAddress || newLocation || undefined,
+  currency: newCurrency,
+  language: newLanguage,
+  taxPercentage: newTaxPercentage,
   addedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
   website: newWebsite || (newCompany ? `${newCompany.toLowerCase().replace(/\s+/g, '')}.io` : ''),
   githubRepo: newGithubRepo,
@@ -2274,6 +2291,9 @@ export default function CrmScreen({
      setNewLocation(selectedContact.location || 'San Francisco, CA');
      setNewTaxId(selectedContact.taxId || '');
      setNewFiscalAddress(selectedContact.fiscalAddress || selectedContact.location || '');
+     setNewCurrency(selectedContact.currency || 'EUR');
+     setNewLanguage(selectedContact.language || 'es');
+     setNewTaxPercentage(selectedContact.taxPercentage ?? 21);
      setNewWebsite(selectedContact.website || '');
      setNewGithubRepo(selectedContact.githubRepo || '');
      setNewHostingCredentials(selectedContact.hostingCredentials || '');
@@ -2986,11 +3006,14 @@ export default function CrmScreen({
      <MapPin className="text-slate-500 w-4 h-4 flex-shrink-0" />
      <span className="text-xs text-slate-300">{selectedContact.location || 'Not Specified'}</span>
      </div>
-     {(selectedContact.taxId || selectedContact.fiscalAddress) && (
+     {(selectedContact.taxId || selectedContact.fiscalAddress || selectedContact.currency || selectedContact.language || selectedContact.taxPercentage !== undefined) && (
      <div className="rounded-lg border border-emerald-500/10 bg-emerald-500/[0.03] p-2.5 text-[10px] text-slate-300">
       <span className="block font-mono text-[8px] uppercase tracking-wider text-emerald-400">Datos fiscales</span>
       {selectedContact.taxId && <span className="mt-1 block">CIF/NIF/ID: {selectedContact.taxId}</span>}
       {selectedContact.fiscalAddress && <span className="block">{selectedContact.fiscalAddress}</span>}
+      <span className="mt-1 block text-slate-400">
+       {selectedContact.currency || 'EUR'} · {selectedContact.language === 'en' ? 'English' : 'Español'} · Impuesto {selectedContact.taxPercentage ?? 21}%
+      </span>
      </div>
      )}
      <div className="flex items-center gap-3">
@@ -3773,6 +3796,22 @@ export default function CrmScreen({
        placeholder="Calle, número, CP, ciudad y país"
        className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
       />
+     </div>
+     <div className="space-y-1">
+      <label className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider">Divisa predeterminada</label>
+      <select value={newCurrency} onChange={(e) => setNewCurrency(e.target.value as NonNullable<ClientContact['currency']>)} className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100">
+       <option value="EUR">EUR — Euro (€)</option><option value="USD">USD — Dólar ($)</option><option value="GBP">GBP — Libra (£)</option><option value="MXN">MXN — Peso mexicano ($)</option><option value="CHF">CHF — Franco suizo</option>
+      </select>
+     </div>
+     <div className="space-y-1">
+      <label className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider">Idioma de factura</label>
+      <select value={newLanguage} onChange={(e) => setNewLanguage(e.target.value as NonNullable<ClientContact['language']>)} className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100">
+       <option value="es">Español</option><option value="en">English</option>
+      </select>
+     </div>
+     <div className="space-y-1 sm:col-span-2">
+      <label className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider">Nivel impositivo predeterminado (%)</label>
+      <input type="number" min="0" max="100" step="0.01" value={newTaxPercentage} onChange={(e) => setNewTaxPercentage(Number(e.target.value))} className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100" />
      </div>
     </div>
 

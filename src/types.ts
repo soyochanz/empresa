@@ -64,6 +64,7 @@ export interface ClientContact {
  color?: string;
  currency?: 'EUR' | 'USD' | 'GBP' | 'MXN' | 'CHF';
  language?: 'es' | 'en';
+ taxPercentage?: number;
  temperature?: 'Frío' | 'Templado' | 'Caliente';
  notes?: string;
  contactedByComercialName?: string;

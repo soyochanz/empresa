@@ -1087,6 +1087,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   setInvClientEmail(match.email);
   setInvClientAddress(match.fiscalAddress || match.location || '');
   setInvClientTaxId(match.taxId || '');
+  setInvCurrency(match.currency || 'EUR');
+  setInvLanguage(match.language || 'es');
+  setInvTaxPercentage(match.taxPercentage ?? 21);
  }
  };
 

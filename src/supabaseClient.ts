@@ -786,6 +786,9 @@ export const db = {
  let linkedin: string | undefined = undefined;
  let taxId: string | undefined = undefined;
  let fiscalAddress: string | undefined = undefined;
+ let currency: ClientContact['currency'] = undefined;
+ let language: ClientContact['language'] = undefined;
+ let taxPercentage: number | undefined = undefined;
  let notes: string | undefined = undefined;
  let contactedByComercialName: string | undefined = undefined;
  let contactedByComercialEmail: string | undefined = undefined;
@@ -844,6 +847,9 @@ export const db = {
    if (key === 'linkedin') linkedin = val || undefined;
    if (key === 'taxId') taxId = decodeInvoiceMetadataValue(val) || undefined;
    if (key === 'fiscalAddress') fiscalAddress = decodeInvoiceMetadataValue(val) || undefined;
+   if (key === 'currency' && ['EUR', 'USD', 'GBP', 'MXN', 'CHF'].includes(val)) currency = val as ClientContact['currency'];
+   if (key === 'language' && ['es', 'en'].includes(val)) language = val as ClientContact['language'];
+   if (key === 'taxPercentage' && Number.isFinite(Number(val))) taxPercentage = Number(val);
    if (key === 'temperature') {
    const v = val.trim();
    if (v === 'Frío' || v === 'Templado' || v === 'Caliente') {
@@ -944,6 +950,9 @@ export const db = {
   linkedin,
   taxId,
   fiscalAddress,
+  currency,
+  language,
+  taxPercentage,
   notes,
   contactedByComercialName,
   contactedByComercialEmail,
@@ -998,6 +1007,9 @@ export const db = {
   contact.linkedin ||
   contact.taxId ||
   contact.fiscalAddress ||
+  contact.currency ||
+  contact.language ||
+  contact.taxPercentage !== undefined ||
   contact.notes ||
   contact.contactedByComercialName ||
   contact.contactedByComercialEmail ||
@@ -1046,6 +1058,9 @@ export const db = {
   if (contact.linkedin) metadataStr += `\nlinkedin: ${contact.linkedin}`;
   if (contact.taxId) metadataStr += `\ntaxId: ${encodeURIComponent(contact.taxId)}`;
   if (contact.fiscalAddress) metadataStr += `\nfiscalAddress: ${encodeURIComponent(contact.fiscalAddress)}`;
+  if (contact.currency) metadataStr += `\ncurrency: ${contact.currency}`;
+  if (contact.language) metadataStr += `\nlanguage: ${contact.language}`;
+  if (contact.taxPercentage !== undefined) metadataStr += `\ntaxPercentage: ${contact.taxPercentage}`;
   if (contact.notes) metadataStr += `\nnotes: ${encodeURIComponent(contact.notes)}`;
   if (contact.contactedByComercialName) metadataStr += `\ncontactedByComercialName: ${encodeURIComponent(contact.contactedByComercialName)}`;
   if (contact.contactedByComercialEmail) metadataStr += `\ncontactedByComercialEmail: ${contact.contactedByComercialEmail}`;
