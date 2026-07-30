@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
+import { buildInvoiceHtml } from '../utils/invoiceHtml';
 import { REGISTERED_USERS, PanelUser } from '../mockData';
 import { 
  Plus, 
@@ -718,10 +719,21 @@ export default function CrmScreen({
      const updatedItems = linkedInvoice.items.map(item =>
       (item.pendingTxId === tx.id || item.id === tx.id) ? { ...item, isPending: nextStatus !== 'paid' } : item
      );
+     const linkedTransactionIds = new Set(
+      updatedItems.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
+     );
+     const updatedTransactions = transactions.map(item => item.id === tx.id ? updatedTx : item);
+     const latestPaidDate = updatedTransactions
+      .filter(item => (item.invoiceId === linkedInvoice.id || linkedTransactionIds.has(item.id)) && item.status === 'paid')
+      .map(item => item.date)
+      .filter(Boolean)
+      .sort((a, b) => b.localeCompare(a))[0];
+     const hasPendingItems = updatedItems.some(item => item.isPending);
      const updatedInvoice: Invoice = {
       ...linkedInvoice,
       items: updatedItems,
-      status: updatedItems.some(item => item.isPending) ? 'sent' : 'paid'
+      status: hasPendingItems ? 'sent' : 'paid',
+      dueDate: !hasPendingItems && latestPaidDate ? latestPaidDate : linkedInvoice.dueDate
      };
      await db.updateFinanceInvoice(updatedInvoice);
      setInvoices(current => current.map(invoice => invoice.id === updatedInvoice.id ? updatedInvoice : invoice));
@@ -997,10 +1009,54 @@ export default function CrmScreen({
  }
  };
 
+ const handleEditInvoiceClientFiscal = async (inv: Invoice) => {
+  const clientTaxId = window.prompt('CIF / NIF / DNI del cliente:', inv.clientTaxId || '');
+  if (clientTaxId === null) return;
+  const clientAddress = window.prompt('Dirección fiscal completa del cliente:', inv.clientAddress || '');
+  if (clientAddress === null) return;
+
+  const updatedInvoice: Invoice = {
+   ...inv,
+   clientTaxId: clientTaxId.trim(),
+   clientAddress: clientAddress.trim()
+  };
+
+  try {
+   await db.updateFinanceInvoice(updatedInvoice);
+   setInvoices(current => current.map(invoice => invoice.id === inv.id ? updatedInvoice : invoice));
+   const toast = document.getElementById('toast-msg');
+   if (toast) {
+    toast.innerText = `Datos fiscales de la factura ${inv.id} actualizados.`;
+    toast.classList.remove('opacity-0');
+    setTimeout(() => toast.classList.add('opacity-0'), 3000);
+   }
+  } catch (error) {
+   console.error('Error updating invoice client fiscal data:', error);
+   alert('No se pudieron guardar los datos fiscales del cliente.');
+  }
+ };
+
  const handleDownloadInvoiceHtml = (inv: Invoice) => {
  const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.html`;
+ const invoiceTransactionIds = new Set(
+  inv.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
+ );
+ const linkedTransactions = transactions.filter(tx =>
+  tx.invoiceId === inv.id || invoiceTransactionIds.has(tx.id)
+ );
+ const paidTransactions = linkedTransactions.filter(tx => tx.status === 'paid');
+ const paidAmount = paidTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+ const isInvoicePaid = inv.status === 'paid' || (
+  linkedTransactions.length > 0 &&
+  linkedTransactions.every(tx => tx.status === 'paid') &&
+  paidAmount + 0.005 >= Number(inv.total || 0)
+ );
+ const lastPaymentDate = paidTransactions.map(tx => tx.date).filter(Boolean).sort((a, b) => b.localeCompare(a))[0];
+ const effectiveDueDate = lastPaymentDate || inv.dueDate;
+ const cleanInvoiceConcept = (description: string) =>
+  description.replace(/\s*\((?:Pendiente|Cobrado)\)\s*$/i, '').trim();
  
- const htmlContent = `<!DOCTYPE html>
+ const legacyHtmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
  <meta charset="UTF-8">
@@ -1034,6 +1090,14 @@ export default function CrmScreen({
   color: #0f172a;
   letter-spacing: -0.025em;
   margin: 0;
+ }
+ .company-logo {
+  display: block;
+  width: 150px;
+  max-height: 72px;
+  object-fit: contain;
+  object-position: left center;
+  margin-bottom: 12px;
  }
  .company-sub {
   font-size: 11px;
@@ -1226,6 +1290,7 @@ export default function CrmScreen({
  <table class="header-table">
   <tr>
   <td>
+   <img class="company-logo" src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png" alt="Althera Solutions">
    <h1 class="company-title">${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}</h1>
    <div class="company-sub">
    ${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}<br>
@@ -1239,10 +1304,10 @@ export default function CrmScreen({
    <div class="invoice-number">${inv.id}</div>
    <div class="invoice-dates">
    Fecha: ${inv.date}<br>
-   Vence: ${inv.dueDate}
+   Vence: ${effectiveDueDate}
    </div>
-   <div class="status-badge ${inv.status === 'paid' ? 'status-paid' : 'status-pending'}">
-   ${inv.status === 'paid' ? 'PAGADA' : 'PENDIENTE'}
+   <div class="status-badge ${isInvoicePaid ? 'status-paid' : 'status-pending'}">
+   ${isInvoicePaid ? 'PAGADA' : 'PENDIENTE'}
    </div>
   </td>
   </tr>
@@ -1267,8 +1332,8 @@ export default function CrmScreen({
    <div class="box-name">${inv.clientName}</div>
    <div class="box-detail">
    Email: ${inv.clientEmail}<br>
-   ID: ${inv.clientId || 'N/A'}<br>
-   Dirección: España / Internacional
+   CIF/NIF/DNI: ${inv.clientTaxId || 'No indicado'}<br>
+   Dirección fiscal: ${inv.clientAddress || 'No indicada'}
    </div>
   </div>
   </div>
@@ -1286,10 +1351,10 @@ export default function CrmScreen({
   <tbody>
   ${(inv.items || []).map(item => `
    <tr>
-   <td>${item.description}</td>
+   <td>${cleanInvoiceConcept(item.description)}</td>
    <td class="qty">${item.quantity}</td>
-   <td class="price">${Number(item.unitPrice).toFixed(2)} ?</td>
-   <td class="total">${Number(item.total).toFixed(2)} ?</td>
+   <td class="price">${Number(item.unitPrice).toFixed(2)} €</td>
+   <td class="total">${Number(item.total).toFixed(2)} €</td>
    </tr>
   `).join('')}
   </tbody>
@@ -1299,22 +1364,22 @@ export default function CrmScreen({
   <table class="totals-table">
   <tr>
    <td>Subtotal:</td>
-   <td class="value">${Number(inv.subtotal).toFixed(2)} ?</td>
+   <td class="value">${Number(inv.subtotal).toFixed(2)} €</td>
   </tr>
   <tr>
    <td>I.V.A. (${inv.taxPercentage}%):</td>
-   <td class="value">${Number(inv.taxAmount).toFixed(2)} ?</td>
+   <td class="value">${Number(inv.taxAmount).toFixed(2)} €</td>
   </tr>
   <tr class="grand-total">
    <td>Total Factura:</td>
-   <td class="value">${Number(inv.total).toFixed(2)} ?</td>
+   <td class="value">${Number(inv.total).toFixed(2)} €</td>
   </tr>
   </table>
  </div>
  
  <div class="clear"></div>
 
- <div class="bank-box">
+ ${!isInvoicePaid ? `<div class="bank-box">
   <div class="bank-title">Datos de Pago de Facturación</div>
   <div class="bank-grid">
   <div>
@@ -1334,15 +1399,20 @@ export default function CrmScreen({
    <span class="bank-item-val">REVOIE23</span>
   </div>
   </div>
- </div>
+ </div>` : ''}
 
  <div class="footer">
   ¡Gracias por tu confianza y colaboración!<br>
-  Esta factura se rige bajo los términos acordados. Ante cualquier duda, escríbeme a mgnacho96@gmail.com
+  Esta factura se rige bajo los términos acordados. Ante cualquier duda, ponte en contacto con contacto@altherasolutions.com
  </div>
  </div>
 </body>
 </html>`;
+ void legacyHtmlContent;
+ const htmlContent = buildInvoiceHtml(inv, {
+  isPaid: isInvoicePaid,
+  dueDate: effectiveDueDate
+ });
 
  // Trigger file download
  const blob = new Blob([htmlContent], { type: 'text/html' });
@@ -2938,23 +3008,37 @@ export default function CrmScreen({
      return containsName || containsCompany;
     });
 
-    const isInvoiceEffectivelyPaid = (invoice: Invoice) => {
-     if (invoice.status === 'paid') return true;
-
+    const getInvoicePaymentSummary = (invoice: Invoice) => {
+     const invoiceTotal = Number(invoice.total || 0);
+     if (invoice.status === 'paid') {
+      return { paid: invoiceTotal, pending: 0, state: 'paid' as const };
+     }
      const invoiceItemTransactionIds = new Set(
       invoice.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
      );
      const linkedTransactions = clientTransactions.filter(
       tx => tx.invoiceId === invoice.id || invoiceItemTransactionIds.has(tx.id)
      );
-     if (linkedTransactions.length === 0 || linkedTransactions.some(tx => tx.status !== 'paid')) return false;
+     let paidAmount = linkedTransactions
+      .filter(tx => tx.status === 'paid')
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
 
-     const paidAmount = linkedTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-     return paidAmount + 0.005 >= Number(invoice.total || 0);
+     if (linkedTransactions.length === 0 && invoice.items.length > 0) {
+      const itemTotal = invoice.items.reduce((sum, item) => sum + Number(item.total || 0), 0);
+      const collectedItemTotal = invoice.items
+       .filter(item => item.isPending === false)
+       .reduce((sum, item) => sum + Number(item.total || 0), 0);
+      paidAmount = itemTotal > 0 ? invoiceTotal * (collectedItemTotal / itemTotal) : 0;
+     }
+
+     const paid = Math.min(invoiceTotal, Math.max(0, paidAmount));
+     const pending = Math.max(0, invoiceTotal - paid);
+     const state = pending <= 0.005 ? 'paid' as const : paid > 0.005 ? 'partial' as const : 'pending' as const;
+     return { paid, pending, state };
     };
 
-    const totalPaidFromInvoices = clientInvoices.filter(isInvoiceEffectivelyPaid).reduce((sum, inv) => sum + inv.total, 0);
-    const totalPendingFromInvoices = clientInvoices.filter(inv => !isInvoiceEffectivelyPaid(inv)).reduce((sum, inv) => sum + inv.total, 0);
+    const totalPaidFromInvoices = clientInvoices.reduce((sum, inv) => sum + getInvoicePaymentSummary(inv).paid, 0);
+    const totalPendingFromInvoices = clientInvoices.reduce((sum, inv) => sum + getInvoicePaymentSummary(inv).pending, 0);
     const totalInvoicedFromInvoices = clientInvoices.reduce((sum, inv) => sum + inv.total, 0);
 
     const totalPaidFromTxs = clientTransactions.filter(t => t.status === 'paid').reduce((sum, t) => sum + t.amount, 0);
@@ -2992,19 +3076,19 @@ export default function CrmScreen({
       <div className="text-center p-1.5 rounded-lg bg-white/2">
       <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-wider">Facturado</span>
       <span className="text-xs font-mono font-extrabold text-slate-200 block mt-0.5">
-       {totalInvoiced.toLocaleString('es-ES', { minimumFractionDigits: 2 })} ?
+       {totalInvoiced.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
       </span>
       </div>
       <div className="text-center p-1.5 rounded-lg bg-emerald-500/5 border border-emerald-500/5">
       <span className="block text-[8px] font-mono text-emerald-500 uppercase tracking-wider">Cobrado</span>
       <span className="text-xs font-mono font-extrabold text-emerald-400 block mt-0.5">
-       {totalPaid.toLocaleString('es-ES', { minimumFractionDigits: 2 })} ?
+       {totalPaid.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
       </span>
       </div>
       <div className="text-center p-1.5 rounded-lg bg-amber-500/5 border border-amber-500/5">
       <span className="block text-[8px] font-mono text-amber-500 uppercase tracking-wider">Pendiente</span>
       <span className="text-xs font-mono font-extrabold text-amber-400 block mt-0.5">
-       {totalPending.toLocaleString('es-ES', { minimumFractionDigits: 2 })} ?
+       {totalPending.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
       </span>
       </div>
      </div>
@@ -3018,16 +3102,21 @@ export default function CrmScreen({
       ) : (
       <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
        {clientInvoices.map(inv => {
-       const isEffectivelyPaid = isInvoiceEffectivelyPaid(inv);
+       const paymentSummary = getInvoicePaymentSummary(inv);
+       const isEffectivelyPaid = paymentSummary.state === 'paid';
        return (
        <div key={inv.id} className="bg-[#030305] p-2.5 rounded-xl border border-white/5 flex justify-between items-center hover:border-white/10 transition-colors">
         <div className="space-y-0.5">
         <div className="flex items-center gap-2">
          <span className="text-[10px] font-mono font-bold text-slate-200">{inv.id}</span>
          <span className={`text-[8px] font-mono px-1.5 py-0.2 rounded font-semibold ${
-         isEffectivelyPaid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+         isEffectivelyPaid
+          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+          : paymentSummary.state === 'partial'
+           ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+           : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
          }`}>
-         {isEffectivelyPaid ? 'COBRADA' : 'PENDIENTE'}
+         {isEffectivelyPaid ? 'COBRADA' : paymentSummary.state === 'partial' ? 'PARCIAL' : 'PENDIENTE'}
          </span>
         </div>
         <div className="text-[9px] font-mono text-slate-500">
@@ -3046,6 +3135,14 @@ export default function CrmScreen({
          <Check className="w-3.5 h-3.5" />
          </button>
         )}
+
+        <button
+         onClick={() => handleEditInvoiceClientFiscal(inv)}
+         title="Editar datos fiscales del cliente"
+         className="p-1 hover:bg-blue-500/20 text-blue-400 rounded-lg border border-blue-500/20 transition-all cursor-pointer"
+        >
+         <Edit className="w-3.5 h-3.5" />
+        </button>
 
         <button
          onClick={() => handleDownloadInvoiceHtml(inv)}

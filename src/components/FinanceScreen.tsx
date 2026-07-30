@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
 import { db } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
+import { buildInvoiceHtml } from '../utils/invoiceHtml';
 import { 
  DollarSign, 
  TrendingUp, 
@@ -1583,29 +1584,48 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  // Print helper for invoice preview
  const handlePrintPreview = () => {
- const printArea = document.getElementById('invoice-modal-print-area');
- if (!printArea) {
+ if (!previewInvoice) {
   window.print();
   return;
  }
 
- // Create temporary wrapper that will be the only visible child with tailwind/parent styles
- const tempWrapper = document.createElement('div');
- tempWrapper.id = 'temp-print-wrapper';
- tempWrapper.className = 'p-8 bg-white text-slate-900 font-sans border-none rounded-none m-0 space-y-8 select-text';
- tempWrapper.innerHTML = printArea.innerHTML;
- 
- document.body.classList.add('is-printing');
- document.body.appendChild(tempWrapper);
-
- setTimeout(() => {
-  window.print();
-  document.body.classList.remove('is-printing');
-  const attached = document.getElementById('temp-print-wrapper');
-  if (attached) {
-  document.body.removeChild(attached);
+ const invoiceTransactionIds = new Set(
+  previewInvoice.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
+ );
+ const linkedTransactions = transactions.filter(tx =>
+  tx.invoiceId === previewInvoice.id || invoiceTransactionIds.has(tx.id)
+ );
+ const paidTransactions = linkedTransactions.filter(tx => tx.status === 'paid');
+ const paidAmount = paidTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+ const isPaid = previewInvoice.status === 'paid' || (
+  linkedTransactions.length > 0 &&
+  linkedTransactions.every(tx => tx.status === 'paid') &&
+  paidAmount + 0.005 >= Number(previewInvoice.total || 0)
+ );
+ const dueDate = paidTransactions.map(tx => tx.date).filter(Boolean).sort((a, b) => b.localeCompare(a))[0] || previewInvoice.dueDate;
+ const html = buildInvoiceHtml(previewInvoice, {
+  isPaid,
+  dueDate,
+  bank: {
+   beneficiary: bankBeneficiary,
+   iban: paymentDetails,
+   swift: bankSwift,
+   correspondentBic: bankCorrespondentBic,
+   nameAddress: bankNameAddress
   }
- }, 150);
+ });
+ const printWindow = window.open('', '_blank');
+ if (!printWindow) {
+  alert('El navegador ha bloqueado la ventana de impresión. Permite las ventanas emergentes e inténtalo de nuevo.');
+  return;
+ }
+ printWindow.document.open();
+ printWindow.document.write(html);
+ printWindow.document.close();
+ printWindow.addEventListener('load', () => {
+  printWindow.focus();
+  printWindow.print();
+ }, { once: true });
  };
 
  // Convert a transaction (cobro) directly into a detailed draft / paid invoice
@@ -1698,8 +1718,22 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  // Compile and trigger a local file download of the Invoice represented in clean self-contained HTML
  const handleDownloadInvoiceHtml = (inv: Invoice) => {
  const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.html`;
+ const invoiceTransactionIds = new Set(
+  inv.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
+ );
+ const linkedTransactions = transactions.filter(tx =>
+  tx.invoiceId === inv.id || invoiceTransactionIds.has(tx.id)
+ );
+ const paidTransactions = linkedTransactions.filter(tx => tx.status === 'paid');
+ const paidAmount = paidTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+ const isInvoicePaid = inv.status === 'paid' || (
+  linkedTransactions.length > 0 &&
+  linkedTransactions.every(tx => tx.status === 'paid') &&
+  paidAmount + 0.005 >= Number(inv.total || 0)
+ );
+ const effectiveDueDate = paidTransactions.map(tx => tx.date).filter(Boolean).sort((a, b) => b.localeCompare(a))[0] || inv.dueDate;
  
- const htmlContent = `<!DOCTYPE html>
+ const legacyHtmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
  <meta charset="UTF-8">
@@ -2048,6 +2082,18 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  </div>
 </body>
 </html>`;
+ void legacyHtmlContent;
+ const htmlContent = buildInvoiceHtml(inv, {
+  isPaid: isInvoicePaid,
+  dueDate: effectiveDueDate,
+  bank: {
+   beneficiary: bankBeneficiary,
+   iban: paymentDetails,
+   swift: bankSwift,
+   correspondentBic: bankCorrespondentBic,
+   nameAddress: bankNameAddress
+  }
+ });
 
  // Dynamic clean download anchor trigger
  const blob = new Blob([htmlContent], { type: 'text/html' });
@@ -5035,8 +5081,42 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
    </div>
 
-   {/* Printable Frame Box Container */}
-    <div id="invoice-modal-print-area" className="m-3 mx-auto min-h-[1120px] max-w-[900px] space-y-6 rounded-3xl border border-amber-500/10 bg-white p-8 font-serif text-xs leading-relaxed tracking-normal text-neutral-800 shadow-2xl select-text md:p-14">
+   {/* Canonical invoice preview: the same shared template used by HTML download and printing. */}
+   {(() => {
+    const invoiceTransactionIds = new Set(
+     previewInvoice.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
+    );
+    const linkedTransactions = transactions.filter(tx =>
+     tx.invoiceId === previewInvoice.id || invoiceTransactionIds.has(tx.id)
+    );
+    const paidTransactions = linkedTransactions.filter(tx => tx.status === 'paid');
+    const paidAmount = paidTransactions.reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+    const isPaid = previewInvoice.status === 'paid' || (
+     linkedTransactions.length > 0 &&
+     linkedTransactions.every(tx => tx.status === 'paid') &&
+     paidAmount + 0.005 >= Number(previewInvoice.total || 0)
+    );
+    const dueDate = paidTransactions.map(tx => tx.date).filter(Boolean).sort((a, b) => b.localeCompare(a))[0] || previewInvoice.dueDate;
+    return (
+     <iframe
+      title={`Vista previa de factura ${previewInvoice.id}`}
+      srcDoc={buildInvoiceHtml(previewInvoice, {
+       isPaid,
+       dueDate,
+       bank: {
+        beneficiary: bankBeneficiary,
+        iban: paymentDetails,
+        swift: bankSwift,
+        correspondentBic: bankCorrespondentBic,
+        nameAddress: bankNameAddress
+       }
+      })}
+      className="m-3 mx-auto block h-[1180px] w-[calc(100%-1.5rem)] max-w-[900px] rounded-3xl border border-amber-500/10 bg-white shadow-2xl"
+     />
+    );
+   })()}
+
+    <div id="invoice-modal-print-area" className="hidden">
      <div className="flex flex-col items-center justify-center border-b border-neutral-200 bg-white pb-8 text-center">
       <img
        src="https://czyrolmczcwtexxgxzrg.supabase.co/storage/v1/object/public/webs/althera_logo_transparente.png"
