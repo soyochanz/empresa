@@ -82,8 +82,8 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
  <title>Factura ${escapeHtml(invoice.id)} - ${escapeHtml(invoice.clientName)}</title>
  <style>
   @page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin:0;background:#fff;color:#334155;font-family:Arial,Helvetica,sans-serif;line-height:1.55}
-  .invoice{display:flex;flex-direction:column;width:210mm;height:297mm;margin:0 auto;padding:14mm 16mm;background:#fff;overflow:hidden}
-  .header{display:flex;justify-content:space-between;gap:30px;padding-bottom:20px;border-bottom:1px solid #e2e8f0}.logo{width:145px;max-height:62px;object-fit:contain;object-position:left center}
+  .invoice{display:flex;flex-direction:column;width:209mm;height:296mm;margin:0 auto;padding:14mm 16mm;background:#fff;overflow:hidden}
+  .header{display:flex;justify-content:space-between;gap:30px;padding-bottom:20px;border-bottom:1px solid #e2e8f0}.logo{display:block;width:auto;height:62px;max-width:145px;object-fit:contain;object-position:left center}
   .brand{margin-top:8px;font-size:11px;color:#64748b}.invoice-meta{text-align:right}.eyebrow{font-size:10px;font-weight:800;letter-spacing:.12em;color:#b68a24}.number{font-size:22px;font-weight:900;color:#0f172a}
   .dates{margin-top:8px;font:11px/1.6 monospace;color:#64748b}.status{display:inline-block;margin-top:10px;padding:4px 10px;border-radius:999px;font-size:10px;font-weight:800}
   .paid{background:#dcfce7;color:#15803d}.pending{background:#fef3c7;color:#a16207}.parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
@@ -94,7 +94,7 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
   .footer{margin-top:auto;padding-top:14px;border-top:1px solid #e2e8f0;text-align:center;font-size:10px;color:#64748b}
   .header,.parties,.box,.items tr,.totals,.bank,.footer{break-inside:avoid;page-break-inside:avoid}
   @media screen and (max-width:800px){.invoice{width:100%;height:auto;min-height:100vh;padding:25px;overflow:visible}.header,.parties{display:block}.invoice-meta{text-align:left;margin-top:25px}.parties .box{margin-top:12px}.bank-grid{grid-template-columns:1fr}}
-  @media print{html,body{width:210mm;height:297mm;overflow:hidden}.invoice{width:210mm;height:297mm;padding:14mm 16mm;overflow:hidden}}
+  @media print{html,body{width:210mm;height:297mm;overflow:hidden}.invoice{width:209mm;height:296mm;padding:14mm 16mm;overflow:hidden}}
  </style>
 </head>
 <body>
@@ -155,7 +155,7 @@ export const downloadInvoicePdf = async (html: string, filename: string): Promis
    image: { type: 'jpeg', quality: 0.98 },
    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-   pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+   pagebreak: { mode: ['css'] }
   }).from(host.querySelector('.invoice') || host).save();
  } finally {
   host.remove();
