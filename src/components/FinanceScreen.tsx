@@ -602,6 +602,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invTaxPercentage, setInvTaxPercentage] = useState<number>(21);
  const [invAlias, setInvAlias] = useState('');
  const [invColor, setInvColor] = useState('');
+ const [invCurrency, setInvCurrency] = useState<NonNullable<Invoice['currency']>>('EUR');
+ const [invLanguage, setInvLanguage] = useState<NonNullable<Invoice['language']>>('es');
 
  // Banking defaults matching Revolut and Ibiza specs
  const [paymentDetails, setPaymentDetails] = useState('IE84 REVO 9903 6065 8046 06');
@@ -1083,8 +1085,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  if (match) {
   setInvClientName(match.company !== 'Independent' ? match.company : match.name);
   setInvClientEmail(match.email);
-  setInvClientAddress(match.location || '');
-  setInvClientTaxId('');
+  setInvClientAddress(match.fiscalAddress || match.location || '');
+  setInvClientTaxId(match.taxId || '');
  }
  };
 
@@ -1176,6 +1178,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   notes: invNotes,
   alias: invAlias || undefined,
   color: invColor || undefined
+  ,currency: invCurrency
+  ,language: invLanguage
  };
 
  try {
@@ -1298,6 +1302,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvItems(inv.items.map(it => ({ ...it })));
  setInvAlias(inv.alias || '');
  setInvColor(inv.color || '');
+ setInvCurrency(inv.currency || 'EUR');
+ setInvLanguage(inv.language || 'es');
  setIsInvModalOpen(true);
  };
 
@@ -1540,6 +1546,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvItems([{ id: 'temp1', description: '', quantity: 1, unitPrice: 0, total: 0 }]);
  setInvAlias('');
  setInvColor('');
+ setInvCurrency('EUR');
+ setInvLanguage('es');
  };
 
  // Helper to trigger recurrence manual payment simulation
@@ -4409,6 +4417,34 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      className="w-full bg-slate-950 border border-white/10 rounded-xl py-1.5 px-3 text-xs text-slate-100 focus:outline-none font-mono"
      />
     </div>
+    </div>
+
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+     <div className="space-y-1">
+      <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Divisa</label>
+      <select
+       value={invCurrency}
+       onChange={(e) => setInvCurrency(e.target.value as NonNullable<Invoice['currency']>)}
+       className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-slate-100"
+      >
+       <option value="EUR">EUR — Euro (€)</option>
+       <option value="USD">USD — Dólar ($)</option>
+       <option value="GBP">GBP — Libra (£)</option>
+       <option value="MXN">MXN — Peso mexicano ($)</option>
+       <option value="CHF">CHF — Franco suizo (CHF)</option>
+      </select>
+     </div>
+     <div className="space-y-1">
+      <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Idioma de la factura</label>
+      <select
+       value={invLanguage}
+       onChange={(e) => setInvLanguage(e.target.value as NonNullable<Invoice['language']>)}
+       className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-slate-100"
+      >
+       <option value="es">Español</option>
+       <option value="en">English</option>
+      </select>
+     </div>
     </div>
 
     {/* Status input */}

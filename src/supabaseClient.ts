@@ -47,6 +47,8 @@ const INVOICE_ISSUER_BRAND_TAG = /\s*\[ISSUER_BRAND:([^\]]*)\]/g;
 const INVOICE_ISSUER_EMAIL_TAG = /\s*\[ISSUER_EMAIL:([^\]]*)\]/g;
 const INVOICE_ALIAS_TAG = /\s*\[INVOICE_ALIAS:([^\]]*)\]/g;
 const INVOICE_COLOR_TAG = /\s*\[INVOICE_COLOR:([^\]]*)\]/g;
+const INVOICE_CURRENCY_TAG = /\s*\[INVOICE_CURRENCY:([^\]]*)\]/g;
+const INVOICE_LANGUAGE_TAG = /\s*\[INVOICE_LANGUAGE:([^\]]*)\]/g;
 
 const decodeInvoiceMetadataValue = (value?: string): string => {
  try {
@@ -67,6 +69,8 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
   .replace(INVOICE_ISSUER_EMAIL_TAG, '')
   .replace(INVOICE_ALIAS_TAG, '')
   .replace(INVOICE_COLOR_TAG, '')
+  .replace(INVOICE_CURRENCY_TAG, '')
+  .replace(INVOICE_LANGUAGE_TAG, '')
   .trim();
  const metadata = [
   invoice.clientTaxId ? `[CLIENT_TAX_ID:${encodeURIComponent(invoice.clientTaxId)}]` : '',
@@ -77,7 +81,9 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
   invoice.issuerBrand ? `[ISSUER_BRAND:${encodeURIComponent(invoice.issuerBrand)}]` : '',
   invoice.issuerEmail ? `[ISSUER_EMAIL:${encodeURIComponent(invoice.issuerEmail)}]` : '',
   invoice.alias ? `[INVOICE_ALIAS:${encodeURIComponent(invoice.alias)}]` : '',
-  invoice.color ? `[INVOICE_COLOR:${encodeURIComponent(invoice.color)}]` : ''
+  invoice.color ? `[INVOICE_COLOR:${encodeURIComponent(invoice.color)}]` : '',
+  invoice.currency ? `[INVOICE_CURRENCY:${invoice.currency}]` : '',
+  invoice.language ? `[INVOICE_LANGUAGE:${invoice.language}]` : ''
  ].filter(Boolean);
  return [cleanNotes, ...metadata].filter(Boolean).join('\n') || null;
 };
@@ -93,6 +99,8 @@ const deserializeInvoice = (row: any): Invoice => {
  const issuerEmailMatch = [...rawNotes.matchAll(INVOICE_ISSUER_EMAIL_TAG)][0];
  const aliasMatch = [...rawNotes.matchAll(INVOICE_ALIAS_TAG)][0];
  const colorMatch = [...rawNotes.matchAll(INVOICE_COLOR_TAG)][0];
+ const currencyMatch = [...rawNotes.matchAll(INVOICE_CURRENCY_TAG)][0];
+ const languageMatch = [...rawNotes.matchAll(INVOICE_LANGUAGE_TAG)][0];
  return {
   ...row,
   notes: rawNotes
@@ -105,6 +113,8 @@ const deserializeInvoice = (row: any): Invoice => {
    .replace(INVOICE_ISSUER_EMAIL_TAG, '')
    .replace(INVOICE_ALIAS_TAG, '')
    .replace(INVOICE_COLOR_TAG, '')
+   .replace(INVOICE_CURRENCY_TAG, '')
+   .replace(INVOICE_LANGUAGE_TAG, '')
    .trim() || undefined,
   clientTaxId: row?.clientTaxId || decodeInvoiceMetadataValue(taxMatch?.[1]),
   clientAddress: row?.clientAddress || decodeInvoiceMetadataValue(addressMatch?.[1]),
@@ -114,7 +124,9 @@ const deserializeInvoice = (row: any): Invoice => {
   issuerBrand: row?.issuerBrand || decodeInvoiceMetadataValue(issuerBrandMatch?.[1]),
   issuerEmail: row?.issuerEmail || decodeInvoiceMetadataValue(issuerEmailMatch?.[1]),
   alias: row?.alias || decodeInvoiceMetadataValue(aliasMatch?.[1]),
-  color: row?.color || decodeInvoiceMetadataValue(colorMatch?.[1])
+  color: row?.color || decodeInvoiceMetadataValue(colorMatch?.[1]),
+  currency: (row?.currency || decodeInvoiceMetadataValue(currencyMatch?.[1]) || 'EUR') as Invoice['currency'],
+  language: (row?.language || decodeInvoiceMetadataValue(languageMatch?.[1]) || 'es') as Invoice['language']
  };
 };
 
@@ -772,6 +784,8 @@ export const db = {
  let assignedUserEmail: string | undefined = undefined;
  let phone: string | undefined = undefined;
  let linkedin: string | undefined = undefined;
+ let taxId: string | undefined = undefined;
+ let fiscalAddress: string | undefined = undefined;
  let notes: string | undefined = undefined;
  let contactedByComercialName: string | undefined = undefined;
  let contactedByComercialEmail: string | undefined = undefined;
@@ -828,6 +842,8 @@ export const db = {
    if (key === 'assignedUserEmail') assignedUserEmail = val || undefined;
    if (key === 'phone') phone = val || undefined;
    if (key === 'linkedin') linkedin = val || undefined;
+   if (key === 'taxId') taxId = decodeInvoiceMetadataValue(val) || undefined;
+   if (key === 'fiscalAddress') fiscalAddress = decodeInvoiceMetadataValue(val) || undefined;
    if (key === 'temperature') {
    const v = val.trim();
    if (v === 'Frío' || v === 'Templado' || v === 'Caliente') {
@@ -926,6 +942,8 @@ export const db = {
   assignedUserEmail,
   phone,
   linkedin,
+  taxId,
+  fiscalAddress,
   notes,
   contactedByComercialName,
   contactedByComercialEmail,
@@ -978,6 +996,8 @@ export const db = {
   contact.assignedUserEmail || 
   contact.phone || 
   contact.linkedin ||
+  contact.taxId ||
+  contact.fiscalAddress ||
   contact.notes ||
   contact.contactedByComercialName ||
   contact.contactedByComercialEmail ||
@@ -1024,6 +1044,8 @@ export const db = {
   if (contact.assignedUserEmail) metadataStr += `\nassignedUserEmail: ${contact.assignedUserEmail}`;
   if (contact.phone) metadataStr += `\nphone: ${contact.phone}`;
   if (contact.linkedin) metadataStr += `\nlinkedin: ${contact.linkedin}`;
+  if (contact.taxId) metadataStr += `\ntaxId: ${encodeURIComponent(contact.taxId)}`;
+  if (contact.fiscalAddress) metadataStr += `\nfiscalAddress: ${encodeURIComponent(contact.fiscalAddress)}`;
   if (contact.notes) metadataStr += `\nnotes: ${encodeURIComponent(contact.notes)}`;
   if (contact.contactedByComercialName) metadataStr += `\ncontactedByComercialName: ${encodeURIComponent(contact.contactedByComercialName)}`;
   if (contact.contactedByComercialEmail) metadataStr += `\ncontactedByComercialEmail: ${contact.contactedByComercialEmail}`;

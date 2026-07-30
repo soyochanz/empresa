@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
 import { buildInvoiceHtml } from '../utils/invoiceHtml';
@@ -1823,6 +1823,8 @@ export default function CrmScreen({
  const [newStatus, setNewStatus] = useState<'Client' | 'Lead'>('Lead');
  const [newRole, setNewRole] = useState('');
  const [newLocation, setNewLocation] = useState('San Francisco, CA');
+ const [newTaxId, setNewTaxId] = useState('');
+ const [newFiscalAddress, setNewFiscalAddress] = useState('');
  const [newWebsite, setNewWebsite] = useState('');
  const [newGithubRepo, setNewGithubRepo] = useState('');
  const [newHostingCredentials, setNewHostingCredentials] = useState('');
@@ -1839,6 +1841,8 @@ export default function CrmScreen({
  setNewStatus('Lead');
  setNewRole('');
  setNewLocation('San Francisco, CA');
+ setNewTaxId('');
+ setNewFiscalAddress('');
  setNewWebsite('');
  setNewGithubRepo('');
  setNewHostingCredentials('');
@@ -1890,7 +1894,7 @@ export default function CrmScreen({
  alert(`?Éxito! Se ha agendado una Cita Presencial para el día ${scheduleDate} a las ${scheduleTime} h.`);
  };
 
- const handleAddSubmit = (e: React.FormEvent) => {
+ const handleAddSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!newName.trim()) return;
 
@@ -1913,6 +1917,8 @@ export default function CrmScreen({
   status: newStatus,
   role: newRole || 'Product Manager',
   location: newLocation,
+  taxId: newTaxId || undefined,
+  fiscalAddress: newFiscalAddress || newLocation || undefined,
   website: newWebsite || (newCompany ? `${newCompany.toLowerCase().replace(/\s+/g, '')}.io` : ''),
   githubRepo: newGithubRepo,
   hostingCredentials: newHostingCredentials,
@@ -1927,7 +1933,23 @@ export default function CrmScreen({
   };
 
   if (onUpdateContact) {
-  onUpdateContact(updatedContact);
+  await onUpdateContact(updatedContact);
+  }
+  const linkedInvoices = invoices.filter(invoice =>
+   invoice.clientId === updatedContact.id ||
+   (!!editingContact.email && invoice.clientEmail?.toLowerCase() === editingContact.email.toLowerCase())
+  );
+  const updatedInvoices = linkedInvoices.map(invoice => ({
+   ...invoice,
+   clientName: updatedContact.name,
+   clientEmail: updatedContact.email,
+   clientTaxId: updatedContact.taxId,
+   clientAddress: updatedContact.fiscalAddress || updatedContact.location
+  }));
+  await Promise.all(updatedInvoices.map(invoice => db.updateFinanceInvoice(invoice)));
+  if (updatedInvoices.length > 0) {
+   const byId = new Map(updatedInvoices.map(invoice => [invoice.id, invoice]));
+   setInvoices(current => current.map(invoice => byId.get(invoice.id) || invoice));
   }
   setSelectedContactId(updatedContact.id);
  } else {
@@ -1940,6 +1962,8 @@ export default function CrmScreen({
   lastContacted: 'Just now',
   role: newRole || 'Product Manager',
   location: newLocation,
+  taxId: newTaxId || undefined,
+  fiscalAddress: newFiscalAddress || newLocation || undefined,
   addedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
   website: newWebsite || (newCompany ? `${newCompany.toLowerCase().replace(/\s+/g, '')}.io` : ''),
   githubRepo: newGithubRepo,
@@ -2248,6 +2272,8 @@ export default function CrmScreen({
      setNewStatus(selectedContact.status || 'Lead');
      setNewRole(selectedContact.role || '');
      setNewLocation(selectedContact.location || 'San Francisco, CA');
+     setNewTaxId(selectedContact.taxId || '');
+     setNewFiscalAddress(selectedContact.fiscalAddress || selectedContact.location || '');
      setNewWebsite(selectedContact.website || '');
      setNewGithubRepo(selectedContact.githubRepo || '');
      setNewHostingCredentials(selectedContact.hostingCredentials || '');
@@ -2460,15 +2486,15 @@ export default function CrmScreen({
       <div className="grid grid-cols-3 gap-1.5 text-center">
        <div className="bg-black/20 rounded-lg p-2 border border-white/5">
        <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Total</span>
-       <span className="block text-[11px] font-black text-slate-200">{selectedPaymentSummary.total.toFixed(2)} ?</span>
+       <span className="block text-[11px] font-black text-slate-200">{selectedPaymentSummary.total.toFixed(2)} €</span>
        </div>
        <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
        <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Pagado</span>
-       <span className="block text-[11px] font-black text-emerald-400">{selectedPaymentSummary.paid.toFixed(2)} ?</span>
+       <span className="block text-[11px] font-black text-emerald-400">{selectedPaymentSummary.paid.toFixed(2)} €</span>
        </div>
        <div className="bg-black/20 rounded-lg p-2 border border-amber-500/10">
        <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Pendiente</span>
-       <span className="block text-[11px] font-black text-amber-400">{selectedPaymentSummary.pending.toFixed(2)} ?</span>
+       <span className="block text-[11px] font-black text-amber-400">{selectedPaymentSummary.pending.toFixed(2)} €</span>
        </div>
       </div>
       )}
@@ -2563,11 +2589,11 @@ export default function CrmScreen({
        </div>
        <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
         <span className="block text-[7px] uppercase tracking-widest text-slate-500 font-mono">Cobrado</span>
-        <span className="block text-[10px] font-black text-emerald-400">{(stripeOverview.totals?.paidInvoices || 0).toFixed(2)} ?</span>
+        <span className="block text-[10px] font-black text-emerald-400">{(stripeOverview.totals?.paidInvoices || 0).toFixed(2)} €</span>
        </div>
        <div className="bg-black/20 rounded-lg p-2 border border-amber-500/10">
         <span className="block text-[7px] uppercase tracking-widest text-slate-500 font-mono">Abierto</span>
-        <span className="block text-[10px] font-black text-amber-400">{(stripeOverview.totals?.openInvoices || 0).toFixed(2)} ?</span>
+        <span className="block text-[10px] font-black text-amber-400">{(stripeOverview.totals?.openInvoices || 0).toFixed(2)} €</span>
        </div>
        </div>
 
@@ -2586,7 +2612,7 @@ export default function CrmScreen({
         </span>
         </div>
         <div className="flex justify-between text-[9px] text-slate-500">
-        <span>{sub.amount !== null ? `${sub.amount.toFixed(2)} ? / ${sub.interval || 'periodo'}` : 'Importe no disponible'}</span>
+         <span>{sub.amount !== null ? `${sub.amount.toFixed(2)} € / ${sub.interval || 'periodo'}` : 'Importe no disponible'}</span>
         {sub.dashboardUrl && (
          <a href={sub.dashboardUrl} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
          Ver
@@ -2627,7 +2653,7 @@ export default function CrmScreen({
      <div className="bg-slate-950/45 p-3 rounded-xl border border-white/5 space-y-1.5">
       <div className="flex justify-between text-xs">
       <span className="text-slate-500 text-[10px]">Cuota mensual:</span>
-      <span className="font-extrabold text-slate-200">{selectedContact.stripeSubscriptionPrice || '0'} ?</span>
+      <span className="font-extrabold text-slate-200">{selectedContact.stripeSubscriptionPrice || '0'} €</span>
       </div>
       <div className="flex justify-between text-xs">
       <span className="text-slate-500 text-[10px]">Intervalo:</span>
@@ -2960,6 +2986,13 @@ export default function CrmScreen({
      <MapPin className="text-slate-500 w-4 h-4 flex-shrink-0" />
      <span className="text-xs text-slate-300">{selectedContact.location || 'Not Specified'}</span>
      </div>
+     {(selectedContact.taxId || selectedContact.fiscalAddress) && (
+     <div className="rounded-lg border border-emerald-500/10 bg-emerald-500/[0.03] p-2.5 text-[10px] text-slate-300">
+      <span className="block font-mono text-[8px] uppercase tracking-wider text-emerald-400">Datos fiscales</span>
+      {selectedContact.taxId && <span className="mt-1 block">CIF/NIF/ID: {selectedContact.taxId}</span>}
+      {selectedContact.fiscalAddress && <span className="block">{selectedContact.fiscalAddress}</span>}
+     </div>
+     )}
      <div className="flex items-center gap-3">
      <Mail className="text-slate-500 w-4 h-4 flex-shrink-0" />
      <span className="text-xs text-slate-300 truncate select-all">{selectedContact.email}</span>
@@ -3124,7 +3157,7 @@ export default function CrmScreen({
         </div>
         </div>
         <div className="flex items-center gap-1.5">
-        <span className="text-xs font-mono font-bold text-slate-100 pr-1">{inv.total.toFixed(2)} ?</span>
+        <span className="text-xs font-mono font-bold text-slate-100 pr-1">{inv.total.toFixed(2)} €</span>
         
         {!isEffectivelyPaid && (
          <button
@@ -3210,7 +3243,7 @@ export default function CrmScreen({
          <div className="flex items-center gap-1.5 shrink-0">
          {/* Amount */}
          <span className={`text-[11px] font-mono font-black ${isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
-          {isPending ? '' : '+'}{tx.amount.toFixed(2)} ?
+          {isPending ? '' : '+'}{tx.amount.toFixed(2)} €
          </span>
 
          <button
@@ -3718,6 +3751,29 @@ export default function CrmScreen({
      className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
      />
     </div>
+    </div>
+
+    <div className="grid grid-cols-1 gap-4 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.03] p-3 sm:grid-cols-2">
+     <div className="space-y-1">
+      <label className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider">CIF / NIF / ID fiscal</label>
+      <input
+       type="text"
+       value={newTaxId}
+       onChange={(e) => setNewTaxId(e.target.value)}
+       placeholder="Identificación fiscal"
+       className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+      />
+     </div>
+     <div className="space-y-1">
+      <label className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider">Dirección fiscal completa</label>
+      <input
+       type="text"
+       value={newFiscalAddress}
+       onChange={(e) => setNewFiscalAddress(e.target.value)}
+       placeholder="Calle, número, CP, ciudad y país"
+       className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+      />
+     </div>
     </div>
 
     {/* Temperature / Color selection */}

@@ -43,6 +43,8 @@ export interface ClientContact {
  priority?: boolean;
  avatarUrl?: string;
  location?: string;
+ taxId?: string;
+ fiscalAddress?: string;
  addedDate?: string;
  website?: string;
  demoWebsiteId?: string;
@@ -60,6 +62,8 @@ export interface ClientContact {
  assignedUserEmail?: string;
  initials: string;
  color?: string;
+ currency?: 'EUR' | 'USD' | 'GBP' | 'MXN' | 'CHF';
+ language?: 'es' | 'en';
  temperature?: 'Frío' | 'Templado' | 'Caliente';
  notes?: string;
  contactedByComercialName?: string;
@@ -209,6 +213,8 @@ export interface Invoice {
  notes?: string;
  alias?: string;
  color?: string;
+ currency?: 'EUR' | 'USD' | 'GBP' | 'MXN' | 'CHF';
+ language?: 'es' | 'en';
  comercialId?: string; // New: associated commercial ID
  comercialEmail?: string; // New: associated commercial email
  isInitialSale?: boolean; // New: is initial acquisition sale
