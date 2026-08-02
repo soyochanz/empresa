@@ -47,6 +47,7 @@ import {
  } from 'lucide-react';
 import { ColdCallingLead, ColdCallingProspectGroup, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
+import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import ProductNeedsSummary from './ProductNeedsSummary';
 
 const HOURLY_SLOTS = [
@@ -589,7 +590,8 @@ const nachoAdmin = findAdminByName('nacho');
 
  if (convType === 'Client') {
   // 4. Generate the Invoice (Factura) and Transactions (Cobros) - only for Client
-  const invoiceId = 'inv_cc_' + Math.random().toString(36).substring(2, 9);
+  const existingInvoices = await db.getFinanceInvoices();
+  const invoiceId = getNextInvoiceNumber(existingInvoices);
   const stripePlanId = 'plan_cc_' + Math.random().toString(36).substring(2, 9);
  const pricePerInstallment = Math.round((convSalePrice / convInstallments) * 100) / 100;
   const todayKey = new Date().toISOString().split('T')[0];

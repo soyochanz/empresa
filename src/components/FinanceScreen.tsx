@@ -3,6 +3,7 @@ import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, Comerc
 import { db } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
+import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { 
  DollarSign, 
  TrendingUp, 
@@ -1157,7 +1158,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const subtotal = parseFloat((total / (1 + invTaxPercentage / 100)).toFixed(2));
  const taxAmount = parseFloat((total - subtotal).toFixed(2));
 
- const invoiceId = isEditingInv && editingInvId ? editingInvId : 'FAC-' + new Date().getFullYear() + '-' + String(invoices.length + 1).padStart(3, '0');
+ const invoiceId = isEditingInv && editingInvId ? editingInvId : getNextInvoiceNumber(invoices);
 
  // Create automatic pending transactions for custom invoice items with isPending === true
  const autoCreatedTxs: FinanceTransaction[] = [];

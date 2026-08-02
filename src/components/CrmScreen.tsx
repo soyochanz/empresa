@@ -2,6 +2,7 @@
 import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
+import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { REGISTERED_USERS, PanelUser } from '../mockData';
 import { 
  Plus, 
@@ -446,9 +447,12 @@ export default function CrmScreen({
  const commPct = matchedCom?.commissionPercentage ?? 0;
 
  // 2. Generate the Invoice (Factura) and Transactions (Cobros)
- const invoiceId = 'inv_crm_' + Math.random().toString(36).substring(2, 9);
+ const invoiceId = getNextInvoiceNumber(invoices);
  const stripePlanId = 'plan_crm_' + Math.random().toString(36).substring(2, 9);
  const pricePerInstallment = Math.round((convFinancedTotal / convInstallments) * 100) / 100;
+ const invoiceTaxPercentage = convertingLead.taxPercentage ?? 21;
+ const invoiceSubtotal = Number((convFinancedTotal / (1 + invoiceTaxPercentage / 100)).toFixed(2));
+ const invoiceTaxAmount = Number((convFinancedTotal - invoiceSubtotal).toFixed(2));
  const firstInstallmentDate = new Date();
  firstInstallmentDate.setHours(12, 0, 0, 0);
  const todayKey = toLocalDateKey(firstInstallmentDate);
@@ -465,8 +469,9 @@ export default function CrmScreen({
   id: 'item_' + i + '_' + Date.now(),
   description: `${convConcept} - Plazo ${i} de ${convInstallments}`,
   quantity: 1,
-  unitPrice: pricePerInstallment,
-  total: pricePerInstallment,
+  unitPrice: pricePerInstallment / (1 + invoiceTaxPercentage / 100),
+  total: pricePerInstallment / (1 + invoiceTaxPercentage / 100),
+  grossAmount: pricePerInstallment,
   isPending: true,
   pendingTxId: txId,
   paymentMethod: convPaymentMethod
@@ -510,9 +515,9 @@ export default function CrmScreen({
   dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   status: 'sent',
   items: invoiceItems,
-  subtotal: convFinancedTotal,
-  taxPercentage: 0,
-  taxAmount: 0,
+  subtotal: invoiceSubtotal,
+  taxPercentage: invoiceTaxPercentage,
+  taxAmount: invoiceTaxAmount,
   total: convFinancedTotal,
   notes: `Venta inicial generada desde CRM. Importe base: ${convSalePrice} €. Extra por financiación: ${convInstallments > 1 ? convFinancingExtra : 0} €. Comercial: ${matchedCom ? matchedCom.name : 'Sin asignar'}. ${matchedCom ? `Comisión: ${commPct}%.` : 'Sin comisión comercial.'}`,
   comercialId: matchedCom?.id,
@@ -1943,18 +1948,47 @@ export default function CrmScreen({
    invoice.clientId === updatedContact.id ||
    (!!editingContact.email && invoice.clientEmail?.toLowerCase() === editingContact.email.toLowerCase())
   );
-  const updatedInvoices = linkedInvoices.map(invoice => ({
-   ...invoice,
-   clientName: updatedContact.name,
-   clientEmail: updatedContact.email,
-   clientTaxId: updatedContact.taxId,
-   clientAddress: updatedContact.fiscalAddress || updatedContact.location
-   ,currency: updatedContact.currency || invoice.currency || 'EUR'
-   ,language: updatedContact.language || invoice.language || 'es'
-   ,taxPercentage: updatedContact.taxPercentage ?? invoice.taxPercentage
-   ,taxAmount: Number((invoice.subtotal * ((updatedContact.taxPercentage ?? invoice.taxPercentage) / 100)).toFixed(2))
-   ,total: Number((invoice.subtotal + invoice.subtotal * ((updatedContact.taxPercentage ?? invoice.taxPercentage) / 100)).toFixed(2))
-  }));
+  const updatedInvoices = linkedInvoices.map(invoice => {
+   const taxPercentage = updatedContact.taxPercentage ?? invoice.taxPercentage;
+   const linkedTransactionIds = new Set(
+    invoice.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
+   );
+   const linkedTransactions = transactions.filter(transaction =>
+    transaction.invoiceId === invoice.id || linkedTransactionIds.has(transaction.id)
+   );
+   const transactionGrossTotal = linkedTransactions.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+   const itemGrossTotal = invoice.items.reduce((sum, item) =>
+    sum + Number(item.grossAmount ?? item.total * (1 + invoice.taxPercentage / 100)), 0
+   );
+   const grossTotal = Number((transactionGrossTotal > 0 ? transactionGrossTotal : itemGrossTotal > 0 ? itemGrossTotal : invoice.total).toFixed(2));
+   const subtotal = Number((grossTotal / (1 + taxPercentage / 100)).toFixed(2));
+   const taxAmount = Number((grossTotal - subtotal).toFixed(2));
+   const items = invoice.items.map(item => {
+    const linkedTransaction = linkedTransactions.find(transaction => transaction.id === item.pendingTxId || transaction.id === item.id);
+    const grossAmount = Number(linkedTransaction?.amount ?? item.grossAmount ?? item.total * (1 + invoice.taxPercentage / 100));
+    const netTotal = grossAmount / (1 + taxPercentage / 100);
+    return {
+     ...item,
+     grossAmount,
+     unitPrice: netTotal / Math.max(1, Number(item.quantity) || 1),
+     total: netTotal
+    };
+   });
+   return {
+    ...invoice,
+    clientName: updatedContact.name,
+    clientEmail: updatedContact.email,
+    clientTaxId: updatedContact.taxId,
+    clientAddress: updatedContact.fiscalAddress || updatedContact.location,
+    currency: updatedContact.currency || invoice.currency || 'EUR',
+    language: updatedContact.language || invoice.language || 'es',
+    taxPercentage,
+    subtotal,
+    taxAmount,
+    total: grossTotal,
+    items
+   };
+  });
   await Promise.all(updatedInvoices.map(invoice => db.updateFinanceInvoice(invoice)));
   if (updatedInvoices.length > 0) {
    const byId = new Map(updatedInvoices.map(invoice => [invoice.id, invoice]));
