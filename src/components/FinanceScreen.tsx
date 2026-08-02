@@ -2110,32 +2110,6 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  </div>
  <div class="clear"></div>
 
- <div class="bank-box">
-  <div class="bank-title">Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)</div>
-  <div class="bank-grid">
-  <div>
-   <span class="bank-item-title">Beneficiario:</span><br>
-   <span class="bank-item-val">${bankBeneficiary}</span>
-  </div>
-  <div>
-   <span class="bank-item-title">IBAN Euro:</span><br>
-   <span class="bank-item-val">${paymentDetails}</span>
-  </div>
-  <div>
-   <span class="bank-item-title">Código BIC/SWIFT:</span><br>
-   <span class="bank-item-val">${bankSwift}</span>
-  </div>
-  <div>
-   <span class="bank-item-title">BIC Corresponsal:</span><br>
-   <span class="bank-item-val">${bankCorrespondentBic}</span>
-  </div>
-  <div style="grid-column: span 2;">
-   <span class="bank-item-title">Nombre y Dirección del Banco:</span><br>
-   <span class="bank-item-val" style="font-family: inherit;">${bankNameAddress}</span>
-  </div>
-  </div>
- </div>
-
  ${inv.notes ? `
   <div class="notes-box">
   <div class="notes-title">Notas de Facturación</div>
@@ -5267,7 +5241,10 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
            <span className="flex flex-wrap items-center gap-1.5 font-semibold text-neutral-900">
             <span>{getCleanBillingConcept(item.description)}</span>
             {item.isPending ? (
-             <span className="rounded border border-amber-200 bg-amber-100 px-1 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-amber-800">Pendiente</span>
+             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[8px] font-extrabold uppercase leading-none tracking-[0.09em] text-amber-800 shadow-sm">
+              <span className="h-1 w-1 rounded-full bg-amber-500 ring-2 ring-amber-100" />
+              Pendiente
+             </span>
             ) : (
              <span className="rounded border border-emerald-200 bg-emerald-100 px-1 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-emerald-800">Cobrado</span>
             )}
@@ -5318,19 +5295,6 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       </div>
      </div>
 
-     <div className="mt-6 space-y-2 rounded-xl border border-dashed border-neutral-200 bg-neutral-50 p-4 font-sans text-[10px] text-neutral-500">
-      <p className="flex items-center gap-1 border-b border-neutral-200 pb-1 font-bold uppercase tracking-wider text-neutral-700">
-       <DollarSign className="h-3.5 w-3.5 text-amber-700" />
-       <span>Instrucciones de Pago (Transferencia Bancaria SEPA/SWIFT)</span>
-      </p>
-      <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-xl border border-neutral-200 bg-white p-3 text-[9.5px] sm:grid-cols-2">
-       <div><span className="text-neutral-400">Beneficiario:</span><br /><strong className="font-semibold text-neutral-800">{bankBeneficiary}</strong></div>
-       <div><span className="text-neutral-400">IBAN Euro:</span><br /><strong className="font-mono font-semibold text-neutral-800">{paymentDetails}</strong></div>
-       <div><span className="text-neutral-400">Código BIC/SWIFT:</span><br /><strong className="font-mono font-semibold text-neutral-800">{bankSwift}</strong></div>
-       <div><span className="text-neutral-400">BIC del Banco Corresponsal:</span><br /><strong className="font-mono font-semibold text-neutral-800">{bankCorrespondentBic}</strong></div>
-       <div className="border-t border-neutral-100 pt-1.5 sm:col-span-2"><span className="text-neutral-400">Nombre y Dirección del Banco:</span><br /><span className="text-neutral-700">{bankNameAddress}</span></div>
-      </div>
-     </div>
     </div>
 
     {/* OPERACIONES DE FINANZAS VINCULADAS: fuera del documento A4 */}

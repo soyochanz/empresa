@@ -1388,28 +1388,6 @@ export default function CrmScreen({
  
  <div class="clear"></div>
 
- ${!isInvoicePaid ? `<div class="bank-box">
-  <div class="bank-title">Datos de Pago de Facturación</div>
-  <div class="bank-grid">
-  <div>
-   <span class="bank-item-title">Beneficiario:</span><br>
-   <span class="bank-item-val">Ignacio Martin Gonzalez</span>
-  </div>
-  <div>
-   <span class="bank-item-title">IBAN / Cuenta:</span><br>
-   <span class="bank-item-val">IE84 REVO 9903 6065 8046 06</span>
-  </div>
-  <div>
-   <span class="bank-item-title">Banco:</span><br>
-   <span class="bank-item-val">Revolut Bank UAB</span>
-  </div>
-  <div>
-   <span class="bank-item-title">Código SWIFT/BIC:</span><br>
-   <span class="bank-item-val">REVOIE23</span>
-  </div>
-  </div>
- </div>` : ''}
-
  <div class="footer">
   ¡Gracias por tu confianza y colaboración!<br>
   Esta factura se rige bajo los términos acordados. Ante cualquier duda, ponte en contacto con contacto@altherasolutions.com
