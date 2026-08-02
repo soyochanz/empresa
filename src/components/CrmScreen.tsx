@@ -133,7 +133,7 @@ interface CrmScreenProps {
  contacts: ClientContact[];
  events?: CalendarEvent[];
  onAddContact: (contact: ClientContact) => void;
- onUpdateContact?: (contact: ClientContact) => void;
+ onUpdateContact?: (contact: ClientContact) => void | Promise<void>;
  onDeleteContact?: (id: string) => void | Promise<void>;
  onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
  usersList?: PanelUser[];
@@ -1942,7 +1942,13 @@ export default function CrmScreen({
   };
 
   if (onUpdateContact) {
-  await onUpdateContact(updatedContact);
+  try {
+   await onUpdateContact(updatedContact);
+  } catch (error) {
+   console.error('No se pudo guardar la información fiscal del cliente:', error);
+   window.alert('No se pudo guardar el cliente en la base de datos. Revisa la conexión e inténtalo de nuevo.');
+   return;
+  }
   }
   const linkedInvoices = invoices.filter(invoice =>
    invoice.clientId === updatedContact.id ||

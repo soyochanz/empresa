@@ -1196,13 +1196,22 @@ export const db = {
  invalidateCache('contacts');
  },
 
- async updateContact(contact: ClientContact, userId?: string): Promise<void> {
+ async updateContact(contact: ClientContact, userId?: string): Promise<ClientContact> {
  const serialized = this.serializeContactMetadata(contact);
  // Prevent overwriting the user_id column or immutable primary key id column on update to allow admins to edit other admins' entries.
  const { user_id, id, ...payload } = serialized;
- const { error } = await supabase.from('contacts').update(payload).eq('id', contact.id);
+ const { data, error } = await supabase
+  .from('contacts')
+  .update(payload)
+  .eq('id', contact.id)
+  .select('*')
+  .maybeSingle();
  if (error) throw error;
+ if (!data) {
+  throw new Error(`No se pudo guardar el cliente ${contact.id}: Supabase no actualizó ninguna fila.`);
+ }
  invalidateCache('contacts');
+ return this.parseContactMetadata(data);
  },
 
  async deleteContact(id: string, _userId?: string): Promise<void> {

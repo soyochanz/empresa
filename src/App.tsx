@@ -1566,7 +1566,9 @@ export default function App() {
  // 2. Persistent Supabase write
  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
   try {
-  await db.updateContact(updated, currentUser?.id || undefined);
+  const persistedContact = await db.updateContact(updated, currentUser?.id || undefined);
+  updated = persistedContact;
+  setContacts(prev => prev.map(c => c.id === persistedContact.id ? persistedContact : c));
 
   if (shouldNotifyCarlos) {
    const carlosAdmin = usersList.find(user =>
@@ -1610,8 +1612,11 @@ export default function App() {
    setContacts(previous => previous.map(contact => contact.id === updated.id ? updated : contact));
   }
   } catch (err) {
-  console.error('Supabase failed to update contact:', err);
-  throw err;
+   if (previousContact) {
+    setContacts(prev => prev.map(c => c.id === previousContact.id ? previousContact : c));
+   }
+   console.error('Supabase failed to update contact:', err);
+   throw err;
   }
  }
  };
