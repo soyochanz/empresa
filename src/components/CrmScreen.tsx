@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
 import { db } from '../supabaseClient';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
@@ -167,6 +168,15 @@ export default function CrmScreen({
  const selectedContact = contacts.find(c => c.id === selectedContactId) || contacts[0];
  const [showAddModal, setShowAddModal] = useState(false);
  const [searchQuery, setSearchQuery] = useState('');
+
+ useEffect(() => {
+  if (!showAddModal) return;
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  return () => {
+   document.body.style.overflow = previousOverflow;
+  };
+ }, [showAddModal]);
 
  // Dedicated modal state for scheduling in-person meetings (Cita Presencial)
  const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -3762,22 +3772,22 @@ export default function CrmScreen({
   </button>
 
   {/* Dynamic Creation Modal for new contacts */}
-  {showAddModal && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-   <div className="absolute inset-0 bg-[#000]/60 backdrop-blur-sm" onClick={() => { resetFormFields(); setShowAddModal(false); }} />
-   <div className="relative bg-[#1e293b]/90 backdrop-blur-3xl border border-white/15 rounded-3xl p-6 shadow-2xl shadow-black/50 max-w-md w-full animate-in zoom-in-95 duration-200 text-slate-300">
+  {showAddModal && createPortal(
+  <div className="fixed inset-0 z-[100] flex h-[100dvh] items-start justify-center overflow-y-auto overscroll-contain p-2 sm:p-4 md:items-center">
+   <div className="fixed inset-0 bg-[#000]/70 backdrop-blur-sm" onClick={() => { resetFormFields(); setShowAddModal(false); }} />
+   <div className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#111a2c]/95 text-slate-300 shadow-2xl shadow-black/60 animate-in zoom-in-95 duration-200 sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl">
    
-   <div className="flex justify-between items-center mb-5 border-b border-white/5 pb-2">
-    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+   <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#111a2c]/95 px-4 py-3.5 sm:px-6 sm:py-4">
+    <h3 className="flex min-w-0 items-center gap-2 text-sm font-bold text-white sm:text-lg">
     <UserPlus className="w-5 h-5 text-blue-400" />
-    <span>{editingContact ? `Editando contacto: ${editingContact.name}` : 'Crear Nuevo Contacto'}</span>
+    <span className="truncate">{editingContact ? `Editando contacto: ${editingContact.name}` : 'Crear Nuevo Contacto'}</span>
     </h3>
-    <button onClick={() => { resetFormFields(); setShowAddModal(false); }} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-white/5">
+    <button onClick={() => { resetFormFields(); setShowAddModal(false); }} className="shrink-0 text-slate-400 hover:text-white p-1.5 rounded-full hover:bg-white/5">
     <X className="w-5 h-5" />
     </button>
    </div>
 
-   <form onSubmit={handleAddSubmit} className="space-y-4">
+   <form onSubmit={handleAddSubmit} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 pb-4 pt-4 sm:px-6 sm:pb-6">
     
     {/* Contact Name */}
     <div className="space-y-1">
@@ -4102,7 +4112,7 @@ export default function CrmScreen({
     )}
     </div>
 
-    <div className="pt-4 flex gap-4">
+    <div className="sticky bottom-0 z-10 -mx-4 flex gap-2 border-t border-white/10 bg-[#111a2c]/95 px-4 pb-1 pt-3 backdrop-blur-xl sm:-mx-6 sm:gap-4 sm:px-6">
     <button 
      type="button" 
      onClick={() => { resetFormFields(); setShowAddModal(false); }}
@@ -4120,7 +4130,7 @@ export default function CrmScreen({
 
    </form>
    </div>
-  </div>
+  </div>, document.body
   )}
 
   {/* SCHEDULE MEETING MODAL - ADMIN EXCLUSIVE */}
@@ -4628,7 +4638,7 @@ export default function CrmScreen({
     </div>
    </form>
    </div>
-  </div>
+  </div>, document.body
   )}
 
   {invoiceConceptEditor && (
