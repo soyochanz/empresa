@@ -71,6 +71,13 @@ const addMonthsKeepingDay = (baseDate: Date, monthsToAdd: number): Date => {
  );
 };
 
+const getEditableInvoiceConcept = (description: string): string =>
+ description
+  .replace(/^Cobro Pendiente:\s*/i, '')
+  .replace(/^Ingreso Facturado:\s*[^-]+-\s*/i, '')
+  .replace(/\s*\((?:Pendiente|Cobrado)\)\s*$/i, '')
+  .trim();
+
 const DEFAULT_INVOICE_ISSUER = {
  name: 'Carlos Ronco Meneses',
  taxId: '09104663K',
@@ -186,6 +193,9 @@ export default function CrmScreen({
  // Connected Accounting & Invoice state definitions
  const [invoices, setInvoices] = useState<Invoice[]>([]);
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
+ const [invoiceConceptEditor, setInvoiceConceptEditor] = useState<Invoice | null>(null);
+ const [invoiceConceptDrafts, setInvoiceConceptDrafts] = useState<string[]>([]);
+ const [isSavingInvoiceConcepts, setIsSavingInvoiceConcepts] = useState(false);
 
  const selectedClientInvoices = React.useMemo(() => {
  if (!selectedContact) return [];
@@ -1042,6 +1052,47 @@ export default function CrmScreen({
   } catch (error) {
    console.error('Error updating invoice client fiscal data:', error);
    alert('No se pudieron guardar los datos fiscales del cliente.');
+  }
+ };
+
+ const openInvoiceConceptEditor = (invoice: Invoice) => {
+  setInvoiceConceptEditor(invoice);
+  setInvoiceConceptDrafts(invoice.items.map(item => getEditableInvoiceConcept(item.description)));
+ };
+
+ const handleSaveInvoiceConcepts = async () => {
+  if (!invoiceConceptEditor || isSavingInvoiceConcepts) return;
+  const concepts = invoiceConceptDrafts.map(value => value.trim());
+  if (concepts.some(value => !value)) {
+   window.alert('Todos los conceptos deben tener una descripción.');
+   return;
+  }
+
+  const updatedInvoice: Invoice = {
+   ...invoiceConceptEditor,
+   items: invoiceConceptEditor.items.map((item, index) => ({
+    ...item,
+    description: concepts[index]
+   }))
+  };
+
+  setIsSavingInvoiceConcepts(true);
+  try {
+   await db.updateFinanceInvoice(updatedInvoice);
+   setInvoices(current => current.map(invoice => invoice.id === updatedInvoice.id ? updatedInvoice : invoice));
+   setInvoiceConceptEditor(null);
+   setInvoiceConceptDrafts([]);
+   const toast = document.getElementById('toast-msg');
+   if (toast) {
+    toast.innerText = `Conceptos de la factura ${updatedInvoice.id} actualizados.`;
+    toast.classList.remove('opacity-0');
+    setTimeout(() => toast.classList.add('opacity-0'), 3000);
+   }
+  } catch (error) {
+   console.error('Error updating invoice concepts:', error);
+   window.alert('No se pudieron guardar los conceptos de la factura.');
+  } finally {
+   setIsSavingInvoiceConcepts(false);
   }
  };
 
@@ -3219,6 +3270,14 @@ export default function CrmScreen({
         </button>
 
         <button
+         onClick={() => openInvoiceConceptEditor(inv)}
+         title="Editar conceptos de la factura"
+         className="p-1 hover:bg-violet-500/20 text-violet-300 rounded-lg border border-violet-500/20 transition-all cursor-pointer"
+        >
+         <Receipt className="w-3.5 h-3.5" />
+        </button>
+
+        <button
          onClick={() => handleDownloadInvoiceHtml(inv)}
          title="Imprimir / Descargar Factura"
          className="p-1 hover:bg-slate-800 text-slate-300 rounded-lg border border-white/5 transition-all cursor-pointer"
@@ -4570,6 +4629,53 @@ export default function CrmScreen({
    </form>
    </div>
   </div>
+  )}
+
+  {invoiceConceptEditor && (
+   <div
+    className="fixed inset-0 z-[85] flex items-center justify-center bg-[#02050d]/90 p-4 backdrop-blur-md"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="invoice-concepts-title"
+    onMouseDown={(event) => {
+     if (event.currentTarget === event.target && !isSavingInvoiceConcepts) setInvoiceConceptEditor(null);
+    }}
+   >
+    <div className="w-full max-w-xl rounded-3xl border border-violet-400/20 bg-[#0b101b] p-6 shadow-[0_30px_100px_rgba(0,0,0,0.7)]">
+     <div className="mb-5 flex items-start justify-between gap-4 border-b border-white/[0.07] pb-4">
+      <div>
+       <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-300">Factura {invoiceConceptEditor.id}</p>
+       <h3 id="invoice-concepts-title" className="mt-1 text-lg font-black text-white">Editar conceptos</h3>
+       <p className="mt-1 text-[11px] text-slate-400">Estos textos aparecerán en la factura y en el PDF.</p>
+      </div>
+      <button type="button" onClick={() => setInvoiceConceptEditor(null)} disabled={isSavingInvoiceConcepts} className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/5 hover:text-white disabled:opacity-40">
+       <X className="h-4 w-4" />
+      </button>
+     </div>
+
+     <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+      {invoiceConceptDrafts.map((concept, index) => (
+       <label key={invoiceConceptEditor.items[index]?.id || index} className="block space-y-1.5">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Concepto {index + 1}</span>
+        <textarea
+         rows={2}
+         value={concept}
+         onChange={(event) => setInvoiceConceptDrafts(current => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))}
+         className="w-full resize-none rounded-xl border border-white/10 bg-[#060e20] px-3.5 py-3 text-xs leading-5 text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-violet-400/60 focus:ring-2 focus:ring-violet-500/10"
+         placeholder="Descripción que aparecerá en la factura"
+        />
+       </label>
+      ))}
+     </div>
+
+     <div className="mt-6 flex gap-3 border-t border-white/[0.07] pt-4">
+      <button type="button" onClick={() => setInvoiceConceptEditor(null)} disabled={isSavingInvoiceConcepts} className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-xs font-bold text-slate-400 transition hover:bg-white/5 disabled:opacity-40">Cancelar</button>
+      <button type="button" onClick={handleSaveInvoiceConcepts} disabled={isSavingInvoiceConcepts} className="flex-1 rounded-xl bg-violet-500 px-4 py-2.5 text-xs font-black text-white shadow-lg shadow-violet-950/40 transition hover:bg-violet-400 disabled:cursor-wait disabled:opacity-60">
+       {isSavingInvoiceConcepts ? 'Guardando…' : 'Guardar conceptos'}
+      </button>
+     </div>
+    </div>
+   </div>
   )}
 
   {conversionSuccess && (
