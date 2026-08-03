@@ -36,8 +36,8 @@ const process = [
 ];
 
 const fallbackProjects = [
-  { id: 'althera-platform', title: 'Althera OS', category: 'Plataforma operativa', description: 'Un ecosistema empresarial que reúne CRM, finanzas, equipo y analítica en un solo lugar.', image: '', accent: 'from-[#f4d899]/30 via-[#785c2c]/10 to-transparent' },
-  { id: 'kapsely', title: 'Kapsely', category: 'Aplicación social · iOS', description: 'Cápsulas digitales para guardar, compartir y revivir los momentos que importan.', image: 'https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/3b/d4/7c/3bd47c7c-db8c-9413-ea40-40940dc34cc5/Placeholder.mill/600x600bb-75.webp', accent: 'from-[#b86fff]/30 via-[#5945a7]/10 to-transparent' },
+  { id: 'althera-platform', title: 'Althera OS', category: 'Plataforma operativa', description: 'Un ecosistema empresarial que reúne CRM, finanzas, equipo y analítica en un solo lugar.', image: '', url: '/', accent: 'from-[#f4d899]/30 via-[#785c2c]/10 to-transparent' },
+  { id: 'kapsely', title: 'Kapsely', category: 'Aplicación social · iOS', description: 'Cápsulas digitales para guardar, compartir y revivir los momentos que importan.', image: 'https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/3b/d4/7c/3bd47c7c-db8c-9413-ea40-40940dc34cc5/Placeholder.mill/600x600bb-75.webp', url: 'https://apps.apple.com/es/app/kapsely/id6759984193', accent: 'from-[#b86fff]/30 via-[#5945a7]/10 to-transparent' },
 ];
 
 const reveal = {
@@ -45,6 +45,24 @@ const reveal = {
   whileInView: { opacity: 1, y: 0 },
   viewport: { once: true, margin: '-80px' },
   transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const },
+};
+
+const normalizeProjectUrl = (value?: string) => {
+  const url = value?.trim();
+  if (!url) return undefined;
+  if (url.startsWith('/') || url.startsWith('#')) return url;
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+};
+
+const getProjectHost = (value?: string) => {
+  const normalized = normalizeProjectUrl(value);
+  if (!normalized) return 'Vista previa no disponible';
+  if (normalized.startsWith('/')) return 'altherasolutions.es';
+  try {
+    return new URL(normalized).hostname.replace(/^www\./, '');
+  } catch {
+    return value || normalized;
+  }
 };
 
 export default function LandingScreen({ onNavigate, projects, partners = [] }: LandingScreenProps) {
@@ -154,31 +172,54 @@ export default function LandingScreen({ onNavigate, projects, partners = [] }: L
 
         <section id="proyectos" className="w-full px-6 py-24 sm:px-10 lg:px-16 lg:py-32"><div className="w-full">
           <motion.div {...reveal} className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end"><div><p className="mb-5 text-[10px] font-medium uppercase tracking-[0.3em] text-[#d6b96f]">Trabajo seleccionado</p><h2 className="text-4xl font-light tracking-[-0.045em] text-white sm:text-6xl">Hecho para destacar.</h2></div><p className="max-w-sm text-sm font-light leading-6 text-white/38">Una selección de productos y experiencias concebidas para mover negocios hacia delante.</p></motion.div>
-          <div className="mt-16 grid auto-rows-[390px] gap-5 md:grid-cols-2 lg:grid-cols-12">
-            {displayProjects.map((project: any, index: number) => (
-              <motion.article
-                key={project.id}
-                {...reveal}
-                whileHover={{ y: -8 }}
-                transition={{ ...reveal.transition, delay: (index % 3) * 0.08 }}
-                className={`${index === 0 ? 'lg:col-span-7' : index === 1 ? 'lg:col-span-5' : 'lg:col-span-6'} group relative overflow-hidden rounded-[30px] border border-white/[0.09] bg-[#07080a] shadow-[0_24px_80px_rgba(0,0,0,.35)]`}
-              >
-                <div className={`absolute inset-0 bg-gradient-to-br ${project.accent}`} />
-                {project.image ? (
-                  <img src={project.image} alt={project.title} className="absolute inset-0 h-full w-full object-cover opacity-65 transition duration-700 group-hover:scale-[1.06] group-hover:opacity-90" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center"><img src="/althera-logo.png" alt="" className="w-[32%] rounded-[24%] object-contain opacity-90 transition duration-700 group-hover:scale-110" /></div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#050608] via-[#050608]/15 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 p-7 sm:p-9">
-                  <div className="flex items-end justify-between gap-5">
-                    <div><p className="text-[9px] uppercase tracking-[0.25em] text-[#e4cb8b]">{project.category}</p><h3 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">{project.title}</h3><p className="mt-3 max-w-xl translate-y-3 text-sm leading-6 text-white/0 transition duration-500 group-hover:translate-y-0 group-hover:text-white/65">{project.description}</p></div>
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/20 bg-black/30 backdrop-blur-xl transition group-hover:rotate-12 group-hover:bg-white group-hover:text-black"><ExternalLink className="h-4 w-4" /></div>
+          <div className="mt-16 grid auto-rows-[420px] gap-5 md:grid-cols-2 lg:grid-cols-12">
+            {displayProjects.map((project: any, index: number) => {
+              const projectUrl = normalizeProjectUrl(project.url);
+              return (
+                <motion.a
+                  key={project.id}
+                  {...reveal}
+                  href={projectUrl}
+                  target={projectUrl ? '_blank' : undefined}
+                  rel={projectUrl ? 'noopener noreferrer' : undefined}
+                  aria-label={projectUrl ? `Abrir la web de ${project.title}` : `Vista previa de ${project.title}`}
+                  aria-disabled={!projectUrl}
+                  whileHover={{ y: -8 }}
+                  transition={{ ...reveal.transition, delay: (index % 3) * 0.08 }}
+                  className={`${index === 0 ? 'lg:col-span-7' : index === 1 ? 'lg:col-span-5' : 'lg:col-span-6'} group relative overflow-hidden rounded-[24px] border border-white/[0.12] bg-[#07080a] shadow-[0_28px_90px_rgba(0,0,0,.42)] outline-none transition-[border-color,box-shadow] focus-visible:border-[#e4cb8b]/70 focus-visible:ring-4 focus-visible:ring-[#e4cb8b]/15 ${projectUrl ? 'cursor-pointer' : 'cursor-default'}`}
+                >
+                  <div className="absolute inset-x-0 top-0 z-30 flex h-12 items-center gap-3 border-b border-white/[0.09] bg-[#111319]/95 px-4 shadow-[0_8px_24px_rgba(0,0,0,.28)] backdrop-blur-xl">
+                    <div className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#ff605c] shadow-[0_0_10px_rgba(255,96,92,.22)]" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#ffbd44] shadow-[0_0_10px_rgba(255,189,68,.18)]" />
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#00ca4e] shadow-[0_0_10px_rgba(0,202,78,.16)]" />
+                    </div>
+                    <div className="mx-auto flex min-w-0 max-w-[72%] flex-1 items-center justify-center gap-2 rounded-lg border border-white/[0.07] bg-black/35 px-3 py-1.5 text-[9px] text-white/38 transition duration-300 group-hover:border-white/[0.13] group-hover:text-white/60">
+                      <Globe2 className="h-3 w-3 shrink-0" />
+                      <span className="truncate font-mono">{getProjectHost(project.url)}</span>
+                    </div>
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-white/28 transition group-hover:text-[#e4cb8b]" aria-hidden="true" />
                   </div>
-                </div>
-                <div className="absolute left-6 top-6 rounded-full border border-white/15 bg-black/30 px-3 py-1.5 text-[9px] uppercase tracking-[0.2em] text-white/60 backdrop-blur-xl">Proyecto 0{index + 1}</div>
-              </motion.article>
-            ))}
+
+                  <div className="absolute inset-x-0 bottom-0 top-12 overflow-hidden">
+                    <div className={`absolute inset-0 bg-gradient-to-br ${project.accent}`} />
+                    {project.image ? (
+                      <img src={project.image} alt={`Captura de ${project.title}`} className="absolute inset-0 h-full w-full object-cover opacity-65 transition duration-700 group-hover:scale-[1.045] group-hover:opacity-90" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center"><img src="/althera-logo.png" alt="" className="w-[30%] rounded-[24%] object-contain opacity-90 transition duration-700 group-hover:scale-110" /></div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#050608] via-[#050608]/20 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 p-7 sm:p-9">
+                      <div className="flex items-end justify-between gap-5">
+                        <div><p className="text-[9px] uppercase tracking-[0.25em] text-[#e4cb8b]">{project.category}</p><h3 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">{project.title}</h3><p className="mt-3 max-w-xl translate-y-3 text-sm leading-6 text-white/0 transition duration-500 group-hover:translate-y-0 group-hover:text-white/65">{project.description}</p></div>
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/20 bg-black/35 backdrop-blur-xl transition group-hover:rotate-12 group-hover:bg-white group-hover:text-black"><ExternalLink className="h-4 w-4" /></span>
+                      </div>
+                    </div>
+                    <div className="absolute left-5 top-5 rounded-full border border-white/15 bg-black/35 px-3 py-1.5 text-[9px] uppercase tracking-[0.2em] text-white/60 backdrop-blur-xl">Proyecto 0{index + 1}</div>
+                  </div>
+                </motion.a>
+              );
+            })}
           </div>
         </div></section>
 
