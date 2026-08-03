@@ -360,6 +360,8 @@ export interface ColdCallingLead {
  closingOriginComercialEmail?: string;
  closingOriginComercialName?: string;
  archived?: boolean;    // archived flag
+ closingArchived?: boolean; // archived only inside the closer pipeline
+ closingArchivedAt?: string;
  isDone?: boolean;    // Done (tick) flag for comercial organization
  createdAt: string;
  demoWebsiteId?: string;

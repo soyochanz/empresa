@@ -191,7 +191,14 @@ export default function ColdCallingScreen({
  );
 const carlosAdmin = findAdminByName('carlos');
 const nachoAdmin = findAdminByName('nacho');
- const activeCloser = currentUser || carlosAdmin;
+ const normalizeUserIdentity = (value?: string | null) => (value || '').trim().toLowerCase();
+ const currentUserIsCarlos = Boolean(currentUser && (
+  normalizeUserIdentity(currentUser.name).includes('carlos') ||
+  normalizeUserIdentity(currentUser.email).includes('carlos') ||
+  normalizeUserIdentity(currentUser.email) === normalizeUserIdentity(carlosAdmin?.email) ||
+  (!!currentUser.id && !!carlosAdmin?.id && currentUser.id === carlosAdmin.id)
+ ));
+ const activeCloser = currentUserIsCarlos ? currentUser : (carlosAdmin || currentUser);
  const buildWhatsAppUrl = (phone?: string, message?: string) => {
  const digits = (phone || '').replace(/\D/g, '');
  if (!digits) return undefined;
@@ -202,10 +209,7 @@ const nachoAdmin = findAdminByName('nacho');
  // Determine role
  const isAdmin = !!currentUser;
  const comercialEmail = currentComercial?.email || '';
- const isConfiguredCloserAdmin = Boolean(currentUser && carlosAdmin && (
-  currentUser.email.toLowerCase() === carlosAdmin.email.toLowerCase() ||
-  (!!currentUser.id && currentUser.id === carlosAdmin.id)
- ));
+ const isConfiguredCloserAdmin = currentUserIsCarlos;
 
  // Active view tab inside Cold Calling Screen
  const [activeTab, setActiveTab] = useState<'leads' | 'tasks' | 'closing' | 'metrics'>('leads');
@@ -302,7 +306,8 @@ const nachoAdmin = findAdminByName('nacho');
  website?: string;
  }>>({});
  const [showClosedClosingLeads, setShowClosedClosingLeads] = useState(false);
- const [closingScope, setClosingScope] = useState<'today' | 'all'>('today');
+ const [showArchivedClosingLeads, setShowArchivedClosingLeads] = useState(false);
+ const [closingScope, setClosingScope] = useState<'today' | 'all'>('all');
  const [expandedClosingLeadId, setExpandedClosingLeadId] = useState<string | null>(null);
  const [postponingClosingLead, setPostponingClosingLead] = useState<ColdCallingLead | null>(null);
  const [postponeClosingDate, setPostponeClosingDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -1583,6 +1588,15 @@ const nachoAdmin = findAdminByName('nacho');
   }
 
   setSelectedLeadForCall(null);
+  if (callScheduled === 'Sí') {
+   setActiveTab('closing');
+   setClosingScope('all');
+   setExpandedClosingLeadId(updatedLead.id);
+  } else if (callScheduled === 'Llamar más tarde') {
+   setActiveTab('leads');
+   setShowArchived(false);
+   setShowPostponed(true);
+  }
  } catch (error) {
   console.error('No se pudo completar la transferencia automática del lead:', error);
   alert('No se pudo completar toda la transferencia. La ficha seguirá abierta para que puedas volver a intentarlo.');
@@ -1873,7 +1887,10 @@ const nachoAdmin = findAdminByName('nacho');
 
  const todayClosingKey = new Date().toISOString().split('T')[0];
  const isClosingReadOnly = !!currentComercial;
- const openClosingLeads = closingLeads.filter(lead => {
+ const closingArchiveFilteredLeads = closingLeads.filter(lead =>
+  showArchivedClosingLeads ? lead.closingArchived === true : lead.closingArchived !== true
+ );
+ const openClosingLeads = closingArchiveFilteredLeads.filter(lead => {
  // Keep the card mounted while the admin is using it, even if a realtime
  // update changes its status and it no longer matches the current filter.
  if (lead.id === expandedClosingLeadId) return true;
@@ -1885,7 +1902,7 @@ const nachoAdmin = findAdminByName('nacho');
  const visibleClosingLeads = isClosingReadOnly
   ? openClosingLeads
   : openClosingLeads.filter(lead => lead.id === expandedClosingLeadId || closingScope === 'all' || lead.callbackDate === todayClosingKey);
- const todayClosingCount = closingLeads.filter(lead => {
+ const todayClosingCount = closingArchiveFilteredLeads.filter(lead => {
   const contact = getClosingContact(lead);
   const status = closingDrafts[lead.id]?.status || contact?.closingStatus || 'Pendiente';
   return lead.callbackDate === todayClosingKey && status === 'Pendiente';
@@ -2071,6 +2088,22 @@ const nachoAdmin = findAdminByName('nacho');
   alert(error instanceof Error ? error.message : 'No se pudo guardar la ficha del closer. Inténtalo de nuevo.');
   return false;
  }
+ };
+
+ const toggleClosingArchive = async (lead: ColdCallingLead) => {
+  if (isClosingReadOnly) return;
+  const willArchive = lead.closingArchived !== true;
+  try {
+   await onUpdateColdLead({
+    ...lead,
+    closingArchived: willArchive,
+    closingArchivedAt: willArchive ? new Date().toISOString() : undefined
+   });
+   setExpandedClosingLeadId(current => current === lead.id ? null : current);
+  } catch (error) {
+   console.error('No se pudo actualizar el archivo de Closing:', error);
+   window.alert(`No se pudo ${willArchive ? 'archivar' : 'restaurar'} el lead.`);
+  }
  };
 
  const toggleClosingAnswered = async (lead: ColdCallingLead, value: boolean) => {
@@ -4187,9 +4220,15 @@ const nachoAdmin = findAdminByName('nacho');
       <button type="button" onClick={() => setClosingScope('today')} className={`rounded-lg px-3 py-2 text-[10px] font-black transition ${closingScope === 'today' ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Hoy ({todayClosingCount})</button>
       <button type="button" onClick={() => setClosingScope('all')} className={`rounded-lg px-3 py-2 text-[10px] font-black transition ${closingScope === 'all' ? 'bg-cyan-400 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Ver todas ({openClosingLeads.length})</button>
      </div>
-     <button type="button" onClick={() => setShowClosedClosingLeads(prev => !prev)} className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] text-[9px] font-bold text-slate-400 hover:text-white">
-      {showClosedClosingLeads ? 'Ocultar cerradas' : 'Incluir cerradas'}
-     </button>
+     <div className="flex flex-wrap justify-end gap-2">
+      <button type="button" onClick={() => setShowClosedClosingLeads(prev => !prev)} className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] text-[9px] font-bold text-slate-400 hover:text-white">
+       {showClosedClosingLeads ? 'Ocultar cerradas' : 'Incluir cerradas'}
+      </button>
+      <button type="button" onClick={() => { setShowArchivedClosingLeads(prev => !prev); setExpandedClosingLeadId(null); setClosingScope('all'); }} className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[9px] font-bold transition ${showArchivedClosingLeads ? 'border-amber-400/30 bg-amber-500/15 text-amber-200' : 'border-white/10 bg-white/[0.03] text-slate-400 hover:text-white'}`}>
+       <Archive className="h-3 w-3" />
+       {showArchivedClosingLeads ? 'Volver a activos' : `Archivados (${closingLeads.filter(lead => lead.closingArchived === true).length})`}
+      </button>
+     </div>
     </div>
     )}
    </div>
@@ -4197,8 +4236,8 @@ const nachoAdmin = findAdminByName('nacho');
    {visibleClosingLeads.length === 0 ? (
    <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-12 text-center">
     <Briefcase className="w-10 h-10 text-slate-500 mx-auto mb-3" />
-    <p className="text-sm font-bold text-slate-200">{closingLeads.length === 0 ? 'Aún no hay citas para closing.' : closingScope === 'today' ? 'No hay llamadas previstas para hoy.' : 'No hay citas que coincidan con el filtro.'}</p>
-    <p className="text-xs text-slate-500 mt-1">{closingLeads.length === 0 ? (isClosingReadOnly ? 'Cuando agendes una cita quedará registrada aquí para que puedas seguir su evolución.' : 'Cuando un caller marque una cita agendada aparecerá aquí.') : closingScope === 'today' ? 'Pulsa Ver todas para consultar próximas citas y citas sin fecha.' : 'Prueba a incluir también las citas cerradas.'}</p>
+    <p className="text-sm font-bold text-slate-200">{closingLeads.length === 0 ? 'Aún no hay citas para closing.' : showArchivedClosingLeads ? 'No hay leads archivados.' : closingScope === 'today' ? 'No hay llamadas previstas para hoy.' : 'No hay citas que coincidan con el filtro.'}</p>
+    <p className="text-xs text-slate-500 mt-1">{closingLeads.length === 0 ? (isClosingReadOnly ? 'Cuando agendes una cita quedará registrada aquí para que puedas seguir su evolución.' : 'Cuando un caller marque una cita agendada aparecerá aquí.') : showArchivedClosingLeads ? 'Los leads que archives desde Closing aparecerán en esta sección.' : closingScope === 'today' ? 'Pulsa Ver todas para consultar próximas citas y citas sin fecha.' : 'Prueba a incluir también las citas cerradas.'}</p>
    </div>
    ) : (
    <div className="space-y-3">
@@ -4243,6 +4282,7 @@ const nachoAdmin = findAdminByName('nacho');
       <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
        <div className="rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-2 text-right font-mono"><p className="text-[11px] font-black text-white">{formatCallbackDate(lead.callbackDate)}</p><p className="mt-0.5 text-[10px] font-bold text-cyan-300">{lead.callbackTime || 'Sin hora'}</p></div>
        {!isClosingReadOnly && <a href={`tel:${(draft.phone || '').replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/20"><Phone className="h-3.5 w-3.5"/>Llamar</a>}
+       {!isClosingReadOnly && <button type="button" onClick={() => void toggleClosingArchive(lead)} className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[10px] font-black transition ${lead.closingArchived ? 'border-cyan-400/25 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20' : 'border-amber-400/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'}`} title={lead.closingArchived ? 'Restaurar lead en Closing' : 'Archivar lead de Closing'}><Archive className="h-3.5 w-3.5"/>{lead.closingArchived ? 'Restaurar' : 'Archivar'}</button>}
        <button type="button" onClick={() => setExpandedClosingLeadId(current => current === lead.id ? null : lead.id)} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-bold text-slate-300 hover:bg-white/10">{expandedClosingLeadId === lead.id ? 'Cerrar ficha' : 'Ver ficha'}</button>
       </div>
       </div>

@@ -2282,7 +2282,9 @@ export const db = {
   callsLog,
   assignmentHistory,
   requestedProducts: lead.requestedProducts || [],
-  requestedProductOther: lead.requestedProductOther || undefined
+  requestedProductOther: lead.requestedProductOther || undefined,
+  closingArchived: lead.closingArchived === true,
+  closingArchivedAt: lead.closingArchivedAt || undefined
  };
  const metadataStr = `\n\n---METADATA---\n${JSON.stringify(metadataObj)}`;
  const cleanNotes = (lead.notes || '').split('\n\n---METADATA---')[0];
@@ -2302,6 +2304,8 @@ export const db = {
  let assignmentHistory: any[] = [];
  let requestedProducts: string[] = [];
  let requestedProductOther: string | undefined;
+ let closingArchived = false;
+ let closingArchivedAt: string | undefined;
  if (parts.length > 1) {
   try {
   const metadataObj = JSON.parse(parts[1]);
@@ -2310,6 +2314,8 @@ export const db = {
   assignmentHistory = Array.isArray(metadataObj.assignmentHistory) ? metadataObj.assignmentHistory : [];
   requestedProducts = Array.isArray(metadataObj.requestedProducts) ? metadataObj.requestedProducts : [];
   requestedProductOther = metadataObj.requestedProductOther || undefined;
+  closingArchived = metadataObj.closingArchived === true;
+  closingArchivedAt = metadataObj.closingArchivedAt || undefined;
   } catch (e) {
   // Ignore
   }
@@ -2322,6 +2328,8 @@ export const db = {
   assignmentHistory,
   requestedProducts,
   requestedProductOther,
+  closingArchived,
+  closingArchivedAt,
   prospectGroupId: lead.prospect_group_id || lead.prospectGroupId || undefined,
   createdAt: lead.created_at || lead.createdAt || new Date().toISOString()
  };
@@ -2412,8 +2420,9 @@ export const db = {
   mapsUrl: serialized.mapsUrl || null,
   prospect_group_id: serialized.prospectGroupId || null
  };
- const { error } = await supabase.from('cold_calling_leads').update(payload).eq('id', lead.id);
+ const { data, error } = await supabase.from('cold_calling_leads').update(payload).eq('id', lead.id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar el lead ${lead.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('cold_calling_leads');
  },
 
