@@ -4,6 +4,7 @@ import { db } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
+import { clearInvoicePrefill, peekInvoicePrefill } from '../utils/invoicePrefill';
 import { 
  DollarSign, 
  TrendingUp, 
@@ -615,10 +616,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  // Check for preselected client from CRM screen to auto-create invoice
  useEffect(() => {
- const preselectedStr = sessionStorage.getItem('preselected_client_for_invoice');
- if (preselectedStr) {
+ const client = peekInvoicePrefill();
+ if (client) {
   try {
-  const client = JSON.parse(preselectedStr);
   if (client && client.id) {
    const requestedTransactionIds = Array.isArray(client.transactionIds) ? client.transactionIds.filter(Boolean) : [];
    if (requestedTransactionIds.length > 0 && transactions.length === 0) return;
@@ -672,11 +672,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    setEditingInvId(null);
    setActiveTab('invoices');
    setIsInvModalOpen(true);
-   sessionStorage.removeItem('preselected_client_for_invoice');
+   clearInvoicePrefill();
   }
   } catch (err) {
   console.error('Error parsing preselected client for invoice:', err);
-  sessionStorage.removeItem('preselected_client_for_invoice');
+  clearInvoicePrefill();
   }
  }
  }, [contacts, transactions, invoices]);
@@ -831,7 +831,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const categories = ['All', ...Array.from(new Set(transactions.map(t => t.category)))];
 
  // Handler: Add or update transaction
- const handleSaveTransaction = (e: React.FormEvent) => {
+ const handleSaveTransaction = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!txAmount || isNaN(Number(txAmount)) || Number(txAmount) <= 0) {
   alert('Por favor introduce un importe válido.');
@@ -865,32 +865,20 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   nextAmount: txIsRecurring && txNextAmount ? Math.abs(Number(txNextAmount)) : undefined
  };
 
- if (isEditingTx && editingTxId) {
-  const oldTransactions = [...transactions];
-  setTransactions(prev => prev.map(t => t.id === editingTxId ? payload : t));
-  db.updateFinanceTransaction(payload)
-  .then(() => {
+ try {
+  if (isEditingTx && editingTxId) {
+   await db.updateFinanceTransaction(payload);
+   setTransactions(prev => prev.map(t => t.id === editingTxId ? payload : t));
    showToast(`Sincronizado: ${payload.type === 'income' ? 'Ingreso' : 'Gasto'} actualizado en Supabase.`);
-  })
-  .catch(err => {
-   console.error('Error updating transaction in DB:', err);
-   showToast(`Error al guardar: ${err.message || 'Error de conexión con Supabase.'}`, true);
-   // Revert local state
-   setTransactions(oldTransactions);
-  });
- } else {
-  const oldTransactions = [...transactions];
-  setTransactions(prev => [payload, ...prev]);
-  db.insertFinanceTransaction(payload)
-  .then(() => {
+  } else {
+   await db.insertFinanceTransaction(payload);
+   setTransactions(prev => [payload, ...prev]);
    showToast(`Sincronizado: ${payload.type === 'income' ? 'Ingreso' : 'Gasto'} guardado en Supabase.`);
-  })
-  .catch(err => {
+  }
+ } catch (err: any) {
    console.error('Error inserting transaction into DB:', err);
    showToast(`Error al guardar: ${err.message || 'Error de conexión con Supabase.'}`, true);
-   // Revert local state
-   setTransactions(oldTransactions);
-  });
+  return;
  }
 
  setIsTxModalOpen(false);
@@ -915,20 +903,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setIsTxModalOpen(true);
  };
 
- const handleDeleteTx = (id: string) => {
+ const handleDeleteTx = async (id: string) => {
  if (safeConfirm('¿Estás seguro de que deseas eliminar esta transacción?')) {
-  const oldTransactions = [...transactions];
-  setTransactions(prev => prev.filter(t => t.id !== id));
-  db.deleteFinanceTransaction(id)
-   .then(async () => {
+  try {
+   await db.deleteFinanceTransaction(id);
+   setTransactions(prev => prev.filter(t => t.id !== id));
     await onRefreshFinance?.();
     showToast('Sincronizado: Transacción eliminada de Supabase.');
-  })
-  .catch(err => {
-   console.error('Error deleting transaction in DB:', err);
-   showToast('Error al eliminar: ' + (err.message || 'Error de base de datos.'), true);
-   setTransactions(oldTransactions);
-  });
+  } catch (err: any) {
+    console.error('Error deleting transaction in DB:', err);
+    showToast('Error al eliminar: ' + (err.message || 'Error de base de datos.'), true);
+  }
  }
  };
 
@@ -1030,14 +1015,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const nextStatus = tx.status === 'paid' ? 'pending' : 'paid';
  const updatedTx: FinanceTransaction = { ...tx, status: nextStatus };
 
- // Update transactions list locally
- setTransactions(prev => prev.map(t => t.id === tx.id ? updatedTx : t));
-
- // Update transaction on DB
  try {
   await db.updateFinanceTransaction(updatedTx);
+  setTransactions(prev => prev.map(t => t.id === tx.id ? updatedTx : t));
  } catch (err) {
   console.error('Error toggling transaction status in DB:', err);
+  showToast('No se cambió el estado: Supabase no confirmó la operación.', true);
+  return;
  }
 
  // 1. Sync any Invoice Item where pendingTxId === tx.id
@@ -1072,15 +1056,23 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    setPreviewInvoice(updatedInv);
   }
 
-  // Persist to DB
-  db.updateFinanceInvoice(updatedInv).catch(err => console.error('Error updating invoice item status in DB:', err));
-  return updatedInv;
+   return updatedInv;
   }
   return inv;
  });
 
  if (hasUpdatedAnyInvoice) {
-  setInvoices(updatedInvoices);
+  try {
+   const changedInvoices = updatedInvoices.filter(updated => {
+    const original = invoices.find(invoice => invoice.id === updated.id);
+    return original && original !== updated;
+   });
+   await Promise.all(changedInvoices.map(invoice => db.updateFinanceInvoice(invoice)));
+   setInvoices(updatedInvoices);
+  } catch (err) {
+   console.error('Error updating invoice item status in DB:', err);
+   showToast('El movimiento se guardó, pero no se pudo sincronizar la factura relacionada.', true);
+  }
  }
 
  // 2. Also look up general linked invoice by invoiceId
@@ -1096,14 +1088,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   }
 
   if (newInvStatus !== linkedInvoice.status) {
-  const updatedInv: Invoice = { ...linkedInvoice, status: newInvStatus };
-  setInvoices(prev => prev.map(inv => inv.id === linkedInvoice.id ? updatedInv : inv));
-  if (previewInvoice && previewInvoice.id === linkedInvoice.id) {
-   setPreviewInvoice(updatedInv);
-  }
-  try {
-   await db.updateFinanceInvoice(updatedInv);
-  } catch (err) {
+   const updatedInv: Invoice = { ...linkedInvoice, status: newInvStatus };
+   try {
+    await db.updateFinanceInvoice(updatedInv);
+    setInvoices(prev => prev.map(inv => inv.id === linkedInvoice.id ? updatedInv : inv));
+    if (previewInvoice && previewInvoice.id === linkedInvoice.id) setPreviewInvoice(updatedInv);
+   } catch (err) {
    console.error('Error updating linked invoice status in DB:', err);
   }
   }
@@ -1254,10 +1244,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  // Insert any auto-created pending transactions
  if (autoCreatedTxs.length > 0) {
-  setTransactions(prev => [...autoCreatedTxs, ...prev]);
-  autoCreatedTxs.forEach(tx => {
-  db.insertFinanceTransaction(tx).catch(err => console.error('Error inserting item-pending transaction:', err));
-  });
+  try {
+   await Promise.all(autoCreatedTxs.map(tx => db.insertFinanceTransaction(tx)));
+   setTransactions(prev => [...autoCreatedTxs, ...prev]);
+  } catch (err: any) {
+   console.error('Error inserting item-pending transaction:', err);
+   showToast(`La factura se guardó, pero no todos sus cobros: ${err?.message || 'error de Supabase'}`, true);
+  }
  }
 
  // Capture transactions transitioning from pending to paid
@@ -1277,14 +1270,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }
 
  if (txsToMarkPaidFromItems.length > 0) {
-  setTransactions(prev => prev.map(t => {
-  if (txsToMarkPaidFromItems.includes(t.id)) {
-   const updated = { ...t, status: 'paid' as const };
-   db.updateFinanceTransaction(updated).catch(err => console.error('Error marking linked concept tx as paid:', err));
-   return updated;
+  const updatedTransactions = transactions.map(t => txsToMarkPaidFromItems.includes(t.id)
+   ? { ...t, status: 'paid' as const }
+   : t);
+  const changedTransactions = updatedTransactions.filter(t => txsToMarkPaidFromItems.includes(t.id));
+  try {
+   await Promise.all(changedTransactions.map(tx => db.updateFinanceTransaction(tx)));
+   const byId = new Map(changedTransactions.map(tx => [tx.id, tx]));
+   setTransactions(previous => previous.map(tx => byId.get(tx.id) || tx));
+  } catch (err) {
+   console.error('Error marking linked concept tx as paid:', err);
   }
-  return t;
-  }));
  }
 
  // Link all chosen pending transactions (including originating transactions) to this invoice
@@ -1294,18 +1290,25 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }
 
  if (txsToLink.length > 0) {
-  setTransactions(prev => prev.map(t => {
-  if (txsToLink.includes(t.id)) {
+  const updatedTransactions = transactions.map(t => {
+   if (txsToLink.includes(t.id)) {
    const updatedTx: FinanceTransaction = { 
    ...t, 
    invoiceId: invoiceId,
    status: (invStatus === 'paid' ? 'paid' : t.status) as 'paid' | 'pending'
    };
-   db.updateFinanceTransaction(updatedTx).catch(err => console.error('Error updating linked transaction:', err));
    return updatedTx;
+   }
+   return t;
+  });
+  const changedTransactions = updatedTransactions.filter(t => txsToLink.includes(t.id));
+  try {
+   await Promise.all(changedTransactions.map(tx => db.updateFinanceTransaction(tx)));
+   const byId = new Map(changedTransactions.map(tx => [tx.id, tx]));
+   setTransactions(previous => previous.map(tx => byId.get(tx.id) || tx));
+  } catch (err) {
+   console.error('Error updating linked transaction:', err);
   }
-  return t;
-  }));
  } else if (!isEditingInv && invStatus === 'paid') {
   // Automatically register paid invoices as pending/paid income in finance transaction hub!
   const autoTx: FinanceTransaction = {
@@ -1319,8 +1322,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   status: 'paid',
   invoiceId: invoiceId
   };
-  setTransactions(prev => [autoTx, ...prev]);
-  db.insertFinanceTransaction(autoTx).catch(err => console.error('Error inserting auto invoice transaction in DB:', err));
+  try {
+   await db.insertFinanceTransaction(autoTx);
+   setTransactions(prev => [autoTx, ...prev]);
+  } catch (err) {
+   console.error('Error inserting auto invoice transaction in DB:', err);
+  }
  }
 
  // Reset indicators
@@ -1358,21 +1365,32 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setIsInvModalOpen(true);
  };
 
- const handleDeleteInvoice = (id: string, e: React.MouseEvent) => {
+ const handleDeleteInvoice = async (id: string, e: React.MouseEvent) => {
  e.stopPropagation();
  if (confirm('¿Estás seguro de que deseas eliminar esta factura?')) {
-  setInvoices(prev => prev.filter(i => i.id !== id));
-  db.deleteFinanceInvoice(id).catch(err => console.error('Error deleting invoice from DB:', err));
+  try {
+   await db.deleteFinanceInvoice(id);
+   setInvoices(prev => prev.filter(i => i.id !== id));
+  } catch (err: any) {
+   console.error('Error deleting invoice from DB:', err);
+   showToast(`No se eliminó la factura: ${err?.message || 'Supabase no confirmó la operación'}`, true);
+  }
  }
  };
 
- const handleInvoiceMarkPaid = (inv: Invoice, e: React.MouseEvent) => {
+ const handleInvoiceMarkPaid = async (inv: Invoice, e: React.MouseEvent) => {
  e.stopPropagation();
  
  // Update status to paid
  const updated: Invoice = { ...inv, status: 'paid' };
- setInvoices(prev => prev.map(i => i.id === inv.id ? updated : i));
- db.updateFinanceInvoice(updated).catch(err => console.error('Error marking invoice paid in DB:', err));
+ try {
+  await db.updateFinanceInvoice(updated);
+  setInvoices(prev => prev.map(i => i.id === inv.id ? updated : i));
+ } catch (err: any) {
+  console.error('Error marking invoice paid in DB:', err);
+  showToast(`No se marcó como pagada: ${err?.message || 'Supabase no confirmó la operación'}`, true);
+  return;
+ }
 
  // Register a paid income in transactions if not already exists
  const alreadyRegistered = transactions.some(t => t.invoiceId === inv.id);
@@ -1388,8 +1406,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   status: 'paid',
   invoiceId: inv.id
   };
-  setTransactions(prev => [autoTx, ...prev]);
-  db.insertFinanceTransaction(autoTx).catch(err => console.error('Error inserting mark-paid auto transaction in DB:', err));
+  try {
+   await db.insertFinanceTransaction(autoTx);
+   setTransactions(prev => [autoTx, ...prev]);
+  } catch (err: any) {
+   console.error('Error inserting mark-paid auto transaction in DB:', err);
+   showToast(`La factura quedó pagada, pero el ingreso no se creó: ${err?.message || 'error de Supabase'}`, true);
+   return;
+  }
  }
  
  // Show toast message
@@ -1424,17 +1448,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   status: newStatus
  };
 
- // Update local state
- setInvoices(prev => prev.map(i => i.id === inv.id ? updatedInv : i));
- if (previewInvoice && previewInvoice.id === inv.id) {
-  setPreviewInvoice(updatedInv);
- }
-
- // Persist to DB
  try {
   await db.updateFinanceInvoice(updatedInv);
+  setInvoices(prev => prev.map(i => i.id === inv.id ? updatedInv : i));
+  if (previewInvoice && previewInvoice.id === inv.id) setPreviewInvoice(updatedInv);
  } catch (err) {
   console.error('Error updating invoice item status in DB:', err);
+  showToast('No se cambió el concepto: Supabase no confirmó la operación.', true);
+  return;
  }
 
  // Now look for any linked transactions matching the toggled item
@@ -1448,9 +1469,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    status: nextPending ? 'pending' : 'paid'
   };
 
-  setTransactions(prev => prev.map(t => t.id === txToUpdate.id ? updatedTx : t));
   try {
    await db.updateFinanceTransaction(updatedTx);
+   setTransactions(prev => prev.map(t => t.id === txToUpdate.id ? updatedTx : t));
   } catch (err) {
    console.error('Error updating item-linked transaction status in DB:', err);
   }
@@ -1465,9 +1486,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    ...mainPendingTx,
    status: 'paid'
   };
-  setTransactions(prev => prev.map(t => t.id === mainPendingTx.id ? updatedMainTx : t));
   try {
    await db.updateFinanceTransaction(updatedMainTx);
+   setTransactions(prev => prev.map(t => t.id === mainPendingTx.id ? updatedMainTx : t));
   } catch (err) {
    console.error('Error updating main transaction status in DB:', err);
   }
@@ -1481,9 +1502,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    ...mainPaidTx,
    status: 'pending'
    };
-   setTransactions(prev => prev.map(t => t.id === mainPaidTx.id ? updatedMainTx : t));
    try {
-   await db.updateFinanceTransaction(updatedMainTx);
+    await db.updateFinanceTransaction(updatedMainTx);
+    setTransactions(prev => prev.map(t => t.id === mainPaidTx.id ? updatedMainTx : t));
    } catch (err) {
    console.error('Error reverting main transaction status to pending in DB:', err);
    }
@@ -1513,17 +1534,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   status: 'paid'
  };
 
- // Update invoices local state
- setInvoices(prev => prev.map(i => i.id === inv.id ? updatedInv : i));
- if (previewInvoice && previewInvoice.id === inv.id) {
-  setPreviewInvoice(updatedInv);
- }
-
- // Persist to DB
  try {
   await db.updateFinanceInvoice(updatedInv);
+  setInvoices(prev => prev.map(i => i.id === inv.id ? updatedInv : i));
+  if (previewInvoice && previewInvoice.id === inv.id) setPreviewInvoice(updatedInv);
  } catch (err) {
   console.error('Error updating invoice status to paid in DB:', err);
+  showToast('No se marcó la factura como pagada: Supabase no confirmó la operación.', true);
+  return;
  }
 
  // Update all matching pending transactions linked to this invoice to paid
@@ -1535,14 +1553,23 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  if (allLinkedTxs.length > 0) {
   const updatedTxs = transactions.map(t => {
   const isLinkedObj = t.invoiceId === inv.id || linkedTxIds.includes(t.id);
-  if (isLinkedObj && t.status !== 'paid') {
-   const updated = { ...t, status: 'paid' as const };
-   db.updateFinanceTransaction(updated).catch(err => console.error('Error updating transaction in handleMarkAllConceptsPaid:', err));
-   return updated;
+   if (isLinkedObj && t.status !== 'paid') {
+   return { ...t, status: 'paid' as const };
   }
   return t;
   });
-  setTransactions(updatedTxs);
+  try {
+   const changed = updatedTxs.filter(updated => {
+    const original = transactions.find(transaction => transaction.id === updated.id);
+    return original && original.status !== updated.status;
+   });
+   await Promise.all(changed.map(tx => db.updateFinanceTransaction(tx)));
+   const byId = new Map(changed.map(tx => [tx.id, tx]));
+   setTransactions(previous => previous.map(tx => byId.get(tx.id) || tx));
+  } catch (err) {
+   console.error('Error updating transaction in handleMarkAllConceptsPaid:', err);
+   showToast('La factura se guardó, pero no todos los movimientos relacionados pudieron actualizarse.', true);
+  }
  } else {
   // If none existed, create a consolidated auto receipt like the original handleInvoiceMarkPaid
   const autoTx: FinanceTransaction = {
@@ -1556,9 +1583,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   status: 'paid',
   invoiceId: inv.id
   };
-  setTransactions(prev => [autoTx, ...prev]);
   try {
-  await db.insertFinanceTransaction(autoTx);
+   await db.insertFinanceTransaction(autoTx);
+   setTransactions(prev => [autoTx, ...prev]);
   } catch (err) {
   console.error('Error inserting auto invoice transaction:', err);
   }
@@ -1602,7 +1629,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Helper to trigger recurrence manual payment simulation
- const handleProcessRecurring = (tx: FinanceTransaction) => {
+ const handleProcessRecurring = async (tx: FinanceTransaction) => {
  // Generate a new transaction on today's date mimicking this recurrence
  const chargeAmount = tx.nextAmount ?? tx.amount;
  const isIncome = tx.type === 'income';
@@ -1617,8 +1644,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   status: 'paid'
  };
 
- setTransactions(prev => [manualPayment, ...prev]);
- db.insertFinanceTransaction(manualPayment).catch(err => console.error('Error inserting transaction into DB:', err));
+ try {
+  await db.insertFinanceTransaction(manualPayment);
+  setTransactions(prev => [manualPayment, ...prev]);
+ } catch (err: any) {
+  console.error('Error inserting transaction into DB:', err);
+  showToast(`No se procesó el movimiento: ${err?.message || 'Supabase no confirmó la operación'}`, true);
+  return;
+ }
 
  const toast = document.getElementById('toast-msg');
  if (toast) {

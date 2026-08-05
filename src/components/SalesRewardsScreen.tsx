@@ -18,22 +18,21 @@ const TREND_DURATION_MS = 24 * 60 * 60 * 1000;
 
 function useRecentKpiTrends(storageKey: string, values: Record<string, number>) {
   const [trends, setTrends] = useState<Record<string, KpiTrend>>({});
+  const previousRef = React.useRef<Record<string, number> | null>(null);
 
   useEffect(() => {
     const now = Date.now();
-    let previous: { values?: Record<string, number>; trends?: Record<string, KpiTrend> } | null = null;
-    try { previous = JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch { previous = null; }
     const nextTrends: Record<string, KpiTrend> = {};
     Object.keys(values).forEach(key => {
-      const oldTrend = previous?.trends?.[key];
-      const previousValue = previous?.values?.[key];
+      const oldTrend = trends[key];
+      const previousValue = previousRef.current?.[key];
       if (typeof previousValue === 'number' && previousValue !== values[key]) {
         nextTrends[key] = { direction: values[key] > previousValue ? 'up' : 'down', changedAt: now };
       } else if (oldTrend && now - oldTrend.changedAt < TREND_DURATION_MS) {
         nextTrends[key] = oldTrend;
       }
     });
-    localStorage.setItem(storageKey, JSON.stringify({ values, trends: nextTrends, checkedAt: now }));
+    previousRef.current = { ...values };
     setTrends(nextTrends);
   }, [storageKey, values.cash, values.appointments, values.showRate, values.professionalism]);
 

@@ -1337,7 +1337,7 @@ const nachoAdmin = findAdminByName('nacho');
  const agendadasCount = relevantLeads.filter(l => l.callbackScheduled === 'Sí' || l.callbackScheduled === 'Llamar más tarde').length;
 
  // Handle Create Lead (Admin only)
- const handleCreateLead = (e: React.FormEvent) => {
+ const handleCreateLead = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!newBusinessName.trim() || !newPhone.trim()) {
   alert('Por favor introduce el Nombre del Negocio y su Teléfono.');
@@ -1365,7 +1365,13 @@ const nachoAdmin = findAdminByName('nacho');
   demoWebsiteId: newDemoWebsiteId || undefined
  };
 
- onAddColdLead(newLead);
+ try {
+  await onAddColdLead(newLead);
+ } catch (error: any) {
+  console.error('No se pudo crear el lead en Supabase:', error);
+  alert(`No se ha creado el lead. Supabase no confirmó el guardado: ${error?.hint || error?.message || 'error de conexión'}`);
+  return;
+ }
  
  // Reset Form
  setNewBusinessName('');

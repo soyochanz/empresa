@@ -1,7 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { AuditActorType, AuditLog, AuditLogActor, AuditSeverity, AuditSource } from '../types';
 
-const PENDING_KEY = 'althera_audit_pending_v1';
 const MAX_PENDING_LOGS = 500;
 const BATCH_SIZE = 25;
 const FLUSH_DELAY_MS = 5_000;
@@ -50,6 +49,7 @@ let flushTimer: number | undefined;
 let flushing = false;
 let retryAfter = 0;
 const recentEvents = new Map<string, number>();
+let pendingLogs: AuditLog[] = [];
 
 const createId = () => {
  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -68,17 +68,11 @@ const safeMetadata = (metadata: Record<string, unknown> = {}) => {
 };
 
 const readPending = (): AuditLog[] => {
- try {
-  const parsed = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]');
-  return Array.isArray(parsed) ? parsed : [];
- } catch {
-  return [];
- }
+ return pendingLogs;
 };
 
 const writePending = (logs: AuditLog[]) => {
- try { localStorage.setItem(PENDING_KEY, JSON.stringify(logs.slice(-MAX_PENDING_LOGS))); }
- catch { /* Audit logging must never interrupt the product. */ }
+ pendingLogs = logs.slice(-MAX_PENDING_LOGS);
 };
 
 const toRow = (log: AuditLog) => ({
@@ -263,7 +257,20 @@ export const installAuditTracking = () => {
   recordAuditEvent({ source: 'ui', action: 'form_submit', description: `Formulario enviado: ${label}`, entityType: 'form', metadata: { path: window.location.pathname } });
  };
  const onError = (event: ErrorEvent) => recordAuditEvent({ actorType: 'system', source: 'system', action: 'client_error', description: event.message || 'Error no identificado en el navegador', severity: 'error', metadata: { file: event.filename, line: event.lineno, path: window.location.pathname }, dedupe: false });
- const onRejection = (event: PromiseRejectionEvent) => recordAuditEvent({ actorType: 'system', source: 'system', action: 'promise_rejection', description: event.reason instanceof Error ? event.reason.message : String(event.reason || 'Promesa rechazada'), severity: 'error', metadata: { path: window.location.pathname }, dedupe: false });
+ const onRejection = (event: PromiseRejectionEvent) => {
+  const message = event.reason instanceof Error ? event.reason.message : String(event.reason || 'Promesa rechazada');
+  recordAuditEvent({ actorType: 'system', source: 'system', action: 'promise_rejection', description: message, severity: 'error', metadata: { path: window.location.pathname }, dedupe: false });
+  const toast = document.getElementById('toast-msg');
+  if (toast) {
+   toast.textContent = `No se guardó el cambio. Supabase no confirmó la operación: ${message}`;
+   toast.classList.remove('hidden', 'opacity-0', 'pointer-events-none');
+   toast.classList.add('opacity-100');
+   window.setTimeout(() => {
+    toast.classList.remove('opacity-100');
+    toast.classList.add('opacity-0', 'pointer-events-none');
+   }, 5000);
+  }
+ };
  const onOnline = () => recordAuditEvent({ actorType: 'system', source: 'system', action: 'network_online', description: 'La conexión de red se ha restablecido.' });
  const onOffline = () => recordAuditEvent({ actorType: 'system', source: 'system', action: 'network_offline', description: 'El dispositivo ha perdido la conexión de red.', severity: 'warning' });
  const onVisibility = () => { if (document.visibilityState === 'hidden') void flushAuditLogs(); };

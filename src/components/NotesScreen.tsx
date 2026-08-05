@@ -27,9 +27,9 @@ import {
 
 interface NotesScreenProps {
  notes: Note[];
- onAddNote: (note: Note) => void;
- onUpdateNote: (note: Note) => void;
- onDeleteNote?: (id: string) => void;
+ onAddNote: (note: Note) => void | Promise<void>;
+ onUpdateNote: (note: Note) => void | Promise<void>;
+ onDeleteNote?: (id: string) => void | Promise<void>;
  currentUser?: { id: string | null; email: string; name: string } | null;
 }
 
@@ -65,19 +65,21 @@ export default function NotesScreen({ notes, onAddNote, onUpdateNote, onDeleteNo
  const [selectedCategory, setSelectedCategory] = useState<string>('All Notes');
  const [searchQuery, setSearchQuery] = useState('');
  
- // Archive tracker state linked to sessionStorage
- const [archivedNoteIds, setArchivedNoteIds] = useState<string[]>(() => {
- const saved = sessionStorage.getItem('archived_notes_ids');
- return saved ? JSON.parse(saved) : [];
- });
+ const archivedNoteIds = React.useMemo(
+  () => notes.filter(note => note.status === 'archived').map(note => note.id),
+  [notes]
+ );
 
- const toggleArchiveNote = (id: string) => {
+ const toggleArchiveNote = async (id: string) => {
  const isCurrentlyArchived = archivedNoteIds.includes(id);
- const updated = isCurrentlyArchived  ?
-  archivedNoteIds.filter(item => item !== id)
-  : [...archivedNoteIds, id];
- setArchivedNoteIds(updated);
- sessionStorage.setItem('archived_notes_ids', JSON.stringify(updated));
+ const note = notes.find(item => item.id === id);
+ if (!note) return;
+ try {
+  await onUpdateNote({ ...note, status: isCurrentlyArchived ? 'pending' : 'archived' });
+ } catch (error: any) {
+  alert(`No se ${isCurrentlyArchived ? 'desarchivó' : 'archivó'} la nota. Supabase no confirmó el cambio: ${error?.message || 'error de conexión'}`);
+  return;
+ }
  
  const toast = document.getElementById('toast-msg');
  if (toast) {

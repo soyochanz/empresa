@@ -844,6 +844,7 @@ export const db = {
  let needsWebsite = false;
  let websiteReady = false;
  let webReadyNotifiedAt: string | undefined = undefined;
+ let archived = false;
  
  // Dev metadata properties
  let devStatus: 'backlog' | 'design' | 'development' | 'testing' | 'deployed' | 'completed' | undefined = undefined;
@@ -915,7 +916,8 @@ export const db = {
    if (key === 'closingAnswered') closingAnswered = val === 'true';
    if (key === 'needsWebsite') needsWebsite = val === 'true';
    if (key === 'websiteReady') websiteReady = val === 'true';
-   if (key === 'webReadyNotifiedAt') webReadyNotifiedAt = val || undefined;
+    if (key === 'webReadyNotifiedAt') webReadyNotifiedAt = val || undefined;
+    if (key === 'archived') archived = val === 'true';
    
    if (key === 'stripeCustomerId') stripeCustomerId = val || undefined;
    if (key === 'stripeSubscriptionId') stripeSubscriptionId = val || undefined;
@@ -1007,6 +1009,7 @@ export const db = {
   needsWebsite,
   websiteReady,
   webReadyNotifiedAt,
+  archived,
   temperature,
   devStatus,
   devAssignedTo,
@@ -1064,6 +1067,7 @@ export const db = {
   contact.needsWebsite ||
   contact.websiteReady ||
   contact.webReadyNotifiedAt ||
+  contact.archived ||
   contact.temperature ||
   contact.devStatus ||
   contact.devAssignedTo ||
@@ -1115,6 +1119,7 @@ export const db = {
   if (contact.needsWebsite) metadataStr += `\nneedsWebsite: true`;
   if (contact.websiteReady) metadataStr += `\nwebsiteReady: true`;
   if (contact.webReadyNotifiedAt) metadataStr += `\nwebReadyNotifiedAt: ${contact.webReadyNotifiedAt}`;
+  if (contact.archived) metadataStr += `\narchived: true`;
   if (contact.temperature) metadataStr += `\ntemperature: ${contact.temperature}`;
   if (contact.devStatus) metadataStr += `\ndevStatus: ${contact.devStatus}`;
   if (contact.devAssignedTo) metadataStr += `\ndevAssignedTo: ${contact.devAssignedTo}`;
@@ -1185,14 +1190,16 @@ export const db = {
  },
 
  async upsertDemoSite(site: DemoSite): Promise<void> {
- const { error } = await supabase.from('demo_sites').upsert(site);
+ const { data, error } = await supabase.from('demo_sites').upsert(site).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo guardar la demo ${site.id}: Supabase no confirmó la fila.`);
  invalidateCache('demo_sites');
  },
 
  async deleteDemoSite(id: string): Promise<void> {
- const { error } = await supabase.from('demo_sites').delete().eq('id', id);
+ const { data, error } = await supabase.from('demo_sites').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar la demo ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('demo_sites');
  },
 
@@ -1216,22 +1223,25 @@ export const db = {
   metric: item.metric || '',
   notes: item.notes || ''
  };
- const { error } = await supabase.from('marketing_items').upsert(payload);
+ const { data, error } = await supabase.from('marketing_items').upsert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo guardar el elemento de marketing ${item.id}: Supabase no confirmó la fila.`);
  invalidateCache('marketing_items');
  },
 
  async deleteMarketingItem(id: string): Promise<void> {
- const { error } = await supabase.from('marketing_items').delete().eq('id', id);
+ const { data, error } = await supabase.from('marketing_items').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el elemento de marketing ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('marketing_items');
  },
 
  async insertContact(contact: ClientContact, userId?: string): Promise<void> {
  const serialized = this.serializeContactMetadata(contact);
  const payload = { ...serialized, user_id: userId || null };
- const { error } = await supabase.from('contacts').insert(payload);
+ const { data, error } = await supabase.from('contacts').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el cliente ${contact.id}: Supabase no confirmó la fila.`);
  invalidateCache('contacts');
  },
 
@@ -1254,8 +1264,9 @@ export const db = {
  },
 
  async deleteContact(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('contacts').delete().eq('id', id);
+ const { data, error } = await supabase.from('contacts').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el cliente ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('contacts');
  },
 
@@ -1621,8 +1632,9 @@ export const db = {
   user_id: userId || null
  };
 
- const { error } = await supabase.from('finance_transactions').insert(payload);
+ const { data, error } = await supabase.from('finance_transactions').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el movimiento ${id}: Supabase no confirmó la fila.`);
  invalidateCache('finance_transactions');
  },
 
@@ -1658,14 +1670,16 @@ export const db = {
   status
  };
 
- const { error } = await supabase.from('finance_transactions').update(payload).eq('id', id);
+ const { data, error } = await supabase.from('finance_transactions').update(payload).eq('id', id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar el movimiento ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('finance_transactions');
  },
 
  async deleteFinanceTransaction(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('finance_transactions').delete().eq('id', id);
+ const { data, error } = await supabase.from('finance_transactions').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el movimiento ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('finance_transactions');
  },
 
@@ -1702,8 +1716,9 @@ export const db = {
   total: invoice.total,
   notes: serializeInvoiceNotes(invoice)
  };
- const { error } = await supabase.from('finance_invoices').insert(payload);
+ const { data, error } = await supabase.from('finance_invoices').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear la factura ${invoice.id}: Supabase no confirmó la fila.`);
  invalidateCache('finance_invoices');
  },
 
@@ -1722,14 +1737,16 @@ export const db = {
   total: invoice.total,
   notes: serializeInvoiceNotes(invoice)
  };
- const { error } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id);
+ const { data, error } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar la factura ${invoice.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('finance_invoices');
  },
 
  async deleteFinanceInvoice(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('finance_invoices').delete().eq('id', id);
+ const { data, error } = await supabase.from('finance_invoices').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar la factura ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('finance_invoices');
  },
 
@@ -1751,22 +1768,25 @@ export const db = {
 
  async insertContractAlthera(contract: any, userId?: string): Promise<void> {
  const payload = { ...contract, user_id: userId || null };
- const { error } = await supabase.from('contracts_althera').insert(payload);
+ const { data, error } = await supabase.from('contracts_althera').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el contrato ${contract.id}: Supabase no confirmó la fila.`);
  invalidateCache('contracts_althera');
  },
 
  async updateContractAlthera(contract: any, userId?: string): Promise<void> {
  // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
  const { user_id, ...payload } = contract;
- const { error } = await supabase.from('contracts_althera').update(payload).eq('id', contract.id);
+ const { data, error } = await supabase.from('contracts_althera').update(payload).eq('id', contract.id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar el contrato ${contract.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('contracts_althera');
  },
 
  async deleteContractAlthera(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('contracts_althera').delete().eq('id', id);
+ const { data, error } = await supabase.from('contracts_althera').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el contrato ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('contracts_althera');
  },
 
@@ -1777,7 +1797,7 @@ export const db = {
  const parts = description.split('\n\n---METADATA---');
  const cleanDescription = parts[0];
  
- let status: 'pending' | 'done' | 'postponed' = 'pending';
+ let status: 'pending' | 'done' | 'postponed' | 'archived' = 'pending';
  let parentEventId: string | undefined = undefined;
  let alias: string | undefined = undefined;
  let color: string | undefined = undefined;
@@ -1895,9 +1915,9 @@ export const db = {
  parseNoteMetadata(note: any): Note {
  if (!note) return note;
  const content = note.content || '';
- const match = content.match(/---METADATA---\nstatus: (done|pending)/);
+ const match = content.match(/---METADATA---\nstatus: (done|pending|archived)/);
  
- let status: 'pending' | 'done' = 'pending';
+ let status: 'pending' | 'done' | 'archived' = 'pending';
  let cleanContent = content;
  
  if (match) {
@@ -1943,8 +1963,9 @@ export const db = {
  const serialized = this.serializeEventMetadata(event);
  const { status, parentEventId, ...cleanEvent } = serialized;
  const payload = { ...cleanEvent, user_id: userId || null };
- const { error } = await supabase.from('events').insert(payload);
+ const { data, error } = await supabase.from('events').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el evento ${event.id}: Supabase no confirmó la fila.`);
  invalidateCache('events');
  },
 
@@ -1952,8 +1973,9 @@ export const db = {
   const serialized = this.serializeEventMetadata(event);
   const { status, parentEventId, ...cleanEvent } = serialized;
   const payload = { ...cleanEvent, user_id: userId || null };
-  const { error } = await supabase.from('events').upsert(payload, { onConflict: 'id' });
+  const { data, error } = await supabase.from('events').upsert(payload, { onConflict: 'id' }).select('id').maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error(`No se pudo guardar el evento ${event.id}: Supabase no confirmó la fila.`);
   invalidateCache('events');
  },
 
@@ -1961,14 +1983,16 @@ export const db = {
  const serialized = this.serializeEventMetadata(event);
  // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
  const { status, parentEventId, user_id, id, ...cleanEvent } = serialized;
- const { error } = await supabase.from('events').update(cleanEvent).eq('id', event.id);
+ const { data, error } = await supabase.from('events').update(cleanEvent).eq('id', event.id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar el evento ${event.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('events');
  },
 
  async deleteEvent(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('events').delete().eq('id', id);
+ const { data, error } = await supabase.from('events').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el evento ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('events');
  },
 
@@ -2018,8 +2042,9 @@ export const db = {
   authorAvatar: cleanNote.authorAvatar || null
  };
 
- const { error: camelError } = await supabase.from('notes').insert(camelPayload);
+ const { data: camelData, error: camelError } = await supabase.from('notes').insert(camelPayload).select('id').maybeSingle();
  if (!camelError) {
+  if (!camelData) throw new Error(`No se pudo crear la nota ${note.id}: Supabase no confirmó la fila.`);
   invalidateCache('notes');
   return;
  }
@@ -2035,8 +2060,9 @@ export const db = {
   author_name: cleanNote.authorName || 'Alex Rivera',
   author_avatar: cleanNote.authorAvatar || null
  };
- const { error: snakeError } = await supabase.from('notes').insert(snakePayload);
+ const { data: snakeData, error: snakeError } = await supabase.from('notes').insert(snakePayload).select('id').maybeSingle();
  if (snakeError) throw snakeError;
+ if (!snakeData) throw new Error(`No se pudo crear la nota ${note.id}: Supabase no confirmó la fila.`);
  invalidateCache('notes');
  },
 
@@ -2053,8 +2079,9 @@ export const db = {
   authorAvatar: cleanNote.authorAvatar || null
  };
 
- const { error: camelError } = await supabase.from('notes').update(camelPayload).eq('id', cleanNote.id);
+ const { data: camelData, error: camelError } = await supabase.from('notes').update(camelPayload).eq('id', cleanNote.id).select('id').maybeSingle();
  if (!camelError) {
+  if (!camelData) throw new Error(`No se pudo actualizar la nota ${cleanNote.id}: Supabase no modificó ninguna fila.`);
   invalidateCache('notes');
   return;
  }
@@ -2068,14 +2095,16 @@ export const db = {
   author_name: cleanNote.authorName || 'Alex Rivera',
   author_avatar: cleanNote.authorAvatar || null
  };
- const { error: snakeError } = await supabase.from('notes').update(snakePayload).eq('id', cleanNote.id);
+ const { data: snakeData, error: snakeError } = await supabase.from('notes').update(snakePayload).eq('id', cleanNote.id).select('id').maybeSingle();
  if (snakeError) throw snakeError;
+ if (!snakeData) throw new Error(`No se pudo actualizar la nota ${cleanNote.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('notes');
  },
 
  async deleteNote(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('notes').delete().eq('id', id);
+ const { data, error } = await supabase.from('notes').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar la nota ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('notes');
  },
 
@@ -2106,8 +2135,9 @@ export const db = {
   detail: activity.detail || null,
   accentColor: activity.accentColor
  };
- const { error } = await supabase.from('activities').insert(payload);
+ const { data, error } = await supabase.from('activities').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo registrar la actividad ${activity.id}: Supabase no confirmó la fila.`);
  invalidateCache('activities');
  },
 
@@ -2133,12 +2163,10 @@ export const db = {
   name: profile.name,
   email: profile.email
  };
- const { error } = await supabase.from('profiles').upsert(payload);
- if (error) {
-  console.warn('Could not register profile in Supabase profiles (expected if table script not run yet):', error.message);
- } else {
-  invalidateCache('profiles');
- }
+ const { data, error } = await supabase.from('profiles').upsert(payload).select('id').maybeSingle();
+ if (error) throw error;
+ if (!data) throw new Error(`No se pudo guardar el perfil ${profile.id}: Supabase no confirmó la fila.`);
+ invalidateCache('profiles');
  },
 
  // --- INQUIRIES (CONTACTOS RECIBIDOS) ---
@@ -2173,8 +2201,9 @@ export const db = {
   archived: inquiry.archived ?? false,
   created_at: inquiry.created_at || new Date().toISOString()
  };
- const { error } = await supabase.from('inquiries').insert(payload);
+ const { data, error } = await supabase.from('inquiries').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el contacto recibido ${inquiry.id}: Supabase no confirmó la fila.`);
  invalidateCache('inquiries');
  },
 
@@ -2186,14 +2215,16 @@ export const db = {
   message: inquiry.message,
   archived: inquiry.archived ?? false
  };
- const { error } = await supabase.from('inquiries').update(payload).eq('id', inquiry.id);
+ const { data, error } = await supabase.from('inquiries').update(payload).eq('id', inquiry.id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar el contacto recibido ${inquiry.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('inquiries');
  },
 
  async deleteInquiry(id: string): Promise<void> {
- const { error } = await supabase.from('inquiries').delete().eq('id', id);
+ const { data, error } = await supabase.from('inquiries').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el contacto recibido ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('inquiries');
  },
 
@@ -2232,8 +2263,9 @@ export const db = {
   showOnLanding: project.showOnLanding ?? true,
   user_id: userId || null
  };
- const { error } = await supabase.from('projects').insert(payload);
+ const { data, error } = await supabase.from('projects').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el proyecto ${project.id}: Supabase no confirmó la fila.`);
  invalidateCache('projects');
  },
 
@@ -2255,51 +2287,39 @@ export const db = {
   status: payload.status,
   showOnLanding: payload.showOnLanding
  };
- const { error } = await supabase.from('projects').update(dbPayload).eq('id', project.id);
+ const { data, error } = await supabase.from('projects').update(dbPayload).eq('id', project.id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar el proyecto ${project.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('projects');
  },
 
  async deleteProject(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('projects').delete().eq('id', id);
+ const { data, error } = await supabase.from('projects').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el proyecto ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('projects');
  },
 
  // --- LANDING PARTNERS ---
  async getPartners(): Promise<PartnerCompany[]> {
-  let localPartners: PartnerCompany[] = [];
-  try {
-   const saved = localStorage.getItem('althera_landing_partners');
-   localPartners = saved ? JSON.parse(saved) : [];
-  } catch { /* local fallback remains empty */ }
-
   const { data, error } = await supabase.from('landing_partners').select('*').order('created_at', { ascending: true });
-  if (error) {
-   console.warn('landing_partners table read error; using local data:', error.message);
-   return localPartners;
-  }
-  const partners = (data || []).map(row => ({ id: row.id, name: row.name, logoUrl: row.logo_url, website: row.website || undefined, created_at: row.created_at }));
-  try { localStorage.setItem('althera_landing_partners', JSON.stringify(partners)); } catch { /* noop */ }
-  return partners;
+  if (error) throw error;
+  return (data || []).map(row => ({ id: row.id, name: row.name, logoUrl: row.logo_url, website: row.website || undefined, created_at: row.created_at }));
  },
 
  async upsertPartner(partner: PartnerCompany): Promise<void> {
-  try {
-   const saved = JSON.parse(localStorage.getItem('althera_landing_partners') || '[]') as PartnerCompany[];
-   localStorage.setItem('althera_landing_partners', JSON.stringify([...saved.filter(item => item.id !== partner.id), partner]));
-  } catch { /* Supabase remains the primary store */ }
-  const { error } = await supabase.from('landing_partners').upsert({ id: partner.id, name: partner.name, logo_url: partner.logoUrl, website: partner.website || null, created_at: partner.created_at || new Date().toISOString() });
-  if (error) console.warn('landing_partners upsert error; saved locally:', error.message);
+  const { data, error } = await supabase.from('landing_partners')
+   .upsert({ id: partner.id, name: partner.name, logo_url: partner.logoUrl, website: partner.website || null, created_at: partner.created_at || new Date().toISOString() })
+   .select('id')
+   .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error(`No se pudo guardar la empresa colaboradora ${partner.id}: Supabase no confirmó la fila.`);
  },
 
  async deletePartner(id: string): Promise<void> {
-  try {
-   const saved = JSON.parse(localStorage.getItem('althera_landing_partners') || '[]') as PartnerCompany[];
-   localStorage.setItem('althera_landing_partners', JSON.stringify(saved.filter(item => item.id !== id)));
-  } catch { /* Supabase remains the primary store */ }
-  const { error } = await supabase.from('landing_partners').delete().eq('id', id);
-  if (error) console.warn('landing_partners delete error; removed locally:', error.message);
+  const { data, error } = await supabase.from('landing_partners').delete().eq('id', id).select('id');
+  if (error) throw error;
+  if (!data?.length) throw new Error(`No se pudo eliminar la empresa colaboradora ${id}: Supabase no modificó ninguna fila.`);
  },
 
  // --- COLD LEADS ---
@@ -2423,8 +2443,9 @@ export const db = {
   mapsUrl: serialized.mapsUrl || null,
   prospect_group_id: serialized.prospectGroupId || null
  };
- const { error } = await supabase.from('cold_calling_leads').insert(payload);
+ const { data, error } = await supabase.from('cold_calling_leads').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el lead ${lead.id}: Supabase no confirmó la fila.`);
  invalidateCache('cold_calling_leads');
  },
 
@@ -2487,8 +2508,9 @@ export const db = {
  },
 
  async deleteColdLead(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('cold_calling_leads').delete().eq('id', id);
+ const { data, error } = await supabase.from('cold_calling_leads').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el lead ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('cold_calling_leads');
  },
 
@@ -2510,7 +2532,7 @@ export const db = {
  },
 
  async insertColdCallingGroup(group: ColdCallingProspectGroup): Promise<void> {
-  const { error } = await supabase.from('cold_calling_groups').insert({
+  const { data, error } = await supabase.from('cold_calling_groups').insert({
    id: group.id,
    owner_commercial_id: group.ownerCommercialId,
    owner_email: group.ownerEmail.toLowerCase(),
@@ -2518,24 +2540,30 @@ export const db = {
    name: group.name.trim(),
    color: group.color,
    created_at: group.createdAt
-  });
+  }).select('id').maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error(`No se pudo crear el grupo ${group.id}: Supabase no confirmó la fila.`);
  },
 
  async updateColdCallingGroup(group: ColdCallingProspectGroup): Promise<void> {
-  const { error } = await supabase.from('cold_calling_groups')
+  const { data, error } = await supabase.from('cold_calling_groups')
    .update({ name: group.name.trim(), color: group.color })
    .eq('id', group.id)
-   .eq('owner_email', group.ownerEmail.toLowerCase());
+   .eq('owner_email', group.ownerEmail.toLowerCase())
+   .select('id')
+   .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error(`No se pudo actualizar el grupo ${group.id}: Supabase no modificó ninguna fila.`);
  },
 
  async deleteColdCallingGroup(groupId: string, ownerEmail: string): Promise<void> {
-  const { error } = await supabase.from('cold_calling_groups')
+  const { data, error } = await supabase.from('cold_calling_groups')
    .delete()
    .eq('id', groupId)
-   .eq('owner_email', ownerEmail.toLowerCase());
+   .eq('owner_email', ownerEmail.toLowerCase())
+   .select('id');
   if (error) throw error;
+  if (!data?.length) throw new Error(`No se pudo eliminar el grupo ${groupId}: Supabase no modificó ninguna fila.`);
  },
 
  // --- COMERCIAL LEADS ---
@@ -2573,8 +2601,9 @@ export const db = {
   temperature: lead.temperature || null,
   isDone: lead.isDone ?? false
  };
- const { error } = await supabase.from('comercial_leads').insert(payload);
+ const { data, error } = await supabase.from('comercial_leads').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el lead comercial ${lead.id}: Supabase no confirmó la fila.`);
  invalidateCache('comercial_leads');
  },
 
@@ -2592,14 +2621,16 @@ export const db = {
   temperature: lead.temperature || null,
   isDone: lead.isDone ?? false
  };
- const { error } = await supabase.from('comercial_leads').update(payload).eq('id', lead.id);
+ const { data, error } = await supabase.from('comercial_leads').update(payload).eq('id', lead.id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar el lead comercial ${lead.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('comercial_leads');
  },
 
  async deleteComercialLead(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('comercial_leads').delete().eq('id', id);
+ const { data, error } = await supabase.from('comercial_leads').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el lead comercial ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('comercial_leads');
  },
 
@@ -2833,8 +2864,9 @@ export const db = {
   password: account.password || null,
   phone: phone || null
  };
- const { error } = await supabase.from('comerciales_accounts').insert(payload);
+ const { data, error } = await supabase.from('comerciales_accounts').insert(payload).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo crear el comercial ${account.id}: Supabase no confirmó la fila.`);
  invalidateCache('comerciales_accounts');
  },
 
@@ -2889,14 +2921,16 @@ export const db = {
   password: account.password || null,
   phone: phone || null
  };
- const { error } = await supabase.from('comerciales_accounts').update(payload).eq('id', account.id);
+ const { data, error } = await supabase.from('comerciales_accounts').update(payload).eq('id', account.id).select('id').maybeSingle();
  if (error) throw error;
+ if (!data) throw new Error(`No se pudo actualizar el comercial ${account.id}: Supabase no modificó ninguna fila.`);
  invalidateCache('comerciales_accounts');
  },
 
  async deleteComercialAccount(id: string, _userId?: string): Promise<void> {
- const { error } = await supabase.from('comerciales_accounts').delete().eq('id', id);
+ const { data, error } = await supabase.from('comerciales_accounts').delete().eq('id', id).select('id');
  if (error) throw error;
+ if (!data?.length) throw new Error(`No se pudo eliminar el comercial ${id}: Supabase no modificó ninguna fila.`);
  invalidateCache('comerciales_accounts');
  },
 

@@ -1,13 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead, Invoice, FinanceTransaction, PartnerCompany } from './types';
-import { 
- initialContacts, 
- initialEvents, 
- initialNotes, 
- initialActivities,
- REGISTERED_USERS,
- PanelUser
-} from './mockData';
+import { PanelUser } from './mockData';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import LoginScreen from './components/LoginScreen';
@@ -17,7 +10,7 @@ import DashboardScreen from './components/DashboardScreen';
 import CalendarScreen from './components/CalendarScreen';
 import CrmScreen from './components/CrmScreen';
 import NotesScreen from './components/NotesScreen';
-import ProjectsScreen, { INITIAL_PROJECTS, AgencyProject } from './components/ProjectsScreen';
+import ProjectsScreen, { AgencyProject } from './components/ProjectsScreen';
 import ContactosScreen from './components/ContactosScreen';
 import FinanceScreen from './components/FinanceScreen';
 import CitasScreen from './components/CitasScreen';
@@ -35,63 +28,28 @@ import { db, supabase, checkSupabaseConnection, ConnectionStatus, invalidateShar
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall } from 'lucide-react';
 import { installAuditTracking, recordAuditEvent, setAuditContext } from './utils/auditLog';
 
-const PRIVATE_EVENTS_CACHE_KEY = 'althera_commercial_private_events';
-const EVENTS_CACHE_KEY = 'althera_events_cache';
-const DELETED_CONTACTS_CACHE_KEY = 'althera_deleted_contact_ids';
-const WORK_DATA_RESET_VERSION = 'production-start-2026-07-14-v2';
+const BUSINESS_CACHE_KEYS = [
+ 'crm_cold_leads',
+ 'crm_comercial_leads',
+ 'crm_comerciales_accounts',
+ 'crm_projects',
+ 'althera_contacts_cache',
+ 'althera_events_cache',
+ 'althera_commercial_private_events',
+ 'althera_deleted_contact_ids',
+ 'althera_landing_partners',
+ 'althera_audit_pending_v1',
+ 'althera_handled_closing_alerts',
+ 'agency_read_notifications'
+];
 
-const clearResetWorkDataCachesOnce = () => {
- try {
-  if (localStorage.getItem('althera_work_data_reset_version') === WORK_DATA_RESET_VERSION) return;
-  localStorage.removeItem('crm_cold_leads');
-  localStorage.removeItem('crm_comercial_leads');
-  localStorage.removeItem('althera_contacts_cache');
-  localStorage.removeItem(EVENTS_CACHE_KEY);
-
-  const cachedAccounts = JSON.parse(localStorage.getItem('crm_comerciales_accounts') || '[]');
-  if (Array.isArray(cachedAccounts)) {
-   localStorage.setItem('crm_comerciales_accounts', JSON.stringify(cachedAccounts.map(account => ({
-    ...account,
-    payouts: [],
-    extraCommissions: [],
-    monthlyPerformance: {},
-    legacyBonuses: []
-   }))));
-  }
-
-  const cachedCurrentComercial = JSON.parse(sessionStorage.getItem('agency_current_comercial') || 'null');
-  if (cachedCurrentComercial) {
-   sessionStorage.setItem('agency_current_comercial', JSON.stringify({
-    ...cachedCurrentComercial,
-    payouts: [],
-    extraCommissions: [],
-    monthlyPerformance: {},
-    legacyBonuses: []
-   }));
-  }
-
-  localStorage.setItem('althera_work_data_reset_version', WORK_DATA_RESET_VERSION);
- } catch (error) {
-  console.warn('Could not clear reset work data caches:', error);
- }
-};
-
-clearResetWorkDataCachesOnce();
-
-const readDeletedContactIds = (): string[] => {
- try {
-  const parsed = JSON.parse(localStorage.getItem(DELETED_CONTACTS_CACHE_KEY) || '[]');
-  return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
- } catch { return []; }
-};
-
-const writeDeletedContactIds = (ids: string[]) => {
- try { localStorage.setItem(DELETED_CONTACTS_CACHE_KEY, JSON.stringify(Array.from(new Set(ids)))); }
- catch (error) { console.warn('Could not persist deleted CRM contacts:', error); }
-};
-
-const rememberDeletedContact = (id: string) => writeDeletedContactIds([...readDeletedContactIds(), id]);
-const forgetDeletedContact = (id: string) => writeDeletedContactIds(readDeletedContactIds().filter(item => item !== id));
+// Business records must only come from Supabase. Purge legacy browser copies on
+// every boot so an old failed write can never reappear as a valid record.
+try {
+ BUSINESS_CACHE_KEYS.forEach(key => localStorage.removeItem(key));
+} catch (error) {
+ console.warn('Could not purge legacy business caches:', error);
+}
 
 const normalizeClientIdentity = (value?: string) => (value || '').trim().toLocaleLowerCase('es-ES');
 const isCommercialLeadLinkedToContact = (lead: ComercialLead, contact: ClientContact) => {
@@ -120,27 +78,6 @@ const getClosingLeadIdFromEvent = (event: CalendarEvent) => {
  if (event.linkedContactId?.startsWith('crm_from_')) return event.linkedContactId.slice('crm_from_'.length);
  if (event.id.startsWith('cc_appointment_')) return event.id.slice('cc_appointment_'.length);
  return undefined;
-};
-
-const readEventCache = (): CalendarEvent[] => {
- try {
-  const parsed = JSON.parse(localStorage.getItem(EVENTS_CACHE_KEY) || '[]');
-  return Array.isArray(parsed) ? parsed : [];
- } catch { return []; }
-};
-const readPrivateEventCache = (): CalendarEvent[] => {
- try {
-  const parsed = JSON.parse(localStorage.getItem(PRIVATE_EVENTS_CACHE_KEY) || '[]');
-  return Array.isArray(parsed) ? parsed.filter(event => event?.isPrivate && event?.comercialId) : [];
- } catch { return []; }
-};
-const writePrivateEventCache = (events: CalendarEvent[]) => {
- try { localStorage.setItem(PRIVATE_EVENTS_CACHE_KEY, JSON.stringify(events.filter(event => event.isPrivate && event.comercialId))); }
- catch (error) { console.warn('Could not persist private commercial calendar cache:', error); }
-};
-const upsertPrivateEventCache = (event: CalendarEvent) => {
- const cached = readPrivateEventCache();
- writePrivateEventCache([...cached.filter(item => item.id !== event.id), event]);
 };
 
 function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialLoggedIn: boolean): { screen: Screen; redirectedPath?: string } {
@@ -283,65 +220,26 @@ export default function App() {
  const [authReady, setAuthReady] = useState(false);
 
  // Persistence Engine Database State (with standard fallback to empty arrays)
- const [contacts, setContacts] = useState<ClientContact[]>(() => {
- try { return JSON.parse(localStorage.getItem('althera_contacts_cache') || '[]'); }
- catch { return []; }
- });
+ const [contacts, setContacts] = useState<ClientContact[]>([]);
 
- const [events, setEvents] = useState<CalendarEvent[]>(() => {
-  const cachedEvents = readEventCache();
-  const ids = new Set(cachedEvents.map(event => event.id));
-  return [...cachedEvents, ...readPrivateEventCache().filter(event => !ids.has(event.id))];
- });
+ const [events, setEvents] = useState<CalendarEvent[]>([]);
  const [focusedAdminClosingLeadId, setFocusedAdminClosingLeadId] = useState<string>();
  const [closingAlertClock, setClosingAlertClock] = useState(() => Date.now());
- const [handledClosingAlertIds, setHandledClosingAlertIds] = useState<string[]>(() => {
-  try {
-   const parsed = JSON.parse(localStorage.getItem('althera_handled_closing_alerts') || '[]');
-   return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
-  } catch { return []; }
- });
+ const [handledClosingAlertIds, setHandledClosingAlertIds] = useState<string[]>([]);
 
  useEffect(() => {
   const timer = window.setInterval(() => setClosingAlertClock(Date.now()), 15_000);
   return () => window.clearInterval(timer);
  }, []);
 
- useEffect(() => {
-  try { localStorage.setItem('althera_handled_closing_alerts', JSON.stringify(handledClosingAlertIds)); }
-  catch (error) { console.warn('Could not persist closing alert decisions:', error); }
- }, [handledClosingAlertIds]);
-
- useEffect(() => {
-  try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify(events)); }
-  catch (error) { console.warn('Could not cache calendar events:', error); }
- }, [events]);
-
  const [notes, setNotes] = useState<Note[]>([]);
 
  const [activities, setActivities] = useState<Activity[]>([]);
 
  // Global projects state
- const [projects, setProjects] = useState<any[]>(() => {
- try {
-  const saved = localStorage.getItem('crm_projects');
-  if (saved) {
-  const parsed = JSON.parse(saved);
-  if (parsed.length >= INITIAL_PROJECTS.length) {
-   return parsed;
-  }
-  }
-  localStorage.setItem('crm_projects', JSON.stringify(INITIAL_PROJECTS));
-  return INITIAL_PROJECTS;
- } catch {
-  return INITIAL_PROJECTS;
- }
- });
+ const [projects, setProjects] = useState<any[]>([]);
 
- const [partners, setPartners] = useState<PartnerCompany[]>(() => {
-  try { return JSON.parse(localStorage.getItem('althera_landing_partners') || '[]'); }
-  catch { return []; }
- });
+ const [partners, setPartners] = useState<PartnerCompany[]>([]);
 
  useEffect(() => {
   let active = true;
@@ -350,124 +248,36 @@ export default function App() {
  }, []);
 
  // Dynamic users state
- const [usersList, setUsersList] = useState<PanelUser[]>(REGISTERED_USERS);
+ const [usersList, setUsersList] = useState<PanelUser[]>([]);
 
  // Comerciales accounts and logged-in state
- const [comercialesList, setComercialesList] = useState<ComercialAccount[]>(() => {
- try {
-  const saved = localStorage.getItem('crm_comerciales_accounts');
-  if (saved) return JSON.parse(saved);
-  
-  const defaultComs: ComercialAccount[] = [
-  {
-   id: 'com_demo',
-   name: 'Alfonso Sales',
-   email: 'vendedor@agency.com',
-   createdAt: new Date().toISOString(),
-   iban: 'ES21 0000 0000 0000 0000 0000',
-   bic: 'BSANES2X',
-   bankName: 'Banco Santander',
-   payouts: []
-  },
-  {
-   id: 'com_maria',
-   name: 'María Gómez',
-   email: 'maria@agency.com',
-   createdAt: new Date().toISOString(),
-   iban: 'ES21 1111 2222 3333 4444 5555',
-   bic: 'BBVAESMM',
-   bankName: 'BBVA',
-   payouts: []
-  },
-  {
-   id: 'com_javier',
-   name: 'Javier Ruiz',
-   email: 'javier@agency.com',
-   createdAt: new Date().toISOString(),
-   iban: 'ES21 9999 8888 7777 6666 5555',
-   bic: 'CAIXAESX',
-   bankName: 'CaixaBank',
-   payouts: []
-  }
-  ];
-  localStorage.setItem('crm_comerciales_accounts', JSON.stringify(defaultComs));
-  return defaultComs;
- } catch {
-  return [];
- }
- });
+ const [comercialesList, setComercialesList] = useState<ComercialAccount[]>([]);
 
- const [leadsList, setLeadsList] = useState<ComercialLead[]>(() => {
- try {
-  const saved = localStorage.getItem('crm_comercial_leads');
-  if (saved) return JSON.parse(saved);
-  return [];
-  
-  const seedLeads: ComercialLead[] = [
-  // Enero 2026
-  { id: 'lead_s1', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Alfonso', company: 'SaaS Logistics SL', email: 'contacto@saaslog.com', phone: '654321098', status: 'Ganado', value: 12000, notes: 'Cliente cerrado en campaña de logística.', temperature: 'Caliente', isDone: true, createdAt: '2026-01-15T10:00:00.000Z' },
-  { id: 'lead_s2', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Laura', company: 'Inmobiliaria Express', email: 'laura@inmoexp.es', phone: '612345678', status: 'Ganado', value: 6000, notes: 'Proyecto de software de gestión.', temperature: 'Caliente', isDone: true, createdAt: '2026-01-22T14:30:00.000Z' },
-  { id: 'lead_s3', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Alberto', company: 'Consultora HR Nova', email: 'info@hrnova.com', phone: '699887766', status: 'Perdido', value: 8500, notes: 'Presupuesto descartado por costes.', temperature: 'Frío', isDone: true, createdAt: '2026-01-10T09:15:00.000Z' },
-  { id: 'lead_s4', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Patricia', company: 'Fintech Alborán', email: 'p.alboran@fintech.io', phone: '633445566', status: 'Pendiente', value: 15000, notes: 'Interesados en pasarela de pago personalizada.', temperature: 'Templado', isDone: false, createdAt: '2026-01-18T16:00:00.000Z' },
-  
-  // Febrero 2026
-  { id: 'lead_s5', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Jorge', company: 'Clínica Dental Premium', email: 'jorge@dentalpremium.com', phone: '688112233', status: 'Ganado', value: 9500, notes: 'CRM de citas y fichas clínicas.', temperature: 'Caliente', isDone: true, createdAt: '2026-02-12T11:00:00.000Z' },
-  { id: 'lead_s6', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Elena', company: 'E-commerce Calzados', email: 'elena@zapatoshops.es', phone: '622778899', status: 'Ganado', value: 4500, notes: 'Tienda Shopify a medida con headless API.', temperature: 'Caliente', isDone: true, createdAt: '2026-02-18T15:20:00.000Z' },
-  { id: 'lead_s7', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Mario', company: 'Agencia de Viajes Nómada', email: 'nomada@viajes.com', phone: '677443322', status: 'Negociación', value: 11000, notes: 'Ajustando integraciones con Amadeus.', temperature: 'Caliente', isDone: false, createdAt: '2026-02-05T10:30:00.000Z' },
-  { id: 'lead_s8', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Víctor', company: 'Supermercados Hércules', email: 'v.hercules@super.es', phone: '600112233', status: 'Perdido', value: 24000, notes: 'Decidieron desarrollarlo con equipo interno.', temperature: 'Frío', isDone: true, createdAt: '2026-02-25T17:45:00.000Z' },
-  
-  // Marzo 2026
-  { id: 'lead_s9', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Raúl', company: 'Software Distribuido', email: 'raul@distsoft.io', phone: '611559900', status: 'Ganado', value: 18000, notes: 'Desarrollo de panel de control SaaS.', temperature: 'Caliente', isDone: true, createdAt: '2026-03-08T09:00:00.000Z' },
-  { id: 'lead_s10', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Diana', company: 'Gimnasios FitLife', email: 'diana@fitlife.es', phone: '655331122', status: 'Ganado', value: 7500, notes: 'App móvil de entrenamiento integrada.', temperature: 'Caliente', isDone: true, createdAt: '2026-03-14T12:00:00.000Z' },
-  { id: 'lead_s11', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Carlos', company: 'Restauración Madrid Group', email: 'c.restaurantes@madrid.es', phone: '699228811', status: 'Contactado', value: 13000, notes: 'En espera de propuesta de digitalización completa.', temperature: 'Templado', isDone: false, createdAt: '2026-03-21T14:10:00.000Z' },
-  { id: 'lead_s12', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Sonia', company: 'Automoción Getafe', email: 'sonia@autogetafe.com', phone: '644889900', status: 'Ganado', value: 16500, notes: 'Intranet de postventa y recambios.', temperature: 'Caliente', isDone: true, createdAt: '2026-03-29T16:30:00.000Z' },
-  
-  // Abril 2026
-  { id: 'lead_s13', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Francisco', company: 'Despacho Abogados Aranzadi', email: 'f.aranzadi@abogados.com', phone: '600334411', status: 'Ganado', value: 14000, notes: 'Gestor documental con firma digital integrada.', temperature: 'Caliente', isDone: true, createdAt: '2026-04-11T10:15:00.000Z' },
-  { id: 'lead_s14', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Marta', company: 'Energías Renovables Sur', email: 'marta@renosur.es', phone: '622446688', status: 'Perdido', value: 35000, notes: 'Proyecto cancelado por cambio de dirección.', temperature: 'Frío', isDone: true, createdAt: '2026-04-18T13:00:00.000Z' },
-  { id: 'lead_s15', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Andrés', company: 'Colegio Mayor Minerva', email: 'andres@minervacm.es', phone: '677112288', status: 'Ganado', value: 10500, notes: 'Web y pasarela de matrículas.', temperature: 'Caliente', isDone: true, createdAt: '2026-04-22T15:00:00.000Z' },
-  { id: 'lead_s16', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Lucas', company: 'Plataforma de Cursos Sapiens', email: 'lucas@sapiens.es', phone: '611990022', status: 'Negociación', value: 8900, notes: 'Enviada propuesta económica final.', temperature: 'Templado', isDone: false, createdAt: '2026-04-27T11:20:00.000Z' },
-  
-  // Mayo 2026
-  { id: 'lead_s17', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Ramón', company: 'Logística Inteligente Express', email: 'ramon@logintel.es', phone: '655887766', status: 'Ganado', value: 22000, notes: 'Panel administrativo de rutas optimizadas por IA.', temperature: 'Caliente', isDone: true, createdAt: '2026-05-04T09:45:00.000Z' },
-  { id: 'lead_s18', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Sofía', company: 'Constructora del Águila', email: 'sofia@delaguila.es', phone: '688992211', status: 'Ganado', value: 45000, notes: 'ERP completo de compras y subcontratas.', temperature: 'Caliente', isDone: true, createdAt: '2026-05-12T14:00:00.000Z' },
-  { id: 'lead_s19', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Isabel', company: 'Laboratorios Biotech SL', email: 'isabel@biotechsl.es', phone: '611223344', status: 'Perdido', value: 19500, notes: 'No respondieron tras dos semanas de seguimiento.', temperature: 'Frío', isDone: true, createdAt: '2026-05-19T16:15:00.000Z' },
-  { id: 'lead_s20', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Daniel', company: 'Cadena de Hoteles Sol', email: 'daniel@hotelessol.com', phone: '644556677', status: 'Ganado', value: 30000, notes: 'Portal de reservas multi-idioma integrado.', temperature: 'Caliente', isDone: true, createdAt: '2026-05-26T10:00:00.000Z' },
-  
-  // Junio 2026
-  { id: 'lead_s21', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Hugo', company: 'Startup AI Analytics', email: 'hugo@aianalytic.io', phone: '677990011', status: 'Ganado', value: 28000, notes: 'Modelado predictivo y visualizador interactivo.', temperature: 'Caliente', isDone: true, createdAt: '2026-06-03T11:30:00.000Z' },
-  { id: 'lead_s22', comercialId: 'com_javier', comercialName: 'Javier Ruiz', name: 'Clara', company: 'Inversiones Capital Plus', email: 'clara@capitalplus.es', phone: '622003311', status: 'Negociación', value: 50000, notes: 'Panel financiero avanzado de inversiones.', temperature: 'Caliente', isDone: false, createdAt: '2026-06-10T15:00:00.000Z' },
-  { id: 'lead_s23', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Miguel', company: 'Distribuidora de Alimentación', email: 'miguel@distribaliment.es', phone: '655667788', status: 'Ganado', value: 16000, notes: 'App de pedidos y control de existencias.', temperature: 'Caliente', isDone: true, createdAt: '2026-06-18T17:20:00.000Z' },
-  { id: 'lead_s24', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Teresa', company: 'Clínicas Médicas Unificadas', email: 'teresa@clinicasunificadas.com', phone: '688554433', status: 'Ganado', value: 21000, notes: 'Historia clínica digital encriptada.', temperature: 'Caliente', isDone: true, createdAt: '2026-06-25T14:40:00.000Z' },
-  
-  // Julio 2026
-  { id: 'lead_s25', comercialId: 'com_demo', comercialName: 'Alfonso Sales', name: 'Lucas', company: 'Software RRHH Nexus', email: 'lucas@nexusrrhh.es', phone: '611002233', status: 'Pendiente', value: 13500, notes: 'Reunión fijada para demo la próxima semana.', temperature: 'Templado', isDone: false, createdAt: '2026-07-02T10:00:00.000Z' },
-  { id: 'lead_s26', comercialId: 'com_maria', comercialName: 'María Gómez', name: 'Sandra', company: 'Moda Online Sostenible', email: 'sandra@modasost.com', phone: '633889900', status: 'Contactado', value: 9200, notes: 'Interesados en e-commerce ecológico.', temperature: 'Templado', isDone: false, createdAt: '2026-07-05T13:20:00.000Z' }
-  ];
-  localStorage.setItem('crm_comercial_leads', JSON.stringify(seedLeads));
-  return seedLeads;
- } catch {
-  return [];
- }
- });
+ const [leadsList, setLeadsList] = useState<ComercialLead[]>([]);
 
- const [coldLeads, setColdLeads] = useState<ColdCallingLead[]>(() => {
- try {
-  const saved = localStorage.getItem('crm_cold_leads');
-  return saved ? JSON.parse(saved) : [];
- } catch {
-  return [];
- }
- });
+ const [coldLeads, setColdLeads] = useState<ColdCallingLead[]>([]);
 
  const [currentComercial, setCurrentComercial] = useState<ComercialAccount | null>(() => {
  const saved = sessionStorage.getItem('agency_current_comercial');
- return saved ? JSON.parse(saved) : null;
+ if (!saved) return null;
+ try {
+  const parsed = JSON.parse(saved);
+  return parsed?.id && parsed?.email
+   ? { id: parsed.id, email: parsed.email, name: parsed.name || parsed.email, createdAt: parsed.createdAt || '' } as ComercialAccount
+   : null;
+ } catch { return null; }
  });
 
  useEffect(() => {
  if (currentComercial) {
-  sessionStorage.setItem('agency_current_comercial', JSON.stringify(currentComercial));
+  // Keep only the minimum session identity. Commercial, payout and lead data are
+  // always hydrated again from Supabase and are never persisted in the browser.
+  sessionStorage.setItem('agency_current_comercial', JSON.stringify({
+   id: currentComercial.id,
+   email: currentComercial.email,
+   name: currentComercial.name,
+   createdAt: currentComercial.createdAt
+  }));
  } else {
   sessionStorage.removeItem('agency_current_comercial');
  }
@@ -526,35 +336,8 @@ export default function App() {
   });
  }, [currentUser, currentComercial, supabaseStatus.loading, supabaseStatus.connected, supabaseStatus.tablesExist]);
 
- useEffect(() => {
- try {
-  localStorage.setItem('crm_comerciales_accounts', JSON.stringify(comercialesList));
- } catch (e) {
-  console.error('Failed to save comercialesList to localStorage:', e);
- }
- }, [comercialesList]);
-
- useEffect(() => {
- try {
-  localStorage.setItem('crm_comercial_leads', JSON.stringify(leadsList));
- } catch (e) {
-  console.error('Failed to save leadsList to localStorage:', e);
- }
- }, [leadsList]);
-
- useEffect(() => {
- try {
-  localStorage.setItem('crm_cold_leads', JSON.stringify(coldLeads));
- } catch (e) {
-  console.error('Failed to save coldLeads to localStorage:', e);
- }
- }, [coldLeads]);
-
  // Notifications states
- const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => {
- const saved = localStorage.getItem('agency_read_notifications');
- return saved ? JSON.parse(saved) : [];
- });
+ const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
  const [notifyHotLeads, setNotifyHotLeads] = useState<boolean>(() => {
  const saved = localStorage.getItem('agency_notify_hot_leads');
  return saved ? saved === 'true' : true;
@@ -562,9 +345,6 @@ export default function App() {
  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
- useEffect(() => {
- localStorage.setItem('agency_read_notifications', JSON.stringify(readNotificationIds));
- }, [readNotificationIds]);
  useEffect(() => {
  localStorage.setItem('agency_notify_hot_leads', String(notifyHotLeads));
  }, [notifyHotLeads]);
@@ -592,13 +372,6 @@ export default function App() {
   });
  }
 
- REGISTERED_USERS.forEach(staticUser => {
-  const exists = list.some(u => u.email.toLowerCase() === staticUser.email.toLowerCase());
-  if (!exists) {
-  list.push(staticUser);
-  }
- });
-
  return list;
  };
 
@@ -620,6 +393,7 @@ export default function App() {
   await db.upsertProfile({ id, name: profileData.name, email: profileData.email });
  } catch (e) {
   console.warn('Could not upsert profile to Supabase:', e);
+  throw e;
  }
  
  await fetchAndSetProfiles();
@@ -1186,7 +960,6 @@ export default function App() {
  };
 
  const syncInFlightRef = useRef<Promise<void> | null>(null);
- const pendingComercialUpdatesRef = useRef<Map<string, ComercialAccount>>(new Map());
 
  // Verify and hydrate state from Supabase. All independent tables load in parallel,
  // and concurrent auth/mount/interval requests share the same in-flight operation.
@@ -1237,58 +1010,14 @@ export default function App() {
   if (fetchedCold) setColdLeads(fetchedCold);
   if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
   if (fetchedComercialAccs) {
-   const pendingUpdates = Array.from(pendingComercialUpdatesRef.current.values()) as ComercialAccount[];
-   const confirmedDuringSync = new Map<string, ComercialAccount>();
-   if (pendingUpdates.length > 0) {
-    const retryResults = await Promise.allSettled(pendingUpdates.map(account => db.updateComercialAccount(account, activeUid)));
-    retryResults.forEach((result, index) => {
-     if (result.status === 'fulfilled') {
-      confirmedDuringSync.set(pendingUpdates[index].id, pendingUpdates[index]);
-      pendingComercialUpdatesRef.current.delete(pendingUpdates[index].id);
-     }
-    });
-   }
-   const mergedComercialAccs = fetchedComercialAccs.map(account =>
-    pendingComercialUpdatesRef.current.get(account.id) || confirmedDuringSync.get(account.id) || account
-   );
-   setComercialesList(mergedComercialAccs);
+   setComercialesList(fetchedComercialAccs);
    setCurrentComercial(current => current
-    ? mergedComercialAccs.find(account => account.id === current.id) || current
+    ? fetchedComercialAccs.find(account => account.id === current.id) || current
     : current);
   }
   if (fetchedProjects) setProjects(fetchedProjects);
-  if (fetchedContacts) {
-   const deletedContactIds = readDeletedContactIds();
-   const deletedContactIdSet = new Set(deletedContactIds);
-   const contactsStillPendingDeletion = fetchedContacts.filter(contact => deletedContactIdSet.has(contact.id));
-   const visibleContacts = fetchedContacts.filter(contact => !deletedContactIdSet.has(contact.id));
-   setContacts(visibleContacts);
-   localStorage.setItem('althera_contacts_cache', JSON.stringify(visibleContacts));
-
-   if (contactsStillPendingDeletion.length > 0) {
-    setLeadsList(previous => previous.filter(lead => !contactsStillPendingDeletion.some(contact => isCommercialLeadLinkedToContact(lead, contact))));
-    setColdLeads(previous => previous.filter(lead => !contactsStillPendingDeletion.some(contact => contact.closingSourceLeadId === lead.id)));
-    setEvents(previous => previous.filter(event => !contactsStillPendingDeletion.some(contact => event.linkedContactId === contact.id || (event.linkedContactIds || []).includes(contact.id))));
-    setProjects(previous => previous.filter(project => !contactsStillPendingDeletion.some(contact => project.clientContactId === contact.id)));
-    setFinTransactions(previous => previous.filter(transaction => !contactsStillPendingDeletion.some(contact => transaction.clientId === contact.id)));
-    const retryResults = await Promise.allSettled(contactsStillPendingDeletion.map(contact => db.deleteClientData(contact, activeUid)));
-    const failedIds = contactsStillPendingDeletion
-     .filter((_, index) => retryResults[index].status === 'rejected')
-     .map(contact => contact.id);
-    writeDeletedContactIds(failedIds);
-   } else if (deletedContactIds.length > 0) {
-    writeDeletedContactIds([]);
-   }
-  }
-  if (fetchedEvents) {
-   const cachedPrivateEvents = readPrivateEventCache();
-   const fetchedIds = new Set(fetchedEvents.map(event => event.id));
-   const pendingPrivateEvents = cachedPrivateEvents.filter(event => !fetchedIds.has(event.id));
-   setEvents([...fetchedEvents, ...pendingPrivateEvents]);
-   if (pendingPrivateEvents.length > 0) {
-    await Promise.allSettled(pendingPrivateEvents.map(event => db.insertEvent(event, undefined)));
-   }
-  }
+  if (fetchedContacts) setContacts(fetchedContacts);
+  if (fetchedEvents) setEvents(fetchedEvents);
   if (fetchedNotes) setNotes(fetchedNotes);
   if (fetchedActivities) setActivities(fetchedActivities);
   if (fetchedProfiles) setUsersList(mergeUsers(fetchedProfiles, activeUid ? currentUser : undefined));
@@ -1488,16 +1217,8 @@ export default function App() {
   setCurrentUser(sessionUser);
   sessionStorage.setItem('agency_user', JSON.stringify(sessionUser));
   
-  // Load user templates if it is first-time demo access
-  if (!sessionUser.id) {
-  setContacts(initialContacts);
-  setEvents(initialEvents);
-  setNotes(initialNotes);
-  setActivities(initialActivities);
-  } else {
-  // Query server db
-  syncWithSupabase(sessionUser.id);
-  }
+  // Business data is always hydrated from Supabase, including legacy admin sessions.
+  syncWithSupabase(sessionUser.id || undefined);
  }
  navigateTo('dashboard', 'push');
  };
@@ -1548,7 +1269,7 @@ export default function App() {
   if (decision === 'accepted') openClosingCase(event);
  };
 
- // State handles to modify database items dynamically with Optimistic UI updates
+ // Business mutations are reflected in React state only after Supabase confirms them.
  const handleAddContact = async (contact: ClientContact) => {
  const existingContact = contacts.find(c =>
   c.id === contact.id ||
@@ -1557,13 +1278,6 @@ export default function App() {
  );
  const alreadyExists = !!existingContact;
  const contactToSave = existingContact ? { ...existingContact, ...contact, id: existingContact.id } : contact;
- forgetDeletedContact(contactToSave.id);
-
- // 1. Optimistic UI update
- setContacts(prev => prev.some(c => c.id === contactToSave.id) ?
-  prev.map(c => c.id === contactToSave.id ? contactToSave : c)
-  : [contactToSave, ...prev]
- );
  
  // 2. Add activity locally
  const activity: Activity = {
@@ -1574,23 +1288,23 @@ export default function App() {
   subtitle: `added to ${contactToSave.company}`,
   accentColor: 'primary'
  };
- if (!alreadyExists) {
-  setActivities(prev => [activity, ...prev]);
+ try {
+ if (alreadyExists) {
+  await db.updateContact(contactToSave, currentUser?.id || undefined);
+ } else {
+  await db.insertContact(contactToSave, currentUser?.id || undefined);
  }
-
- // 3. Persistent Supabase write
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-   if (alreadyExists) {
-    await db.updateContact(contactToSave, currentUser?.id || undefined);
-   } else {
-    await db.insertContact(contactToSave, currentUser?.id || undefined);
-    if (currentUser?.id) await db.insertActivity(activity, currentUser.id);
-   }
-  } catch (err) {
-  console.error('Supabase failed to register contact:', err);
-  throw err;
-  }
+ setContacts(prev => prev.some(c => c.id === contactToSave.id)
+  ? prev.map(c => c.id === contactToSave.id ? contactToSave : c)
+  : [contactToSave, ...prev]);
+ if (!alreadyExists) {
+  void db.insertActivity(activity, currentUser?.id || undefined)
+   .then(() => setActivities(prev => [activity, ...prev]))
+   .catch(error => console.warn('No se pudo registrar la actividad del cliente:', error));
+ }
+ } catch (err) {
+   console.error('Supabase failed to register contact:', err);
+   throw err;
  }
  };
 
@@ -1606,26 +1320,10 @@ export default function App() {
   updated.websiteReady = true;
  }
 
- // Repair contacts archived by the previous automatic-completion rule.
- if (updated.devStatus) {
-  try {
-  const saved = sessionStorage.getItem('archived_contacts_ids');
-  const archivedIds: string[] = saved ? JSON.parse(saved) : [];
-  sessionStorage.setItem('archived_contacts_ids', JSON.stringify(archivedIds.filter(id => id !== updated.id)));
-  } catch (err) {
-  console.error('Error restoring completed contact visibility:', err);
-  }
- }
-
- // 2. Optimistic UI update
- setContacts(prev => prev.map(c => c.id === updated.id ? updated : c));
-
- // 2. Persistent Supabase write
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  const persistedContact = await db.updateContact(updated, currentUser?.id || undefined);
-  updated = persistedContact;
-  setContacts(prev => prev.map(c => c.id === persistedContact.id ? persistedContact : c));
+ try {
+   const persistedContact = await db.updateContact(updated, currentUser?.id || undefined);
+   updated = persistedContact;
+   setContacts(prev => prev.map(c => c.id === persistedContact.id ? persistedContact : c));
 
   if (shouldNotifyCarlos) {
    const carlosAdmin = usersList.find(user =>
@@ -1668,78 +1366,53 @@ export default function App() {
    await db.updateContact(updated, currentUser?.id || undefined);
    setContacts(previous => previous.map(contact => contact.id === updated.id ? updated : contact));
   }
-  } catch (err) {
-   if (previousContact) {
-    setContacts(prev => prev.map(c => c.id === previousContact.id ? previousContact : c));
-   }
+ } catch (err) {
    console.error('Supabase failed to update contact:', err);
    throw err;
-  }
  }
  };
 
  const handleAddProject = async (newProj: any) => {
- // 1. Optimistic update
- setProjects(prev => [newProj, ...prev]);
-
- // 2. Persist to Supabase
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.insertProject(newProj, currentUser.id);
-  } catch (err) {
-  console.error('Supabase failed to register project:', err);
-  }
+ try {
+  await db.insertProject(newProj, currentUser?.id || undefined);
+  setProjects(prev => [newProj, ...prev]);
+ } catch (err) {
+   console.error('Supabase failed to register project:', err);
+  throw err;
  }
  };
 
  const handleUpdateProject = async (updatedProj: any) => {
- // 1. Optimistic update
- setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
-
- // 2. Persist to Supabase
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.updateProject(updatedProj, currentUser.id);
-  } catch (err) {
-  console.error('Supabase failed to update project:', err);
-  }
+ try {
+  await db.updateProject(updatedProj, currentUser?.id || undefined);
+  setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
+ } catch (err) {
+   console.error('Supabase failed to update project:', err);
+  throw err;
  }
  };
 
  const handleDeleteProject = async (id: string) => {
- // 1. Optimistic update
- setProjects(prev => prev.filter(p => p.id !== id));
-
- // 2. Persist to Supabase
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.deleteProject(id, currentUser.id);
-  } catch (err) {
-  console.error('Supabase failed to delete project:', err);
-  }
+ try {
+  await db.deleteProject(id, currentUser?.id || undefined);
+  setProjects(prev => prev.filter(p => p.id !== id));
+ } catch (err) {
+   console.error('Supabase failed to delete project:', err);
+  throw err;
  }
  };
 
  const handleUpsertPartner = async (partner: PartnerCompany) => {
- setPartners(previous => {
-  const next = [...previous.filter(item => item.id !== partner.id), partner];
-  try { localStorage.setItem('althera_landing_partners', JSON.stringify(next)); } catch { /* noop */ }
-  return next;
- });
  await db.upsertPartner(partner);
+ setPartners(previous => [...previous.filter(item => item.id !== partner.id), partner]);
  };
 
  const handleDeletePartner = async (id: string) => {
- setPartners(previous => {
-  const next = previous.filter(item => item.id !== id);
-  try { localStorage.setItem('althera_landing_partners', JSON.stringify(next)); } catch { /* noop */ }
-  return next;
- });
  await db.deletePartner(id);
+ setPartners(previous => previous.filter(item => item.id !== id));
  };
 
  const handleAddColdLead = async (newLead: ColdCallingLead) => {
- setColdLeads(prev => [newLead, ...prev]);
  const activity: Activity = {
   id: 'a_cold_' + Date.now(),
   type: 'Lead',
@@ -1749,42 +1422,43 @@ export default function App() {
   detail: newLead.notes,
   accentColor: 'primary'
  };
- setActivities(prev => [activity, ...prev]);
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.insertColdLead(newLead, currentUser?.id || undefined);
-  if (currentUser?.id) await db.insertActivity(activity, currentUser.id);
-  if (currentComercial) await db.addCommercialActivityLog({
-   commercial: currentComercial,
+ try {
+   await db.insertColdLead(newLead, currentUser?.id || undefined);
+   setColdLeads(prev => [newLead, ...prev]);
+   void db.insertActivity(activity, currentUser?.id || undefined)
+    .then(() => setActivities(prev => [activity, ...prev]))
+    .catch(error => console.warn('No se pudo registrar la actividad del lead:', error));
+   if (currentComercial) void db.addCommercialActivityLog({
+    commercial: currentComercial,
    action: 'cold_lead_created',
    entityType: 'cold_calling_lead',
    entityId: newLead.id,
    description: `Creó el negocio ${newLead.businessName} en Call Calling.`,
    metadata: { businessName: newLead.businessName, assignedToEmail: newLead.assignedToEmail }
-  });
-  } catch (err) {
-  console.error('Supabase failed to register cold lead:', err);
-  }
+   }).catch(error => console.warn('No se pudo registrar el historial comercial del lead:', error));
+ } catch (err) {
+   console.error('Supabase failed to register cold lead:', err);
+  throw err;
  }
  };
 
  const handleUpdateColdLead = async (updated: ColdCallingLead) => {
  const previous = coldLeads.find(l => l.id === updated.id);
- setColdLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
- if (previous && previous.assignedToEmail !== updated.assignedToEmail) {
-  setActivities(prev => [{
-  id: 'a_cold_assign_' + Date.now(),
+ const assignmentActivity: Activity | null = previous && previous.assignedToEmail !== updated.assignedToEmail ? {
+   id: 'a_cold_assign_' + Date.now(),
   type: 'Lead',
   timestamp: 'Just now',
   title: updated.businessName,
   subtitle: `asignado a ${updated.assignedToName || 'Sin asignar'}`,
   detail: updated.notes,
   accentColor: 'secondary'
-  }, ...prev]);
- }
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.updateColdLead(updated, currentUser?.id || undefined);
+  } : null;
+ try {
+   await db.updateColdLead(updated, currentUser?.id || undefined);
+   setColdLeads(prev => prev.map(l => l.id === updated.id ? updated : l));
+   if (assignmentActivity) void db.insertActivity(assignmentActivity, currentUser?.id || undefined)
+    .then(() => setActivities(prev => [assignmentActivity, ...prev]))
+    .catch(error => console.warn('No se pudo registrar la actividad de asignación:', error));
   if (currentComercial) {
    const changes: string[] = [];
    if (previous?.callsCount !== updated.callsCount) changes.push(`registró llamada #${updated.callsCount || 0}`);
@@ -1793,18 +1467,18 @@ export default function App() {
    if (previous?.answered !== updated.answered) changes.push(`marcó responde: ${updated.answered}`);
    if (previous?.isDone !== updated.isDone) changes.push(updated.isDone ? 'marcó como hecho' : 'reabrió el negocio');
    if (previous?.archived !== updated.archived) changes.push(updated.archived ? 'archivó el negocio' : 'restauró el negocio');
-   await db.addCommercialActivityLog({
+   void db.addCommercialActivityLog({
     commercial: currentComercial,
     action: 'cold_lead_updated',
     entityType: 'cold_calling_lead',
     entityId: updated.id,
     description: `${updated.businessName}: ${changes.join(', ') || 'actualizó la ficha'}.`,
     metadata: { businessName: updated.businessName, changes, callsCount: updated.callsCount || 0 }
-   });
+   }).catch(error => console.warn('No se pudo registrar el historial de actualización del lead:', error));
   }
-  } catch (err) {
-  console.error('Supabase failed to update cold lead:', err);
-  }
+ } catch (err) {
+   console.error('Supabase failed to update cold lead:', err);
+  throw err;
  }
  };
 
@@ -1812,10 +1486,7 @@ export default function App() {
   leadIds: string[],
   assignee: { email: string; name: string }
  ): Promise<number> => {
-  let assignedIds = leadIds;
-  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-   assignedIds = await db.bulkAssignColdLeads(leadIds, assignee.email, assignee.name);
-  }
+  const assignedIds = await db.bulkAssignColdLeads(leadIds, assignee.email, assignee.name);
 
   const assignedIdSet = new Set(assignedIds);
   const assignmentTimestamp = new Date().toISOString();
@@ -1833,13 +1504,10 @@ export default function App() {
     ]
    }));
   const assignedLeadById = new Map(historicallyAssignedLeads.map(lead => [lead.id, lead]));
-  setColdLeads(previous => previous.map(lead =>
-   assignedLeadById.get(lead.id) || lead
-  ));
-  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-   for (let index = 0; index < historicallyAssignedLeads.length; index += 25) {
-    await Promise.all(historicallyAssignedLeads.slice(index, index + 25).map(lead => db.updateColdLead(lead)));
-   }
+  setColdLeads(previous => previous.map(lead => assignedLeadById.get(lead.id) || lead));
+  for (let index = 0; index < historicallyAssignedLeads.length; index += 25) {
+   const results = await Promise.allSettled(historicallyAssignedLeads.slice(index, index + 25).map(lead => db.updateColdLead(lead)));
+   if (results.some(result => result.status === 'rejected')) console.warn('Algunos historiales de asignación no se pudieron ampliar, aunque la asignación principal sí quedó guardada.');
   }
 
   if (assignedIds.length > 0) {
@@ -1852,12 +1520,9 @@ export default function App() {
     detail: `Se asignaron ${assignedIds.length} leads sin comercial a ${assignee.email}.`,
     accentColor: 'secondary'
    };
-   setActivities(previous => [activity, ...previous]);
-   if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
-    void db.insertActivity(activity, currentUser.id).catch(error =>
-     console.error('Supabase failed to register bulk assignment activity:', error)
-    );
-   }
+   void db.insertActivity(activity, currentUser?.id || undefined)
+    .then(() => setActivities(previous => [activity, ...previous]))
+    .catch(error => console.warn('No se pudo registrar la actividad de asignación:', error));
   }
 
   return assignedIds.length;
@@ -1872,20 +1537,9 @@ export default function App() {
    event.linkedContactId === `crm_from_${id}` ||
    (!!linkedContact && (event.linkedContactId === linkedContact.id || (event.linkedContactIds || []).includes(linkedContact.id)))
   );
-  setColdLeads(prev => prev.filter(l => l.id !== id));
-  setEvents(previous => previous.filter(event => !relatedEvents.some(related => related.id === event.id)));
-  if (linkedContact) {
-   rememberDeletedContact(linkedContact.id);
-   setContacts(previous => previous.filter(contact => contact.id !== linkedContact.id));
-   setLeadsList(previous => previous.filter(lead => !isCommercialLeadLinkedToContact(lead, linkedContact)));
-   setProjects(previous => previous.filter(project => project.clientContactId !== linkedContact.id));
-   setFinTransactions(previous => previous.filter(transaction => transaction.clientId !== linkedContact.id));
-  }
-  if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-   try {
+  try {
    if (linkedContact) {
     await db.deleteClientData(linkedContact, currentUser?.id || undefined);
-    forgetDeletedContact(linkedContact.id);
     await handleRefreshFinance();
    } else {
     const results = await Promise.allSettled([
@@ -1895,72 +1549,73 @@ export default function App() {
     const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     if (failure) throw failure.reason;
    }
-   if (currentComercial && deletedLead) await db.addCommercialActivityLog({
+   setColdLeads(prev => prev.filter(l => l.id !== id));
+   setEvents(previous => previous.filter(event => !relatedEvents.some(related => related.id === event.id)));
+   if (currentComercial && deletedLead) void db.addCommercialActivityLog({
    commercial: currentComercial,
    action: 'cold_lead_deleted',
    entityType: 'cold_calling_lead',
    entityId: id,
    description: `Eliminó ${deletedLead.businessName} de Call Calling.`,
-   metadata: { businessName: deletedLead.businessName }
-  });
-   } catch (err) {
-   console.error('Supabase failed to delete the shared caller/closer lead:', err);
+    metadata: { businessName: deletedLead.businessName }
+   }).catch(error => console.warn('No se pudo registrar el historial de eliminación del lead:', error));
+   if (linkedContact) {
+    setContacts(previous => previous.filter(contact => contact.id !== linkedContact.id));
+    setLeadsList(previous => previous.filter(lead => !isCommercialLeadLinkedToContact(lead, linkedContact)));
+    setProjects(previous => previous.filter(project => project.clientContactId !== linkedContact.id));
+    setFinTransactions(previous => previous.filter(transaction => transaction.clientId !== linkedContact.id));
    }
+  } catch (err) {
+   console.error('Supabase failed to delete the shared caller/closer lead:', err);
+   throw err;
   }
  };
 
  const handleAddComercialLead = async (newLead: ComercialLead) => {
- setLeadsList(prev => [newLead, ...prev]);
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.insertComercialLead(newLead, currentUser?.id || undefined);
-  } catch (err) {
-  console.error('Supabase failed to register comercial lead:', err);
-  }
+ try {
+   await db.insertComercialLead(newLead, currentUser?.id || undefined);
+  setLeadsList(prev => [newLead, ...prev]);
+ } catch (err) {
+   console.error('Supabase failed to register comercial lead:', err);
+  throw err;
  }
  };
 
  const handleUpdateComercialLead = async (updated: ComercialLead) => {
- setLeadsList(prev => prev.map(l => l.id === updated.id ? updated : l));
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.updateComercialLead(updated, currentUser?.id || undefined);
-  } catch (err) {
-  console.error('Supabase failed to update comercial lead:', err);
-  }
+ try {
+   await db.updateComercialLead(updated, currentUser?.id || undefined);
+  setLeadsList(prev => prev.map(l => l.id === updated.id ? updated : l));
+ } catch (err) {
+   console.error('Supabase failed to update comercial lead:', err);
+  throw err;
  }
  };
 
  const handleDeleteComercialLead = async (id: string) => {
- setLeadsList(prev => prev.filter(l => l.id !== id));
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.deleteComercialLead(id, currentUser?.id || undefined);
-  } catch (err) {
-  console.error('Supabase failed to delete comercial lead:', err);
-  }
+ try {
+   await db.deleteComercialLead(id, currentUser?.id || undefined);
+  setLeadsList(prev => prev.filter(l => l.id !== id));
+ } catch (err) {
+   console.error('Supabase failed to delete comercial lead:', err);
+  throw err;
  }
  };
 
  const handleAddComercialAccount = async (newC: ComercialAccount) => {
- setComercialesList(prev => [...prev, newC]);
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.insertComercialAccount(newC, currentUser?.id || undefined);
-  } catch (err) {
-  console.error('Supabase failed to register comercial account:', err);
-  }
+ try {
+   await db.insertComercialAccount(newC, currentUser?.id || undefined);
+  setComercialesList(prev => [...prev, newC]);
+ } catch (err) {
+   console.error('Supabase failed to register comercial account:', err);
+  throw err;
  }
  };
 
  const handleUpdateComercialAccount = async (updated: ComercialAccount) => {
- pendingComercialUpdatesRef.current.set(updated.id, updated);
- setComercialesList(prev => prev.map(c => c.id === updated.id ? updated : c));
- if (currentComercial && currentComercial.id === updated.id) {
-  setCurrentComercial(updated);
- }
  try {
   await db.updateComercialAccount(updated, currentUser?.id || undefined);
+  setComercialesList(prev => prev.map(c => c.id === updated.id ? updated : c));
+  if (currentComercial && currentComercial.id === updated.id) setCurrentComercial(updated);
  } catch (err) {
   console.error('Supabase failed to update comercial account:', err);
   throw err;
@@ -1968,19 +1623,17 @@ export default function App() {
  };
 
  const handleDeleteComercialAccount = async (id: string) => {
- setComercialesList(prev => prev.filter(c => c.id !== id));
- setLeadsList(prev => prev.filter(l => l.comercialId !== id));
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.deleteComercialAccount(id, currentUser?.id || undefined);
-  } catch (err) {
-  console.error('Supabase failed to delete comercial account:', err);
-  }
+ try {
+   await db.deleteComercialAccount(id, currentUser?.id || undefined);
+  setComercialesList(prev => prev.filter(c => c.id !== id));
+  setLeadsList(prev => prev.filter(l => l.comercialId !== id));
+ } catch (err) {
+   console.error('Supabase failed to delete comercial account:', err);
+  throw err;
  }
  };
 
  const handleAddEvent = async (event: CalendarEvent) => {
- const isCommercialPrivateEvent = event.isPrivate === true && !!event.comercialId;
  const activity: Activity = {
   id: 'a_' + Date.now(),
   type: 'Task',
@@ -1990,50 +1643,17 @@ export default function App() {
   accentColor: 'secondary'
  };
 
- if (isCommercialPrivateEvent) {
-  setEvents(prev => prev.some(item => item.id === event.id) ? prev : [...prev, event]);
-  upsertPrivateEventCache(event);
- }
-
- if (!supabaseStatus.connected || !supabaseStatus.tablesExist) {
-  if (isCommercialPrivateEvent) {
-   const toast = document.getElementById('toast-msg');
-   if (toast) {
-    toast.innerText = 'Tarea privada guardada en este dispositivo. Se sincronizará cuando vuelva la conexión.';
-    toast.classList.remove('opacity-0');
-    setTimeout(() => toast.classList.add('opacity-0'), 3500);
-   }
-   return;
-  }
-  console.error('Supabase is required to create shared calendar events.');
-  const toast = document.getElementById('toast-msg');
-  if (toast) {
-  toast.innerText = 'No se pudo crear el evento: Supabase no está conectado.';
-  toast.classList.remove('opacity-0');
-  setTimeout(() => toast.classList.add('opacity-0'), 3500);
-  }
-  throw new Error('Supabase no está conectado.');
- }
-
  try {
   const isAutomatedFlowEvent = event.id.startsWith('cc_appointment_') ||
    event.id.startsWith('dev_intake_') || event.id.startsWith('web_ready_');
   if (isAutomatedFlowEvent) await db.upsertEvent(event, currentUser?.id || undefined);
   else await db.insertEvent(event, currentUser?.id || undefined);
-  if (currentUser?.id) await db.insertActivity(activity, currentUser.id);
-  if (!isCommercialPrivateEvent) setEvents(prev => prev.some(item => item.id === event.id) ? prev : [...prev, event]);
-  if (currentUser?.id) setActivities(prev => [activity, ...prev]);
+  setEvents(prev => prev.some(item => item.id === event.id) ? prev : [...prev, event]);
+  void db.insertActivity(activity, currentUser?.id || undefined)
+   .then(() => setActivities(prev => [activity, ...prev]))
+   .catch(error => console.warn('No se pudo registrar la actividad del evento:', error));
  } catch (err) {
   console.error('Supabase failed to register event:', err);
-  if (isCommercialPrivateEvent) {
-   const toast = document.getElementById('toast-msg');
-   if (toast) {
-    toast.innerText = 'Tarea privada guardada localmente; sincronización pendiente.';
-    toast.classList.remove('opacity-0');
-    setTimeout(() => toast.classList.add('opacity-0'), 3500);
-   }
-   return;
-  }
   const toast = document.getElementById('toast-msg');
   if (toast) {
   toast.innerText = 'No se pudo guardar el evento en Supabase. Revisa la tabla events.';
@@ -2045,43 +1665,26 @@ export default function App() {
  };
 
  const handleDeleteEvent = async (id: string) => {
- // 1. Optimistic UI update
- setEvents(prev => prev.filter(ev => ev.id !== id));
- writePrivateEventCache(readPrivateEventCache().filter(event => event.id !== id));
-
- // 2. Persistent Supabase deletion
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.deleteEvent(id, currentUser?.id || undefined);
-  } catch (err) {
-  console.error('Supabase failed to delete event:', err);
-  }
+ try {
+   await db.deleteEvent(id, currentUser?.id || undefined);
+  setEvents(prev => prev.filter(ev => ev.id !== id));
+ } catch (err) {
+   console.error('Supabase failed to delete event:', err);
+  throw err;
  }
  };
 
  const handleUpdateEvent = async (updated: CalendarEvent) => {
- const previousEvent = events.find(event => event.id === updated.id);
- // 1. Optimistic UI update
- setEvents(prev => prev.map(ev => ev.id === updated.id ? updated : ev));
- if (updated.isPrivate && updated.comercialId) upsertPrivateEventCache(updated);
-
- // 2. Persistent Supabase update
- if (supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.updateEvent(updated, currentUser?.id || undefined);
-  } catch (err) {
-  console.error('Supabase failed to update event:', err);
-  if (previousEvent) setEvents(prev => prev.map(event => event.id === previousEvent.id ? previousEvent : event));
+ try {
+   await db.updateEvent(updated, currentUser?.id || undefined);
+  setEvents(prev => prev.map(ev => ev.id === updated.id ? updated : ev));
+ } catch (err) {
+   console.error('Supabase failed to update event:', err);
   throw err;
-  }
  }
  };
 
  const handleAddNote = async (note: Note) => {
- // 1. Optimistic UI update
- setNotes(prev => [note, ...prev]);
-
- // 2. Add activity locally
  const activity: Activity = {
   id: 'a_' + Date.now(),
   type: 'Lead',
@@ -2090,76 +1693,56 @@ export default function App() {
   subtitle: `published: ${note.title}`,
   accentColor: 'tertiary'
  };
- setActivities(prev => [activity, ...prev]);
-
- // 3. Persistent Supabase write
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.insertNote(note, currentUser.id);
-  await db.insertActivity(activity, currentUser.id);
-  } catch (err) {
-  console.error('Supabase failed to publish note:', err);
-  }
+ try {
+  await db.insertNote(note, currentUser?.id || undefined);
+  setNotes(prev => [note, ...prev]);
+  void db.insertActivity(activity, currentUser?.id || undefined)
+   .then(() => setActivities(prev => [activity, ...prev]))
+   .catch(error => console.warn('No se pudo registrar la actividad de la nota:', error));
+ } catch (err) {
+   console.error('Supabase failed to publish note:', err);
+  throw err;
  }
  };
 
  const handleUpdateNote = async (updated: Note) => {
- // 1. Optimistic UI update
- setNotes(prev => prev.map(n => n.id === updated.id ? updated : n));
-
- // 2. Persistent Supabase update
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.updateNote(updated, currentUser.id);
-  } catch (err) {
-  console.error('Supabase failed to update note:', err);
-  }
+ try {
+  await db.updateNote(updated, currentUser?.id || undefined);
+  setNotes(prev => prev.map(n => n.id === updated.id ? updated : n));
+ } catch (err) {
+   console.error('Supabase failed to update note:', err);
+  throw err;
  }
  };
 
  const handleDeleteNote = async (id: string) => {
- // 1. Optimistic UI update
- setNotes(prev => prev.filter(n => n.id !== id));
-
- // 2. Persistent Supabase delete
- if (currentUser?.id && supabaseStatus.connected && supabaseStatus.tablesExist) {
-  try {
-  await db.deleteNote(id, currentUser.id);
-  } catch (err) {
-  console.error('Supabase failed to delete note:', err);
-  }
+ try {
+  await db.deleteNote(id, currentUser?.id || undefined);
+  setNotes(prev => prev.filter(n => n.id !== id));
+ } catch (err) {
+   console.error('Supabase failed to delete note:', err);
+  throw err;
  }
  };
 
  const handleDeleteContact = async (id: string) => {
  const contactToDelete = contacts.find(contact => contact.id === id);
- // 1. Optimistic UI update
- rememberDeletedContact(id);
- setContacts(prev => {
-  const nextContacts = prev.filter(c => c.id !== id);
-  try { localStorage.setItem('althera_contacts_cache', JSON.stringify(nextContacts)); }
-  catch (error) { console.warn('Could not update CRM contact cache after deletion:', error); }
-  return nextContacts;
- });
-
- if (contactToDelete) {
-  setLeadsList(previous => previous.filter(lead => !isCommercialLeadLinkedToContact(lead, contactToDelete)));
-  setColdLeads(previous => previous.filter(lead => lead.id !== contactToDelete.closingSourceLeadId));
-  setEvents(previous => previous.filter(event => event.linkedContactId !== id && !(event.linkedContactIds || []).includes(id)));
-  setProjects(previous => previous.filter(project => project.clientContactId !== id));
-  setFinTransactions(previous => previous.filter(transaction => transaction.clientId !== id));
- }
-
- // 2. Always request the persistent deletion. If the network is unavailable, the
- // tombstone above keeps the contact hidden and the next synchronization retries it.
-  try {
+ try {
    if (contactToDelete) await db.deleteClientData(contactToDelete, currentUser?.id || undefined);
    else await db.deleteContact(id, currentUser?.id || undefined);
    await handleRefreshFinance();
-   forgetDeletedContact(id);
- } catch (err) {
-  console.error('Supabase failed to delete the client cascade; deletion queued for retry:', err);
- }
+   setContacts(prev => prev.filter(c => c.id !== id));
+   if (contactToDelete) {
+    setLeadsList(previous => previous.filter(lead => !isCommercialLeadLinkedToContact(lead, contactToDelete)));
+    setColdLeads(previous => previous.filter(lead => lead.id !== contactToDelete.closingSourceLeadId));
+    setEvents(previous => previous.filter(event => event.linkedContactId !== id && !(event.linkedContactIds || []).includes(id)));
+    setProjects(previous => previous.filter(project => project.clientContactId !== id));
+    setFinTransactions(previous => previous.filter(transaction => transaction.clientId !== id));
+   }
+  } catch (err) {
+   console.error('Supabase failed to delete the client cascade:', err);
+   throw err;
+  }
  };
 
  // Match corresponding search details

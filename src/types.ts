@@ -38,6 +38,7 @@ export interface ClientContact {
  email: string;
  company: string;
  status: 'Client' | 'Lead';
+ archived?: boolean;
  lastContacted: string;
  role?: string;
  priority?: boolean;
@@ -118,7 +119,7 @@ export interface CalendarEvent {
  assignedUserId?: string;
  assignedUserEmail?: string;
  assignedUserEmails?: string[];
- status?: 'pending' | 'done' | 'postponed';
+ status?: 'pending' | 'done' | 'postponed' | 'archived';
  parentEventId?: string;
  color?: string;
  alias?: string;
@@ -141,7 +142,7 @@ export interface Note {
  updatedAt: string;
  authorName?: string;
  authorAvatar?: string;
- status?: 'pending' | 'done';
+ status?: 'pending' | 'done' | 'archived';
 }
 
 export interface Activity {

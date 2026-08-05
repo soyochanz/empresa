@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CalendarEvent, ClientContact, Screen, Note } from '../types';
-import { REGISTERED_USERS, PanelUser } from '../mockData';
+import { PanelUser } from '../mockData';
 import ProductNeedsSummary from './ProductNeedsSummary';
 import {
  Plus, 
@@ -71,13 +71,13 @@ export default function CalendarScreen({
  onDeleteEvent,
  onUpdateEvent,
  onNavigate,
- usersList = REGISTERED_USERS,
+ usersList = [],
  onAddProfile,
  comercialesList
 }: CalendarScreenProps) {
  
  // High-fidelity pre-selected event (Product Sync)
- const [selectedEventId, setSelectedEventId] = useState<string>('e2');
+ const [selectedEventId, setSelectedEventId] = useState<string>('');
  const [isPostponing, setIsPostponing] = useState<boolean>(false);
  const [postponeDate, setPostponeDate] = useState<string>(() => {
  const d = new Date();
@@ -100,19 +100,21 @@ export default function CalendarScreen({
  // Global toggle to view/hide archived events on the calendar grid
  const [showArchivedEvents, setShowArchivedEvents] = useState<boolean>(false);
 
- // State linking archived events in sessionStorage
- const [archivedEventIds, setArchivedEventIds] = useState<string[]>(() => {
- const saved = sessionStorage.getItem('archived_events_ids');
- return saved ? JSON.parse(saved) : [];
- });
+ const archivedEventIds = React.useMemo(
+  () => events.filter(event => event.status === 'archived').map(event => event.id),
+  [events]
+ );
 
- const toggleArchiveEvent = (id: string) => {
+ const toggleArchiveEvent = async (id: string) => {
  const isCurrentlyArchived = archivedEventIds.includes(id);
- const updated = isCurrentlyArchived  ?
-  archivedEventIds.filter(item => item !== id)
-  : [...archivedEventIds, id];
- setArchivedEventIds(updated);
- sessionStorage.setItem('archived_events_ids', JSON.stringify(updated));
+ const event = events.find(item => item.id === id);
+ if (!event) return;
+ try {
+  await onUpdateEvent({ ...event, status: isCurrentlyArchived ? 'pending' : 'archived' });
+ } catch (error: any) {
+  alert(`No se ${isCurrentlyArchived ? 'desarchivó' : 'archivó'} el evento. Supabase no confirmó el cambio: ${error?.message || 'error de conexión'}`);
+  return;
+ }
 
  const toast = document.getElementById('toast-msg');
  if (toast) {

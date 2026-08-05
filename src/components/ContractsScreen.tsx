@@ -49,11 +49,6 @@ const DEFAULT_INVOICE_PROVIDER = {
  isActive: true
 };
 
-const isLegacyDefaultProvider = (provider: any) =>
- provider?.name === 'Althera Solutions S.L.'
- && provider?.cif === 'B-18974534'
- && provider?.email === 'administracion@althera.io';
-
 const splitIssuerAddress = (value?: string) => {
  const address = value?.trim() || '';
  const match = address.match(/^(.*?),\s*(\d{5}\s*-\s*.*)$/);
@@ -568,25 +563,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
  // --- SERVICE PROVIDER (EMISOR) STATE ---
  const [showProviderInfo, setShowProviderInfo] = useState(true);
- const [providers, setProviders] = useState<any[]>(() => {
- try {
-  const saved = sessionStorage.getItem('agency_invoice_providers');
-  if (saved) {
-   const parsed = JSON.parse(saved);
-   if (Array.isArray(parsed) && parsed.length === 1 && isLegacyDefaultProvider(parsed[0])) {
-    return [{ ...DEFAULT_INVOICE_PROVIDER }];
-   }
-   if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-  }
- } catch (e) {
-  console.error('Error loading providers:', e);
- }
- return [{ ...DEFAULT_INVOICE_PROVIDER }];
- });
-
- useEffect(() => {
- sessionStorage.setItem('agency_invoice_providers', JSON.stringify(providers));
- }, [providers]);
+ const [providers, setProviders] = useState<any[]>([{ ...DEFAULT_INVOICE_PROVIDER }]);
 
  // --- SHOW PAYMENT INFO STATE ---
  const [showPaymentInfo, setShowPaymentInfo] = useState(true);
@@ -1147,7 +1124,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       ⚠️ Base de Datos Sin Tablas
      </p>
      <p className="text-[9px] text-slate-400 leading-normal">
-      El contrato se guardará localmente (seguro y offline) por ahora. Puedes configurar las tablas de Supabase en 1 clic.
+      El contrato solo se considerará guardado cuando Supabase confirme la operación. Sin conexión no se creará ninguna copia local.
      </p>
      <button
       type="button"
@@ -2900,7 +2877,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
     </div>
 
     <div className="bg-amber-500/5 border border-amber-500/10 p-3 rounded-2xl text-[10px] text-amber-500/95 leading-relaxed">
-    <b>Nota sobre Sincronización Automática:</b> El sistema continuará almacenando y cargando de forma fluida todos tus datos localmente en tiempo real (modo Offline/Backup) para que tu trabajo nunca se detenga o pierda. Tan pronto como crees las tablas en Supabase, los datos se subirán a la nube automáticamente al presionar Guardar.
+    <b>Persistencia obligatoria:</b> contratos, facturas y pagos solo aparecen como guardados después de la confirmación de Supabase. No existe modo offline ni copia local de respaldo.
     </div>
    </div>
    </div>

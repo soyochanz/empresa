@@ -4,7 +4,8 @@ import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, Come
 import { db } from '../supabaseClient';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
-import { REGISTERED_USERS, PanelUser } from '../mockData';
+import { setInvoicePrefill } from '../utils/invoicePrefill';
+import { PanelUser } from '../mockData';
 import { 
  Plus, 
  Search, 
@@ -140,7 +141,7 @@ const getStripeDashboardUrl = (sessionId?: string, invoiceId?: string): string |
 interface CrmScreenProps {
  contacts: ClientContact[];
  events?: CalendarEvent[];
- onAddContact: (contact: ClientContact) => void;
+ onAddContact: (contact: ClientContact) => void | Promise<void>;
  onUpdateContact?: (contact: ClientContact) => void | Promise<void>;
  onDeleteContact?: (id: string) => void | Promise<void>;
  onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
@@ -158,13 +159,13 @@ export default function CrmScreen({
  onUpdateContact, 
  onDeleteContact,
  onNavigate,
- usersList = REGISTERED_USERS,
+ usersList = [],
  onAddProfile,
  onAddEvent,
  comercialesList = [],
  onRefreshFinance
 }: CrmScreenProps) {
- const [selectedContactId, setSelectedContactId] = useState<string>('c2'); // default to Marcus Chen
+ const [selectedContactId, setSelectedContactId] = useState<string>('');
  const selectedContact = contacts.find(c => c.id === selectedContactId) || contacts[0];
  const [showAddModal, setShowAddModal] = useState(false);
  const [searchQuery, setSearchQuery] = useState('');
@@ -194,11 +195,10 @@ export default function CrmScreen({
  // Tab/filter for Active vs Archived contacts
  const [crmFilter, setCrmFilter] = useState<'active' | 'archived'>('active');
 
- // Archive tracker state linked to sessionStorage
- const [archivedContactIds, setArchivedContactIds] = useState<string[]>(() => {
- const saved = sessionStorage.getItem('archived_contacts_ids');
- return saved ? JSON.parse(saved) : [];
- });
+ const archivedContactIds = React.useMemo(
+  () => contacts.filter(contact => contact.archived).map(contact => contact.id),
+  [contacts]
+ );
 
  // Connected Accounting & Invoice state definitions
  const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -774,7 +774,7 @@ export default function CrmScreen({
   const pendingTransactionIds = selectedClientTransactions
    .filter(item => item.id !== tx.id && item.type === 'income' && item.status === 'pending')
    .map(item => item.id);
-  sessionStorage.setItem('preselected_client_for_invoice', JSON.stringify({
+  setInvoicePrefill({
    id: selectedContact.id,
    name: selectedContact.company !== 'Independent' ? selectedContact.company : selectedContact.name,
    email: selectedContact.email,
@@ -784,7 +784,7 @@ export default function CrmScreen({
    language: selectedContact.language || 'es',
    taxPercentage: selectedContact.taxPercentage ?? 21,
    transactionIds: [tx.id, ...pendingTransactionIds]
-  }));
+  });
   onNavigate('finanzas', 'push');
  };
 
@@ -1656,7 +1656,7 @@ export default function CrmScreen({
  const [draggedContactId, setDraggedContactId] = useState<string | null>(null);
  const [draggedOverCol, setDraggedOverCol] = useState<'lead' | 'client' | 'archived' | null>(null);
 
- const handleDropContact = (contactId: string, targetCol: 'lead' | 'client' | 'archived') => {
+ const handleDropContact = async (contactId: string, targetCol: 'lead' | 'client' | 'archived') => {
  if (!contactId) return;
  const contact = contacts.find(c => c.id === contactId);
  if (!contact) return;
@@ -1675,25 +1675,21 @@ export default function CrmScreen({
  }
 
  let updatedContact = { ...contact };
- let newArchivedIds = [...archivedContactIds];
-
  if (targetCol === 'lead') {
   updatedContact.status = 'Lead';
-  newArchivedIds = newArchivedIds.filter(id => id !== contactId);
+  updatedContact.archived = false;
  } else if (targetCol === 'client') {
   updatedContact.status = 'Client';
-  newArchivedIds = newArchivedIds.filter(id => id !== contactId);
+  updatedContact.archived = false;
  } else if (targetCol === 'archived') {
-  if (!newArchivedIds.includes(contactId)) {
-  newArchivedIds.push(contactId);
-  }
+  updatedContact.archived = true;
  }
 
- setArchivedContactIds(newArchivedIds);
- sessionStorage.setItem('archived_contacts_ids', JSON.stringify(newArchivedIds));
-
- if (onUpdateContact) {
-  onUpdateContact(updatedContact);
+ try {
+  if (onUpdateContact) await onUpdateContact(updatedContact);
+ } catch (error: any) {
+  alert(`No se movió el cliente. Supabase no confirmó el cambio: ${error?.message || 'error de conexión'}`);
+  return;
  }
  
  setSelectedContactId(contactId);
@@ -1838,13 +1834,16 @@ export default function CrmScreen({
  );
  };
 
- const toggleArchiveContact = (id: string) => {
+ const toggleArchiveContact = async (id: string) => {
  const isCurrentlyArchived = archivedContactIds.includes(id);
- const updated = isCurrentlyArchived ?
-  archivedContactIds.filter(item => item !== id)
-  : [...archivedContactIds, id];
- setArchivedContactIds(updated);
- sessionStorage.setItem('archived_contacts_ids', JSON.stringify(updated));
+ const contact = contacts.find(item => item.id === id);
+ if (!contact || !onUpdateContact) return;
+ try {
+  await onUpdateContact({ ...contact, archived: !isCurrentlyArchived });
+ } catch (error: any) {
+  alert(`No se ${isCurrentlyArchived ? 'desarchivó' : 'archivó'} el cliente. Supabase no confirmó el cambio: ${error?.message || 'error de conexión'}`);
+  return;
+ }
 
  const toast = document.getElementById('toast-msg');
  if (toast) {
@@ -2069,7 +2068,13 @@ export default function CrmScreen({
   temperature: newColor === 'red' ? 'Caliente' : newColor === 'yellow' ? 'Templado' : 'Frío'
   };
 
-  onAddContact(generatedContact);
+  try {
+   await onAddContact(generatedContact);
+  } catch (error: any) {
+   console.error('No se pudo crear el cliente en Supabase:', error);
+   window.alert(`No se ha creado el cliente. Supabase no confirmó el guardado: ${error?.message || 'error de conexión'}`);
+   return;
+  }
   setSelectedContactId(generatedContact.id);
  }
 
@@ -3187,7 +3192,7 @@ export default function CrmScreen({
       </h4>
       <button
       onClick={() => {
-       sessionStorage.setItem('preselected_client_for_invoice', JSON.stringify({
+       setInvoicePrefill({
        id: selectedContact.id,
        name: selectedContact.name,
        email: selectedContact.email,
@@ -3196,7 +3201,7 @@ export default function CrmScreen({
        currency: selectedContact.currency || 'EUR',
        language: selectedContact.language || 'es',
        taxPercentage: selectedContact.taxPercentage ?? 21
-       }));
+       });
        if (onNavigate) {
        onNavigate('finanzas', 'push');
        }

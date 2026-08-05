@@ -132,7 +132,7 @@ export default function ActivityLogScreen() {
      </label>
      <button onClick={() => void loadLogs(true)} disabled={refreshing} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.07] px-4 text-xs font-black text-cyan-300 transition hover:bg-cyan-400/[0.12] disabled:opacity-50" aria-label="Actualizar registro"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Actualizar</button>
     </div>
-    {localOnly && <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/15 bg-amber-400/[0.045] px-3 py-2.5 text-[11px] text-amber-200/80"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Mostrando eventos pendientes de este dispositivo. Se sincronizarán automáticamente cuando la tabla de auditoría esté disponible.</div>}
+    {localOnly && <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/15 bg-amber-400/[0.045] px-3 py-2.5 text-[11px] text-amber-200/80"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />La tabla de auditoría no está disponible. Estos eventos existen solo en memoria durante esta sesión y no se consideran guardados.</div>}
    </section>
 
    <section className="overflow-hidden rounded-3xl border border-white/[0.08] bg-[#070a0f]/80">
