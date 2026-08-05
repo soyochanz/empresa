@@ -1,4 +1,4 @@
-export type Screen = 'landing' | 'portal' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub' | 'marketing' | 'departamentos';
+export type Screen = 'landing' | 'portal' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub' | 'activity_log' | 'marketing' | 'departamentos';
 
 export interface PartnerCompany {
  id: string;
@@ -268,6 +268,34 @@ export interface ComercialAccount {
  monthlyPerformance?: Record<string, MonthlyPerformanceReview>;
  legacyBonuses?: LegacyBonus[];
  mvpPointAdjustments?: MvpPointAdjustment[];
+}
+
+export type AuditActorType = 'user' | 'system';
+export type AuditSeverity = 'info' | 'warning' | 'error';
+export type AuditSource = 'ui' | 'navigation' | 'auth' | 'data' | 'system';
+
+export interface AuditLog {
+ id: string;
+ actorType: AuditActorType;
+ actorId?: string;
+ actorName: string;
+ actorEmail?: string;
+ source: AuditSource;
+ action: string;
+ description: string;
+ entityType?: string;
+ entityId?: string;
+ screen?: string;
+ severity: AuditSeverity;
+ metadata: Record<string, unknown>;
+ createdAt: string;
+}
+
+export interface AuditLogActor {
+ id?: string;
+ name: string;
+ email?: string;
+ type: AuditActorType;
 }
 
 export type LegacyBonusType = 'sale_assist' | 'training' | 'monthly_idea';

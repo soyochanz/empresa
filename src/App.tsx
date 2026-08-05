@@ -27,11 +27,13 @@ import ComercialesPanelScreen from './components/ComercialesPanelScreen';
 import ComercialesAdminScreen from './components/ComercialesAdminScreen';
 import ColdCallingScreen from './components/ColdCallingScreen';
 import DeveloperHubScreen from './components/DeveloperHubScreen';
+import ActivityLogScreen from './components/ActivityLogScreen';
 import MarketingScreen from './components/MarketingScreen';
 import DepartmentsScreen from './components/DepartmentsScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall } from 'lucide-react';
+import { installAuditTracking, recordAuditEvent, setAuditContext } from './utils/auditLog';
 
 const PRIVATE_EVENTS_CACHE_KEY = 'althera_commercial_private_events';
 const EVENTS_CACHE_KEY = 'althera_events_cache';
@@ -208,6 +210,7 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
  if (path === '/admin/comerciales') return { screen: 'comerciales_admin' };
  if (path === '/admin/cold-calling') return { screen: 'cold_calling' };
  if (path === '/admin/dev-hub') return { screen: 'developer_hub' };
+ if (path === '/admin/activity-log') return { screen: 'activity_log' };
  if (path === '/admin/marketing') return { screen: 'marketing' };
  if (path === '/admin/departamentos') return { screen: 'departamentos' };
  
@@ -230,6 +233,7 @@ function getPathFromScreen(screen: Screen): string {
  case 'notes': return '/admin/notes';
  case 'projects': return '/admin/projects';
  case 'developer_hub': return '/admin/dev-hub';
+ case 'activity_log': return '/admin/activity-log';
  case 'marketing': return '/admin/marketing';
  case 'departamentos': return '/admin/departamentos';
  case 'finanzas': return '/admin/finanzas';
@@ -468,6 +472,59 @@ export default function App() {
   sessionStorage.removeItem('agency_current_comercial');
  }
  }, [currentComercial]);
+
+ useEffect(() => installAuditTracking(), []);
+
+ useEffect(() => {
+  const actor = currentUser || currentComercial;
+  setAuditContext(actor ? {
+   enabled: true,
+   actorType: 'user',
+   actorId: actor.id || actor.email,
+   actorName: actor.name,
+   actorEmail: actor.email.toLowerCase(),
+   screen: currentScreen
+  } : {
+   enabled: false,
+   actorType: 'system',
+   actorId: undefined,
+   actorName: 'Sistema Althera',
+   actorEmail: undefined,
+   screen: currentScreen
+  });
+
+  if (!actor) return;
+  recordAuditEvent({
+   source: 'navigation',
+   action: 'screen_view',
+   description: `Pantalla abierta: ${currentScreen}`,
+   screen: currentScreen,
+   metadata: { path: window.location.pathname }
+  });
+
+  const sessionKey = `althera_audit_session:${actor.id || actor.email}`;
+  if (!sessionStorage.getItem(sessionKey)) {
+   sessionStorage.setItem(sessionKey, new Date().toISOString());
+   recordAuditEvent({ source: 'auth', action: 'session_start', description: `Sesión iniciada por ${actor.name}`, screen: currentScreen, dedupe: false });
+  }
+ }, [currentUser, currentComercial, currentScreen]);
+
+ const lastLoggedConnectionState = useRef<string>();
+ useEffect(() => {
+  if ((!currentUser && !currentComercial) || supabaseStatus.loading) return;
+  const state = `${supabaseStatus.connected}:${supabaseStatus.tablesExist}`;
+  if (lastLoggedConnectionState.current === state) return;
+  lastLoggedConnectionState.current = state;
+  recordAuditEvent({
+   actorType: 'system',
+   source: 'data',
+   action: supabaseStatus.connected && supabaseStatus.tablesExist ? 'data_connection_ready' : 'data_connection_warning',
+   description: supabaseStatus.connected && supabaseStatus.tablesExist ? 'La sincronización de datos está operativa.' : 'La sincronización de datos requiere atención.',
+   severity: supabaseStatus.connected && supabaseStatus.tablesExist ? 'info' : 'warning',
+   metadata: { connected: supabaseStatus.connected, tablesReady: supabaseStatus.tablesExist },
+   dedupe: false
+  });
+ }, [currentUser, currentComercial, supabaseStatus.loading, supabaseStatus.connected, supabaseStatus.tablesExist]);
 
  useEffect(() => {
  try {
@@ -2153,6 +2210,7 @@ export default function App() {
  comerciales_admin: { title: 'Gestion comerciales', eyebrow: 'Equipo ventas' },
  cold_calling: { title: 'Cold calling', eyebrow: 'Prospeccion' },
  developer_hub: { title: 'Organizacion devs', eyebrow: 'Demos y entregas' },
+ activity_log: { title: 'Registro de actividad', eyebrow: 'Producto y tecnologia' },
  marketing: { title: 'Marketing', eyebrow: 'Contenido' },
  departamentos: { title: 'Departamentos', eyebrow: 'Equipo y operaciones' }
  };
@@ -2318,6 +2376,8 @@ export default function App() {
    onAddEvent={handleAddEvent}
    />
   );
+  case 'activity_log':
+  return <ActivityLogScreen />;
   case 'marketing':
   return <MarketingScreen />;
   default:

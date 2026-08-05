@@ -578,7 +578,46 @@ DROP POLICY IF EXISTS "Public Delete Access" ON comerciales_accounts;
 CREATE POLICY "Public Read Access" ON comerciales_accounts FOR SELECT USING (true);
 CREATE POLICY "Public Insert Access" ON comerciales_accounts FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Access" ON comerciales_accounts FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Public Delete Access" ON comerciales_accounts FOR DELETE USING (true);`;
+CREATE POLICY "Public Delete Access" ON comerciales_accounts FOR DELETE USING (true);
+
+-- 14. Optional global audit log (append-only, paginated and searchable)
+CREATE TABLE IF NOT EXISTS audit_logs (
+ id TEXT PRIMARY KEY,
+ actor_type TEXT NOT NULL CHECK (actor_type IN ('user', 'system')),
+ actor_id TEXT,
+ actor_name TEXT NOT NULL,
+ actor_email TEXT,
+ source TEXT NOT NULL CHECK (source IN ('ui', 'navigation', 'auth', 'data', 'system')),
+ action TEXT NOT NULL,
+ description TEXT NOT NULL,
+ entity_type TEXT,
+ entity_id TEXT,
+ screen TEXT,
+ severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'error')),
+ metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+ created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+ search_document TSVECTOR GENERATED ALWAYS AS (
+  to_tsvector('simple', coalesce(action, '') || ' ' || coalesce(description, '') || ' ' || coalesce(actor_name, '') || ' ' || coalesce(actor_email, '') || ' ' || coalesce(screen, '') || ' ' || coalesce(entity_type, ''))
+ ) STORED
+);
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE audit_logs FROM anon, authenticated;
+GRANT INSERT ON TABLE audit_logs TO anon, authenticated;
+GRANT SELECT ON TABLE audit_logs TO authenticated;
+DROP POLICY IF EXISTS "Authenticated users can read audit logs" ON audit_logs;
+CREATE POLICY "Authenticated users can read audit logs" ON audit_logs FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Internal clients can append safe audit logs" ON audit_logs;
+CREATE POLICY "Internal clients can append safe audit logs" ON audit_logs FOR INSERT TO anon, authenticated WITH CHECK (
+ actor_type IN ('user', 'system') AND source IN ('ui', 'navigation', 'auth', 'data', 'system') AND severity IN ('info', 'warning', 'error')
+ AND char_length(actor_name) BETWEEN 1 AND 160 AND char_length(coalesce(actor_email, '')) <= 320
+ AND char_length(action) BETWEEN 1 AND 80 AND char_length(description) BETWEEN 1 AND 500 AND pg_column_size(metadata) <= 8192
+ AND (actor_type = 'system' OR actor_email IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_logs_actor_type_created_idx ON audit_logs (actor_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_logs_actor_email_created_idx ON audit_logs (actor_email, created_at DESC) WHERE actor_email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS audit_logs_source_created_idx ON audit_logs (source, created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_logs_search_idx ON audit_logs USING GIN (search_document);`;
 
 export interface ConnectionStatus {
  connected: boolean;

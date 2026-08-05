@@ -1,5 +1,5 @@
 import { ComponentType } from 'react';
-import { Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, PhoneCall, Receipt, UsersRound, X } from 'lucide-react';
+import { Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, PhoneCall, Receipt, ScrollText, UsersRound, X } from 'lucide-react';
 import { Screen } from '../types';
 
 interface SidebarProps {
@@ -28,7 +28,8 @@ const groups: { label: string; items: NavItem[] }[] = [
  ]},
  { label: 'Producto y tecnología', items: [
   { screen: 'developer_hub', label: 'Dev Section', icon: Code2, hint: 'Demos' },
-  { screen: 'projects', label: 'Proyectos', icon: FolderKanban }
+  { screen: 'projects', label: 'Proyectos', icon: FolderKanban },
+  { screen: 'activity_log', label: 'Registro de actividad', icon: ScrollText, hint: 'Todo' }
  ]},
  { label: 'Operaciones', items: [
   { screen: 'citas', label: 'Control de citas', icon: CalendarDays },

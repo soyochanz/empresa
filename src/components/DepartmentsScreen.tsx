@@ -1,4 +1,4 @@
-import { BarChart3, BriefcaseBusiness, Code2, Megaphone, PhoneCall, TrendingUp, UsersRound } from 'lucide-react';
+import { BarChart3, BriefcaseBusiness, Code2, Megaphone, PhoneCall, ScrollText, TrendingUp, UsersRound } from 'lucide-react';
 import { Screen } from '../types';
 
 interface DepartmentsScreenProps {
@@ -40,7 +40,8 @@ const departmentGroups = [
   icon: Code2,
   items: [
    { title: 'Gestion dev', description: 'Clientes pendientes de web, demos, credenciales y checklist tecnico.', screen: 'developer_hub' as Screen, icon: Code2 },
-   { title: 'Proyectos', description: 'Portfolio interno y trabajos promovidos a proyecto.', screen: 'projects' as Screen, icon: BriefcaseBusiness }
+   { title: 'Proyectos', description: 'Portfolio interno y trabajos promovidos a proyecto.', screen: 'projects' as Screen, icon: BriefcaseBusiness },
+   { title: 'Registro de actividad', description: 'Auditoria de usuarios, sistema, datos y navegacion de Althera.', screen: 'activity_log' as Screen, icon: ScrollText }
   ]
  }
 ];
