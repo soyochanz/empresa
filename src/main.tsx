@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import DatabaseMutationOverlay from './components/DatabaseMutationOverlay.tsx';
 import './index.css';
 
 if (typeof window !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)) {
@@ -24,5 +25,6 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 createRoot(document.getElementById('root')!).render(
  <StrictMode>
  <App />
+ <DatabaseMutationOverlay />
  </StrictMode>,
 );

@@ -1,4 +1,4 @@
-import { CSSProperties, ReactNode, useCallback, useEffect, useRef } from 'react';
+import { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useRef } from 'react';
 import './BorderGlow.css';
 
 interface BorderGlowProps {
@@ -56,7 +56,7 @@ const animateValue = (start: number, end: number, duration: number, delay: numbe
 export default function BorderGlow({ children, className = '', edgeSensitivity = 30, glowColor = '40 80 80', backgroundColor = '#120F17', borderRadius = 28, glowRadius = 40, glowIntensity = 1, coneSpread = 25, animated = false, colors = ['#c084fc', '#f472b6', '#38bdf8'], fillOpacity = .5 }: BorderGlowProps) {
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const card = cardRef.current;
     if (!card) return;
     const rect = card.getBoundingClientRect();

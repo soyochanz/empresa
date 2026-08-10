@@ -46,7 +46,7 @@ import {
  ,ExternalLink
  } from 'lucide-react';
 import { ColdCallingLead, ColdCallingProspectGroup, ComercialAccount, ClientContact, CalendarEvent, Invoice, InvoiceItem, FinanceTransaction, ComercialLead } from '../types';
-import { db } from '../supabaseClient';
+import { beginBlockingDatabaseOperation, db } from '../supabaseClient';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import ProductNeedsSummary from './ProductNeedsSummary';
 
@@ -529,6 +529,10 @@ const nachoAdmin = findAdminByName('nacho');
  const handleConfirmConvertToClient = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!convertingLead || !onAddContact) return;
+ const finishConversion = beginBlockingDatabaseOperation(`cold-calling-conversion:${convertingLead.id}`, 'convertLeadToClient');
+ if (!finishConversion) return;
+
+ try {
 
  const subtleColor = convertingLead.temperature === 'Caliente' ? 'rose' : convertingLead.temperature === 'Templado' ? 'amber' : 'indigo';
 
@@ -810,8 +814,8 @@ const nachoAdmin = findAdminByName('nacho');
  if (onNavigate) {
   onNavigate('crm', 'push');
  }
- if (onNavigate) {
-  onNavigate('crm', 'push');
+ } finally {
+  finishConversion();
  }
  };
 

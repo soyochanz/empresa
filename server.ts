@@ -646,19 +646,21 @@ app.post("/api/stripe/customer-overview", async (req, res) => {
       dashboardUrl: `https://dashboard.stripe.com/payments/${payment.id}`,
     }));
 
+    const activeCustomer = customer as Stripe.Customer;
+
     res.json({
       customer:
-        customer.deleted
+        "deleted" in customer && customer.deleted
           ? { id: resolvedCustomerId, deleted: true }
           : {
-              id: customer.id,
-              email: customer.email,
-              name: customer.name,
-              phone: customer.phone,
-              balance: customer.balance,
-              delinquent: customer.delinquent,
-              created: customer.created,
-              dashboardUrl: `https://dashboard.stripe.com/customers/${customer.id}`,
+              id: activeCustomer.id,
+              email: activeCustomer.email,
+              name: activeCustomer.name,
+              phone: activeCustomer.phone,
+              balance: activeCustomer.balance,
+              delinquent: activeCustomer.delinquent,
+              created: activeCustomer.created,
+              dashboardUrl: `https://dashboard.stripe.com/customers/${activeCustomer.id}`,
             },
       checkoutSession: checkoutSession
         ? {

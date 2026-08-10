@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ColdCallingProspectGroup, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog, PartnerCompany } from './types';
+import { buildDueRecurringTransactions } from './utils/financeRecurrence';
 
 // Use environment variables or fallback directly to the provided credentials
 const getSupabaseConfig = () => {
@@ -37,6 +38,56 @@ const getSupabaseConfig = () => {
 const { url: SUPABASE_URL, key: SUPABASE_ANON_KEY } = getSupabaseConfig();
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+export interface DatabaseMutationState {
+ active: boolean;
+ pending: number;
+ operation?: string;
+}
+
+type DatabaseMutationListener = (state: DatabaseMutationState) => void;
+
+const mutationListeners = new Set<DatabaseMutationListener>();
+const blockingOperationKeys = new Set<string>();
+let pendingUserMutations = 0;
+let currentMutationOperation: string | undefined;
+
+const emitMutationState = () => {
+ const state: DatabaseMutationState = {
+  active: pendingUserMutations > 0,
+  pending: pendingUserMutations,
+  operation: currentMutationOperation
+ };
+ mutationListeners.forEach(listener => listener(state));
+};
+
+export const subscribeToDatabaseMutations = (listener: DatabaseMutationListener): (() => void) => {
+ mutationListeners.add(listener);
+ listener({
+  active: pendingUserMutations > 0,
+  pending: pendingUserMutations,
+  operation: currentMutationOperation
+ });
+ return () => mutationListeners.delete(listener);
+};
+
+export const beginBlockingDatabaseOperation = (key: string, operation = key): (() => void) | null => {
+ if (blockingOperationKeys.has(key)) return null;
+ blockingOperationKeys.add(key);
+ pendingUserMutations += 1;
+ currentMutationOperation = operation;
+ emitMutationState();
+
+ let finished = false;
+ return () => {
+  if (finished) return;
+  finished = true;
+  blockingOperationKeys.delete(key);
+  pendingUserMutations = Math.max(0, pendingUserMutations - 1);
+  if (pendingUserMutations === 0) currentMutationOperation = undefined;
+  emitMutationState();
+ };
+};
 
 const INVOICE_TAX_ID_TAG = /\s*\[CLIENT_TAX_ID:([^\]]*)\]/g;
 const INVOICE_ADDRESS_TAG = /\s*\[CLIENT_ADDRESS:([^\]]*)\]/g;
@@ -625,27 +676,27 @@ export interface ConnectionStatus {
  error?: string;
 }
 
+const CONNECTION_STATUS_TTL_MS = 60_000;
+let connectionStatusCache: { status: ConnectionStatus; timestamp: number } | null = null;
+let connectionCheckInFlight: Promise<ConnectionStatus> | null = null;
+
 /**
  * Checks connection state and table health.
  */
-export async function checkSupabaseConnection(): Promise<ConnectionStatus> {
+export function checkSupabaseConnection(): Promise<ConnectionStatus> {
+ if (connectionStatusCache && Date.now() - connectionStatusCache.timestamp < CONNECTION_STATUS_TTL_MS) {
+  return Promise.resolve(connectionStatusCache.status);
+ }
+ if (connectionCheckInFlight) return connectionCheckInFlight;
+
+ connectionCheckInFlight = (async () => {
  try {
  const requiredTables = [
   'contacts',
   'events',
-  'notes',
-  'activities',
-  'profiles',
-  'inquiries',
-  'projects',
-  'finance_transactions',
-  'finance_invoices',
-  'contracts_althera',
   'cold_calling_leads',
   'comercial_leads',
-  'comerciales_accounts',
-  'demo_sites',
-  'marketing_items'
+  'comerciales_accounts'
  ];
 
  const checks = await Promise.all(requiredTables.map(async table => ({
@@ -667,10 +718,17 @@ export async function checkSupabaseConnection(): Promise<ConnectionStatus> {
   }
  }
  
- return { connected: true, tablesExist: true };
+ const status = { connected: true, tablesExist: true };
+ connectionStatusCache = { status, timestamp: Date.now() };
+ return status;
  } catch (err: any) {
  return { connected: false, tablesExist: false, error: err?.message || String(err) };
  }
+ })();
+
+ return connectionCheckInFlight.finally(() => {
+  connectionCheckInFlight = null;
+ });
 }
 
 /**
@@ -729,7 +787,7 @@ export async function seedSupabaseDatabase(
 // ==========================================
 // DB Caching Layer to minimize Supabase Egress
 // ==========================================
-const CACHE_TTL_MS = 10000; // Keep reads snappy without hiding cross-session changes for long.
+const CACHE_TTL_MS = 60_000; // Realtime invalidation keeps shared records fresh without polling every table repeatedly.
 const _queryCache: Record<string, { data: any; timestamp: number }> = {};
 
 function getCached<T>(key: string): T | null {
@@ -755,9 +813,15 @@ function invalidateCache(keyPrefix: string): void {
  });
 }
 
-export const invalidateSharedPipelineCache = (): void => {
- ['cold_calling_leads', 'comercial_leads', 'contacts', 'events', 'finance_transactions', 'finance_invoices']
-  .forEach(invalidateCache);
+export const invalidateSharedPipelineCache = (tables: string[] = [
+ 'cold_calling_leads',
+ 'comercial_leads',
+ 'contacts',
+ 'events',
+ 'finance_transactions',
+ 'finance_invoices'
+]): void => {
+ tables.forEach(invalidateCache);
 };
 
 function clearAllCache(): void {
@@ -805,7 +869,7 @@ const mapCommercialActivityLog = (row: any): CommercialActivityLog => ({
 // DB API Helper functions for each Resource
 // ==========================================
 
-export const db = {
+const dbImplementation = {
  // --- CACHE MANUAL EXPOSURE ---
  clearAllCache() {
  clearAllCache();
@@ -1184,9 +1248,14 @@ export const db = {
  },
 
  async getDemoSites(): Promise<DemoSite[]> {
+ const cacheKey = 'demo_sites';
+ const cached = getCached<DemoSite[]>(cacheKey);
+ if (cached) return cached;
  const { data, error } = await supabase.from('demo_sites').select('*').order('created_at', { ascending: false });
  if (error) throw error;
- return (data || []) as DemoSite[];
+ const result = (data || []) as DemoSite[];
+ setCached(cacheKey, result);
+ return result;
  },
 
  async upsertDemoSite(site: DemoSite): Promise<void> {
@@ -1351,7 +1420,7 @@ export const db = {
  // These helpers serialize/deserialize virtual fields into the description column
  // to avoid column-not-found errors on any Supabase DB setup.
  _encodeDescription(description: string, metadata: {
- paymentMethod?: 'cash' | 'transfer';
+ paymentMethod?: 'cash' | 'transfer' | 'stripe';
  firstAmount?: number;
  nextAmount?: number;
  clientId?: string;
@@ -1365,6 +1434,8 @@ export const db = {
  comercialId?: string;
  comercialEmail?: string;
  isInitialSale?: boolean;
+ recurrenceSourceId?: string;
+ recurrenceScheduledDate?: string;
  }): string {
  let res = description || '';
  if (metadata.paymentMethod) {
@@ -1409,12 +1480,18 @@ export const db = {
  if (metadata.isInitialSale !== undefined) {
   res += ` [ISINITIAL:${metadata.isInitialSale ? 'true' : 'false'}]`;
  }
+ if (metadata.recurrenceSourceId) {
+  res += ` [RECUR_SOURCE:${metadata.recurrenceSourceId}]`;
+ }
+ if (metadata.recurrenceScheduledDate) {
+  res += ` [RECUR_DATE:${metadata.recurrenceScheduledDate}]`;
+ }
  return res;
  },
 
  _decodeDescription(rawDesc: string): {
  description: string;
- paymentMethod?: 'cash' | 'transfer';
+ paymentMethod?: 'cash' | 'transfer' | 'stripe';
  firstAmount?: number;
  nextAmount?: number;
  clientId?: string;
@@ -1428,9 +1505,11 @@ export const db = {
  comercialId?: string;
  comercialEmail?: string;
  isInitialSale?: boolean;
+ recurrenceSourceId?: string;
+ recurrenceScheduledDate?: string;
  } {
  let cleanDesc = rawDesc || '';
- let paymentMethod: 'cash' | 'transfer' | undefined = undefined;
+ let paymentMethod: 'cash' | 'transfer' | 'stripe' | undefined = undefined;
  let firstAmount: number | undefined = undefined;
  let nextAmount: number | undefined = undefined;
  let clientId: string | undefined = undefined;
@@ -1444,8 +1523,10 @@ export const db = {
  let comercialId: string | undefined = undefined;
  let comercialEmail: string | undefined = undefined;
  let isInitialSale: boolean | undefined = undefined;
+ let recurrenceSourceId: string | undefined = undefined;
+ let recurrenceScheduledDate: string | undefined = undefined;
 
- const pmRegex = /\s*\[PM:(cash|transfer)\]/g;
+ const pmRegex = /\s*\[PM:(cash|transfer|stripe)\]/g;
  const faRegex = /\s*\[FA:([\d.]+)\]/g;
  const naRegex = /\s*\[NA:([\d.]+)\]/g;
  const clientRegex = /\s*\[CLIENT:([^\]]+)\]/g;
@@ -1459,6 +1540,8 @@ export const db = {
  const comidRegex = /\s*\[COMID:([^\]]+)\]/g;
  const comemailRegex = /\s*\[COMEMAIL:([^\]]+)\]/g;
  const isinitRegex = /\s*\[ISINITIAL:(true|false)\]/g;
+ const recurrenceSourceRegex = /\s*\[RECUR_SOURCE:([^\]]+)\]/g;
+ const recurrenceDateRegex = /\s*\[RECUR_DATE:(\d{4}-\d{2}-\d{2})\]/g;
 
  let match;
  while ((match = pmRegex.exec(cleanDesc)) !== null) {
@@ -1535,6 +1618,16 @@ export const db = {
  }
  cleanDesc = cleanDesc.replace(isinitRegex, '');
 
+ while ((match = recurrenceSourceRegex.exec(cleanDesc)) !== null) {
+  recurrenceSourceId = match[1];
+ }
+ cleanDesc = cleanDesc.replace(recurrenceSourceRegex, '');
+
+ while ((match = recurrenceDateRegex.exec(cleanDesc)) !== null) {
+  recurrenceScheduledDate = match[1];
+ }
+ cleanDesc = cleanDesc.replace(recurrenceDateRegex, '');
+
  return {
   description: cleanDesc.trim(),
   paymentMethod,
@@ -1550,7 +1643,9 @@ export const db = {
   invoiceId,
   comercialId,
   comercialEmail,
-  isInitialSale
+  isInitialSale,
+  recurrenceSourceId,
+  recurrenceScheduledDate
  };
  },
 
@@ -1591,16 +1686,58 @@ export const db = {
   invoiceId: decoded.invoiceId,
   comercialId: decoded.comercialId,
   comercialEmail: decoded.comercialEmail,
-  isInitialSale: decoded.isInitialSale
+  isInitialSale: decoded.isInitialSale,
+  recurrenceSourceId: decoded.recurrenceSourceId,
+  recurrenceScheduledDate: decoded.recurrenceScheduledDate,
+  ownerUserId: tx.user_id || undefined
   };
  });
  setCached(cacheKey, result);
  return result;
  },
 
+ async materializeDueRecurringFinanceTransactions(
+  transactions: FinanceTransaction[],
+  throughDate = new Date()
+ ): Promise<{ attempted: number; inserted: number }> {
+ const dueTransactions = buildDueRecurringTransactions(transactions, throughDate);
+ if (dueTransactions.length === 0) return { attempted: 0, inserted: 0 };
+
+ const payload = dueTransactions.map(transaction => ({
+  id: transaction.id,
+  type: transaction.type,
+  category: transaction.category,
+  amount: transaction.amount,
+  date: transaction.date,
+  description: this._encodeDescription(transaction.description, {
+   paymentMethod: transaction.paymentMethod,
+   clientId: transaction.clientId,
+   stripePlanId: transaction.stripePlanId,
+   invoiceId: transaction.invoiceId,
+   comercialId: transaction.comercialId,
+   comercialEmail: transaction.comercialEmail,
+   isInitialSale: transaction.isInitialSale,
+   recurrenceSourceId: transaction.recurrenceSourceId,
+   recurrenceScheduledDate: transaction.recurrenceScheduledDate
+  }),
+  isRecurring: false,
+  recurrencePeriod: null,
+  status: 'paid',
+  user_id: transaction.ownerUserId || null
+ }));
+
+ const { data, error } = await supabase
+  .from('finance_transactions')
+  .upsert(payload, { onConflict: 'id', ignoreDuplicates: true })
+  .select('id');
+ if (error) throw error;
+ invalidateCache('finance_transactions');
+ return { attempted: dueTransactions.length, inserted: data?.length || 0 };
+ },
+
  async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
  const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
- const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
+ const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale, recurrenceSourceId, recurrenceScheduledDate } = transaction;
 
  const encodedDesc = this._encodeDescription(description, {
   paymentMethod,
@@ -1616,7 +1753,9 @@ export const db = {
   invoiceId,
   comercialId,
   comercialEmail,
-  isInitialSale
+  isInitialSale,
+  recurrenceSourceId,
+  recurrenceScheduledDate
  });
 
  const payload = {
@@ -1640,7 +1779,7 @@ export const db = {
 
  async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
  const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
- const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale } = transaction;
+ const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale, recurrenceSourceId, recurrenceScheduledDate } = transaction;
 
  const encodedDesc = this._encodeDescription(description, {
   paymentMethod,
@@ -1656,7 +1795,9 @@ export const db = {
   invoiceId,
   comercialId,
   comercialEmail,
-  isInitialSale
+  isInitialSale,
+  recurrenceSourceId,
+  recurrenceScheduledDate
  });
 
  const payload = {
@@ -2302,12 +2443,18 @@ export const db = {
 
  // --- LANDING PARTNERS ---
  async getPartners(): Promise<PartnerCompany[]> {
+  const cacheKey = 'landing_partners';
+  const cached = getCached<PartnerCompany[]>(cacheKey);
+  if (cached) return cached;
   const { data, error } = await supabase.from('landing_partners').select('*').order('created_at', { ascending: true });
   if (error) throw error;
-  return (data || []).map(row => ({ id: row.id, name: row.name, logoUrl: row.logo_url, website: row.website || undefined, created_at: row.created_at }));
+  const result = (data || []).map(row => ({ id: row.id, name: row.name, logoUrl: row.logo_url, website: row.website || undefined, created_at: row.created_at }));
+  setCached(cacheKey, result);
+  return result;
  },
 
  async upsertPartner(partner: PartnerCompany): Promise<void> {
+  invalidateCache('landing_partners');
   const { data, error } = await supabase.from('landing_partners')
    .upsert({ id: partner.id, name: partner.name, logo_url: partner.logoUrl, website: partner.website || null, created_at: partner.created_at || new Date().toISOString() })
    .select('id')
@@ -2317,6 +2464,7 @@ export const db = {
  },
 
  async deletePartner(id: string): Promise<void> {
+  invalidateCache('landing_partners');
   const { data, error } = await supabase.from('landing_partners').delete().eq('id', id).select('id');
   if (error) throw error;
   if (!data?.length) throw new Error(`No se pudo eliminar la empresa colaboradora ${id}: Supabase no modificó ninguna fila.`);
@@ -3004,4 +3152,92 @@ export const db = {
   if (error) throw error;
   return (data || []).map(mapCommercialActivityLog);
  }
+} as const;
+
+const readOperationsInFlight = new Map<string, Promise<unknown>>();
+const mutationOperationsInFlight = new Map<string, Promise<unknown>>();
+const wrappedDatabaseMethods = new Map<PropertyKey, (...args: any[]) => any>();
+const BACKGROUND_MUTATIONS = new Set([
+ 'insertActivity',
+ 'upsertProfile',
+ 'setCommercialPresence',
+ 'heartbeatCommercialPresence',
+ 'addCommercialActivityLog'
+]);
+
+const operationFingerprint = (method: string, args: unknown[]): string => {
+ let serialized: string;
+ try {
+  serialized = JSON.stringify(args, (_key, value) => {
+   if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.keys(value as Record<string, unknown>)
+     .sort()
+     .reduce<Record<string, unknown>>((sorted, key) => {
+      sorted[key] = (value as Record<string, unknown>)[key];
+      return sorted;
+     }, {});
+   }
+   return value;
+  });
+ } catch {
+  serialized = args.map(value => String(value)).join('|');
+ }
+ let hash = 2166136261;
+ for (let index = 0; index < serialized.length; index += 1) {
+  hash ^= serialized.charCodeAt(index);
+  hash = Math.imul(hash, 16777619);
+ }
+ return `${method}:${serialized.length}:${hash >>> 0}`;
 };
+
+const isUserMutation = (method: string) =>
+ /^(insert|update|upsert|delete)/.test(method) && !BACKGROUND_MUTATIONS.has(method);
+
+export const db: typeof dbImplementation = new Proxy<typeof dbImplementation>(dbImplementation, {
+ get(target, property, receiver) {
+  const value = Reflect.get(target, property, receiver);
+  if (typeof value !== 'function' || typeof property !== 'string') return value;
+
+  const existingWrapper = wrappedDatabaseMethods.get(property);
+  if (existingWrapper) return existingWrapper;
+
+  const wrapped = (...args: any[]) => {
+   const key = operationFingerprint(property, args);
+
+   if (property.startsWith('get')) {
+    const existingRead = readOperationsInFlight.get(key);
+    if (existingRead) return existingRead;
+    const readPromise = Promise.resolve(value.apply(receiver, args));
+    readOperationsInFlight.set(key, readPromise);
+    return readPromise.finally(() => readOperationsInFlight.delete(key));
+   }
+
+   if (!isUserMutation(property)) return value.apply(receiver, args);
+
+   const existingMutation = mutationOperationsInFlight.get(key);
+   if (existingMutation) return existingMutation;
+
+   pendingUserMutations += 1;
+   currentMutationOperation = property;
+   emitMutationState();
+
+   let mutationPromise: Promise<unknown>;
+   try {
+    mutationPromise = Promise.resolve(value.apply(receiver, args));
+   } catch (error) {
+    mutationPromise = Promise.reject(error);
+   }
+   mutationOperationsInFlight.set(key, mutationPromise);
+
+   return mutationPromise.finally(() => {
+    mutationOperationsInFlight.delete(key);
+    pendingUserMutations = Math.max(0, pendingUserMutations - 1);
+    if (pendingUserMutations === 0) currentMutationOperation = undefined;
+    emitMutationState();
+   });
+  };
+
+  wrappedDatabaseMethods.set(property, wrapped);
+  return wrapped;
+ }
+});

@@ -711,7 +711,8 @@ export default function ComercialesAdminScreen({
   { label: 'Cerrados', count: indColdClosed, colorClass: 'bg-emerald-500', textClass: 'text-emerald-400' }
  ];
 
- const presenceByCommercial = new Map(commercialPresence.map(item => [item.commercialId, item]));
+ const presenceByCommercial = new Map<string, CommercialPresence>();
+ commercialPresence.forEach(item => presenceByCommercial.set(item.commercialId, item));
  const isAvailableNow = (item?: CommercialPresence) => !!item && item.status === 'available' && presenceNow - new Date(item.lastSeenAt).getTime() < 120_000;
  const availableCommercials = comercialesList
   .map(comercial => ({ comercial, presence: presenceByCommercial.get(comercial.id) }))

@@ -179,6 +179,9 @@ export interface FinanceTransaction {
  comercialId?: string; // New: associated commercial ID
  comercialEmail?: string; // New: associated commercial email
  isInitialSale?: boolean; // New: is initial acquisition sale
+ recurrenceSourceId?: string; // Recurring concept that generated this ledger entry
+ recurrenceScheduledDate?: string; // Due date used for idempotency and auditability
+ ownerUserId?: string; // Internal owner copied when a recurrence is materialized
 }
 
 export interface InvoiceItem {

@@ -698,7 +698,10 @@ export default function App() {
 
  useEffect(() => {
   const channel = supabase.channel('app-finance-transactions-sync')
-   .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transactions' }, () => void handleRefreshFinance())
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transactions' }, () => {
+    invalidateSharedPipelineCache(['finance_transactions']);
+    void handleRefreshFinance();
+   })
    .subscribe();
   return () => { void supabase.removeChannel(channel); };
  }, [handleRefreshFinance]);
@@ -960,68 +963,71 @@ export default function App() {
  };
 
  const syncInFlightRef = useRef<Promise<void> | null>(null);
+ const syncUserIdRef = useRef<string | undefined>();
 
  // Verify and hydrate state from Supabase. All independent tables load in parallel,
  // and concurrent auth/mount/interval requests share the same in-flight operation.
  const syncWithSupabase = async (userIdToSync?: string, silent = false) => {
- if (syncInFlightRef.current) return syncInFlightRef.current;
+ const requestedUid = userIdToSync || currentUser?.id || undefined;
+ if (syncInFlightRef.current) {
+  const inFlightUid = syncUserIdRef.current;
+  await syncInFlightRef.current;
+  // A generic public hydration may have started just before Auth resolved. Run
+  // one cached follow-up so user-scoped notes, activities and profiles are not skipped.
+  if (requestedUid && requestedUid !== inFlightUid) {
+   return syncWithSupabase(requestedUid, silent);
+  }
+  return;
+ }
+ syncUserIdRef.current = requestedUid;
  const operation = (async () => {
   try {
   if (!silent) {
   setSupabaseStatus(prev => ({ ...prev, loading: true }));
   }
-  const activeUid = userIdToSync || currentUser?.id;
-  // Start data reads immediately. Connection health and payloads travel in parallel,
-  // removing a full network round-trip from the first meaningful render.
+  const activeUid = requestedUid;
+  const load = async <T,>(label: string, request: () => Promise<T>, apply: (data: T) => void) => {
+   try {
+    const data = await request();
+    apply(data);
+    return data;
+   } catch (error) {
+    console.warn(`No se pudo cargar ${label} desde Supabase:`, error);
+    throw error;
+   }
+  };
+
+  // Each table paints as soon as it arrives. A slow optional table no longer holds
+  // the entire application behind one Promise.all barrier.
   const dataPromise = Promise.allSettled([
-   db.getColdLeads(),
-   db.getComercialLeads(),
-   db.getComercialesAccounts(),
-   db.getProjects(),
-   db.getContacts(),
-   db.getEvents(),
-   activeUid ? db.getNotes() : Promise.resolve(null),
-   activeUid ? db.getActivities() : Promise.resolve(null),
-   activeUid ? db.getProfiles() : Promise.resolve(null)
+   load('cold calling', () => db.getColdLeads(), setColdLeads),
+   load('leads comerciales', () => db.getComercialLeads(), setLeadsList),
+   load('cuentas comerciales', () => db.getComercialesAccounts(), fetched => {
+    setComercialesList(fetched);
+    setCurrentComercial(current => current
+     ? fetched.find(account => account.id === current.id) || current
+     : current);
+   }),
+   load('proyectos', () => db.getProjects(), setProjects),
+   load('contactos', () => db.getContacts(), setContacts),
+   load('eventos', () => db.getEvents(), setEvents),
+   ...(activeUid ? [
+    load('notas', () => db.getNotes(), setNotes),
+    load('actividades', () => db.getActivities(), setActivities),
+    load('perfiles', () => db.getProfiles(), fetched => setUsersList(mergeUsers(fetched, currentUser)))
+   ] : [])
   ]);
-  const statusPromise = silent && supabaseStatus.connected && supabaseStatus.tablesExist
+  const statusPromise = (silent && supabaseStatus.connected && supabaseStatus.tablesExist
    ? Promise.resolve({ connected: true, tablesExist: true })
-   : checkSupabaseConnection();
-  const [status, results] = await Promise.all([statusPromise, dataPromise]);
-  if (!silent) {
-  setSupabaseStatus({ ...status, loading: false });
-  } else {
-  setSupabaseStatus(prev => ({ ...prev, connected: status.connected, tablesExist: status.tablesExist }));
-  }
-
-  if (status.connected && status.tablesExist) {
-  const value = <T,>(index: number): T | null => results[index].status === 'fulfilled' ? results[index].value as T : null;
-
-  const fetchedCold = value<ColdCallingLead[]>(0);
-  const fetchedComercialLeads = value<ComercialLead[]>(1);
-  const fetchedComercialAccs = value<ComercialAccount[]>(2);
-  const fetchedProjects = value<AgencyProject[]>(3);
-  const fetchedContacts = value<ClientContact[]>(4);
-  const fetchedEvents = value<CalendarEvent[]>(5);
-  const fetchedNotes = value<Note[]>(6);
-  const fetchedActivities = value<Activity[]>(7);
-  const fetchedProfiles = value<any[]>(8);
-
-  if (fetchedCold) setColdLeads(fetchedCold);
-  if (fetchedComercialLeads) setLeadsList(fetchedComercialLeads);
-  if (fetchedComercialAccs) {
-   setComercialesList(fetchedComercialAccs);
-   setCurrentComercial(current => current
-    ? fetchedComercialAccs.find(account => account.id === current.id) || current
-    : current);
-  }
-  if (fetchedProjects) setProjects(fetchedProjects);
-  if (fetchedContacts) setContacts(fetchedContacts);
-  if (fetchedEvents) setEvents(fetchedEvents);
-  if (fetchedNotes) setNotes(fetchedNotes);
-  if (fetchedActivities) setActivities(fetchedActivities);
-  if (fetchedProfiles) setUsersList(mergeUsers(fetchedProfiles, activeUid ? currentUser : undefined));
-  }
+   : checkSupabaseConnection()).then(status => {
+    if (!silent) {
+     setSupabaseStatus({ ...status, loading: false });
+    } else {
+     setSupabaseStatus(prev => ({ ...prev, connected: status.connected, tablesExist: status.tablesExist }));
+    }
+    return status;
+   });
+  await Promise.all([statusPromise, dataPromise]);
   } catch (err: any) {
   console.error('Failed to sync state with Supabase:', err);
   if (!silent) {
@@ -1038,6 +1044,7 @@ export default function App() {
   await operation;
  } finally {
   syncInFlightRef.current = null;
+  syncUserIdRef.current = undefined;
  }
  };
 
@@ -1048,7 +1055,7 @@ export default function App() {
  };
  const interval = setInterval(() => {
   refreshVisibleData();
- }, 20000);
+ }, 60000);
  window.addEventListener('focus', refreshVisibleData);
  document.addEventListener('visibilitychange', refreshVisibleData);
  return () => {
@@ -1059,19 +1066,18 @@ export default function App() {
  }, [currentUser, currentComercial]);
 
  useEffect(() => {
-  const refreshSharedPipeline = () => {
-   invalidateSharedPipelineCache();
+  const refreshSharedPipeline = (table: string) => {
+   invalidateSharedPipelineCache([table]);
    void syncWithSupabase(undefined, true);
-   void handleRefreshFinance();
   };
   const channel = supabase.channel('shared-caller-closer-pipeline')
-   .on('postgres_changes', { event: '*', schema: 'public', table: 'cold_calling_leads' }, refreshSharedPipeline)
-   .on('postgres_changes', { event: '*', schema: 'public', table: 'comercial_leads' }, refreshSharedPipeline)
-   .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, refreshSharedPipeline)
-   .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, refreshSharedPipeline)
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'cold_calling_leads' }, () => refreshSharedPipeline('cold_calling_leads'))
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'comercial_leads' }, () => refreshSharedPipeline('comercial_leads'))
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => refreshSharedPipeline('contacts'))
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, () => refreshSharedPipeline('events'))
    .subscribe();
   return () => { void supabase.removeChannel(channel); };
- }, [currentUser?.id, currentComercial?.id, handleRefreshFinance]);
+ }, [currentUser?.id, currentComercial?.id]);
 
  // Router synchronization effect
  useEffect(() => {
@@ -1168,13 +1174,12 @@ export default function App() {
   }
  });
 
- // Verify general connection health on mount
- checkSupabaseConnection().then(status => {
+ // Health and payload hydration begin together. In-flight deduplication ensures
+ // auth callbacks and this mount path share one set of requests.
+ void checkSupabaseConnection().then(status => {
   setSupabaseStatus({ ...status, loading: false });
-  if (status.connected && status.tablesExist) {
-  syncWithSupabase();
-  }
  });
+ void syncWithSupabase(undefined, true);
 
  return () => {
   subscription.unsubscribe();

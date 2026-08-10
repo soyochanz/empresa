@@ -5,6 +5,11 @@ import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesR
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { clearInvoicePrefill, peekInvoicePrefill } from '../utils/invoicePrefill';
+import {
+ buildManualRecurringTransaction,
+ getFinanceRecurrenceDate,
+ getNextFinanceRecurrenceDate
+} from '../utils/financeRecurrence';
 import { 
  DollarSign, 
  TrendingUp, 
@@ -100,29 +105,18 @@ const getStripeDashboardUrl = (sessionId?: string, invoiceId?: string): string |
 };
 
 function getNextPaymentDate(startDateStr: string, period?: string): string {
- const start = new Date(startDateStr);
- if (isNaN(start.getTime())) return 'N/A';
- 
- const today = new Date();
- let nextDate = new Date(start);
- 
- const normalizedPeriod = period?.toLowerCase() || 'monthly';
- 
- const incrementDate = (dateToInc: Date) => {
- if (normalizedPeriod === 'weekly' || normalizedPeriod === 'semanal') {
-  dateToInc.setDate(dateToInc.getDate() + 7);
- } else if (normalizedPeriod === 'yearly' || normalizedPeriod === 'anual') {
-  dateToInc.setFullYear(dateToInc.getFullYear() + 1);
- } else { // default to monthly / mensual
-  dateToInc.setMonth(dateToInc.getMonth() + 1);
- }
- };
-
- // Find the next recurrence date in the future
- incrementDate(nextDate);
- while (nextDate < today) {
- incrementDate(nextDate);
- }
+ const nextDate = getNextFinanceRecurrenceDate({
+  id: 'preview',
+  type: 'income',
+  category: '',
+  amount: 0,
+  date: startDateStr,
+  description: '',
+  isRecurring: true,
+  recurrencePeriod: (period || 'monthly') as FinanceTransaction['recurrencePeriod'],
+  status: 'paid'
+ });
+ if (!nextDate) return 'N/A';
  
  return nextDate.toLocaleDateString('es-ES', { 
  year: 'numeric', 
@@ -149,32 +143,12 @@ const getRecurringIncomeOccurrences = (transaction: FinanceTransaction, monthKey
  const [year, month] = monthKey.split('-').map(Number);
  const monthStart = new Date(year, month - 1, 1, 0, 0, 0, 0);
  const monthEnd = new Date(year, month, 1, 0, 0, 0, 0);
- const period = transaction.recurrencePeriod || 'monthly';
  const occurrences: Date[] = [];
-
- if (period === 'weekly') {
-  const occurrence = new Date(start);
-  occurrence.setDate(occurrence.getDate() + 7);
-  while (occurrence < monthStart) occurrence.setDate(occurrence.getDate() + 7);
-  while (occurrence < monthEnd) {
-   occurrences.push(new Date(occurrence));
-   occurrence.setDate(occurrence.getDate() + 7);
-  }
-  return occurrences;
+ for (let index = 0; index < 10_000; index += 1) {
+  const occurrence = getFinanceRecurrenceDate(start, transaction.recurrencePeriod, index);
+  if (occurrence >= monthEnd) break;
+  if (occurrence >= monthStart) occurrences.push(occurrence);
  }
-
- if (period === 'yearly') {
-  const day = Math.min(start.getDate(), new Date(year, start.getMonth() + 1, 0).getDate());
-  const occurrence = new Date(year, start.getMonth(), day, 12);
-  if (occurrence > start && occurrence >= monthStart && occurrence < monthEnd) occurrences.push(occurrence);
-  return occurrences;
- }
-
- const monthsBetween = (year - start.getFullYear()) * 12 + (month - 1 - start.getMonth());
- if (monthsBetween < 1) return [];
- const targetDay = Math.min(start.getDate(), new Date(year, month, 0).getDate());
- const occurrence = new Date(year, month - 1, targetDay, 12);
- if (occurrence >= monthStart && occurrence < monthEnd) occurrences.push(occurrence);
  return occurrences;
 };
 
@@ -503,8 +477,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  async function fetchDatabaseFinanceData() {
   try {
   setSyncStatus('syncing');
-  const dbTxs = await db.getFinanceTransactions();
-  const dbInvs = await db.getFinanceInvoices();
+  const [initialTxs, dbInvs] = await Promise.all([
+   db.getFinanceTransactions(),
+   db.getFinanceInvoices()
+  ]);
+  let dbTxs = initialTxs;
+  try {
+   const recurrenceResult = await db.materializeDueRecurringFinanceTransactions(initialTxs);
+   if (recurrenceResult.attempted > 0) dbTxs = await db.getFinanceTransactions();
+  } catch (recurrenceError) {
+   console.warn('Recurring finance materialization failed:', recurrenceError);
+  }
   if (active) {
    // Sync state directly from Supabase, even if empty (so it clears any old mock local storage)
    setTransactions(dbTxs || []);
@@ -728,11 +711,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Calculations for transactions
- const totalIncomes = transactions
+ const ledgerTransactions = transactions.filter(transaction => !transaction.isRecurring);
+
+ const totalIncomes = ledgerTransactions
  .filter(t => t.type === 'income')
  .reduce((sum, t) => sum + t.amount, 0);
 
- const totalExpenses = transactions
+ const totalExpenses = ledgerTransactions
  .filter(t => t.type === 'expense')
  .reduce((sum, t) => sum + t.amount, 0);
 
@@ -747,22 +732,22 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const netProfit = totalIncomes - totalExpenses - commercialSalaries;
 
  // Cálculo de Saldos Consolidado y Pendiente según requerimiento
- const consolidatedIncomes = transactions
+ const consolidatedIncomes = ledgerTransactions
  .filter(t => t.type === 'income' && t.status === 'paid')
  .reduce((sum, t) => sum + t.amount, 0);
 
- const consolidatedExpenses = transactions
+ const consolidatedExpenses = ledgerTransactions
  .filter(t => t.type === 'expense' && t.status === 'paid')
  .reduce((sum, t) => sum + t.amount, 0);
 
  const consolidatedBalance = consolidatedIncomes;
  const netCashBalance = consolidatedIncomes - consolidatedExpenses - commercialSalaries;
 
- const pendingIncomes = transactions
+ const pendingIncomes = ledgerTransactions
  .filter(t => t.type === 'income' && t.status === 'pending')
  .reduce((sum, t) => sum + t.amount, 0);
 
- const pendingExpenses = transactions
+ const pendingExpenses = ledgerTransactions
  .filter(t => t.type === 'expense' && t.status === 'pending')
  .reduce((sum, t) => sum + t.amount, 0);
 
@@ -868,11 +853,29 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  try {
   if (isEditingTx && editingTxId) {
    await db.updateFinanceTransaction(payload);
-   setTransactions(prev => prev.map(t => t.id === editingTxId ? payload : t));
+   const updatedTransactions = transactions.map(t => t.id === editingTxId ? payload : t);
+   setTransactions(updatedTransactions);
+   if (payload.isRecurring) {
+    try {
+     const recurrenceResult = await db.materializeDueRecurringFinanceTransactions(updatedTransactions);
+     if (recurrenceResult.attempted > 0) setTransactions(await db.getFinanceTransactions());
+    } catch (recurrenceError) {
+     console.warn('Recurring finance materialization failed after update:', recurrenceError);
+    }
+   }
    showToast(`Sincronizado: ${payload.type === 'income' ? 'Ingreso' : 'Gasto'} actualizado en Supabase.`);
   } else {
    await db.insertFinanceTransaction(payload);
-   setTransactions(prev => [payload, ...prev]);
+   const updatedTransactions = [payload, ...transactions];
+   setTransactions(updatedTransactions);
+   if (payload.isRecurring) {
+    try {
+     const recurrenceResult = await db.materializeDueRecurringFinanceTransactions(updatedTransactions);
+     if (recurrenceResult.attempted > 0) setTransactions(await db.getFinanceTransactions());
+    } catch (recurrenceError) {
+     console.warn('Recurring finance materialization failed after insert:', recurrenceError);
+    }
+   }
    showToast(`Sincronizado: ${payload.type === 'income' ? 'Ingreso' : 'Gasto'} guardado en Supabase.`);
   }
  } catch (err: any) {
@@ -1629,25 +1632,23 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Helper to trigger recurrence manual payment simulation
- const handleProcessRecurring = async (tx: FinanceTransaction) => {
- // Generate a new transaction on today's date mimicking this recurrence
- const chargeAmount = tx.nextAmount ?? tx.amount;
+const handleProcessRecurring = async (tx: FinanceTransaction) => {
+ const manualPayment = buildManualRecurringTransaction(tx);
+ const chargeAmount = manualPayment.amount;
  const isIncome = tx.type === 'income';
- const manualPayment: FinanceTransaction = {
-  id: 'tx_' + Date.now() + '_rec',
-  type: tx.type,
-  category: tx.category,
-  amount: chargeAmount,
-  date: new Date().toISOString().split('T')[0],
-  description: isIncome ? `${tx.description} (Ingreso Procesado)` : `${tx.description} (Cargo Procesado)`,
-  isRecurring: false,
-  status: 'paid'
- };
+ if (transactions.some(transaction => transaction.id === manualPayment.id)) {
+  showToast('Ese concepto recurrente ya tiene un movimiento registrado hoy.', true);
+  return;
+ }
 
  try {
   await db.insertFinanceTransaction(manualPayment);
   setTransactions(prev => [manualPayment, ...prev]);
  } catch (err: any) {
+  if (err?.code === '23505') {
+   showToast('Ese concepto recurrente ya tiene un movimiento registrado hoy.', true);
+   return;
+  }
   console.error('Error inserting transaction into DB:', err);
   showToast(`No se procesó el movimiento: ${err?.message || 'Supabase no confirmó la operación'}`, true);
   return;
@@ -2219,7 +2220,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Transaction selection and calculations
- const filteredTxs = transactions.filter(t => {
+ const filteredTxs = ledgerTransactions.filter(t => {
  const matchesSearch = t.description.toLowerCase().includes(txSearch.toLowerCase()) || 
        t.category.toLowerCase().includes(txSearch.toLowerCase()) ||
        t.id.toLowerCase().includes(txSearch.toLowerCase());
@@ -2259,8 +2260,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  const invoicesDueToday = invoices.filter(inv => matchesInvoiceDueRange(inv, 'today'));
  const invoicesDueThisWeek = invoices.filter(inv => matchesInvoiceDueRange(inv, 'week'));
- const incomeTxsToday = transactions.filter(tx => tx.type === 'income' && matchesTxDateRange(tx, 'today'));
- const incomeTxsThisWeek = transactions.filter(tx => tx.type === 'income' && matchesTxDateRange(tx, 'week'));
+ const incomeTxsToday = ledgerTransactions.filter(tx => tx.type === 'income' && matchesTxDateRange(tx, 'today'));
+ const incomeTxsThisWeek = ledgerTransactions.filter(tx => tx.type === 'income' && matchesTxDateRange(tx, 'week'));
 
  const showTransactionIncomeRange = (range: 'today' | 'week') => {
  setActiveTab('transactions');
@@ -3109,7 +3110,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <span>Suscripciones e Ingresos/Gastos Recurrentes</span>
    </h3>
    <p className="text-slate-400 text-xs font-light mt-1.5 leading-relaxed max-w-3xl relative z-10 font-sans">
-    Aquí puedes supervisar los ingresos y gastos recurrentes estructurados que se procesan periódicamente. Puedes simular el abono o cobro de una nueva cuota instantánea haciendo clic en <strong className="text-purple-300 font-medium">Procesar Ingreso / Cargo</strong> para asentar la fecha actual.
+    Cada vencimiento genera automáticamente un movimiento positivo o negativo en su fecha programada y queda reflejado en la bitácora. El botón manual permite registrar hoy una cuota adicional sin duplicar otra del mismo concepto y fecha.
    </p>
    </div>
 
@@ -3254,7 +3255,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       onClick={() => handleProcessRecurring(item)}
       className="text-[10px] bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white font-extrabold px-3.5 py-2 rounded-xl transition duration-200 cursor-pointer flex items-center gap-1 active:scale-95 shadow-md shadow-purple-500/10"
      >
-      <span>{item.type === 'income' ? 'Procesar Ingreso' : 'Procesar Cargo'}</span>
+      <span>Registrar hoy</span>
       <ArrowUpRight className="w-3 h-3" />
      </button>
      </div>
@@ -3332,14 +3333,14 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         <p className="mt-1 text-[10px] text-slate-500">Genera la factura con el pago seleccionado y todas las cuotas pendientes del mismo cliente.</p>
        </div>
        <strong className="font-mono text-lg text-amber-300">
-        {transactions.filter(tx => tx.type === 'income' && tx.status === 'pending').reduce((sum, tx) => sum + tx.amount, 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+        {ledgerTransactions.filter(tx => tx.type === 'income' && tx.status === 'pending').reduce((sum, tx) => sum + tx.amount, 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
        </strong>
       </div>
 
       <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
-       {transactions.filter(tx => tx.type === 'income' && tx.status === 'pending').length === 0 ? (
+       {ledgerTransactions.filter(tx => tx.type === 'income' && tx.status === 'pending').length === 0 ? (
         <p className="rounded-2xl border border-white/5 bg-black/15 p-4 text-center text-[10px] text-slate-500">No hay importes pendientes.</p>
-       ) : transactions.filter(tx => tx.type === 'income' && tx.status === 'pending').map(tx => {
+       ) : ledgerTransactions.filter(tx => tx.type === 'income' && tx.status === 'pending').map(tx => {
         const client = contacts.find(contact => contact.id === tx.clientId);
         return (
          <div key={tx.id} className="flex flex-col gap-3 rounded-2xl border border-white/[0.06] bg-black/20 p-3 sm:flex-row sm:items-center">
@@ -4017,7 +4018,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    {/* Total Sales Volume */}
    {(() => {
     const totalVentasComerciales = rankableComercialesList.reduce((sum, com) => {
-    const txs = transactions.filter(tx => 
+    const txs = ledgerTransactions.filter(tx =>
      tx.isInitialSale === true && 
      (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
     );
@@ -4025,7 +4026,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     }, 0);
 
     const totalComisionesDevengadas = rankableComercialesList.reduce((sum, com) => {
-    const txs = transactions.filter(tx => 
+    const txs = ledgerTransactions.filter(tx =>
      tx.isInitialSale === true && 
      (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
     );
@@ -4045,7 +4046,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
     const avgComm = rankableComercialesList.length
     ? Math.round(rankableComercialesList.reduce((sum, com) => {
-     const txs = transactions.filter(tx => 
+     const txs = ledgerTransactions.filter(tx =>
       tx.isInitialSale === true && 
       (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
      );
@@ -4130,7 +4131,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </tr>
      ) : (
      rankableComercialesList.map(com => {
-      const txs = transactions.filter(tx => 
+      const txs = ledgerTransactions.filter(tx =>
       tx.isInitialSale === true && 
       (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
       );
@@ -4213,7 +4214,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </thead>
     <tbody className="divide-y divide-white/5">
      {(() => {
-     const initialTxs = transactions.filter(t => t.isInitialSale === true);
+     const initialTxs = ledgerTransactions.filter(t => t.isInitialSale === true);
      if (initialTxs.length === 0) {
       return (
       <tr>
@@ -4232,7 +4233,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       
       let commPct = 10;
       if (assignedCom) {
-      const comTxs = transactions.filter(tx => 
+      const comTxs = ledgerTransactions.filter(tx =>
        tx.isInitialSale === true && 
        (tx.comercialId === assignedCom.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === assignedCom.email.toLowerCase()))
       );
@@ -4295,8 +4296,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   const now = new Date();
   const currentMonth = now.toISOString().slice(0, 7);
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
-  const monthTxs = transactions.filter(tx => (tx.date || '').startsWith(currentMonth));
-  const prevTxs = transactions.filter(tx => (tx.date || '').startsWith(prev));
+  const monthTxs = ledgerTransactions.filter(tx => (tx.date || '').startsWith(currentMonth));
+  const prevTxs = ledgerTransactions.filter(tx => (tx.date || '').startsWith(prev));
   const monthIncome = monthTxs.filter(tx => tx.type === 'income').reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
   const monthExpenses = monthTxs.filter(tx => tx.type === 'expense').reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
   const prevIncome = prevTxs.filter(tx => tx.type === 'income').reduce((sum, tx) => sum + Number(tx.amount || 0), 0);

@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
-import { db } from '../supabaseClient';
+import { beginBlockingDatabaseOperation, db } from '../supabaseClient';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { setInvoicePrefill } from '../utils/invoicePrefill';
@@ -460,6 +460,10 @@ export default function CrmScreen({
  const handleConfirmConvertToClient = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!convertingLead) return;
+ const finishConversion = beginBlockingDatabaseOperation(`crm-conversion:${convertingLead.id}`, 'convertLeadToClient');
+ if (!finishConversion) return;
+
+ try {
 
  // 1. The commercial is optional. Carlos is never eligible for sales commission.
  const matchedCom = eligibleCommissionCommercials.find(c => c.id === convSelectedComercialId);
@@ -700,6 +704,9 @@ export default function CrmScreen({
   commissionAmount: matchedCom ? convFinancedTotal * commPct / 100 : undefined,
   stripeUrl: generatedStripeUrl || undefined
  });
+ } finally {
+  finishConversion();
+ }
  };
 
  // Connected Accounting & Invoice state definitions
