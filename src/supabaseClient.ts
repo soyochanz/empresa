@@ -456,6 +456,9 @@ CREATE TABLE IF NOT EXISTS contracts_althera (
  "signingMonth" TEXT,
  "signingYear" TEXT,
  "priceSingle" NUMERIC,
+ "fin2Total" NUMERIC,
+ "fin2Cuota" NUMERIC,
+ "fin2Coste" NUMERIC,
  "fin3Total" NUMERIC,
  "fin3Cuota" NUMERIC,
  "fin3Coste" NUMERIC,
@@ -466,6 +469,10 @@ CREATE TABLE IF NOT EXISTS contracts_althera (
  "selectedContactId" TEXT,
  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+ALTER TABLE contracts_althera ADD COLUMN IF NOT EXISTS "fin2Total" NUMERIC;
+ALTER TABLE contracts_althera ADD COLUMN IF NOT EXISTS "fin2Cuota" NUMERIC;
+ALTER TABLE contracts_althera ADD COLUMN IF NOT EXISTS "fin2Coste" NUMERIC;
 
 ALTER TABLE contracts_althera ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Read Access" ON contracts_althera;

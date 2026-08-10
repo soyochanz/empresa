@@ -154,6 +154,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  const contract = savedContracts.find(c => c.id === id);
  if (contract) {
   const basePrice = Number(contract.priceSingle) || 950;
+  const twoMonthFee = Number(contract.fin2Coste) || 0;
   const threeMonthFee = Number(contract.fin3Coste) || 0;
   const fourMonthFee = Number(contract.fin4Coste) || 0;
   setClientName(contract.clientName || '');
@@ -172,6 +173,9 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   setSigningMonth(contract.signingMonth || '');
   setSigningYear(contract.signingYear || '');
   setPriceSingle(basePrice);
+  setFin2Total(basePrice + twoMonthFee);
+  setFin2Cuota(Number(((basePrice + twoMonthFee) / 2).toFixed(2)));
+  setFin2Coste(twoMonthFee);
   setFin3Total(basePrice + threeMonthFee);
   setFin3Cuota(Number(((basePrice + threeMonthFee) / 3).toFixed(2)));
   setFin3Coste(threeMonthFee);
@@ -209,6 +213,9 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   signingMonth,
   signingYear,
   priceSingle: Number(priceSingle) || 0,
+  fin2Total: Number(fin2Total) || 0,
+  fin2Cuota: Number(fin2Cuota) || 0,
+  fin2Coste: Number(fin2Coste) || 0,
   fin3Total: Number(fin3Total) || 0,
   fin3Cuota: Number(fin3Cuota) || 0,
   fin3Coste: Number(fin3Coste) || 0,
@@ -494,6 +501,10 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
  // Prices
  const [priceSingle, setPriceSingle] = useState(950);
+ const [fin2Total, setFin2Total] = useState(950);
+ const [fin2Cuota, setFin2Cuota] = useState(475);
+ const [fin2Coste, setFin2Coste] = useState(0);
+
  const [fin3Total, setFin3Total] = useState(960);
  const [fin3Cuota, setFin3Cuota] = useState(320);
  const [fin3Coste, setFin3Coste] = useState(10);
@@ -502,25 +513,32 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  const [fin4Cuota, setFin4Cuota] = useState(250);
  const [fin4Coste, setFin4Coste] = useState(50);
 
- const [selectedModality, setSelectedModality] = useState<'single' | 'fin3' | 'fin4' | 'rrss'>('single');
+ const [selectedModality, setSelectedModality] = useState<'single' | 'fin2' | 'fin3' | 'fin4' | 'rrss'>('single');
  const [includeDefaultSignatures, setIncludeDefaultSignatures] = useState(true);
 
  // Auto Calculations when base price changes
  const handleBasePriceChange = (val: number) => {
  const safeValue = Math.max(0, Number(val) || 0);
  setPriceSingle(safeValue);
+ const nextFin2Total = safeValue + fin2Coste;
  const nextFin3Total = safeValue + fin3Coste;
  const nextFin4Total = safeValue + fin4Coste;
+ setFin2Total(nextFin2Total);
+ setFin2Cuota(Number((nextFin2Total / 2).toFixed(2)));
  setFin3Total(nextFin3Total);
  setFin3Cuota(Number((nextFin3Total / 3).toFixed(2)));
  setFin4Total(nextFin4Total);
  setFin4Cuota(Number((nextFin4Total / 4).toFixed(2)));
  };
 
- const handleFinancingFeeChange = (months: 3 | 4, value: number) => {
+ const handleFinancingFeeChange = (months: 2 | 3 | 4, value: number) => {
  const safeFee = Math.max(0, Number(value) || 0);
  const financedTotal = priceSingle + safeFee;
- if (months === 3) {
+ if (months === 2) {
+  setFin2Coste(safeFee);
+  setFin2Total(financedTotal);
+  setFin2Cuota(Number((financedTotal / 2).toFixed(2)));
+ } else if (months === 3) {
   setFin3Coste(safeFee);
   setFin3Total(financedTotal);
   setFin3Cuota(Number((financedTotal / 3).toFixed(2)));
@@ -999,7 +1017,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
             {clientContracts.map(contract => (
              <button key={contract.id} type="button" onClick={() => { setActiveTab('contract'); handleLoadContract(contract.id); }} className="flex w-full items-center justify-between rounded-xl bg-black/40 px-3 py-2 text-left hover:bg-black/70">
               <span className="truncate text-[11px] font-semibold text-slate-200">{contract.id}</span>
-              <span className="text-[9px] text-slate-500">{contract.selectedModality === 'single' ? 'Pago único' : contract.selectedModality === 'fin3' ? '3 cuotas' : contract.selectedModality === 'fin4' ? '4 cuotas' : 'Recurrente'}</span>
+              <span className="text-[9px] text-slate-500">{contract.selectedModality === 'single' ? 'Pago único' : contract.selectedModality === 'fin2' ? '2 cuotas' : contract.selectedModality === 'fin3' ? '3 cuotas' : contract.selectedModality === 'fin4' ? '4 cuotas' : 'Recurrente'}</span>
              </button>
             ))}
            </div>
@@ -1156,7 +1174,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       return matchId || matchName;
      }).map(c => (
       <option key={c.id} value={c.id}>
-      [{c.id}] {c.clientName ? c.clientName.replace('D./Dña. ', '') : 'Sin nombre'} ({c.selectedModality === 'single' ? 'Único' : c.selectedModality === 'fin3' ? '3 pl.' : '4 pl.'})
+      [{c.id}] {c.clientName ? c.clientName.replace('D./Dña. ', '') : 'Sin nombre'} ({c.selectedModality === 'single' ? 'Único' : c.selectedModality === 'fin2' ? '2 pl.' : c.selectedModality === 'fin3' ? '3 pl.' : '4 pl.'})
       </option>
      ))}
      </select>
@@ -1339,7 +1357,19 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
      />
     </div>
 
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+     <div className="rounded-xl border border-neutral-900 bg-neutral-950/60 p-3">
+      <label className="mb-1 block text-[9px] font-mono text-slate-400">Comisión financiación · 2 meses (€)</label>
+      <input
+       type="number"
+       min="0"
+       step="0.01"
+       value={fin2Coste}
+       onChange={(e) => handleFinancingFeeChange(2, Number(e.target.value))}
+       className="w-full rounded-lg border border-amber-500/20 bg-black px-2.5 py-2 text-xs text-white outline-none focus:border-amber-500"
+      />
+      <p className="mt-1.5 text-[9px] text-slate-500">Total {fin2Total.toFixed(2)} € · 2 × {fin2Cuota.toFixed(2)} €</p>
+     </div>
      <div className="rounded-xl border border-neutral-900 bg-neutral-950/60 p-3">
       <label className="mb-1 block text-[9px] font-mono text-slate-400">Comisión financiación · 3 meses (€)</label>
       <input
@@ -1368,7 +1398,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
     <div className="bg-neutral-950/40 p-2.5 rounded-xl border border-neutral-900 space-y-2">
      <span className="text-[10px] uppercase font-mono tracking-wider font-semibold block text-slate-400">Modalidad de Pago seleccionada:</span>
-     <div className="grid grid-cols-3 gap-1.5">
+     <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
      <button
       type="button"
       onClick={() => setSelectedModality('single')}
@@ -1377,6 +1407,15 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       }`}
      >
       Pago Único
+     </button>
+     <button
+      type="button"
+      onClick={() => setSelectedModality('fin2')}
+      className={`py-2 px-1 text-[10px] font-mono rounded-xl border text-center transition ${
+      selectedModality === 'fin2' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-black border-transparent text-slate-500'
+      }`}
+     >
+      2 Meses
      </button>
      <button
       type="button"
@@ -2455,6 +2494,9 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
        <span>
        {selectedModality === 'single' && (
         <><strong>PAGO ÚNICO:</strong> Importe total de <strong>{priceSingle} €</strong> en un único abono al formalizar la firma.</>
+       )}
+       {selectedModality === 'fin2' && (
+        <><strong>FINANCIACIÓN A 2 MESES:</strong> Importe total financiado de <strong>{fin2Total} €</strong> devengados en 2 cuotas mensuales de <strong>{fin2Cuota} €</strong> (Coste de financiación acumulado: {fin2Coste} €).</>
        )}
        {selectedModality === 'fin3' && (
         <><strong>FINANCIACIÓN A 3 MESES:</strong> Importe total financiado de <strong>{fin3Total} €</strong> devengados en 3 cuotas mensuales de <strong>{fin3Cuota} €</strong> (Coste de financiación acumulado: {fin3Coste} €).</>
