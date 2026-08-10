@@ -4453,7 +4453,7 @@ export default function CrmScreen({
   )}
 
   {/* LEAD TO CLIENT CONVERSION MODAL */}
-  {convertingLead && (
+  {convertingLead && createPortal(
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
    <div className="w-full max-w-lg bg-[#0a0a14] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 max-h-[90vh] flex flex-col">
    {/* Header banner cover */}
