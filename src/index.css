@@ -314,12 +314,12 @@
 }
 
 .finance-metric-grid > div {
-  min-height: 164px;
+  min-height: 128px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 18px !important;
+  gap: 5px;
+  padding: 14px !important;
   background:
     radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.08), transparent 34%),
     linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.035)) !important;
@@ -331,12 +331,12 @@
 
 .finance-metric-grid > div > div:first-child {
   position: absolute !important;
-  top: 16px !important;
-  left: 16px !important;
+  top: 12px !important;
+  left: 12px !important;
   right: auto !important;
-  width: 36px !important;
-  height: 36px !important;
-  border-radius: 12px !important;
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 10px !important;
   display: flex !important;
   align-items: center;
   justify-content: center;
@@ -352,8 +352,8 @@
 }
 
 .finance-metric-grid > div > span:first-of-type {
-  margin-top: 54px;
-  min-height: 28px;
+  margin-top: 38px;
+  min-height: 18px;
   max-width: 100%;
   color: #94a3b8 !important;
   font-size: 9px !important;
@@ -364,7 +364,7 @@
 
 .finance-metric-grid h3 {
   margin-top: 0 !important;
-  font-size: clamp(1.45rem, 2vw, 1.9rem) !important;
+  font-size: clamp(1.15rem, 1.55vw, 1.5rem) !important;
   line-height: 1 !important;
   white-space: nowrap;
 }
@@ -376,7 +376,8 @@
 
 .finance-metric-grid p {
   margin-top: 0 !important;
-  min-height: 28px;
+  min-height: 18px;
+  font-size: 8px !important;
   align-items: flex-start;
   line-height: 1.25 !important;
 }
@@ -386,7 +387,7 @@
 }
 
 .finance-metric-grid-wide > div {
-  min-height: 150px;
+  min-height: 132px;
 }
 
 /* Print CSS variables for Contracts and Invoices PDF rendering */

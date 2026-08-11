@@ -537,6 +537,137 @@ app.get("/api/stripe/balance", requireAdminAuth, async (_req, res) => {
   }
 });
 
+app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
+  try {
+    const stripe = getStripe();
+    const [subscriptions, paidInvoices, openInvoices, charges] = await Promise.all([
+      stripe.subscriptions
+        .list({ status: "active", limit: 100, expand: ["data.customer"] })
+        .autoPagingToArray({ limit: 1_000 }),
+      stripe.invoices
+        .list({ status: "paid", limit: 100 })
+        .autoPagingToArray({ limit: 10_000 }),
+      stripe.invoices
+        .list({ status: "open", limit: 100 })
+        .autoPagingToArray({ limit: 10_000 }),
+      stripe.charges
+        .list({ limit: 100, expand: ["data.customer"] })
+        .autoPagingToArray({ limit: 10_000 }),
+    ]);
+
+    const addCurrencyAmount = (totals: Map<string, number>, currency: string, amount: number) => {
+      const normalizedCurrency = String(currency || "eur").toLowerCase();
+      totals.set(normalizedCurrency, (totals.get(normalizedCurrency) || 0) + amount);
+    };
+    const monthlyRecurringTotals = new Map<string, number>();
+    const chargedVolumeTotals = new Map<string, number>();
+
+    const getMonthlyFactor = (recurring: Stripe.Price.Recurring | null | undefined): number => {
+      if (!recurring) return 0;
+      const intervalCount = Math.max(1, Number(recurring.interval_count || 1));
+      if (recurring.interval === "year") return 1 / (12 * intervalCount);
+      if (recurring.interval === "week") return 52 / (12 * intervalCount);
+      if (recurring.interval === "day") return 365 / (12 * intervalCount);
+      return 1 / intervalCount;
+    };
+
+    subscriptions.forEach(subscription => {
+      subscription.items.data.forEach(item => {
+        const unitAmount = Number(item.price.unit_amount_decimal || item.price.unit_amount || 0) / 100;
+        const monthlyAmount = unitAmount * Number(item.quantity || 1) * getMonthlyFactor(item.price.recurring);
+        addCurrencyAmount(monthlyRecurringTotals, item.price.currency, monthlyAmount);
+      });
+    });
+
+    const successfulCharges = charges.filter(charge => charge.paid && Number(charge.amount || 0) > 0);
+    successfulCharges.forEach(charge => {
+      const netCaptured = Math.max(0, Number(charge.amount || 0) - Number(charge.amount_refunded || 0)) / 100;
+      addCurrencyAmount(chargedVolumeTotals, charge.currency, netCaptured);
+    });
+
+    const invoicesForSubscription = (subscriptionId: string, invoices: Stripe.Invoice[]) =>
+      invoices.filter(invoice => getStripeInvoiceSubscriptionId(invoice) === subscriptionId);
+
+    const activeSubscriptions = subscriptions.map(subscription => {
+      const customer = typeof subscription.customer === "string" ? null : subscription.customer as any;
+      const subscriptionPaidInvoices = invoicesForSubscription(subscription.id, paidInvoices)
+        .filter(invoice => Number(invoice.amount_paid || 0) > 0);
+      const subscriptionOpenInvoices = invoicesForSubscription(subscription.id, openInvoices);
+      const firstItem = subscription.items.data[0];
+      const amount = subscription.items.data.reduce(
+        (sum, item) => sum + (Number(item.price.unit_amount_decimal || item.price.unit_amount || 0) / 100) * Number(item.quantity || 1),
+        0,
+      );
+      const lastPaidInvoice = [...subscriptionPaidInvoices].sort(
+        (a, b) => Number(b.status_transitions?.paid_at || b.created) - Number(a.status_transitions?.paid_at || a.created),
+      )[0];
+
+      return {
+        id: subscription.id,
+        customerId: typeof subscription.customer === "string" ? subscription.customer : customer?.id || "",
+        customerName: customer?.name || subscription.metadata?.clientName || customer?.email || "Cliente Stripe",
+        customerEmail: customer?.email || subscription.metadata?.clientEmail || "",
+        status: subscription.status,
+        amount,
+        currency: firstItem?.price.currency || "eur",
+        interval: firstItem?.price.recurring?.interval || "month",
+        intervalCount: firstItem?.price.recurring?.interval_count || 1,
+        paymentCount: subscriptionPaidInvoices.length,
+        paidAmount: subscriptionPaidInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0) / 100,
+        openAmount: subscriptionOpenInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_remaining || 0), 0) / 100,
+        lastPaidAt: lastPaidInvoice
+          ? new Date(Number(lastPaidInvoice.status_transitions?.paid_at || lastPaidInvoice.created) * 1000).toISOString()
+          : null,
+        dashboardUrl: `https://dashboard.stripe.com${subscription.livemode ? "" : "/test"}/subscriptions/${subscription.id}`,
+      };
+    });
+
+    const paymentHistory = successfulCharges
+      .sort((a, b) => b.created - a.created)
+      .slice(0, 100)
+      .map(charge => {
+        const customer = typeof charge.customer === "string" ? null : charge.customer as any;
+        const paymentIntentId = typeof charge.payment_intent === "string"
+          ? charge.payment_intent
+          : charge.payment_intent?.id || "";
+        return {
+          id: charge.id,
+          paymentIntentId,
+          concept: charge.description || charge.metadata?.concept || "Pago procesado por Stripe",
+          customerName: customer?.name || charge.billing_details?.name || customer?.email || charge.billing_details?.email || "Cliente Stripe",
+          customerEmail: customer?.email || charge.billing_details?.email || "",
+          amount: Number(charge.amount || 0) / 100,
+          refundedAmount: Number(charge.amount_refunded || 0) / 100,
+          currency: charge.currency,
+          paidAt: new Date(charge.created * 1000).toISOString(),
+          status: charge.refunded ? "refunded" : charge.amount_refunded ? "partially_refunded" : "paid",
+          receiptUrl: charge.receipt_url || "",
+          dashboardUrl: `https://dashboard.stripe.com${charge.livemode ? "" : "/test"}/payments/${paymentIntentId || charge.id}`,
+        };
+      });
+
+    const normalizeTotals = (totals: Map<string, number>) =>
+      [...totals.entries()].map(([currency, amount]) => ({ currency, amount }));
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      activeSubscriptions,
+      paymentHistory,
+      totals: {
+        activeSubscriptions: activeSubscriptions.length,
+        mrr: normalizeTotals(monthlyRecurringTotals),
+        chargedVolume: normalizeTotals(chargedVolumeTotals),
+        successfulPayments: successfulCharges.length,
+      },
+      livemode: subscriptions[0]?.livemode ?? successfulCharges[0]?.livemode ?? false,
+      fetchedAt: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Error retrieving Stripe finance overview:", error);
+    res.status(500).json({ error: error?.message || "No se pudo consultar la información financiera real de Stripe." });
+  }
+});
+
 // Create subscription or single payment checkout session
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {

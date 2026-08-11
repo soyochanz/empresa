@@ -43,7 +43,6 @@ import {
  CalendarDays,
  FileSpreadsheet,
  RefreshCw,
- WalletCards,
  Banknote,
  Landmark
 } from 'lucide-react';
@@ -56,6 +55,51 @@ type StripeFundAmount = {
 type StripeFunds = {
  available: StripeFundAmount[];
  pending: StripeFundAmount[];
+ livemode: boolean;
+ fetchedAt: string;
+};
+
+type StripeAccountSubscription = {
+ id: string;
+ customerId: string;
+ customerName: string;
+ customerEmail: string;
+ status: string;
+ amount: number;
+ currency: string;
+ interval: string;
+ intervalCount: number;
+ paymentCount: number;
+ paidAmount: number;
+ openAmount: number;
+ lastPaidAt: string | null;
+ dashboardUrl: string;
+};
+
+type StripeAccountPayment = {
+ id: string;
+ paymentIntentId: string;
+ concept: string;
+ customerName: string;
+ customerEmail: string;
+ amount: number;
+ refundedAmount: number;
+ currency: string;
+ paidAt: string;
+ status: 'paid' | 'refunded' | 'partially_refunded';
+ receiptUrl: string;
+ dashboardUrl: string;
+};
+
+type StripeFinanceOverview = {
+ activeSubscriptions: StripeAccountSubscription[];
+ paymentHistory: StripeAccountPayment[];
+ totals: {
+  activeSubscriptions: number;
+  mrr: StripeFundAmount[];
+  chargedVolume: StripeFundAmount[];
+  successfulPayments: number;
+ };
  livemode: boolean;
  fetchedAt: string;
 };
@@ -253,6 +297,17 @@ const formatStripeFundAmounts = (amounts: StripeFundAmount[] = []): string => {
   style: 'currency',
   currency: item.currency.toUpperCase()
  }).format(item.amount)).join(' · ');
+};
+
+const formatStripeCurrency = (amount: number, currency = 'eur'): string => new Intl.NumberFormat('es-ES', {
+ style: 'currency',
+ currency: currency.toUpperCase(),
+}).format(amount);
+
+const formatStripeInterval = (interval: string, intervalCount = 1): string => {
+ const names: Record<string, string> = { day: 'día', week: 'semana', month: 'mes', year: 'año' };
+ const unit = names[interval] || interval;
+ return intervalCount > 1 ? `${intervalCount} ${unit}${unit.endsWith('s') ? '' : 's'}` : unit;
 };
 
 const getRecurringIncomeOccurrences = (transaction: FinanceTransaction, monthKey: string): Date[] => {
@@ -586,6 +641,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [stripeFunds, setStripeFunds] = useState<StripeFunds | null>(null);
  const [stripeFundsLoading, setStripeFundsLoading] = useState(false);
  const [stripeFundsError, setStripeFundsError] = useState('');
+ const [stripeFinanceOverview, setStripeFinanceOverview] = useState<StripeFinanceOverview | null>(null);
+ const [stripeFinanceLoading, setStripeFinanceLoading] = useState(false);
+ const [stripeFinanceError, setStripeFinanceError] = useState('');
 
  // Transactions local state
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
@@ -673,11 +731,33 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   }
  };
 
+ const refreshStripeFinanceOverview = async () => {
+  setStripeFinanceLoading(true);
+  setStripeFinanceError('');
+  try {
+   const response = await authenticatedFetch('/api/stripe/finance-overview', { cache: 'no-store' });
+   const data = await readStripeJson(response);
+   if (!response.ok) throw new Error(data.error || 'No se pudo consultar la información real de Stripe.');
+   setStripeFinanceOverview(data);
+  } catch (error: any) {
+   setStripeFinanceError(error?.message || 'No se pudo consultar la información real de Stripe.');
+  } finally {
+   setStripeFinanceLoading(false);
+  }
+ };
+
  useEffect(() => {
   void refreshStripeFunds();
   const stripeFundsTimer = window.setInterval(refreshStripeFunds, 60000);
   return () => window.clearInterval(stripeFundsTimer);
  }, []);
+
+ useEffect(() => {
+  if (activeTab !== 'stripe') return;
+  void refreshStripeFinanceOverview();
+  const stripeOverviewTimer = window.setInterval(refreshStripeFinanceOverview, 60_000);
+  return () => window.clearInterval(stripeOverviewTimer);
+ }, [activeTab]);
 
  // Filters
  const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
@@ -2879,7 +2959,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-indigo-400/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-3">
      <div className="flex items-center gap-3">
-      <div className="rounded-2xl border border-indigo-300/15 bg-indigo-400/10 p-2.5"><WalletCards className="h-5 w-5 text-indigo-300" /></div>
+      <div className="rounded-2xl border border-indigo-300/15 bg-indigo-400/10 p-2"><img src="/stripe-mark.png" alt="Stripe" className="h-6 w-6 rounded-md" /></div>
       <div>
        <span className="text-[9px] font-black uppercase tracking-[.2em] text-indigo-300">Fondos Stripe</span>
        <p className="mt-0.5 text-[9px] text-slate-500">Saldo real de la cuenta {stripeFunds?.livemode ? 'live' : 'test'}</p>
@@ -3063,7 +3143,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
    }`}
    >
-   <CreditCard className="w-3.5 h-3.5" />
+   <img src="/stripe-mark.png" alt="" className="h-4 w-4 rounded-[4px]" />
    <span>Pasarela Stripe</span>
    </button>
    <button
@@ -3404,65 +3484,65 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        </td>
        <td className="p-3 text-left align-middle">
        {t.status === 'paid' ? (
-        <button
+       <button
         onClick={() => handleToggleTransactionStatus(t)}
-        className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 px-2 py-0.5 rounded-lg transition-all cursor-pointer group"
+        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-emerald-300 transition hover:border-amber-400/20 hover:bg-amber-400/[0.07] hover:text-amber-300"
         title="Haga clic para revertir / desmarcar de Bitácora (cambiará a Pendiente)"
         >
-        <span className="w-1 h-1 rounded-full bg-emerald-400 shadow-[0_0_6px_rgb(16,185,129)]" />
-        <span className="group-hover:hidden">Liquidado</span>
-        <span className="hidden group-hover:inline text-emerald-300">↩ Pendiente</span>
+        <CheckCircle2 className="h-3 w-3" />
+        <span>Liquidado</span>
         </button>
        ) : (
-        <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-lg text-amber-400">
-         <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+        <div className="flex items-center gap-1.5">
+        <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-amber-400/20 bg-amber-400/[0.07] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-amber-300">
+         <Clock className="h-3 w-3" />
          Pendiente
         </span>
         <button
          onClick={() => handleToggleTransactionStatus(t)}
-         className="text-[9px] font-sans font-extrabold bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 px-2 py-1 rounded-lg transition-all cursor-pointer shadow-md flex items-center gap-0.5 leading-none"
+         className="inline-flex h-7 items-center gap-1 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 text-[8px] font-black uppercase tracking-wide text-emerald-300 transition hover:bg-emerald-400/[0.15]"
          title="Marcar como Liquidado y sincronizar facturas/conceptos"
         >
-         <span>💵 Cobrar</span>
+         <Check className="h-3 w-3" />
+         <span>Cobrar</span>
         </button>
         </div>
        )}
        </td>
-       <td className="p-4 text-right">
-       <div className="flex items-center justify-end gap-1">
+       <td className="p-3 text-right align-middle">
+       <div className="inline-flex items-center justify-end gap-1 rounded-xl border border-white/[0.05] bg-black/20 p-1">
         {linkedInv ? (
         <button
          onClick={() => setPreviewInvoice(linkedInv)}
-         className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer"
+         className="grid h-7 w-7 place-items-center rounded-lg border border-blue-400/10 bg-blue-400/[0.06] text-blue-300 transition hover:border-blue-400/20 hover:bg-blue-400/[0.12]"
          title={`Ver Factura Vinculada (${linkedInv.id})`}
         >
-         <FileText className="w-3.5 h-3.5 text-blue-400 stroke-[2.5]" />
+         <FileText className="h-3.5 w-3.5 stroke-[2.5]" />
         </button>
         ) : (
         t.type === 'income' && (
          <button
          onClick={() => handleCreateInvoiceFromTransaction(t)}
-         className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors cursor-pointer"
+         className="grid h-7 w-7 place-items-center rounded-lg border border-amber-400/10 bg-amber-400/[0.05] text-amber-300 transition hover:border-amber-400/20 hover:bg-amber-400/[0.11]"
          title="Facturar este cobro (Generar y editar factura)"
          >
-         <FileText className="w-3.5 h-3.5" />
+         <FileText className="h-3.5 w-3.5" />
          </button>
         )
         )}
         <button
         onClick={() => handleEditTx(t)}
-        className="p-1.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition transition-colors duration-250"
+        className="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.06] bg-white/[0.025] text-slate-400 transition hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
         title="Editar transacción"
         >
-        <Edit className="w-3.5 h-3.5" />
+        <Edit className="h-3.5 w-3.5" />
         </button>
         <button
         onClick={() => handleDeleteTx(t.id)}
-        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/5 rounded-lg transition transition-colors duration-250"
+        className="grid h-7 w-7 place-items-center rounded-lg border border-rose-400/10 bg-rose-400/[0.035] text-slate-500 transition hover:border-rose-400/20 hover:bg-rose-400/[0.09] hover:text-rose-300"
         title="Eliminar registro"
         >
-        <Trash2 className="w-3.5 h-3.5" />
+        <Trash2 className="h-3.5 w-3.5" />
         </button>
        </div>
        </td>
@@ -4072,6 +4152,25 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   {/* Tab Content 4: Pasarela Stripe Integration */}
   {activeTab === 'stripe' && (
   <div className="space-y-6 text-left">
+   <div className="flex flex-col gap-3 rounded-2xl border border-[#635bff]/20 bg-[#635bff]/[0.055] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex items-center gap-3">
+     <img src="/stripe-mark.png" alt="Stripe" className="h-8 w-8 rounded-lg shadow-[0_0_22px_rgba(99,91,255,0.25)]" />
+     <div>
+      <div className="flex items-center gap-2">
+       <h2 className="text-sm font-black text-white">Stripe</h2>
+       <span className={`rounded-full border px-2 py-0.5 font-mono text-[7px] font-black uppercase tracking-wider ${stripeFinanceOverview?.livemode ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : 'border-amber-400/20 bg-amber-400/10 text-amber-300'}`}>
+        {stripeFinanceOverview?.livemode ? 'Datos reales' : 'Modo prueba'}
+       </span>
+      </div>
+      <p className="text-[9px] text-slate-400">Suscripciones y cobros consultados directamente en Stripe.</p>
+     </div>
+    </div>
+    <button type="button" onClick={() => void refreshStripeFinanceOverview()} disabled={stripeFinanceLoading} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-[9px] font-bold text-slate-300 transition hover:border-[#635bff]/30 hover:text-white disabled:opacity-50">
+     <RefreshCw className={`h-3.5 w-3.5 ${stripeFinanceLoading ? 'animate-spin' : ''}`} />
+     Actualizar desde Stripe
+    </button>
+   </div>
+   {stripeFinanceError && <div className="rounded-xl border border-rose-400/20 bg-rose-400/[0.07] px-4 py-3 text-[10px] text-rose-300">{stripeFinanceError}</div>}
    {/* Stripe Metric Banner */}
    <div className="finance-metric-grid finance-metric-grid-wide grid grid-cols-1 sm:grid-cols-3 gap-5">
    <div className="bg-gradient-to-br from-violet-600/10 to-purple-600/5 backdrop-blur-md border border-violet-500/20 p-5 rounded-3xl relative overflow-hidden">
@@ -4080,7 +4179,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
     <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Suscripciones Activas</span>
     <h3 className="text-3xl font-black text-white mt-2 font-mono">
-    {activeSubs.length}
+    {stripeFinanceLoading && !stripeFinanceOverview ? '...' : stripeFinanceOverview?.totals.activeSubscriptions ?? 0}
     </h3>
     <p className="text-[10px] text-violet-300 font-mono mt-3">
     Cobros recurrentes autogestionados
@@ -4093,7 +4192,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
     <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">MRR Estimado (Stripe)</span>
     <h3 className="text-3xl font-black text-white mt-2 font-mono">
-    {mrr.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-cyan-400 text-lg ml-1 font-sans">€</span>
+    {stripeFinanceLoading && !stripeFinanceOverview ? '...' : formatStripeFundAmounts(stripeFinanceOverview?.totals.mrr)}
     </h3>
     <p className="text-[10px] text-cyan-300 font-mono mt-3">
     Ingresos recurrentes mensuales
@@ -4106,10 +4205,10 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
     <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Volumen Cobrado</span>
     <h3 className="text-3xl font-black text-white mt-2 font-mono">
-    {stripeVolume.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-emerald-400 text-lg ml-1 font-sans">€</span>
+    {stripeFinanceLoading && !stripeFinanceOverview ? '...' : formatStripeFundAmounts(stripeFinanceOverview?.totals.chargedVolume)}
     </h3>
     <p className="text-[10px] text-emerald-300 font-mono mt-3">
-    Liquidaciones registradas automáticamente
+    {stripeFinanceOverview?.totals.successfulPayments ?? 0} pagos confirmados por Stripe
     </p>
    </div>
    </div>
@@ -4252,47 +4351,57 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Suscripciones Activas</h3>
      </div>
      <span className="text-[10px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-2 py-0.5 rounded-full font-mono font-bold">
-     {activeSubs.length} Clientes
+     {stripeFinanceOverview?.activeSubscriptions.length ?? 0} en Stripe
      </span>
     </div>
 
     <div className="space-y-3 max-h-[295px] overflow-y-auto pr-1">
-     {activeSubs.length === 0 ? (
+     {stripeFinanceLoading && !stripeFinanceOverview ? (
+     <div className="flex items-center justify-center gap-2 py-12 text-xs text-slate-500">
+      <RefreshCw className="h-4 w-4 animate-spin" /> Consultando Stripe...
+     </div>
+     ) : (stripeFinanceOverview?.activeSubscriptions.length ?? 0) === 0 ? (
      <div className="text-center py-12 text-slate-500 text-xs font-light">
-      No hay clientes con suscripciones activas registradas en Stripe.
+      No hay suscripciones activas en la cuenta de Stripe.
      </div>
      ) : (
-     activeSubs.map(c => (
-      <div key={c.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 p-4 bg-[#07070b]/45 rounded-2xl border border-white/5 hover:border-violet-500/20 transition group">
+     stripeFinanceOverview!.activeSubscriptions.map(subscription => (
+      <div key={subscription.id} className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 p-4 bg-[#07070b]/45 rounded-2xl border border-white/5 hover:border-violet-500/20 transition group">
       <div className="space-y-1 text-left min-w-0">
-       <h4 className="text-xs font-bold text-white group-hover:text-violet-400 transition truncate">{c.name}</h4>
-       <p className="text-[10px] text-slate-400 font-mono truncate">{c.email}</p>
+       <h4 className="text-xs font-bold text-white group-hover:text-violet-400 transition truncate">{subscription.customerName}</h4>
+       <p className="text-[10px] text-slate-400 font-mono truncate">{subscription.customerEmail || 'Sin email en Stripe'}</p>
        <div className="flex flex-wrap items-center gap-2 pt-1">
        <span className="text-[8px] font-mono text-emerald-450 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-md uppercase tracking-wider font-extrabold flex items-center gap-1">
         <span className="w-1 h-1 rounded-full bg-emerald-400 shadow-[0_0_4px_rgb(52,211,153)]" />
-        Activo
+        {subscription.status}
        </span>
        <span className="text-[8px] font-mono text-slate-500 truncate">
-        ID: {c.stripeCustomerId}
+        ID: {subscription.id}
        </span>
        <span className="text-[8px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/15 px-1.5 py-0.5 rounded-md uppercase tracking-wider font-extrabold">
-        Pagos: {getClientStripePaymentProgress(c)}
+        Pagos: {subscription.paymentCount}
        </span>
+       </div>
+       <div className="mt-2 flex flex-wrap gap-2 font-mono text-[8px]">
+        <span className="rounded-md border border-emerald-400/10 bg-emerald-400/[0.05] px-2 py-1 text-emerald-300">Cobrado {formatStripeCurrency(subscription.paidAmount, subscription.currency)}</span>
+        <span className="rounded-md border border-amber-400/10 bg-amber-400/[0.05] px-2 py-1 text-amber-300">Abierto {formatStripeCurrency(subscription.openAmount, subscription.currency)}</span>
+        {subscription.lastPaidAt && <span className="px-1 py-1 text-slate-500">Último pago {new Date(subscription.lastPaidAt).toLocaleDateString('es-ES')}</span>}
        </div>
       </div>
 
-      <div className="text-left md:text-right shrink-0 space-y-1.5">
+      <div className="text-left md:text-right shrink-0 space-y-2">
        <span className="block text-xs font-black font-mono text-white leading-none">
-       {c.stripeSubscriptionPrice} € <span className="text-[9px] text-slate-500 font-light">/ {c.stripeSubscriptionInterval === 'year' ? 'año' : 'mes'}</span>
+       {formatStripeCurrency(subscription.amount, subscription.currency)} <span className="text-[9px] text-slate-500 font-light">/ {formatStripeInterval(subscription.interval, subscription.intervalCount)}</span>
        </span>
-       {c.stripeCustomerId && (
+       <div className="flex flex-wrap gap-1.5 md:justify-end">
+       {subscription.customerId && (
        <button
         type="button"
-        disabled={stripePortalLoading === c.id}
-        onClick={() => handleOpenFinanceStripePortal(c.stripeCustomerId!, c.id)}
+        disabled={stripePortalLoading === subscription.id}
+        onClick={() => handleOpenFinanceStripePortal(subscription.customerId, subscription.id)}
         className="inline-flex items-center gap-1 py-1 px-2.5 bg-white/5 hover:bg-white/10 text-[9px] rounded-lg text-slate-350 font-bold border border-white/5 transition cursor-pointer"
        >
-        {stripePortalLoading === c.id ? (
+        {stripePortalLoading === subscription.id ? (
         <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
         ) : (
         <ExternalLink className="w-2.5 h-2.5" />
@@ -4300,75 +4409,15 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         <span>Portal</span>
        </button>
        )}
-       <button
-       type="button"
-       disabled={stripeOverviewLoading === c.id}
-       onClick={() => handleLoadFinanceStripeOverview(c)}
-       className="mt-2 px-3 py-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 rounded-lg text-[9px] text-slate-300 font-bold inline-flex items-center gap-1.5"
-       >
-       {stripeOverviewLoading === c.id ? (
-        <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />
-       ) : (
-        <CreditCard className="w-3 h-3" />
-       )}
-       <span>{stripeOverviewByClient[c.id] ? 'Ocultar info' : 'Info Stripe'}</span>
-       </button>
+       <a href={subscription.dashboardUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-[#635bff]/20 bg-[#635bff]/10 px-2.5 py-1 text-[9px] font-bold text-violet-300 transition hover:bg-[#635bff]/20">
+        <img src="/stripe-mark.png" alt="" className="h-3 w-3 rounded-[3px]" /> Ver en Stripe
+       </a>
+       </div>
       </div>
-      {stripeOverviewByClient[c.id] && (
-       <div className="md:col-span-2 pt-3 border-t border-white/5 grid grid-cols-3 gap-2 text-center">
-       <div className="bg-cyan-500/5 rounded-lg p-2 border border-cyan-500/10">
-        <span className="block text-[7px] text-slate-500 uppercase font-mono">Pagos</span>
-        <span className="text-[11px] text-cyan-300 font-black">{getClientStripePaymentProgress(c)}</span>
-       </div>
-       <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
-        <span className="block text-[7px] text-slate-500 uppercase font-mono">Cobrado</span>
-        <span className="text-[11px] text-emerald-400 font-black">{getClientStripeMoneySummary(c).paid.toFixed(2)} €</span>
-       </div>
-       <div className="bg-black/20 rounded-lg p-2 border border-amber-500/10">
-        <span className="block text-[7px] text-slate-500 uppercase font-mono">Abierto</span>
-        <span className="text-[11px] text-amber-400 font-black">{getClientStripeMoneySummary(c).open.toFixed(2)} €</span>
-       </div>
-       <div className="col-span-3 space-y-1.5 text-left">
-        {(stripeOverviewByClient[c.id].subscriptions || []).slice(0, 1).map((sub: any) => (
-        <div key={sub.id} className="flex flex-wrap items-center justify-between gap-2 text-[9px] bg-black/20 border border-white/5 rounded-lg p-2">
-         <span className="text-slate-300 truncate">{sub.id}</span>
-         <div className="flex items-center gap-2">
-         <span className={sub.status === 'active' ? 'text-emerald-400' : sub.status === 'canceled' ? 'text-rose-400' : 'text-amber-400'}>
-          {sub.cancelAtPeriodEnd ? 'cancela al final' : sub.status}
-         </span>
-         {sub.status !== 'canceled' && (
-          <button
-          type="button"
-          disabled={stripeCancelLoading === sub.id}
-          onClick={() => handleCancelFinanceSubscription(c, sub.id)}
-          className="px-2 py-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-300 font-bold disabled:opacity-50"
-          >
-          {stripeCancelLoading === sub.id ? 'Cancelando...' : 'Cancelar'}
-          </button>
-         )}
-         </div>
-        </div>
-        ))}
-        {(stripeOverviewByClient[c.id].invoices || []).slice(0, 2).map((inv: any) => (
-        <div key={inv.id} className="flex justify-between gap-2 text-[9px] bg-black/20 border border-white/5 rounded-lg p-2">
-         <span className="text-slate-300 truncate">{inv.number || inv.id}</span>
-         <a href={inv.hostedInvoiceUrl || inv.dashboardUrl} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
-         {inv.status} · {inv.amountPaid.toFixed(2)} €
-         </a>
-        </div>
-        ))}
-       </div>
-       </div>
-      )}
       </div>
      ))
      )}
     </div>
-    {stripeOverviewError && (
-     <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[10px] text-rose-400">
-     {stripeOverviewError}
-     </div>
-    )}
     </div>
    </div>
    </div>
@@ -4377,11 +4426,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-6 rounded-3xl space-y-4">
    <div className="flex items-center justify-between border-b border-white/5 pb-3">
     <div className="flex items-center gap-2">
-    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+    <img src="/stripe-mark.png" alt="" className="h-5 w-5 rounded-[5px]" />
     <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Registro Histórico de Pagos Stripe</h3>
     </div>
     <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full font-mono font-bold">
-    {stripeTransactions.length} Cobros Sincronizados
+    {stripeFinanceOverview?.paymentHistory.length ?? 0} cobros reales
     </span>
    </div>
 
@@ -4397,39 +4446,37 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </tr>
     </thead>
     <tbody className="divide-y divide-white/5">
-     {stripeTransactions.length === 0 ? (
+     {stripeFinanceLoading && !stripeFinanceOverview ? (
+     <tr><td colSpan={5} className="p-12 text-center text-slate-500 text-xs"><RefreshCw className="mx-auto mb-2 h-4 w-4 animate-spin" />Consultando pagos...</td></tr>
+     ) : (stripeFinanceOverview?.paymentHistory.length ?? 0) === 0 ? (
      <tr>
       <td colSpan={5} className="p-12 text-center text-slate-500 text-xs font-light">
-      Aún no se han procesado cobros automáticos a través de la pasarela Stripe.
+      Stripe no ha devuelto cobros pagados para esta cuenta.
       </td>
      </tr>
      ) : (
-     stripeTransactions.map(t => {
-      const isPaid = true;
-      return (
-      <tr key={t.id} className="hover:bg-white/[0.01] transition-colors">
-       <td className="p-3 font-mono text-[9px] text-slate-400 select-all">{t.id}</td>
+     stripeFinanceOverview!.paymentHistory.map(payment => (
+      <tr key={payment.id} className="hover:bg-white/[0.01] transition-colors">
+       <td className="p-3 font-mono text-[9px] text-slate-400 select-all">{payment.id}</td>
        <td className="p-3 text-left">
-       <span className="font-bold text-white">{t.description}</span>
-       <span className="block text-[9px] text-slate-500 font-mono mt-0.5">{t.category}</span>
+       <span className="font-bold text-white">{payment.concept}</span>
+       <span className="block text-[9px] text-slate-500 font-mono mt-0.5">{payment.customerName}{payment.customerEmail ? ` · ${payment.customerEmail}` : ''}</span>
        </td>
-       <td className="p-3 text-slate-350">{t.date}</td>
-       <td className={`p-3 font-mono font-bold ${isPaid ? 'text-emerald-450' : 'text-amber-400'}`}>
-       {t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+       <td className="p-3 text-slate-350">{new Date(payment.paidAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}</td>
+       <td className="p-3 font-mono font-bold text-emerald-450">
+       {formatStripeCurrency(payment.amount, payment.currency)}
+       {payment.refundedAmount > 0 && <span className="block text-[8px] font-normal text-rose-300">Reembolsado {formatStripeCurrency(payment.refundedAmount, payment.currency)}</span>}
        </td>
        <td className="p-3 text-right">
-       <span className={`inline-flex items-center gap-1 text-[9px] font-mono font-bold px-2 py-0.5 rounded-lg select-none border ${
-        isPaid ?
-        'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-        : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-       }`}>
-        <ShieldCheck className={`w-3 h-3 ${isPaid ? 'text-emerald-400' : 'text-amber-400'}`} />
-        <span>{isPaid ? 'Cobrado en Stripe' : 'Pendiente de cobro'}</span>
-       </span>
+       <div className="inline-flex items-center gap-1.5">
+        <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 font-mono text-[8px] font-bold ${payment.status === 'paid' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/20 bg-rose-500/10 text-rose-300'}`}>
+         <ShieldCheck className="h-3 w-3" />{payment.status === 'paid' ? 'Cobrado' : payment.status === 'refunded' ? 'Reembolsado' : 'Reembolso parcial'}
+        </span>
+        <a href={payment.dashboardUrl} target="_blank" rel="noreferrer" className="grid h-7 w-7 place-items-center rounded-lg border border-[#635bff]/20 bg-[#635bff]/10 text-violet-300 transition hover:bg-[#635bff]/20" title="Abrir pago en Stripe"><ExternalLink className="h-3 w-3" /></a>
+       </div>
        </td>
       </tr>
-      );
-     })
+     ))
      )}
     </tbody>
     </table>
