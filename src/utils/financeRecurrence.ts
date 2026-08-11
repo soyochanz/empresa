@@ -81,7 +81,8 @@ export const buildDueRecurringTransactions = (
  );
  const due: FinanceTransaction[] = [];
 
- for (const source of transactions.filter(transaction => transaction.isRecurring)) {
+ // Stripe-controlled subscriptions are materialized only after a signed paid-invoice webhook.
+ for (const source of transactions.filter(transaction => transaction.isRecurring && transaction.paymentMethod !== 'stripe')) {
   const sourceDate = parseDateKey(source.date);
   if (!sourceDate) continue;
 

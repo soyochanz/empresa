@@ -72,9 +72,27 @@ const addMonthsKeepingDay = (baseDate: Date, monthsToAdd: number): Date => {
   12,
   0,
   0,
-  0
+ 0
  );
 };
+
+type ClientChargePlan = 'once' | 'installments_2' | 'installments_3' | 'installments_4' | 'month' | 'year';
+type ClientChargeMethod = 'cash' | 'transfer' | 'stripe';
+
+const CLIENT_CHARGE_PLAN_OPTIONS: Array<{ value: ClientChargePlan; label: string }> = [
+ { value: 'once', label: 'Pago único' },
+ { value: 'installments_2', label: '2 meses' },
+ { value: 'installments_3', label: '3 meses' },
+ { value: 'installments_4', label: '4 meses' },
+ { value: 'month', label: 'Mensual' },
+ { value: 'year', label: 'Anual' },
+];
+
+const CLIENT_CHARGE_METHOD_OPTIONS: Array<{ value: ClientChargeMethod; label: string }> = [
+ { value: 'cash', label: 'Efectivo' },
+ { value: 'transfer', label: 'Transferencia' },
+ { value: 'stripe', label: 'Stripe' },
+];
 
 const getEditableInvoiceConcept = (description: string): string =>
  description
@@ -236,15 +254,29 @@ export default function CrmScreen({
 
  const selectedClientTransactions = React.useMemo(() => {
  if (!selectedContact) return [];
- return transactions.filter(t => t.type === 'income' && transactionBelongsToContact(t, selectedContact, selectedClientInvoices));
+ return transactions.filter(t => t.type === 'income' && !t.isRecurring && transactionBelongsToContact(t, selectedContact, selectedClientInvoices));
  }, [transactions, selectedContact, selectedClientInvoices]);
 
  const selectedPaymentSummary = React.useMemo(() => {
  const saleTransactions = selectedClientTransactions.filter(t => t.type === 'income');
  const paidTransactions = saleTransactions.filter(t => t.status === 'paid');
  const pendingTransactions = saleTransactions.filter(t => t.status === 'pending');
- const latestStripeTx = [...saleTransactions]
+ const stripeTransactionGroups = [...saleTransactions]
   .filter(t => t.stripeCheckoutUrl)
+  .reduce<Map<string, FinanceTransaction[]>>((groups, transaction) => {
+  const groupKey = transaction.stripeCheckoutSessionId || transaction.id;
+  groups.set(groupKey, [...(groups.get(groupKey) || []), transaction]);
+  return groups;
+  }, new Map());
+ const latestStripeTx = [...stripeTransactionGroups.values()]
+  .map(group => [...group].sort((a, b) => {
+  const installmentDelta = (a.stripeInstallmentIndex ?? Number.MAX_SAFE_INTEGER)
+   - (b.stripeInstallmentIndex ?? Number.MAX_SAFE_INTEGER);
+  if (installmentDelta !== 0) return installmentDelta;
+  const aTime = new Date(a.date).getTime() || 0;
+  const bTime = new Date(b.date).getTime() || 0;
+  return aTime - bTime;
+  })[0])
   .sort((a, b) => {
   const pendingDelta = Number(b.status === 'pending') - Number(a.status === 'pending');
   if (pendingDelta !== 0) return pendingDelta;
@@ -269,63 +301,48 @@ export default function CrmScreen({
 
  // Stripe Subscription States
  const [stripeAmount, setStripeAmount] = useState('50');
- const [stripeInterval, setStripeInterval] = useState<'month' | 'year' | 'once'>('month');
  const [stripeConcept, setStripeConcept] = useState('Gestión mensual de redes sociales');
+ const [chargePlan, setChargePlan] = useState<ClientChargePlan>('once');
+ const [chargePaymentMethod, setChargePaymentMethod] = useState<ClientChargeMethod>('stripe');
  const [stripeLoading, setStripeLoading] = useState(false);
  const [generatedCheckoutUrl, setGeneratedCheckoutUrl] = useState('');
  const [generatedCheckoutSessionId, setGeneratedCheckoutSessionId] = useState('');
  const [stripeCopied, setStripeCopied] = useState(false);
  const [stripeError, setStripeError] = useState('');
+ const [chargeSuccess, setChargeSuccess] = useState('');
  const [stripeEmailInput, setStripeEmailInput] = useState('');
  const [stripeOverview, setStripeOverview] = useState<any>(null);
  const [stripeOverviewLoading, setStripeOverviewLoading] = useState(false);
  const [stripeOverviewError, setStripeOverviewError] = useState('');
-
- // Automatic Installments Generator States
- const [instTotalAmount, setInstTotalAmount] = useState('');
- const [instCount, setInstCount] = useState<2 | 3>(3);
- const [instConcept, setInstConcept] = useState('Servicios de Desarrollo y Consultoría');
- const [instLoading, setInstLoading] = useState(false);
- const [instError, setInstError] = useState('');
- const [instGeneratedUrl, setInstGeneratedUrl] = useState('');
- const [instCopied, setInstCopied] = useState(false);
+ const stripeInterval: 'month' | 'year' | 'once' = chargePlan === 'month' || chargePlan === 'year' ? chargePlan : 'once';
+ const setStripeInterval = (interval: 'month' | 'year' | 'once') => setChargePlan(interval);
+ const instTotalAmount = stripeAmount;
+ const setInstTotalAmount = setStripeAmount;
+ const instCount: 2 | 3 = chargePlan === 'installments_3' ? 3 : 2;
+ const setInstCount = (count: 2 | 3) => setChargePlan(`installments_${count}`);
+ const instConcept = stripeConcept;
+ const setInstConcept = setStripeConcept;
+ const instLoading = stripeLoading;
+ const instError = stripeError;
+ const setInstError = setStripeError;
+ const instGeneratedUrl = generatedCheckoutUrl;
+ const setInstGeneratedUrl = setGeneratedCheckoutUrl;
+ const instCopied = stripeCopied;
+ const setInstCopied = setStripeCopied;
 
  React.useEffect(() => {
  setGeneratedCheckoutUrl('');
  setGeneratedCheckoutSessionId('');
  setStripeCopied(false);
  setStripeError('');
+ setChargeSuccess('');
  setStripeOverview(null);
  setStripeOverviewError('');
  setStripeEmailInput(selectedContact?.email || '');
 
- // Reset and dynamically set automatic installments generator states based on pending payments
- setInstError('');
- setInstGeneratedUrl('');
- setInstCopied(false);
-
- if (selectedContact) {
-  const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, selectedContact));
-  const clientTransactions = transactions.filter(t => t.type === 'income' && transactionBelongsToContact(t, selectedContact, clientInvoices));
-
-  const pendingTxs = clientTransactions.filter(t => t.status === 'pending');
-  if (pendingTxs.length > 0) {
-  const pendingSum = pendingTxs.reduce((sum, t) => sum + t.amount, 0);
-  setInstTotalAmount(pendingSum.toFixed(2));
-  setInstCount(pendingTxs.length === 2 ? 2 : 3);
-  const cleanDesc = pendingTxs[0].description.split(' - ')[0].split(' (')[0];
-  setInstConcept(cleanDesc || 'Servicios de Desarrollo y Consultoría');
-  } else {
-  setInstTotalAmount('');
-  setInstCount(3);
-  setInstConcept('Servicios de Desarrollo y Consultoría');
-  }
- } else {
-  setInstTotalAmount('');
-  setInstCount(3);
-  setInstConcept('Servicios de Desarrollo y Consultoría');
- }
- }, [selectedContactId, selectedContact, transactions, invoices]);
+ setChargePlan('once');
+ setChargePaymentMethod('stripe');
+ }, [selectedContactId, selectedContact?.email]);
 
  const handleLoadStripeOverview = async () => {
  if (!selectedContact) return;
@@ -487,7 +504,6 @@ export default function CrmScreen({
   setTransactions(prev => prev.map(item => renewedTransactions.find(renewed => renewed.id === item.id) || item));
   setGeneratedCheckoutUrl(data.url);
   setGeneratedCheckoutSessionId(data.sessionId);
-  if (instGeneratedUrl === tx.stripeCheckoutUrl) setInstGeneratedUrl(data.url);
   setCheckoutSessionState(prev => {
   const next = { ...prev };
   renewedTransactions.forEach(item => {
@@ -1582,167 +1598,223 @@ export default function CrmScreen({
  }
  };
 
- const handleCreateStripeCheckout = async (contact: ClientContact) => {
+ const handleCreateClientCharge = async (contact: ClientContact) => {
  const targetEmail = stripeEmailInput.trim();
- if (!targetEmail) {
-  setStripeError('El cliente debe tener un email registrado para configurar Stripe.');
+ const isStripe = chargePaymentMethod === 'stripe';
+ const isSubscription = chargePlan === 'month' || chargePlan === 'year';
+ const installmentCount = chargePlan.startsWith('installments_')
+  ? Number(chargePlan.replace('installments_', ''))
+  : 1;
+
+ if (isStripe && !targetEmail) {
+  setStripeError('Añade un email para generar el enlace de Stripe.');
   return;
  }
+
  setStripeLoading(true);
  setStripeError('');
+ setChargeSuccess('');
  try {
   const amountNumber = Number(stripeAmount);
   const concept = stripeConcept.trim();
-  if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-   throw new Error('Introduce un importe válido superior a cero.');
-  }
-  if (!concept) {
-   throw new Error('Introduce el concepto del cobro.');
+  if (!Number.isFinite(amountNumber) || amountNumber <= 0) throw new Error('Introduce un importe válido superior a cero.');
+  if (!concept) throw new Error('Introduce el concepto del cobro.');
+
+  if (isStripe && contact.email !== targetEmail && onUpdateContact) {
+   onUpdateContact({ ...contact, email: targetEmail });
   }
 
-  // If the email is missing or has changed, update the contact in Supabase/db
-  if (contact.email !== targetEmail) {
-  if (onUpdateContact) {
-   onUpdateContact({
-   ...contact,
-   email: targetEmail
-   });
-  }
-  }
-
-  const txId = `tx_stripe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const timestamp = Date.now();
   const stripePlanId = `plan_stripe_${Math.random().toString(36).slice(2, 10)}`;
-  const response = await fetch('/api/stripe/create-checkout-session', {
-  method: 'POST',
-  headers: {
-   'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-   clientId: contact.id,
-   clientName: contact.name,
-   clientEmail: targetEmail,
-   amount: stripeAmount,
-   interval: stripeInterval,
-   concept,
-   pendingTxId: txId,
-   stripePlanId,
-  }),
-  });
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
 
-  const data = await readStripeJson(response);
-  if (!response.ok) {
-  throw new Error(data.error || 'Error al generar la sesión de Stripe');
+  if (installmentCount > 1) {
+   const regularAmount = Math.round((amountNumber / installmentCount) * 100) / 100;
+   let plannedTransactions: FinanceTransaction[] = Array.from({ length: installmentCount }, (_, index) => {
+    const installmentAmount = index === installmentCount - 1
+     ? Math.round((amountNumber - regularAmount * index) * 100) / 100
+     : regularAmount;
+    const isPaidNow = !isStripe && index === 0;
+    return {
+     id: `tx_${chargePaymentMethod}_${timestamp}_${index + 1}_${Math.random().toString(36).slice(2, 7)}`,
+     type: 'income',
+     category: 'Ventas',
+     amount: installmentAmount,
+     date: toLocalDateKey(addMonthsKeepingDay(today, index)),
+     description: `${concept} - Cuota ${index + 1} de ${installmentCount}${isPaidNow ? '' : ' (Pendiente)'}`,
+     status: isPaidNow ? 'paid' : 'pending',
+     paymentMethod: chargePaymentMethod,
+     clientId: contact.id,
+     stripePlanId,
+     stripeInstallmentIndex: index + 1,
+     stripeInstallmentCount: installmentCount,
+    };
+   });
+
+   if (isStripe) {
+    const firstTransaction = plannedTransactions[0];
+    const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({
+      clientId: contact.id,
+      clientName: contact.name,
+      clientEmail: targetEmail,
+      amount: firstTransaction.amount.toFixed(2),
+      interval: 'month',
+      installments: String(installmentCount),
+      concept: `${concept} - ${installmentCount} cuotas mensuales`,
+      pendingTxId: firstTransaction.id,
+      stripePlanId,
+      installmentIndex: '1',
+     }),
+    });
+    const data = await readStripeJson(response);
+    if (!response.ok) throw new Error(data.error || 'No se pudo generar el plan de cuotas.');
+    plannedTransactions = plannedTransactions.map(transaction => ({
+     ...transaction,
+     stripeCheckoutUrl: data.url,
+     stripeCheckoutSessionId: data.sessionId,
+    }));
+    setGeneratedCheckoutUrl(data.url);
+    setGeneratedCheckoutSessionId(data.sessionId);
+   }
+
+   await Promise.all(plannedTransactions.map(transaction => db.insertFinanceTransaction(transaction)));
+   setTransactions(previous => [...plannedTransactions, ...previous]);
+   setChargeSuccess(isStripe ? 'Enlace de cuotas listo para compartir.' : `Plan de ${installmentCount} cuotas registrado.`);
+   return;
   }
 
-  const isRecurring = stripeInterval !== 'once';
-  const pendingTransaction: FinanceTransaction = {
-   id: txId,
-   type: 'income',
-   category: isRecurring ? 'Mensualidad' : 'Ventas',
-   amount: amountNumber,
-   date: toLocalDateKey(new Date()),
-   description: `${concept} (Pendiente)`,
-   // It becomes recurrent only after Stripe confirms the first subscription payment.
-   isRecurring: false,
-   status: 'pending',
-   paymentMethod: 'stripe',
-   clientId: contact.id,
-   stripePlanId,
-   stripeCheckoutUrl: data.url,
-   stripeCheckoutSessionId: data.sessionId,
-  };
-  await db.insertFinanceTransaction(pendingTransaction);
-  setTransactions(prev => [pendingTransaction, ...prev.filter(tx => tx.id !== pendingTransaction.id)]);
-  setGeneratedCheckoutUrl(data.url);
-  setGeneratedCheckoutSessionId(data.sessionId);
+  const txId = `tx_${chargePaymentMethod}_${timestamp}_${Math.random().toString(36).slice(2, 8)}`;
+
+  if (isSubscription) {
+   const recurringTemplate: FinanceTransaction = {
+    id: `recurring_${txId}`,
+    type: 'income',
+    category: 'Mensualidad',
+    amount: amountNumber,
+    nextAmount: amountNumber,
+    date: toLocalDateKey(today),
+    description: concept,
+    isRecurring: true,
+    recurrencePeriod: chargePlan === 'year' ? 'yearly' : 'monthly',
+    status: 'paid',
+    paymentMethod: chargePaymentMethod,
+    clientId: contact.id,
+    stripePlanId,
+   };
+
+   if (isStripe) {
+    const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({
+      clientId: contact.id,
+      clientName: contact.name,
+      clientEmail: targetEmail,
+      amount: amountNumber.toFixed(2),
+      interval: chargePlan,
+      concept,
+      pendingTxId: txId,
+      stripePlanId,
+     }),
+    });
+    const data = await readStripeJson(response);
+    if (!response.ok) throw new Error(data.error || 'No se pudo generar la suscripción.');
+    const pendingTransaction: FinanceTransaction = {
+     id: txId,
+     type: 'income',
+     category: 'Mensualidad',
+     amount: amountNumber,
+     date: toLocalDateKey(today),
+     description: `${concept} (Pendiente)`,
+     isRecurring: false,
+     status: 'pending',
+     paymentMethod: 'stripe',
+     clientId: contact.id,
+     stripePlanId,
+     stripeCheckoutUrl: data.url,
+     stripeCheckoutSessionId: data.sessionId,
+    };
+    await Promise.all([db.insertFinanceTransaction(pendingTransaction), db.insertFinanceTransaction(recurringTemplate)]);
+    setTransactions(previous => [pendingTransaction, recurringTemplate, ...previous]);
+    setGeneratedCheckoutUrl(data.url);
+    setGeneratedCheckoutSessionId(data.sessionId);
+    setChargeSuccess('Suscripción creada y añadida a ingresos recurrentes.');
+   } else {
+    await db.insertFinanceTransaction(recurringTemplate);
+    const updatedTransactions = [recurringTemplate, ...transactions];
+    await db.materializeDueRecurringFinanceTransactions(updatedTransactions);
+    setTransactions(await db.getFinanceTransactions());
+    setChargeSuccess('Suscripción e ingreso de hoy registrados.');
+   }
+   return;
+  }
+
+  if (isStripe) {
+   const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+     clientId: contact.id,
+     clientName: contact.name,
+     clientEmail: targetEmail,
+     amount: amountNumber.toFixed(2),
+     interval: 'once',
+     concept,
+     pendingTxId: txId,
+     stripePlanId,
+    }),
+   });
+   const data = await readStripeJson(response);
+   if (!response.ok) throw new Error(data.error || 'No se pudo generar el enlace de Stripe.');
+   const pendingTransaction: FinanceTransaction = {
+    id: txId,
+    type: 'income',
+    category: 'Ventas',
+    amount: amountNumber,
+    date: toLocalDateKey(today),
+    description: `${concept} (Pendiente)`,
+    status: 'pending',
+    paymentMethod: 'stripe',
+    clientId: contact.id,
+    stripePlanId,
+    stripeCheckoutUrl: data.url,
+    stripeCheckoutSessionId: data.sessionId,
+   };
+   await db.insertFinanceTransaction(pendingTransaction);
+   setTransactions(previous => [pendingTransaction, ...previous]);
+   setGeneratedCheckoutUrl(data.url);
+   setGeneratedCheckoutSessionId(data.sessionId);
+   setChargeSuccess('Enlace de pago listo para compartir.');
+  } else {
+   const paidTransaction: FinanceTransaction = {
+    id: txId,
+    type: 'income',
+    category: 'Ventas',
+    amount: amountNumber,
+    date: toLocalDateKey(today),
+    description: concept,
+    status: 'paid',
+    paymentMethod: chargePaymentMethod,
+    clientId: contact.id,
+   };
+   await db.insertFinanceTransaction(paidTransaction);
+   setTransactions(previous => [paidTransaction, ...previous]);
+   setChargeSuccess('Pago registrado correctamente.');
+  }
  } catch (err: any) {
   console.error(err);
-  setStripeError(err?.message || 'No se pudo generar el enlace de Stripe.');
+  setStripeError(err?.message || 'No se pudo crear el cobro.');
  } finally {
   setStripeLoading(false);
  }
  };
 
- const handleCreateInstallmentStripeCheckout = async (contact: ClientContact) => {
- const targetEmail = contact.email || stripeEmailInput.trim();
- if (!targetEmail) {
-  setInstError('El cliente debe tener un email registrado para configurar Stripe.');
-  return;
- }
- 
- const total = parseFloat(instTotalAmount);
- if (isNaN(total) || total <= 0) {
-  setInstError('El monto total debe ser un número positivo.');
-  return;
- }
-
- setInstLoading(true);
- setInstError('');
- try {
-  const concept = instConcept.trim();
-  if (!concept) throw new Error('Introduce el concepto del cobro en plazos.');
-  const stripePlanId = `plan_stripe_${Math.random().toString(36).slice(2, 10)}`;
-  const firstDate = new Date();
-  firstDate.setHours(12, 0, 0, 0);
-  const installmentAmount = Math.round((total / instCount) * 100) / 100;
-  const plannedTransactions: FinanceTransaction[] = Array.from({ length: instCount }, (_, index) => ({
-   id: `tx_stripe_${Date.now()}_${index + 1}_${Math.random().toString(36).slice(2, 7)}`,
-   type: 'income' as const,
-   category: 'Ventas',
-   amount: installmentAmount,
-   date: toLocalDateKey(addMonthsKeepingDay(firstDate, index)),
-   description: `${concept} - Cuota ${index + 1} de ${instCount} (Pendiente)`,
-   status: 'pending' as const,
-   paymentMethod: 'stripe' as const,
-   clientId: contact.id,
-   stripePlanId,
-   stripeInstallmentIndex: index + 1,
-   stripeInstallmentCount: instCount,
-  }));
-  const firstTransaction = plannedTransactions[0];
-
-  const response = await fetch('/api/stripe/create-checkout-session', {
-  method: 'POST',
-  headers: {
-   'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-   clientId: contact.id,
-   clientName: contact.name,
-   clientEmail: targetEmail,
-   amount: installmentAmount.toFixed(2),
-   interval: 'month',
-   installments: instCount.toString(),
-   concept: `${concept} - ${instCount} cuotas mensuales`,
-   pendingTxId: firstTransaction.id,
-   stripePlanId,
-   installmentIndex: '1',
-  }),
-  });
-
-  const data = await readStripeJson(response);
-  if (!response.ok) {
-  throw new Error(data.error || 'Error al generar el plan de plazos');
-  }
-
-  const linkedTransactions = plannedTransactions.map(tx => ({
-   ...tx,
-   stripeCheckoutUrl: data.url,
-   stripeCheckoutSessionId: data.sessionId,
-  }));
-  await Promise.all(linkedTransactions.map(tx => db.insertFinanceTransaction(tx)));
-  setTransactions(prev => [
-   ...linkedTransactions,
-   ...prev.filter(existing => !linkedTransactions.some(created => created.id === existing.id)),
-  ]);
-  setInstGeneratedUrl(data.url);
- } catch (err: any) {
-  console.error(err);
-  setInstError(err?.message || 'No se pudo generar el plan de pagos con Stripe.');
- } finally {
-  setInstLoading(false);
- }
- };
+ const handleCreateStripeCheckout = handleCreateClientCharge;
+ const handleCreateInstallmentStripeCheckout = handleCreateClientCharge;
 
  const handleOpenStripePortal = async (stripeCustomerId: string) => {
  setStripeLoading(true);
@@ -2937,7 +3009,163 @@ export default function CrmScreen({
      </button>
      </div>
     )}
-     <div className="space-y-3">
+
+    <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#080b12] to-[#030407] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)]">
+     <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+       <span className="grid h-7 w-7 place-items-center rounded-lg border border-violet-400/20 bg-violet-500/10 text-violet-300">
+        <CreditCard className="h-3.5 w-3.5" />
+       </span>
+       <div>
+        <h4 className="text-[11px] font-bold text-slate-100">Nuevo cobro</h4>
+        <p className="text-[8px] text-slate-500">Modalidad y forma de pago</p>
+       </div>
+      </div>
+      <span className="rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-1 text-[8px] font-semibold uppercase tracking-wide text-slate-400">
+       {chargePaymentMethod === 'stripe' ? 'Genera enlace' : 'Registro directo'}
+      </span>
+     </div>
+
+     <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Modalidad del cobro">
+      {CLIENT_CHARGE_PLAN_OPTIONS.map(option => (
+       <button
+        key={option.value}
+        type="button"
+        onClick={() => {
+         setChargePlan(option.value);
+         setGeneratedCheckoutUrl('');
+         setStripeError('');
+         setChargeSuccess('');
+        }}
+        className={`min-h-8 rounded-lg border px-1.5 py-1 text-[8.5px] font-bold transition ${chargePlan === option.value
+         ? 'border-violet-400/35 bg-violet-500/15 text-violet-200 shadow-[inset_0_0_12px_rgba(139,92,246,0.06)]'
+         : 'border-white/[0.06] bg-black/20 text-slate-500 hover:border-white/10 hover:text-slate-300'}`}
+       >
+        {option.label}
+       </button>
+      ))}
+     </div>
+
+     <div className="mt-2.5 grid grid-cols-3 gap-1.5" role="group" aria-label="Forma de pago">
+      {CLIENT_CHARGE_METHOD_OPTIONS.map(option => (
+       <button
+        key={option.value}
+        type="button"
+        onClick={() => {
+         setChargePaymentMethod(option.value);
+         setGeneratedCheckoutUrl('');
+         setStripeError('');
+         setChargeSuccess('');
+        }}
+        className={`rounded-lg border px-2 py-1.5 text-[8.5px] font-semibold transition ${chargePaymentMethod === option.value
+         ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
+         : 'border-white/[0.06] bg-black/20 text-slate-500 hover:text-slate-300'}`}
+       >
+        {option.label}
+       </button>
+      ))}
+     </div>
+
+     <div className="mt-3 grid grid-cols-[1fr_92px] gap-2">
+      <input
+       type="text"
+       value={stripeConcept}
+       onChange={(event) => {
+        setStripeConcept(event.target.value);
+        setGeneratedCheckoutUrl('');
+        setChargeSuccess('');
+       }}
+       maxLength={180}
+       aria-label="Concepto del cobro"
+       className="min-w-0 rounded-lg border border-white/[0.07] bg-black/25 px-2.5 py-2 text-[10px] text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-violet-400/45"
+       placeholder="Concepto"
+      />
+      <div className="relative">
+       <input
+        type="number"
+        min="0.01"
+        step="0.01"
+        value={stripeAmount}
+        onChange={(event) => {
+         setStripeAmount(event.target.value);
+         setGeneratedCheckoutUrl('');
+         setChargeSuccess('');
+        }}
+        aria-label="Importe en euros"
+        className="w-full rounded-lg border border-white/[0.07] bg-black/25 py-2 pl-2.5 pr-6 text-[10px] font-semibold text-slate-100 outline-none transition focus:border-violet-400/45"
+        placeholder="0,00"
+       />
+       <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-slate-500">€</span>
+      </div>
+     </div>
+
+     {chargePaymentMethod === 'stripe' ? (
+      <div className="mt-2">
+       <input
+        type="email"
+        value={stripeEmailInput}
+        onChange={(event) => setStripeEmailInput(event.target.value)}
+        aria-label="Email del cliente para Stripe"
+        className="w-full rounded-lg border border-white/[0.07] bg-black/25 px-2.5 py-2 text-[10px] text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-violet-400/45"
+        placeholder="Email del cliente para Stripe"
+       />
+      </div>
+     ) : null}
+
+     {chargePlan.startsWith('installments_') ? (
+      <div className="mt-2 flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.025] px-2.5 py-2 text-[8.5px] text-slate-500">
+       <span>{chargePlan.replace('installments_', '')} cuotas mensuales</span>
+       <strong className="font-mono text-slate-300">
+        {(Number(stripeAmount || 0) / Number(chargePlan.replace('installments_', ''))).toFixed(2)} € / cuota
+       </strong>
+      </div>
+     ) : null}
+
+     {stripeError ? (
+      <p className="mt-2 rounded-lg border border-rose-500/15 bg-rose-500/[0.06] px-2.5 py-2 text-[9px] text-rose-300">{stripeError}</p>
+     ) : null}
+     {chargeSuccess ? (
+      <p className="mt-2 rounded-lg border border-emerald-500/15 bg-emerald-500/[0.06] px-2.5 py-2 text-[9px] text-emerald-300">{chargeSuccess}</p>
+     ) : null}
+
+     {generatedCheckoutUrl && chargePaymentMethod === 'stripe' ? (
+      <div className="mt-2 grid grid-cols-[1fr_auto] gap-1.5">
+       <button
+        type="button"
+        onClick={() => {
+         navigator.clipboard.writeText(generatedCheckoutUrl);
+         setStripeCopied(true);
+         setTimeout(() => setStripeCopied(false), 2000);
+        }}
+        className="flex items-center justify-center gap-1.5 rounded-lg border border-white/[0.07] bg-white/[0.04] px-3 py-2 text-[9px] font-semibold text-slate-300 hover:bg-white/[0.07]"
+       >
+        {stripeCopied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+        {stripeCopied ? 'Copiado' : 'Copiar enlace'}
+       </button>
+       <a
+        href={generatedCheckoutUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="grid h-8 w-9 place-items-center rounded-lg border border-violet-400/20 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
+        title="Abrir enlace de Stripe"
+       >
+        <ExternalLink className="h-3.5 w-3.5" />
+       </a>
+      </div>
+     ) : (
+      <button
+       type="button"
+       disabled={stripeLoading || !stripeConcept.trim() || !stripeAmount.trim() || (chargePaymentMethod === 'stripe' && !stripeEmailInput.trim())}
+       onClick={() => handleCreateClientCharge(selectedContact)}
+       className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-cyan-500 px-3 py-2 text-[9.5px] font-extrabold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+       {stripeLoading ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-900 border-t-transparent" /> : <Plus className="h-3 w-3" />}
+       {stripeLoading ? 'Procesando…' : chargePaymentMethod === 'stripe' ? 'Generar cobro' : 'Registrar cobro'}
+      </button>
+     )}
+    </div>
+
+     <div className="hidden">
      <div className="pt-3 border-t border-white/5">
       <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-violet-300">Crear nuevo cobro</span>
      </div>
@@ -3074,8 +3302,8 @@ export default function CrmScreen({
      </div>
     </div>
 
-    {/* Financiación / Generación de Enlace de Plazos (Cobro Automático) */}
-    <div className="bg-[#030305] p-4 rounded-2xl border border-white/5 space-y-3.5 text-left w-full shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
+    {/* Legacy installment form retained only for state compatibility while the unified creator is active. */}
+    <div className="hidden">
     <div className="flex items-center gap-2 border-b border-white/5 pb-2.5">
      <CreditCard className="w-4 h-4 text-emerald-400" />
      <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Crear cobro en plazos</span>
@@ -3324,7 +3552,7 @@ export default function CrmScreen({
     {/* Módulo de Contabilidad y Facturas de Cliente */}
     {(() => {
     const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, selectedContact));
-    const clientTransactions = transactions.filter(t => t.type === 'income' && transactionBelongsToContact(t, selectedContact, clientInvoices));
+    const clientTransactions = transactions.filter(t => t.type === 'income' && !t.isRecurring && transactionBelongsToContact(t, selectedContact, clientInvoices));
 
     const getInvoicePaymentSummary = (invoice: Invoice) => {
      const invoiceTotal = Number(invoice.total || 0);
@@ -3521,23 +3749,24 @@ export default function CrmScreen({
        <p className="text-[10px] text-slate-500 font-sans">No hay cobros registrados para este cliente.</p>
       </div>
       ) : (
-      <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+      <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
        {clientTransactions.map(tx => {
        const isPending = tx.status === 'pending';
        const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId, tx.stripeInvoiceId);
 
        return (
-        <div key={tx.id} className="bg-[#05070c]/75 p-3.5 rounded-xl border border-white/[0.07] flex flex-col gap-2.5 hover:border-violet-500/15 hover:bg-[#070a11] transition-all">
-        <div className="flex justify-between items-center gap-2">
-         <div className="space-y-0.5 max-w-[70%]">
-         <p className="text-[10px] text-slate-200 truncate font-semibold flex items-center gap-1.5">
+        <div key={tx.id} className="rounded-lg border border-white/[0.06] bg-[#05070c]/80 px-2.5 py-2 transition-all hover:border-violet-400/15 hover:bg-[#080b12]">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+         <div className="min-w-0 space-y-1">
+         <p className="flex min-w-0 items-center gap-1.5 truncate text-[9.5px] font-semibold text-slate-200">
           {tx.description}
           {isPending && (
-          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[7px] font-extrabold uppercase px-1.5 rounded font-mono">Plazo Pendiente</span>
+          <span className="shrink-0 rounded border border-amber-500/15 bg-amber-500/[0.08] px-1 py-0.5 font-mono text-[6.5px] font-bold uppercase text-amber-400">Pendiente</span>
           )}
          </p>
-         <div className="flex items-center gap-2 text-[8px] font-mono text-slate-500">
-          <span>Vence: <strong className="text-slate-400">{tx.date}</strong></span>
+         <div className="flex items-center gap-1.5 truncate font-mono text-[7.5px] text-slate-600">
+          <span><strong className="font-medium text-slate-500">{tx.date}</strong></span>
+          <span className="text-slate-700">·</span>
           <span className="uppercase">{tx.paymentMethod || 'transfer'}</span>
           {tx.invoiceId && (
           <span className="text-emerald-500/80 font-semibold">Factura: {tx.invoiceId}</span>
@@ -3545,28 +3774,28 @@ export default function CrmScreen({
          </div>
          </div>
 
-         <div className="flex items-center gap-1.5 shrink-0">
+         <div className="flex shrink-0 items-center gap-1">
          {/* Amount */}
-         <span className={`text-[11px] font-mono font-black ${isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
+         <span className={`mr-1 text-[10px] font-mono font-black ${isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
           {isPending ? '' : '+'}{tx.amount.toFixed(2)} €
          </span>
 
          <button
           type="button"
           onClick={() => handleToggleClientTransactionPaid(tx)}
-          className={`p-1 rounded-lg border transition-all cursor-pointer ${isPending ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20' : 'border-amber-500/20 bg-amber-500/5 text-amber-400 hover:bg-amber-500/15'}`}
+          className={`grid h-6 w-6 place-items-center rounded-md border transition-all cursor-pointer ${isPending ? 'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/15' : 'border-amber-500/15 bg-amber-500/[0.05] text-amber-400 hover:bg-amber-500/10'}`}
           title={isPending ? 'Marcar cuota como pagada' : 'Volver a marcar como pendiente'}
          >
-          <Check className="w-3.5 h-3.5" />
+          <Check className="h-3 w-3" />
          </button>
 
          <button
           type="button"
           onClick={() => openInvoiceGeneratorForClientPayment(tx)}
-          className="p-1 rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-400 transition-all hover:bg-blue-500/20 hover:text-blue-300"
+          className="grid h-6 w-6 place-items-center rounded-md border border-blue-500/15 bg-blue-500/[0.07] text-blue-400 transition-all hover:bg-blue-500/15 hover:text-blue-300"
           title="Generar factura con este pago y los importes pendientes"
          >
-          <Receipt className="w-3.5 h-3.5" />
+          <Receipt className="h-3 w-3" />
          </button>
 
          {/* Delete Button */}
@@ -3575,20 +3804,20 @@ export default function CrmScreen({
           href={stripeDashboardUrl}
           target="_blank"
           rel="noreferrer"
-          className="p-1 hover:bg-indigo-500/10 hover:border-indigo-500/20 text-indigo-400 border border-transparent rounded-lg transition-all cursor-pointer"
+          className="grid h-6 w-6 place-items-center rounded-md border border-transparent text-indigo-400 transition-all hover:border-indigo-500/15 hover:bg-indigo-500/[0.08]"
           title="Ver pago en Stripe"
           >
-          <ExternalLink className="w-3.5 h-3.5" />
+          <ExternalLink className="h-3 w-3" />
           </a>
          )}
 
          <button
           type="button"
           onClick={() => handleDeleteTransaction(tx.id)}
-          className="p-1 hover:bg-rose-500/10 hover:border-rose-500/20 text-slate-500 hover:text-rose-400 border border-transparent rounded-lg transition-all cursor-pointer"
+          className="grid h-6 w-6 place-items-center rounded-md border border-transparent text-slate-600 transition-all hover:border-rose-500/15 hover:bg-rose-500/[0.07] hover:text-rose-400"
           title="Eliminar cobro"
          >
-          <Trash2 className="w-3.5 h-3.5" />
+          <Trash2 className="h-3 w-3" />
          </button>
          </div>
         </div>

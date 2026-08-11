@@ -2589,66 +2589,56 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
   <div className="space-y-6 max-w-7xl mx-auto pb-12">
   
   {/* Page Header */}
-  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-6">
-  <div className="space-y-1.5 text-left">
-   <div className="flex flex-wrap items-center gap-2">
-   <span className="text-[10px] uppercase font-mono tracking-widest text-[#00f2fe] font-black bg-[#00f2fe]/10 border border-[#00f2fe]/20 px-2 py-0.5 rounded-lg">
-    Módulo Directivo
-   </span>
-   <span className="text-slate-600 font-mono text-xs">•</span>
-   <span className="text-xs text-slate-400 font-sans font-light tracking-wide">Control Financiero & Facturación en tiempo real</span>
-   </div>
-   <div className="flex flex-wrap items-center gap-3 mt-1">
-   <h2 className="text-3xl font-black text-white tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
+  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-white/5 pb-4">
+  <div className="text-left">
+   <div className="flex flex-wrap items-center gap-2.5">
+   <h2 className="text-2xl font-black text-white tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
     Cuentas y Finanzas
    </h2>
    
    {/* Sync status indicator */}
    {syncStatus === 'syncing' ? (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wide animate-pulse">
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase tracking-wide animate-pulse">
     <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-    Sincronizando con la nube
+    Sincronizando
     </span>
    ) : syncStatus === 'synced' ? (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgb(16,185,129)]" />
-    Supabase Activo
+    Activo
     </span>
    ) : (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold bg-rose-500/10 text-rose-450 border border-rose-500/20 uppercase tracking-wide">
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[8px] font-mono font-bold bg-rose-500/10 text-rose-450 border border-rose-500/20 uppercase tracking-wide">
     <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-    Sin conexión a DB
+    Sin conexión
     </span>
    )}
    </div>
-   <p className="text-xs text-slate-400 font-light mt-0.5 max-w-2xl">
-   Control de cobros estructurado, pasarela de facturación pro-forma para clientes y panel analítico de ingresos, egresos y suscripciones operativas.
-   </p>
   </div>
 
-  <div className="flex flex-wrap items-center justify-start md:justify-end gap-2.5">
+  <div className="flex flex-wrap items-center justify-start md:justify-end gap-1.5">
    <button
    onClick={() => showTransactionIncomeRange('today')}
-   className="bg-cyan-500/10 hover:bg-cyan-500/15 active:scale-95 text-xs text-cyan-200 font-extrabold py-2.5 px-4 rounded-xl transition-all shadow-lg hover:shadow-cyan-500/10 cursor-pointer flex items-center gap-2 border border-cyan-400/25"
+   className="h-8 bg-cyan-500/10 hover:bg-cyan-500/15 active:scale-95 text-[9px] text-cyan-200 font-bold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-cyan-400/20"
    >
-   <Calendar className="w-4 h-4" />
-   <span>Cobros de hoy</span>
-   <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 text-[10px] text-cyan-100">{incomeTxsToday.length}</span>
+   <Calendar className="w-3.5 h-3.5" />
+   <span>Hoy</span>
+   <span className="rounded bg-cyan-300/10 px-1.5 py-0.5 text-[8px] text-cyan-100">{incomeTxsToday.length}</span>
    </button>
    <button
    onClick={() => showTransactionIncomeRange('week')}
-   className="bg-violet-500/10 hover:bg-violet-500/15 active:scale-95 text-xs text-violet-200 font-extrabold py-2.5 px-4 rounded-xl transition-all shadow-lg hover:shadow-violet-500/10 cursor-pointer flex items-center gap-2 border border-violet-400/25"
+   className="h-8 bg-violet-500/10 hover:bg-violet-500/15 active:scale-95 text-[9px] text-violet-200 font-bold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-violet-400/20"
    >
-   <Clock className="w-4 h-4" />
-   <span>Esta semana</span>
-   <span className="rounded-full bg-violet-300/15 px-2 py-0.5 text-[10px] text-violet-100">{incomeTxsThisWeek.length}</span>
+   <Clock className="w-3.5 h-3.5" />
+   <span>Semana</span>
+   <span className="rounded bg-violet-300/10 px-1.5 py-0.5 text-[8px] text-violet-100">{incomeTxsThisWeek.length}</span>
    </button>
    <button
    onClick={() => setShowMonthlyCloseReport(true)}
-   className="bg-amber-500 hover:bg-amber-400 active:scale-95 text-xs text-slate-950 font-extrabold py-2.5 px-5 rounded-xl transition-all shadow-lg hover:shadow-amber-500/15 cursor-pointer flex items-center gap-1.5 border border-amber-300/30"
+   className="h-8 bg-amber-400/90 hover:bg-amber-300 active:scale-95 text-[9px] text-slate-950 font-extrabold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-amber-300/20"
    >
-   <Activity className="w-4 h-4" />
-   <span>Cierre de mes</span>
+   <Activity className="w-3.5 h-3.5" />
+   <span>Cierre</span>
    </button>
    {activeTab === 'transactions' && (
    <button
@@ -2657,10 +2647,10 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
     setIsTxModalOpen(true);
     }}
     id="btn-new-tx"
-    className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-xs text-slate-950 font-extrabold py-2.5 px-5 rounded-xl transition-all shadow-lg hover:shadow-emerald-500/15 cursor-pointer flex items-center gap-1.5 border border-emerald-400/20"
+    className="h-8 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-[9px] text-slate-950 font-extrabold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-400/20"
    >
-    <Plus className="w-4 h-4 stroke-[3]" />
-    <span>Registrar Transacción</span>
+    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+    <span>Transacción</span>
    </button>
    )}
 
@@ -2671,10 +2661,10 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
     setIsInvModalOpen(true);
     }}
     id="btn-new-invoice"
-    className="bg-blue-600 hover:bg-blue-500 active:scale-95 text-xs text-white font-extrabold py-2.5 px-5 rounded-xl transition-all shadow-lg hover:shadow-blue-500/15 cursor-pointer flex items-center gap-1.5 border border-blue-400/20"
+    className="h-8 bg-blue-600 hover:bg-blue-500 active:scale-95 text-[9px] text-white font-extrabold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-blue-400/20"
    >
-    <Plus className="w-4 h-4 stroke-[3]" />
-    <span>Nueva factura</span>
+    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+    <span>Factura</span>
    </button>
    )}
   </div>

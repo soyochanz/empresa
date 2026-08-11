@@ -376,7 +376,7 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
       .map((financeInvoice: any) => {
         const items = financeInvoice.items.map((item: any) =>
           item.pendingTxId === targetTx.id
-            ? { ...item, isPending: false, paymentMethod: "transfer" }
+            ? { ...item, isPending: false, paymentMethod: "stripe" }
             : item,
         );
         const status = items.some((item: any) => item.isPending) ? "sent" : "paid";
@@ -468,9 +468,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       console.warn("STRIPE_WEBHOOK_SECRET is not set. Webhook signature verification is disabled.");
     }
 
-    if (event.type === "invoice.paid") {
+    if (event.type === "invoice.paid" || event.type === "invoice.payment_succeeded") {
       const result = await markStripeInvoiceAsPaid(event.data.object as Stripe.Invoice);
-      console.log("Processed Stripe invoice.paid webhook:", result);
+      console.log(`Processed Stripe ${event.type} webhook:`, result);
     }
 
     if (event.type === "checkout.session.completed") {
@@ -557,38 +557,60 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     }
 
     const stripe = getStripe();
+    let effectiveAmountNumber = amountNumber;
+    let effectiveInterval = interval || "month";
+    let effectiveInstallments = installments || "";
+    let effectiveConcept = concept || "";
+    let effectivePendingTxId = pendingTxId || "";
+    let effectiveStripePlanId = stripePlanId || "";
+    let effectiveInstallmentIndex = installmentIndex || "";
+
     if (previousSessionId) {
       const previousSession = await stripe.checkout.sessions.retrieve(previousSessionId);
-      const belongsToSameTransaction = !previousSession.metadata?.pendingTxId || previousSession.metadata.pendingTxId === pendingTxId;
-      if (!belongsToSameTransaction) {
+      const previousPendingTxId = previousSession.metadata?.pendingTxId || "";
+      const previousStripePlanId = previousSession.metadata?.stripePlanId || "";
+      const belongsToSameClient = !previousSession.metadata?.clientId || previousSession.metadata.clientId === clientId;
+      const belongsToSameTransaction = !previousPendingTxId || previousPendingTxId === pendingTxId;
+      const belongsToSamePlan = Boolean(previousStripePlanId && stripePlanId && previousStripePlanId === stripePlanId);
+      if (!belongsToSameClient || (!belongsToSameTransaction && !belongsToSamePlan)) {
         return res.status(409).json({ error: "El enlace anterior no pertenece a este cobro." });
       }
       if (previousSession.payment_status === "paid" || previousSession.status !== "expired") {
         return res.status(409).json({ error: "El enlace solo se puede renovar cuando Stripe confirma que ha caducado y sigue sin pagar." });
       }
+
+      effectiveAmountNumber = previousSession.amount_total
+        ? previousSession.amount_total / 100
+        : amountNumber;
+      effectiveInterval = previousSession.metadata?.interval || effectiveInterval;
+      effectiveInstallments = previousSession.metadata?.installments || effectiveInstallments;
+      effectiveConcept = previousSession.metadata?.concept || effectiveConcept;
+      effectivePendingTxId = previousPendingTxId || effectivePendingTxId;
+      effectiveStripePlanId = previousStripePlanId || effectiveStripePlanId;
+      effectiveInstallmentIndex = previousSession.metadata?.installmentIndex || effectiveInstallmentIndex;
     }
     const appUrl = getAppUrl(req);
-    const isSubscription = interval !== "once";
+    const isSubscription = effectiveInterval !== "once";
 
     const lineItem: any = {
       price_data: {
         currency: "eur",
         product_data: {
-          name: concept || (isSubscription 
+          name: effectiveConcept || (isSubscription
             ? `Mensualidad Automática - ${clientName || "Cliente"}` 
             : `Pago Único - ${clientName || "Cliente"}`),
           description: isSubscription 
             ? `Suscripción recurrente de pago para el cliente ${clientName || clientEmail}` 
             : `Pago único de servicio para el cliente ${clientName || clientEmail}`,
         },
-        unit_amount: Math.round(amountNumber * 100), // convert to cents
+        unit_amount: Math.round(effectiveAmountNumber * 100), // convert to cents
       },
       quantity: 1,
     };
 
     if (isSubscription) {
       lineItem.price_data.recurring = {
-        interval: interval === "year" ? "year" : "month",
+        interval: effectiveInterval === "year" ? "year" : "month",
       };
     }
 
@@ -597,18 +619,18 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       line_items: [lineItem],
       mode: isSubscription ? "subscription" : "payment",
       customer_email: clientEmail,
-      success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${amount}&interval=${interval || "month"}&installments=${installments || ""}&concept=${encodeURIComponent(concept || "")}&pending_tx_id=${pendingTxId || ""}&stripe_plan_id=${stripePlanId || ""}&installment_index=${installmentIndex || ""}`,
+      success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${effectiveAmountNumber}&interval=${effectiveInterval}&installments=${effectiveInstallments}&concept=${encodeURIComponent(effectiveConcept)}&pending_tx_id=${effectivePendingTxId}&stripe_plan_id=${effectiveStripePlanId}&installment_index=${effectiveInstallmentIndex}`,
       cancel_url: `${appUrl}?stripe_status=cancel&client_id=${clientId}`,
       metadata: {
         clientId,
         clientName: clientName || "",
         clientEmail,
-        interval: interval || "month",
-        installments: installments || "",
-        concept: concept || "",
-        pendingTxId: pendingTxId || "",
-        stripePlanId: stripePlanId || "",
-        installmentIndex: installmentIndex || "",
+        interval: effectiveInterval,
+        installments: effectiveInstallments,
+        concept: effectiveConcept,
+        pendingTxId: effectivePendingTxId,
+        stripePlanId: effectiveStripePlanId,
+        installmentIndex: effectiveInstallmentIndex,
       },
     };
 
@@ -616,10 +638,10 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       sessionConfig.subscription_data = {
         metadata: {
           clientId,
-          pendingTxId: pendingTxId || "",
-          stripePlanId: stripePlanId || "",
-          installments: installments || "",
-          interval: interval || "month",
+          pendingTxId: effectivePendingTxId,
+          stripePlanId: effectiveStripePlanId,
+          installments: effectiveInstallments,
+          interval: effectiveInterval,
         },
       };
     }
