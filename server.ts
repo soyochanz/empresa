@@ -542,6 +542,45 @@ app.get("/api/stripe/balance", requireAdminAuth, async (_req, res) => {
   }
 });
 
+app.get("/api/stripe/client-checkout-session", requireAdminAuth, async (req, res) => {
+  try {
+    const clientId = typeof req.query.clientId === "string" ? req.query.clientId.trim() : "";
+    if (!clientId) return res.status(400).json({ error: "clientId is required" });
+
+    const sessions = await getStripe().checkout.sessions.list({ limit: 100 });
+    const latestSession = sessions.data
+      .filter(session => session.metadata?.clientId === clientId)
+      .sort((a, b) => b.created - a.created)[0];
+
+    res.setHeader("Cache-Control", "no-store");
+    if (!latestSession) return res.json({ checkoutSession: null });
+
+    const dashboardMode = latestSession.livemode ? "" : "/test";
+    return res.json({
+      checkoutSession: {
+        id: latestSession.id,
+        status: latestSession.status,
+        paymentStatus: latestSession.payment_status,
+        mode: latestSession.mode,
+        url: latestSession.url,
+        expiresAt: latestSession.expires_at,
+        amountTotal: latestSession.amount_total ? latestSession.amount_total / 100 : null,
+        currency: latestSession.currency,
+        dashboardUrl: `https://dashboard.stripe.com${dashboardMode}/checkout/sessions/${latestSession.id}`,
+        metadata: {
+          pendingTxId: latestSession.metadata?.pendingTxId || "",
+          stripePlanId: latestSession.metadata?.stripePlanId || "",
+          installmentIndex: latestSession.metadata?.installmentIndex || "",
+          installments: latestSession.metadata?.installments || "",
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error("Error retrieving latest client checkout session:", error);
+    return res.status(500).json({ error: error?.message || "No se pudo recuperar el enlace de Stripe del cliente." });
+  }
+});
+
 app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
   try {
     const stripe = getStripe();

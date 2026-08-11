@@ -324,6 +324,7 @@ export default function CrmScreen({
  const [stripeOverview, setStripeOverview] = useState<any>(null);
  const [stripeOverviewLoading, setStripeOverviewLoading] = useState(false);
  const [stripeOverviewError, setStripeOverviewError] = useState('');
+ const [latestClientCheckout, setLatestClientCheckout] = useState<any>(null);
  const stripeInterval: 'month' | 'year' | 'once' = chargePlan === 'month' || chargePlan === 'year' ? chargePlan : 'once';
  const setStripeInterval = (interval: 'month' | 'year' | 'once') => setChargePlan(interval);
  const instTotalAmount = stripeAmount;
@@ -348,11 +349,36 @@ export default function CrmScreen({
  setChargeSuccess('');
  setStripeOverview(null);
  setStripeOverviewError('');
+ setLatestClientCheckout(null);
  setStripeEmailInput(selectedContact?.email || '');
 
  setChargePlan('once');
  setChargePaymentMethod('stripe');
  }, [selectedContactId, selectedContact?.email]);
+
+ React.useEffect(() => {
+  if (!selectedContact?.id) return;
+  let cancelled = false;
+
+  const loadLatestClientCheckout = async () => {
+   try {
+    const response = await authenticatedFetch(`/api/stripe/client-checkout-session?clientId=${encodeURIComponent(selectedContact.id)}`);
+    const data = await readStripeJson(response);
+    if (!response.ok) throw new Error(data.error || 'No se pudo recuperar el enlace de Stripe.');
+    if (!cancelled) setLatestClientCheckout(data.checkoutSession || null);
+   } catch (error) {
+    if (!cancelled) {
+     console.warn('No se pudo recuperar la última sesión de Stripe del cliente:', error);
+     setLatestClientCheckout(null);
+    }
+   }
+  };
+
+  void loadLatestClientCheckout();
+  return () => {
+   cancelled = true;
+  };
+ }, [selectedContact?.id]);
 
  const handleLoadStripeOverview = async () => {
  if (!selectedContact) return;
@@ -529,6 +555,16 @@ React.useEffect(() => {
   setTransactions(prev => prev.map(item => renewedTransactions.find(renewed => renewed.id === item.id) || item));
   setGeneratedCheckoutUrl(data.url);
   setGeneratedCheckoutSessionId(data.sessionId);
+  setLatestClientCheckout((previous: any) => ({
+   ...(previous || {}),
+   id: data.sessionId,
+   url: data.url,
+   status: data.status || 'open',
+   paymentStatus: data.paymentStatus || 'unpaid',
+   mode: data.mode,
+   expiresAt: data.expiresAt,
+   dashboardUrl: getStripeDashboardUrl(data.sessionId) || previous?.dashboardUrl,
+  }));
   setCheckoutSessionState(prev => {
   const next = { ...prev };
   renewedTransactions.forEach(item => {
@@ -2808,18 +2844,44 @@ React.useEffect(() => {
     </div>
 
     {(() => {
-     const visibleCheckoutTransaction = selectedPaymentSummary.checkoutTransaction;
+     const remotePendingTransaction = latestClientCheckout?.metadata?.pendingTxId
+      ? selectedClientTransactions.find(transaction => transaction.id === latestClientCheckout.metadata.pendingTxId)
+      : undefined;
+     const remotePlanTransaction = !remotePendingTransaction && latestClientCheckout?.metadata?.stripePlanId
+      ? selectedClientTransactions.find(transaction => transaction.stripePlanId === latestClientCheckout.metadata.stripePlanId)
+      : undefined;
+     const remoteFallbackTransaction = !remotePendingTransaction && !remotePlanTransaction && latestClientCheckout
+      ? selectedClientTransactions.find(transaction =>
+       transaction.status === 'pending'
+       && (latestClientCheckout.amountTotal === null || Number(transaction.amount) === Number(latestClientCheckout.amountTotal))
+      )
+      : undefined;
+     const remoteBaseTransaction = remotePendingTransaction || remotePlanTransaction || remoteFallbackTransaction;
+     const remoteCheckoutTransaction = remoteBaseTransaction && latestClientCheckout ? {
+      ...remoteBaseTransaction,
+      stripeCheckoutSessionId: latestClientCheckout.id,
+      stripeCheckoutUrl: latestClientCheckout.url || remoteBaseTransaction.stripeCheckoutUrl,
+      stripePlanId: latestClientCheckout.metadata?.stripePlanId || remoteBaseTransaction.stripePlanId,
+     } : undefined;
+     const visibleCheckoutTransaction = remoteCheckoutTransaction || selectedPaymentSummary.checkoutTransaction;
      const visibleCheckoutState = visibleCheckoutTransaction ? checkoutSessionState[visibleCheckoutTransaction.id] : undefined;
      const visibleCheckoutUrl = generatedCheckoutUrl
       || instGeneratedUrl
+      || latestClientCheckout?.url
       || visibleCheckoutState?.url
       || stripeOverview?.checkoutSession?.url
       || selectedPaymentSummary.checkoutUrl;
-     const visibleCheckoutExpired = visibleCheckoutState?.status === 'expired' && visibleCheckoutState.paymentStatus !== 'paid';
-     const visibleCheckoutPaid = visibleCheckoutState?.paymentStatus === 'paid'
+     const visibleCheckoutExpired = !generatedCheckoutUrl
+      && (latestClientCheckout?.status === 'expired' || visibleCheckoutState?.status === 'expired')
+      && latestClientCheckout?.paymentStatus !== 'paid'
+      && visibleCheckoutState?.paymentStatus !== 'paid';
+     const visibleCheckoutPaid = latestClientCheckout?.paymentStatus === 'paid'
+      || latestClientCheckout?.paymentStatus === 'no_payment_required'
+      || visibleCheckoutState?.paymentStatus === 'paid'
       || visibleCheckoutState?.paymentStatus === 'no_payment_required'
       || visibleCheckoutTransaction?.status === 'paid';
-     const stripeDashboardUrl = getStripeDashboardUrl(selectedPaymentSummary.checkoutSessionId, selectedPaymentSummary.stripeInvoiceId);
+     const stripeDashboardUrl = latestClientCheckout?.dashboardUrl
+      || getStripeDashboardUrl(selectedPaymentSummary.checkoutSessionId, selectedPaymentSummary.stripeInvoiceId);
      const hasPaymentInfo = selectedPaymentSummary.totalCount > 0;
      const isSubscribedOrLinked = selectedContact.stripeSubscriptionStatus === 'active' || !!visibleCheckoutUrl || selectedPaymentSummary.paidCount > 0;
 
@@ -2871,7 +2933,7 @@ React.useEffect(() => {
       </div>
       )}
 
-      {(visibleCheckoutUrl || visibleCheckoutTransaction) && (
+      {(visibleCheckoutUrl || visibleCheckoutTransaction || latestClientCheckout) && (
       <div className="space-y-1.5 border-t border-white/5 pt-2">
        <span className={`text-[8px] font-mono uppercase tracking-widest font-bold flex items-center gap-1.5 ${visibleCheckoutExpired ? 'text-amber-400' : 'text-emerald-400'}`}>
        {visibleCheckoutExpired ? <Clock3 className="w-3 h-3" /> : <Check className="w-3 h-3" />}
@@ -2881,7 +2943,7 @@ React.useEffect(() => {
        <p className="text-[9px] text-slate-400 leading-snug">Stripe ha confirmado que no fue pagado. Puedes renovarlo sin crear otro concepto ni otro movimiento.</p>
        )}
        <div className="flex gap-1.5">
-       {visibleCheckoutUrl && !visibleCheckoutExpired && !visibleCheckoutPaid && (
+       {visibleCheckoutUrl && !visibleCheckoutExpired && (
        <>
        <button
         type="button"
