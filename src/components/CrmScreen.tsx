@@ -211,18 +211,23 @@ export default function CrmScreen({
  onRefreshFinance
 }: CrmScreenProps) {
  const [selectedContactId, setSelectedContactId] = useState<string>('');
- const selectedContact = contacts.find(c => c.id === selectedContactId) || contacts[0];
+ const selectedContact = contacts.find(c => c.id === selectedContactId);
  const [showAddModal, setShowAddModal] = useState(false);
  const [searchQuery, setSearchQuery] = useState('');
 
  useEffect(() => {
-  if (!showAddModal) return;
+  if (!selectedContactId && !showAddModal) return;
   const previousOverflow = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
+  const closeOnEscape = (event: KeyboardEvent) => {
+   if (event.key === 'Escape' && !showAddModal) setSelectedContactId('');
+  };
+  window.addEventListener('keydown', closeOnEscape);
   return () => {
    document.body.style.overflow = previousOverflow;
+   window.removeEventListener('keydown', closeOnEscape);
   };
- }, [showAddModal]);
+ }, [selectedContactId, showAddModal]);
 
  // Dedicated modal state for scheduling in-person meetings (Cita Presencial)
  const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1901,6 +1906,24 @@ export default function CrmScreen({
  const renderContactCard = (contact: ClientContact) => {
  const isSelected = contact.id === selectedContactId;
  const contactColor = getContactColor(contact.color);
+ const contactInvoices = invoices.filter(invoice => invoiceBelongsToContact(invoice, contact));
+ const contactTransactions = transactions.filter(transaction =>
+  transaction.type === 'income' && transactionBelongsToContact(transaction, contact, contactInvoices)
+ );
+ const hasCommercialOrigin = Boolean(contact.contactedByComercialEmail || contact.contactedByComercialName);
+ const hasWebsite = contactHasAssignedWebsite(contact);
+ const hasPendingBalance = contactTransactions.some(transaction => transaction.status === 'pending')
+  || contactInvoices.some(invoice => invoice.status !== 'paid');
+ const hasFinancialActivity = contactTransactions.length > 0 || contactInvoices.length > 0;
+ const isFullyPaid = hasFinancialActivity && !hasPendingBalance
+  && contactTransactions.every(transaction => transaction.status === 'paid');
+ const hasRecurrence = contactTransactions.some(transaction => transaction.isRecurring || transaction.recurrenceSourceId)
+  || contact.stripeSubscriptionStatus === 'active';
+ const hasStripeLink = contactTransactions.some(transaction =>
+  transaction.paymentMethod === 'stripe' && Boolean(transaction.stripeCheckoutUrl || transaction.stripeCheckoutSessionId)
+ );
+ const signalBaseClass = 'grid h-6 w-6 place-items-center rounded-md border transition-colors';
+ const signalInactiveClass = 'border-white/[0.045] bg-white/[0.018] text-slate-700';
 
  let cardBorderClass = 'border-white/[0.065] hover:border-cyan-400/25 bg-gradient-to-br from-white/[0.045] to-white/[0.015] hover:from-white/[0.07] hover:to-cyan-500/[0.025]';
  let dotColor = 'bg-blue-500';
@@ -1998,8 +2021,15 @@ export default function CrmScreen({
    </div>
   </div>
 
-  <div className="mt-2.5 pt-2 border-t border-white/[0.03] flex justify-between items-center text-[8.5px] font-mono text-slate-500">
-   <span>Contacto: {contact.lastContacted || 'N/A'}</span>
+  <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-white/[0.04] pt-2">
+   <div className="inline-grid grid-cols-6 gap-1 rounded-lg border border-white/[0.04] bg-black/15 p-1" aria-label="Señales del cliente">
+    <span className={`${signalBaseClass} ${hasCommercialOrigin ? 'border-amber-400/20 bg-amber-400/10 text-amber-300' : signalInactiveClass}`} title={hasCommercialOrigin ? 'Procede de un comercial' : 'Sin comercial vinculado'}><BriefcaseBusiness className="h-3 w-3" /></span>
+    <span className={`${signalBaseClass} ${hasWebsite ? 'border-blue-400/20 bg-blue-400/10 text-blue-300' : signalInactiveClass}`} title={hasWebsite ? 'Web realizada o vinculada' : 'Sin web vinculada'}><Globe className="h-3 w-3" /></span>
+    <span className={`${signalBaseClass} ${hasPendingBalance ? 'border-amber-400/20 bg-amber-400/10 text-amber-300' : signalInactiveClass}`} title={hasPendingBalance ? 'Tiene saldo pendiente' : 'Sin saldo pendiente'}><Clock3 className="h-3 w-3" /></span>
+    <span className={`${signalBaseClass} ${isFullyPaid ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : signalInactiveClass}`} title={isFullyPaid ? 'Todos los pagos están liquidados' : 'No consta como totalmente pagado'}><Check className="h-3 w-3" /></span>
+    <span className={`${signalBaseClass} ${hasRecurrence ? 'border-violet-400/20 bg-violet-400/10 text-violet-300' : signalInactiveClass}`} title={hasRecurrence ? 'Tiene una recurrencia activa' : 'Sin recurrencia'}><RefreshCw className="h-3 w-3" /></span>
+    <span className={`${signalBaseClass} ${hasStripeLink ? 'border-[#635bff]/30 bg-[#635bff]/15' : signalInactiveClass}`} title={hasStripeLink ? 'Tiene enlace generado con Stripe' : 'Sin enlace de Stripe'}><img src="/stripe-mark.png" alt="" className={`h-3.5 w-3.5 rounded-[3px] ${hasStripeLink ? '' : 'grayscale opacity-20'}`} /></span>
+   </div>
    <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition duration-150">
    <span className="text-[8px] uppercase tracking-widest font-bold">Mover</span>
    <div className="w-1.5 h-2.5 flex flex-col justify-between gap-0.5">
@@ -2511,10 +2541,12 @@ export default function CrmScreen({
 
   </section>
 
-  {/* Detailed Side Panel Bio Inspector */}
-  <aside className="w-full xl:w-[500px] 2xl:w-[560px] shrink-0 flex flex-col gap-5 min-h-[560px] xl:min-h-0">
-  {selectedContact ? (
-   <div className="bg-gradient-to-b from-white/[0.07] to-white/[0.025] backdrop-blur-xl rounded-[30px] overflow-hidden flex flex-col h-full border border-white/[0.1] shadow-[0_28px_80px_rgba(0,0,0,.36)]">
+  {/* Complete client inspector rendered as a modal, preserving every existing action. */}
+  {selectedContact && createPortal(
+   <div className="fixed inset-0 z-[80] flex h-[100dvh] items-start justify-center overflow-hidden p-2 sm:p-4">
+   <button type="button" aria-label="Cerrar detalles del cliente" className="absolute inset-0 cursor-default bg-black/75 backdrop-blur-md" onClick={() => setSelectedContactId('')} />
+   <aside role="dialog" aria-modal="true" aria-label={`Detalles de ${getContactBusinessName(selectedContact)}`} className="relative flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/[0.12] shadow-[0_32px_100px_rgba(0,0,0,.7)]">
+   <div className="bg-gradient-to-b from-[#111529] to-[#07090f] backdrop-blur-xl rounded-[28px] overflow-hidden flex flex-col h-full border border-white/[0.05] shadow-[0_28px_80px_rgba(0,0,0,.36)]">
    
    {/* Detail Banner cover */}
    <div className={`relative h-36 border-b border-white/[0.06] transition-all duration-300 ${
@@ -2526,6 +2558,9 @@ export default function CrmScreen({
    }`}>
     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent" />
     <div className="absolute top-4 right-4 flex items-center gap-2">
+    <button type="button" onClick={() => setSelectedContactId('')} className="p-2 bg-slate-950/60 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl border border-white/5 transition cursor-pointer" title="Cerrar detalles" aria-label="Cerrar detalles del cliente">
+     <X className="w-4 h-4" />
+    </button>
     {/* Archive Button */}
     <button 
      onClick={() => toggleArchiveContact(selectedContact.id)}
@@ -4120,14 +4155,10 @@ export default function CrmScreen({
 
    </div>
    </div>
-  ) : (
-   <div className="flex-1 flex items-center justify-center text-center p-4">
-   <p className="text-slate-500 text-xs italic">
-    Please select a client contact from the relationship grid to view analytical logs.
-   </p>
-   </div>
+   </aside>
+   </div>,
+   document.body
   )}
-  </aside>
 
   {/* Floating Action Button (FAB) at bottom-right */}
   <button 

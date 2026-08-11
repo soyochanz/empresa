@@ -3467,7 +3467,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
           <span className="truncate">{businessName}</span>
          </span>
         )}
-        <span className={`${businessName ? 'mt-1.5 text-[9.5px] font-medium text-slate-300' : 'text-[11px] font-bold text-white'} block leading-snug transition-colors group-hover:text-emerald-300`}>
+        <span className={`${businessName ? 'mt-2 text-[12px] font-extrabold text-white' : 'text-[12px] font-extrabold text-white'} block leading-snug tracking-tight transition-colors group-hover:text-emerald-300`}>
          {getTransactionDisplayConcept(t.description)}
         </span>
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
