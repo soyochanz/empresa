@@ -101,6 +101,7 @@ type StripeFinanceOverview = {
   successfulPayments: number;
  };
  livemode: boolean;
+ trackingStartedAt: string;
  fetchedAt: string;
 };
 
@@ -4182,11 +4183,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         {stripeFinanceOverview?.livemode ? 'Datos reales' : 'Modo prueba'}
        </span>
       </div>
-      <p className="text-[9px] text-slate-400">Suscripciones y cobros consultados directamente en Stripe.</p>
+      <p className="text-[9px] text-slate-400">Suscripciones y cobros consultados directamente en Stripe · pagos contabilizados desde el 12/08/2026.</p>
      </div>
     </div>
-    <button type="button" onClick={() => void refreshStripeFinanceOverview()} disabled={stripeFinanceLoading} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-[9px] font-bold text-slate-300 transition hover:border-[#635bff]/30 hover:text-white disabled:opacity-50">
-     <RefreshCw className={`h-3.5 w-3.5 ${stripeFinanceLoading ? 'animate-spin' : ''}`} />
+    <button type="button" onClick={() => void Promise.all([refreshStripeFinanceOverview(), refreshStripeFunds()])} disabled={stripeFinanceLoading || stripeFundsLoading} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-[9px] font-bold text-slate-300 transition hover:border-[#635bff]/30 hover:text-white disabled:opacity-50">
+     <RefreshCw className={`h-3.5 w-3.5 ${stripeFinanceLoading || stripeFundsLoading ? 'animate-spin' : ''}`} />
      Actualizar desde Stripe
     </button>
    </div>
@@ -4210,12 +4211,12 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="absolute top-5 right-5 bg-cyan-500/10 rounded-2xl p-3 border border-cyan-500/20">
     <TrendingUp className="w-5 h-5 text-cyan-400" />
     </div>
-    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">MRR Estimado (Stripe)</span>
+    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">MRR Recurrente de Stripe</span>
     <h3 className="text-3xl font-black text-white mt-2 font-mono">
     {stripeFinanceLoading && !stripeFinanceOverview ? '...' : formatStripeFundAmounts(stripeFinanceOverview?.totals.mrr)}
     </h3>
     <p className="text-[10px] text-cyan-300 font-mono mt-3">
-    Ingresos recurrentes mensuales
+    Solo suscripciones activas de Stripe
     </p>
    </div>
 
@@ -4223,7 +4224,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="absolute top-5 right-5 bg-emerald-500/10 rounded-2xl p-3 border border-emerald-500/20">
     <ShieldCheck className="w-5 h-5 text-emerald-400" />
     </div>
-    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Volumen Cobrado</span>
+    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Volumen Cobrado desde 12/08</span>
     <h3 className="text-3xl font-black text-white mt-2 font-mono">
     {stripeFinanceLoading && !stripeFinanceOverview ? '...' : formatStripeFundAmounts(stripeFinanceOverview?.totals.chargedVolume)}
     </h3>
@@ -4232,6 +4233,24 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </p>
    </div>
    </div>
+
+   <section className="grid grid-cols-1 gap-3 rounded-2xl border border-[#635bff]/15 bg-[#635bff]/[0.035] p-3 sm:grid-cols-2">
+    <div className="flex items-center justify-between rounded-xl border border-emerald-400/15 bg-emerald-400/[0.055] px-4 py-3">
+     <div>
+      <span className="block font-mono text-[8px] font-black uppercase tracking-[.16em] text-emerald-300">Disponible en Stripe</span>
+      <strong className="mt-1 block text-lg font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.available)}</strong>
+     </div>
+     <span className="grid h-8 w-8 place-items-center rounded-lg border border-emerald-400/15 bg-emerald-400/10"><CheckCircle2 className="h-4 w-4 text-emerald-300" /></span>
+    </div>
+    <div className="flex items-center justify-between rounded-xl border border-amber-400/15 bg-amber-400/[0.055] px-4 py-3">
+     <div>
+      <span className="block font-mono text-[8px] font-black uppercase tracking-[.16em] text-amber-300">Pendiente · procesándose</span>
+      <strong className="mt-1 block text-lg font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.pending)}</strong>
+     </div>
+     <span className="grid h-8 w-8 place-items-center rounded-lg border border-amber-400/15 bg-amber-400/10"><Clock className="h-4 w-4 text-amber-300" /></span>
+    </div>
+    {stripeFundsError && <p className="text-[9px] text-rose-300 sm:col-span-2">{stripeFundsError}</p>}
+   </section>
 
    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
    {/* Left Panel: Generator */}

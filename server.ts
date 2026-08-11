@@ -117,6 +117,11 @@ app.use((req, res, next) => {
 
 // Lazy Stripe initialization to prevent crashes on startup if secret key is missing
 let stripeInstance: Stripe | null = null;
+// Inicio contable solicitado: 12/08/2026 a las 00:00 en Dubái (UTC+4).
+// Los cargos anteriores permanecen en Stripe, pero no cuentan en Finanzas porque eran pruebas.
+const STRIPE_FINANCE_TRACKING_START_AT = "2026-08-11T20:00:00.000Z";
+const STRIPE_FINANCE_TRACKING_START_UNIX = Math.floor(new Date(STRIPE_FINANCE_TRACKING_START_AT).getTime() / 1000);
+
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) {
@@ -551,7 +556,11 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         .list({ status: "open", limit: 100 })
         .autoPagingToArray({ limit: 10_000 }),
       stripe.charges
-        .list({ limit: 100, expand: ["data.customer"] })
+        .list({
+          limit: 100,
+          created: { gte: STRIPE_FINANCE_TRACKING_START_UNIX },
+          expand: ["data.customer"],
+        })
         .autoPagingToArray({ limit: 10_000 }),
     ]);
 
@@ -573,6 +582,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
 
     subscriptions.forEach(subscription => {
       subscription.items.data.forEach(item => {
+        if (!item.price.recurring) return;
         const unitAmount = Number(item.price.unit_amount_decimal || item.price.unit_amount || 0) / 100;
         const monthlyAmount = unitAmount * Number(item.quantity || 1) * getMonthlyFactor(item.price.recurring);
         addCurrencyAmount(monthlyRecurringTotals, item.price.currency, monthlyAmount);
@@ -591,7 +601,10 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
     const activeSubscriptions = subscriptions.map(subscription => {
       const customer = typeof subscription.customer === "string" ? null : subscription.customer as any;
       const subscriptionPaidInvoices = invoicesForSubscription(subscription.id, paidInvoices)
-        .filter(invoice => Number(invoice.amount_paid || 0) > 0);
+        .filter(invoice => {
+          const paidAt = Number(invoice.status_transitions?.paid_at || invoice.created || 0);
+          return Number(invoice.amount_paid || 0) > 0 && paidAt >= STRIPE_FINANCE_TRACKING_START_UNIX;
+        });
       const subscriptionOpenInvoices = invoicesForSubscription(subscription.id, openInvoices);
       const firstItem = subscription.items.data[0];
       const amount = subscription.items.data.reduce(
@@ -660,6 +673,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         successfulPayments: successfulCharges.length,
       },
       livemode: subscriptions[0]?.livemode ?? successfulCharges[0]?.livemode ?? false,
+      trackingStartedAt: STRIPE_FINANCE_TRACKING_START_AT,
       fetchedAt: new Date().toISOString(),
     });
   } catch (error: any) {
