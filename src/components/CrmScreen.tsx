@@ -272,7 +272,7 @@ export default function CrmScreen({
  const paidTransactions = saleTransactions.filter(t => t.status === 'paid');
  const pendingTransactions = saleTransactions.filter(t => t.status === 'pending');
  const stripeTransactionGroups = [...saleTransactions]
-  .filter(t => t.stripeCheckoutUrl)
+  .filter(t => t.stripeCheckoutUrl || t.stripeCheckoutSessionId)
   .reduce<Map<string, FinanceTransaction[]>>((groups, transaction) => {
   const groupKey = transaction.stripeCheckoutSessionId || transaction.id;
   groups.set(groupKey, [...(groups.get(groupKey) || []), transaction]);
@@ -388,8 +388,9 @@ export default function CrmScreen({
  const [checkoutSessionState, setCheckoutSessionState] = useState<{[txId: string]: {
   status: 'open' | 'complete' | 'expired' | 'unknown';
   paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' | 'unknown';
-  mode?: 'payment' | 'subscription' | 'setup';
-  expiresAt?: number;
+ mode?: 'payment' | 'subscription' | 'setup';
+  url?: string;
+ expiresAt?: number;
   loading?: boolean;
   error?: string;
  }}>({});
@@ -427,9 +428,16 @@ export default function CrmScreen({
    status: data.status || 'unknown',
    paymentStatus: data.paymentStatus || 'unknown',
    mode: data.mode,
+   url: data.url || tx.stripeCheckoutUrl,
    expiresAt: data.expiresAt,
    },
   }));
+
+  if (data.url && data.url !== tx.stripeCheckoutUrl) {
+   const transactionWithRecoveredUrl = { ...tx, stripeCheckoutUrl: data.url };
+   await db.updateFinanceTransaction(transactionWithRecoveredUrl);
+   setTransactions(prev => prev.map(item => item.id === tx.id ? transactionWithRecoveredUrl : item));
+  }
 
   if (data.transactionUpdated && data.paymentStatus === 'paid') {
    setTransactions(prev => prev.map(item => item.id === tx.id ? { ...item, status: 'paid' } : item));
@@ -455,12 +463,19 @@ export default function CrmScreen({
   [selectedClientTransactions]
  );
 
+React.useEffect(() => {
+ const pendingStripeTransactions = selectedClientTransactions.filter(
+ tx => tx.status === 'pending' && tx.stripeCheckoutSessionId
+ );
+ pendingStripeTransactions.forEach(tx => void inspectCheckoutSession(tx));
+}, [pendingStripeSessionKey, inspectCheckoutSession]);
+
  React.useEffect(() => {
-  const pendingStripeTransactions = selectedClientTransactions.filter(
-  tx => tx.status === 'pending' && tx.stripeCheckoutSessionId
-  );
-  pendingStripeTransactions.forEach(tx => void inspectCheckoutSession(tx));
- }, [pendingStripeSessionKey, inspectCheckoutSession]);
+  const checkoutTransaction = selectedPaymentSummary.checkoutTransaction;
+  if (checkoutTransaction?.stripeCheckoutSessionId && checkoutTransaction.status !== 'pending') {
+   void inspectCheckoutSession(checkoutTransaction);
+  }
+ }, [selectedPaymentSummary.checkoutTransaction, inspectCheckoutSession]);
 
  const handleGenerateStripeForTx = async (tx: FinanceTransaction) => {
  const currentSession = checkoutSessionState[tx.id];
@@ -490,7 +505,7 @@ export default function CrmScreen({
    installmentIndex: tx.stripeInstallmentIndex,
    installments: tx.stripeInstallmentCount?.toString() || '',
    concept: tx.description,
-   previousSessionId: tx.stripeCheckoutUrl ? tx.stripeCheckoutSessionId : undefined,
+   previousSessionId: tx.stripeCheckoutSessionId || undefined,
   }),
   });
 
@@ -1917,8 +1932,16 @@ export default function CrmScreen({
  const hasFinancialActivity = contactTransactions.length > 0 || contactInvoices.length > 0;
  const isFullyPaid = hasFinancialActivity && !hasPendingBalance
   && contactTransactions.every(transaction => transaction.status === 'paid');
- const hasRecurrence = contactTransactions.some(transaction => transaction.isRecurring || transaction.recurrenceSourceId)
-  || contact.stripeSubscriptionStatus === 'active';
+ const hasRecurrence = contactTransactions.some(transaction => {
+  const recurrenceSource = transaction.recurrenceSourceId
+   ? transactions.find(candidate => candidate.id === transaction.recurrenceSourceId)
+   : undefined;
+  const recurringTransaction = recurrenceSource || transaction;
+  const installmentCount = Number(recurringTransaction.stripeInstallmentCount || 0);
+
+  return Boolean(recurringTransaction.isRecurring || (!recurrenceSource && transaction.recurrenceSourceId))
+   && installmentCount <= 1;
+ });
  const hasStripeLink = contactTransactions.some(transaction =>
   transaction.paymentMethod === 'stripe' && Boolean(transaction.stripeCheckoutUrl || transaction.stripeCheckoutSessionId)
  );
@@ -2027,7 +2050,7 @@ export default function CrmScreen({
     <span className={`${signalBaseClass} ${hasWebsite ? 'border-blue-400/20 bg-blue-400/10 text-blue-300' : signalInactiveClass}`} title={hasWebsite ? 'Web realizada o vinculada' : 'Sin web vinculada'}><Globe className="h-3 w-3" /></span>
     <span className={`${signalBaseClass} ${hasPendingBalance ? 'border-amber-400/20 bg-amber-400/10 text-amber-300' : signalInactiveClass}`} title={hasPendingBalance ? 'Tiene saldo pendiente' : 'Sin saldo pendiente'}><Clock3 className="h-3 w-3" /></span>
     <span className={`${signalBaseClass} ${isFullyPaid ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : signalInactiveClass}`} title={isFullyPaid ? 'Todos los pagos están liquidados' : 'No consta como totalmente pagado'}><Check className="h-3 w-3" /></span>
-    <span className={`${signalBaseClass} ${hasRecurrence ? 'border-violet-400/20 bg-violet-400/10 text-violet-300' : signalInactiveClass}`} title={hasRecurrence ? 'Tiene una recurrencia activa' : 'Sin recurrencia'}><RefreshCw className="h-3 w-3" /></span>
+    <span className={`${signalBaseClass} ${hasRecurrence ? 'border-violet-400/20 bg-violet-400/10 text-violet-300' : signalInactiveClass}`} title={hasRecurrence ? 'Tiene una suscripción mensual o anual' : 'Sin suscripción recurrente'}><RefreshCw className="h-3 w-3" /></span>
     <span className={`${signalBaseClass} ${hasStripeLink ? 'border-[#635bff]/30 bg-[#635bff]/15' : signalInactiveClass}`} title={hasStripeLink ? 'Tiene enlace generado con Stripe' : 'Sin enlace de Stripe'}><img src="/stripe-mark.png" alt="" className={`h-3.5 w-3.5 rounded-[3px] ${hasStripeLink ? '' : 'grayscale opacity-20'}`} /></span>
    </div>
    <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition duration-150">
@@ -2785,11 +2808,17 @@ export default function CrmScreen({
     </div>
 
     {(() => {
-     const visibleCheckoutUrl = generatedCheckoutUrl || instGeneratedUrl || selectedPaymentSummary.checkoutUrl;
      const visibleCheckoutTransaction = selectedPaymentSummary.checkoutTransaction;
      const visibleCheckoutState = visibleCheckoutTransaction ? checkoutSessionState[visibleCheckoutTransaction.id] : undefined;
+     const visibleCheckoutUrl = generatedCheckoutUrl
+      || instGeneratedUrl
+      || visibleCheckoutState?.url
+      || stripeOverview?.checkoutSession?.url
+      || selectedPaymentSummary.checkoutUrl;
      const visibleCheckoutExpired = visibleCheckoutState?.status === 'expired' && visibleCheckoutState.paymentStatus !== 'paid';
-     const visibleCheckoutPaid = visibleCheckoutState?.paymentStatus === 'paid';
+     const visibleCheckoutPaid = visibleCheckoutState?.paymentStatus === 'paid'
+      || visibleCheckoutState?.paymentStatus === 'no_payment_required'
+      || visibleCheckoutTransaction?.status === 'paid';
      const stripeDashboardUrl = getStripeDashboardUrl(selectedPaymentSummary.checkoutSessionId, selectedPaymentSummary.stripeInvoiceId);
      const hasPaymentInfo = selectedPaymentSummary.totalCount > 0;
      const isSubscribedOrLinked = selectedContact.stripeSubscriptionStatus === 'active' || !!visibleCheckoutUrl || selectedPaymentSummary.paidCount > 0;
@@ -2842,17 +2871,17 @@ export default function CrmScreen({
       </div>
       )}
 
-      {visibleCheckoutUrl && (
+      {(visibleCheckoutUrl || visibleCheckoutTransaction) && (
       <div className="space-y-1.5 border-t border-white/5 pt-2">
        <span className={`text-[8px] font-mono uppercase tracking-widest font-bold flex items-center gap-1.5 ${visibleCheckoutExpired ? 'text-amber-400' : 'text-emerald-400'}`}>
        {visibleCheckoutExpired ? <Clock3 className="w-3 h-3" /> : <Check className="w-3 h-3" />}
-       {visibleCheckoutExpired ? 'Link de pago caducado' : 'Link de pago guardado'}
+       {visibleCheckoutExpired ? 'Link de pago caducado' : visibleCheckoutPaid ? 'Pago confirmado por Stripe' : 'Link de pago operativo'}
        </span>
        {visibleCheckoutExpired && (
        <p className="text-[9px] text-slate-400 leading-snug">Stripe ha confirmado que no fue pagado. Puedes renovarlo sin crear otro concepto ni otro movimiento.</p>
        )}
        <div className="flex gap-1.5">
-       {!visibleCheckoutExpired && !visibleCheckoutPaid && (
+       {visibleCheckoutUrl && !visibleCheckoutExpired && !visibleCheckoutPaid && (
        <>
        <button
         type="button"
