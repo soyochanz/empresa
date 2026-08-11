@@ -137,6 +137,12 @@ interface FinanceScreenProps {
 
 const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
 
+const getFinanceBusinessName = (contact?: ClientContact): string => {
+ if (!contact) return '';
+ const company = (contact.company || '').trim();
+ return company && company.toLowerCase() !== 'independent' ? company : contact.name;
+};
+
 const getCleanBillingConcept = (description?: string): string => {
  return (description || '')
  .replace(/^Cobro Pendiente:\s*/i, '')
@@ -3431,6 +3437,14 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       const linkedInv = getLinkedInvoice(t);
       const stripeDashboardUrl = getStripeDashboardUrl(t.stripeCheckoutSessionId, t.stripeInvoiceId);
       const installment = getTransactionInstallment(t);
+      const transactionDescription = (t.description || '').toLocaleLowerCase('es');
+      const transactionClient = contacts.find(contact => contact.id === t.clientId)
+       || contacts.find(contact => contact.id === linkedInv?.clientId)
+       || contacts.find(contact => {
+        const company = (contact.company || '').trim().toLocaleLowerCase('es');
+        return company.length > 2 && company !== 'independent' && transactionDescription.includes(company);
+       });
+      const businessName = getFinanceBusinessName(transactionClient) || linkedInv?.clientName || '';
 
       return (
       <tr 
@@ -3446,8 +3460,14 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         <span className="mb-1 block font-mono text-[7.5px] uppercase leading-none tracking-wider text-slate-600 select-all">
         {t.id}
         </span>
-        <span className="block text-[11px] font-bold leading-snug text-white transition-colors group-hover:text-emerald-300">
-        {getTransactionDisplayConcept(t.description)}
+        {businessName && (
+         <span className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-cyan-400/15 bg-gradient-to-r from-cyan-400/[0.09] to-blue-400/[0.04] px-2 py-1 text-[9.5px] font-black leading-none text-cyan-100 shadow-[inset_0_1px_rgba(255,255,255,.03)]" title={`Negocio: ${businessName}`}>
+          <Briefcase className="h-3 w-3 shrink-0 text-cyan-300" />
+          <span className="truncate">{businessName}</span>
+         </span>
+        )}
+        <span className={`${businessName ? 'mt-1.5 text-[9.5px] font-medium text-slate-300' : 'text-[11px] font-bold text-white'} block leading-snug transition-colors group-hover:text-emerald-300`}>
+         {getTransactionDisplayConcept(t.description)}
         </span>
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
         {installment ? (

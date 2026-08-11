@@ -94,6 +94,11 @@ const CLIENT_CHARGE_METHOD_OPTIONS: Array<{ value: ClientChargeMethod; label: st
  { value: 'stripe', label: 'Stripe' },
 ];
 
+const getContactBusinessName = (contact: ClientContact): string => {
+ const company = (contact.company || '').trim();
+ return company && company.toLowerCase() !== 'independent' ? company : contact.name;
+};
+
 const getEditableInvoiceConcept = (description: string): string =>
  description
   .replace(/^Cobro Pendiente:\s*/i, '')
@@ -1935,7 +1940,7 @@ export default function CrmScreen({
    <div className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs bg-gradient-to-br from-slate-800 to-slate-900 text-slate-300 border border-white/[0.07] overflow-hidden shrink-0 shadow-inner">
    {contact.avatarUrl ? (
     <img 
-    alt={contact.name}
+    alt={getContactBusinessName(contact)}
     referrerPolicy="no-referrer"
     className="w-full h-full object-cover"
     src={contact.avatarUrl}
@@ -1948,13 +1953,13 @@ export default function CrmScreen({
    <div className="flex-1 min-w-0">
    <div className="flex items-center gap-1.5 flex-wrap">
     <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-    <h4 className="font-bold text-[12px] text-white truncate tracking-tight">{contact.name}</h4>
+    <h4 className="font-black text-[12px] text-white truncate tracking-tight" title={getContactBusinessName(contact)}>{getContactBusinessName(contact)}</h4>
     {contact.priority && (
     <span className="text-[10px] text-amber-400 select-none">★</span>
     )}
    </div>
    
-   <p className="text-[10px] text-slate-400 truncate mt-0.5">{contact.company} <span className="text-slate-500 font-mono text-[9px]">{contact.role || 'Partner'}</span></p>
+   <p className="mt-0.5 truncate text-[10px] text-slate-400"><span className="text-slate-300">{contact.name}</span> <span className="font-mono text-[9px] text-slate-500">· {contact.role || 'Contacto'}</span></p>
    <p className="text-[9px] text-slate-505 truncate font-mono mt-1">{contact.email}</p>
 
    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
@@ -2596,8 +2601,9 @@ export default function CrmScreen({
     </div>
 
     <div className="mt-4 flex flex-col items-center">
-     <h3 className="text-lg font-bold text-white tracking-tight">{selectedContact.name}</h3>
-     <p className="text-xs text-slate-400">{selectedContact.role || 'Partner'} @ {selectedContact.company}</p>
+     <span className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-cyan-400/15 bg-cyan-400/[0.06] px-2 py-0.5 font-mono text-[7px] font-black uppercase tracking-[.16em] text-cyan-300"><BriefcaseBusiness className="h-2.5 w-2.5" /> Negocio</span>
+     <h3 className="max-w-full truncate text-lg font-black tracking-tight text-white" title={getContactBusinessName(selectedContact)}>{getContactBusinessName(selectedContact)}</h3>
+     <p className="text-xs text-slate-400">{selectedContact.name} · {selectedContact.role || 'Contacto principal'}</p>
      
      {/* Copy Client ID Button */}
      <button 
@@ -4647,10 +4653,8 @@ export default function CrmScreen({
     {/* Client Info */}
     <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-1">
     <span className="block text-[8px] font-mono text-slate-500 uppercase">CLIENTE DE CARGO</span>
-    <span className="text-xs font-semibold text-slate-200">{selectedContact.name}</span>
-    {selectedContact.company && (
-     <span className="text-[10px] text-slate-400 block font-sans">{selectedContact.company}</span>
-    )}
+    <span className="text-xs font-bold text-white">{getContactBusinessName(selectedContact)}</span>
+    <span className="block text-[10px] text-slate-400 font-sans">Contacto: {selectedContact.name}</span>
     </div>
 
     {/* Amount and Date */}
