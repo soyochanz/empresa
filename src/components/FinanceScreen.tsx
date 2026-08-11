@@ -43,7 +43,9 @@ import {
  CalendarDays,
  FileSpreadsheet,
  RefreshCw,
- WalletCards
+ WalletCards,
+ Banknote,
+ Landmark
 } from 'lucide-react';
 
 type StripeFundAmount = {
@@ -100,6 +102,92 @@ const getCleanBillingConcept = (description?: string): string => {
  .replace(/\s*\((Pendiente|Cobro Automatico programado|Cobro Automático programado|Ingreso Procesado|Cargo Procesado)\)/gi, '')
  .trim();
 };
+
+const getTransactionDisplayConcept = (description?: string): string =>
+ getCleanBillingConcept(description)
+  .replace(/\s*-?\s*(?:Cuota|Plazo)\s*\d+\s*(?:de|\/)\s*\d+/gi, '')
+  .replace(/\s*\((?:Ingreso|Gasto) recurrente (?:autom[aá]tico|Stripe)\)/gi, '')
+  .replace(/\s*\((?:Ingreso|Gasto) recurrente\)/gi, '')
+  .replace(/\s{2,}/g, ' ')
+  .replace(/\s*-\s*$/, '')
+  .trim();
+
+const getTransactionInstallment = (transaction: FinanceTransaction): { index: number; total: number } | null => {
+ const directIndex = Number(transaction.stripeInstallmentIndex || 0);
+ const directTotal = Number(transaction.stripeInstallmentCount || 0);
+ if (directIndex > 0 && directTotal > 1) return { index: directIndex, total: directTotal };
+
+ const match = /(?:Cuota|Plazo)\s*(\d+)\s*(?:de|\/)\s*(\d+)/i.exec(transaction.description || '');
+ if (!match) return null;
+ const index = Number(match[1]);
+ const total = Number(match[2]);
+ return index > 0 && total > 1 ? { index, total } : null;
+};
+
+type TransactionOriginSignalsProps = {
+ transaction: FinanceTransaction;
+ stripeDashboardUrl: string | null;
+};
+
+const TransactionOriginSignals = React.memo(function TransactionOriginSignals({
+ transaction,
+ stripeDashboardUrl,
+}: TransactionOriginSignalsProps) {
+ const description = transaction.description || '';
+ const hasCommercial = Boolean(transaction.comercialId || transaction.comercialEmail || transaction.isInitialSale);
+ const isRecurring = Boolean(
+  transaction.isRecurring ||
+  transaction.recurrenceSourceId ||
+  /(?:ingreso|gasto) recurrente/i.test(description)
+ );
+ const isStripe = Boolean(
+  transaction.paymentMethod === 'stripe' ||
+  transaction.stripeCheckoutSessionId ||
+  transaction.stripeInvoiceId ||
+  transaction.id.startsWith('tx_stripe_') ||
+  transaction.id.startsWith('tx_auto_stripe_')
+ );
+ const isCash = transaction.paymentMethod === 'cash';
+ const isTransfer = transaction.paymentMethod === 'transfer';
+ const baseClass = 'grid h-7 w-7 place-items-center rounded-lg border transition-colors';
+ const inactiveClass = 'border-white/[0.05] bg-white/[0.025] text-slate-700';
+
+ const stripeMark = (
+  <span
+   className={`${baseClass} ${isStripe ? 'border-[#635bff]/35 bg-[#635bff]/15' : inactiveClass}`}
+   title={isStripe ? 'Movimiento procesado por Stripe' : 'Sin origen Stripe'}
+   aria-label={isStripe ? 'Stripe activo' : 'Stripe inactivo'}
+  >
+   <img
+    src="/stripe-mark.png"
+    alt=""
+    className={`h-4 w-4 rounded-[4px] transition ${isStripe ? 'opacity-100' : 'grayscale opacity-20'}`}
+   />
+  </span>
+ );
+
+ return (
+  <div className="inline-grid grid-cols-5 gap-1 rounded-xl border border-white/[0.05] bg-black/20 p-1" aria-label="Origen del movimiento">
+   <span className={`${baseClass} ${hasCommercial ? 'border-amber-400/25 bg-amber-400/10 text-amber-300' : inactiveClass}`} title={hasCommercial ? 'Procede de un comercial' : 'Sin comercial'} aria-label={hasCommercial ? 'Comercial activo' : 'Comercial inactivo'}>
+    <Briefcase className="h-3.5 w-3.5" />
+   </span>
+   <span className={`${baseClass} ${isRecurring ? 'border-violet-400/25 bg-violet-400/10 text-violet-300' : inactiveClass}`} title={isRecurring ? 'Movimiento recurrente' : 'No recurrente'} aria-label={isRecurring ? 'Recurrente activo' : 'Recurrente inactivo'}>
+    <Repeat className="h-3.5 w-3.5" />
+   </span>
+   {isStripe && stripeDashboardUrl ? (
+    <a href={stripeDashboardUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} title="Abrir en Stripe">
+     {stripeMark}
+    </a>
+   ) : stripeMark}
+   <span className={`${baseClass} ${isCash ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300' : inactiveClass}`} title={isCash ? 'Pago en efectivo' : 'No pagado en efectivo'} aria-label={isCash ? 'Efectivo activo' : 'Efectivo inactivo'}>
+    <Banknote className="h-3.5 w-3.5" />
+   </span>
+   <span className={`${baseClass} ${isTransfer ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-300' : inactiveClass}`} title={isTransfer ? 'Pago por transferencia' : 'Sin transferencia'} aria-label={isTransfer ? 'Transferencia activa' : 'Transferencia inactiva'}>
+    <Landmark className="h-3.5 w-3.5" />
+   </span>
+  </div>
+ );
+});
 
 const readStripeJson = async (response: Response) => {
  const contentType = response.headers.get('content-type') || '';
@@ -3217,22 +3305,33 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
     {/* Table list */}
     <div id={txDateRangeFilter === 'all' ? 'finance-transactions-log' : undefined} className="bg-[#0b1329]/10 backdrop-blur-md border border-white/5 rounded-3xl overflow-hidden shadow-xl">
+   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.05] bg-black/10 px-4 py-2.5">
+    <span className="text-[8px] font-black uppercase tracking-[0.18em] text-slate-600">Código visual</span>
+    <div className="flex flex-wrap items-center gap-2.5 text-[8px] font-semibold text-slate-500" aria-label="Leyenda de señales de transacción">
+     <span className="inline-flex items-center gap-1"><Briefcase className="h-3 w-3 text-amber-300" /> Comercial</span>
+     <span className="inline-flex items-center gap-1"><Repeat className="h-3 w-3 text-violet-300" /> Recurrente</span>
+     <span className="inline-flex items-center gap-1"><img src="/stripe-mark.png" alt="" className="h-3 w-3 rounded-[3px]" /> Stripe</span>
+     <span className="inline-flex items-center gap-1"><Banknote className="h-3 w-3 text-emerald-300" /> Efectivo</span>
+     <span className="inline-flex items-center gap-1"><Landmark className="h-3 w-3 text-cyan-300" /> Transferencia</span>
+    </div>
+   </div>
    <div className="overflow-x-auto font-sans">
     <table className="w-full text-left border-collapse">
     <thead>
      <tr className="border-b border-white/5 bg-[#0b1329]/40 text-[9px] font-mono text-slate-500 uppercase tracking-widest">
-     <th className="p-4 font-bold">Detalles de Operación</th>
-     <th className="p-4 font-bold">Categorización</th>
-     <th className="p-4 font-bold">Fecha</th>
-     <th className="p-4 font-bold">Importe</th>
-     <th className="p-4 font-bold">Estado Real</th>
-     <th className="p-4 font-bold text-right">Controles</th>
+     <th className="p-3 font-bold">Operación</th>
+     <th className="p-3 font-bold">Señales</th>
+     <th className="p-3 font-bold">Categoría</th>
+     <th className="p-3 font-bold">Fecha</th>
+     <th className="p-3 font-bold">Importe</th>
+     <th className="p-3 font-bold">Estado</th>
+     <th className="p-3 font-bold text-right">Acciones</th>
      </tr>
     </thead>
     <tbody className="divide-y divide-white/5">
      {currentTxs.length === 0 ? (
      <tr>
-      <td colSpan={6} className="p-16 text-center text-slate-500 text-xs font-light">
+      <td colSpan={7} className="p-16 text-center text-slate-500 text-xs font-light">
       No se encontraron registros de transacciones.
       </td>
      </tr>
@@ -3251,83 +3350,59 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       const tagStyle = catColors[t.category] || 'bg-white/5 text-slate-300 border-white/10';
       const linkedInv = getLinkedInvoice(t);
       const stripeDashboardUrl = getStripeDashboardUrl(t.stripeCheckoutSessionId, t.stripeInvoiceId);
+      const installment = getTransactionInstallment(t);
 
       return (
       <tr 
        key={t.id} 
        className={`text-xs transition-colors group relative ${
        linkedInv  ?
-        'bg-blue-500/5 hover:bg-blue-500/10 border-l border-l-blue-500' 
-        : 'hover:bg-white/[0.01]'
+        'bg-blue-500/[0.035] hover:bg-blue-500/[0.065] border-l-2 border-l-blue-500/70'
+        : 'hover:bg-white/[0.018]'
        }`}
       >
-       <td className="p-4 text-left">
+       <td className="p-3 text-left align-middle">
        <div className="max-w-xs sm:max-w-md text-left">
-        <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block leading-none mb-1 select-all">
+        <span className="mb-1 block font-mono text-[7.5px] uppercase leading-none tracking-wider text-slate-600 select-all">
         {t.id}
         </span>
-        <span className="font-bold text-white text-xs block leading-snug group-hover:text-emerald-400 transition-colors">
-        {getCleanBillingConcept(t.description)}
+        <span className="block text-[11px] font-bold leading-snug text-white transition-colors group-hover:text-emerald-300">
+        {getTransactionDisplayConcept(t.description)}
         </span>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        {installment ? (
+         <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/20 bg-amber-400/[0.08] px-1.5 py-0.5 font-mono text-[7.5px] font-black uppercase tracking-wide text-amber-300">
+          <span className="grid h-3.5 min-w-3.5 place-items-center rounded bg-amber-300/10 px-0.5">{installment.index}</span>
+          Cuota {installment.index}/{installment.total}
+         </span>
+        ) : null}
         {linkedInv && (
-         <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg shadow-sm">
-         <FileText className="w-3 h-3 text-blue-400" />
-         <span>Con Factura: {linkedInv.id}</span>
+         <span className="inline-flex items-center gap-1 rounded-md border border-blue-500/15 bg-blue-500/[0.07] px-1.5 py-0.5 font-mono text-[7.5px] font-bold text-blue-300">
+         <FileText className="h-2.5 w-2.5" />
+         <span>{linkedInv.id}</span>
          <span className={`w-1.5 h-1.5 rounded-full ${linkedInv.status === 'paid' ? 'bg-emerald-400' : 'bg-amber-400'}`} title={linkedInv.status === 'paid' ? 'Factura Pagada' : 'Factura Pendiente / Borrador'} />
-         </span>
-        )}
-        {t.isRecurring && (
-         <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-purple-400 bg-purple-500/10 border border-purple-500/25 px-1.5 py-0.5 rounded-md">
-         <Repeat className="w-2.5 h-2.5" />
-         <span>{t.type === 'income' ? 'Ingreso' : 'Gasto'} recurrente ({t.recurrencePeriod})</span>
-         </span>
-        )}
-        {t.id && (t.id.startsWith('tx_stripe_') || t.id.startsWith('tx_auto_stripe_')) && (
-         <span className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded-md">
-         <CreditCard className="w-2.5 h-2.5" />
-         <span>Procesado por Stripe</span>
-         </span>
-        )}
-        {stripeDashboardUrl && (
-         <a
-         href={stripeDashboardUrl}
-         target="_blank"
-         rel="noreferrer"
-         className="inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/25 px-1.5 py-0.5 rounded-md"
-         onClick={(e) => e.stopPropagation()}
-         title="Ver pago en Stripe"
-         >
-         <ExternalLink className="w-2.5 h-2.5" />
-         <span>Ver en Stripe</span>
-         </a>
-        )}
-        {t.paymentMethod && (
-         <span className={`inline-flex items-center gap-1 text-[8px] uppercase tracking-wider font-mono px-1.5 py-0.5 rounded-md select-none ${
-         t.paymentMethod === 'cash'  ?
-          'bg-purple-500/10 border border-purple-500/25 text-purple-300' 
-          : 'bg-cyan-500/10 border border-cyan-500/25 text-cyan-300'
-         }`}>
-         {t.paymentMethod === 'cash' ? '💸 Efectivo / Cash' : '🏦 Transferencia'}
          </span>
         )}
         </div>
        </div>
        </td>
-       <td className="p-4 text-left">
-       <span className={`text-[9px] font-mono border px-2 py-0.5 rounded-full uppercase tracking-wider font-bold ${tagStyle}`}>
+       <td className="p-3 align-middle">
+        <TransactionOriginSignals transaction={t} stripeDashboardUrl={stripeDashboardUrl} />
+       </td>
+       <td className="p-3 text-left align-middle">
+       <span className={`text-[8px] font-mono border px-2 py-0.5 rounded-md uppercase tracking-wider font-bold ${tagStyle}`}>
         {t.category}
        </span>
        </td>
-       <td className="p-4 text-left text-slate-400 font-mono">
+       <td className="p-3 text-left align-middle font-mono text-[9px] text-slate-400">
        {t.date}
        </td>
-       <td className="p-4 text-left">
-       <span className={`font-mono text-xs font-bold tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
+       <td className="p-3 text-left align-middle">
+       <span className={`font-mono text-[11px] font-black tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
         {t.type === 'income' ? '+' : '-'}{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
        </span>
        </td>
-       <td className="p-4 text-left">
+       <td className="p-3 text-left align-middle">
        {t.status === 'paid' ? (
         <button
         onClick={() => handleToggleTransactionStatus(t)}
