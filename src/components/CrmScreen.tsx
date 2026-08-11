@@ -78,6 +78,15 @@ const addMonthsKeepingDay = (baseDate: Date, monthsToAdd: number): Date => {
 
 type ClientChargePlan = 'once' | 'installments_2' | 'installments_3' | 'installments_4' | 'month' | 'year';
 type ClientChargeMethod = 'cash' | 'transfer' | 'stripe';
+type ServiceBillingStructure = 'upfront' | 'recurring' | 'upfront_recurring';
+type ServiceProduct = 'Web' | 'IA' | 'RRSS' | 'Bitesmenus';
+
+const SERVICE_PRODUCTS: Array<{ value: ServiceProduct; label: string; description: string; accent: string }> = [
+ { value: 'Web', label: 'Web', description: 'Diseño y desarrollo', accent: 'border-cyan-400/25 bg-cyan-400/[0.07] text-cyan-200' },
+ { value: 'IA', label: 'IA', description: 'Automatización inteligente', accent: 'border-violet-400/25 bg-violet-400/[0.07] text-violet-200' },
+ { value: 'RRSS', label: 'RRSS', description: 'Gestión de redes', accent: 'border-rose-400/25 bg-rose-400/[0.07] text-rose-200' },
+ { value: 'Bitesmenus', label: 'Bitesmenus', description: 'Carta digital', accent: 'border-amber-400/25 bg-amber-400/[0.07] text-amber-200' },
+];
 
 const CLIENT_CHARGE_PLAN_OPTIONS: Array<{ value: ClientChargePlan; label: string }> = [
  { value: 'once', label: 'Pago único' },
@@ -601,6 +610,7 @@ React.useEffect(() => {
 
  // Lead -> Client with Sale conversion states
  const [convertingLead, setConvertingLead] = useState<ClientContact | null>(null);
+ const [serviceRegistrationContact, setServiceRegistrationContact] = useState<ClientContact | null>(null);
  const [conversionSuccess, setConversionSuccess] = useState<{
   clientName: string;
   total: number;
@@ -612,15 +622,32 @@ React.useEffect(() => {
   commissionPercentage?: number;
   commissionAmount?: number;
   stripeUrl?: string;
+  stripeUrls?: Array<{ label: string; url: string }>;
+  isNewClient?: boolean;
  } | null>(null);
  const [convSalePrice, setConvSalePrice] = useState(1500);
  const [convInstallments, setConvInstallments] = useState(1);
  const [convFinancingExtra, setConvFinancingExtra] = useState(0);
  const [convPaymentMethod, setConvPaymentMethod] = useState<'cash' | 'transfer' | 'stripe'>('transfer');
  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
+ const [convSelectedProducts, setConvSelectedProducts] = useState<ServiceProduct[]>([]);
+ const [convBillingStructure, setConvBillingStructure] = useState<ServiceBillingStructure>('upfront');
+ const [convRecurringPrice, setConvRecurringPrice] = useState(0);
+ const [convRecurringInterval, setConvRecurringInterval] = useState<'month' | 'year'>('month');
  const [convSelectedComercialId, setConvSelectedComercialId] = useState('');
  const convFinancedTotal = Math.max(0, Number(convSalePrice) || 0) +
   (convInstallments > 1 ? Math.max(0, Number(convFinancingExtra) || 0) : 0);
+ const serviceFormContact = convertingLead || serviceRegistrationContact;
+ const hasUpfrontServicePayment = convBillingStructure !== 'recurring';
+ const hasRecurringServicePayment = convBillingStructure !== 'upfront';
+
+ useEffect(() => {
+  if (!serviceFormContact) return;
+  setConvSelectedProducts([]);
+  setConvBillingStructure('upfront');
+  setConvRecurringPrice(0);
+  setConvRecurringInterval('month');
+ }, [serviceFormContact?.id, Boolean(convertingLead)]);
 
  const eligibleCommissionCommercials = (comercialesList || []).filter(commercial => {
   if (isCarlosExcludedFromSalesCommission(commercial)) return false;
@@ -650,10 +677,180 @@ React.useEffect(() => {
   setConvSelectedComercialId(originCommissionCommercial?.id || '');
  }, [convertingLead?.id, originCommissionCommercial?.id]);
 
+ const registerServiceFinancials = async (
+  contact: ClientContact,
+  options: { isInitialSale: boolean; commercial?: ComercialAccount }
+ ): Promise<{ stripeUrls: Array<{ label: string; url: string }>; upfrontTotal: number }> => {
+  const stripeUrls: Array<{ label: string; url: string }> = [];
+  const createdTransactions: FinanceTransaction[] = [];
+  const now = new Date();
+  now.setHours(12, 0, 0, 0);
+  const todayKey = toLocalDateKey(now);
+  const safeClientEmail = contact.email?.trim() || `${contact.id}@clientes.althera.local`;
+  const commercial = options.commercial;
+  const commercialEmail = commercial?.email || '';
+
+  if (hasUpfrontServicePayment && convFinancedTotal > 0) {
+   const invoiceId = getNextInvoiceNumber(invoices);
+   const stripePlanId = `plan_service_${Math.random().toString(36).slice(2, 9)}`;
+   const installmentCount = Math.max(1, convInstallments);
+   const installmentAmount = Math.round((convFinancedTotal / installmentCount) * 100) / 100;
+   const taxPercentage = contact.taxPercentage ?? 21;
+   const invoiceItems: InvoiceItem[] = [];
+
+   for (let index = 1; index <= installmentCount; index += 1) {
+    const transactionId = `tx_service_${Math.random().toString(36).slice(2, 9)}_${index}`;
+    const installmentDate = addMonthsKeepingDay(now, index - 1);
+    invoiceItems.push({
+     id: `item_service_${Date.now()}_${index}`,
+     description: `${convConcept} - ${installmentCount > 1 ? `Plazo ${index} de ${installmentCount}` : 'Pago inicial'}`,
+     quantity: 1,
+     unitPrice: installmentAmount / (1 + taxPercentage / 100),
+     total: installmentAmount / (1 + taxPercentage / 100),
+     grossAmount: installmentAmount,
+     isPending: true,
+     pendingTxId: transactionId,
+     paymentMethod: convPaymentMethod,
+    });
+    const transaction: FinanceTransaction = {
+     id: transactionId,
+     type: 'income',
+     category: 'Ventas',
+     amount: installmentAmount,
+     date: toLocalDateKey(installmentDate),
+     description: `${convConcept} - ${installmentCount > 1 ? `Cuota ${index} de ${installmentCount}` : 'Pago inicial'} (Pendiente)`,
+     status: 'pending',
+     paymentMethod: convPaymentMethod,
+     clientId: contact.id,
+     stripePlanId,
+     stripeInstallmentIndex: index,
+     stripeInstallmentCount: installmentCount,
+     invoiceId,
+     comercialId: commercial?.id,
+     comercialEmail: commercialEmail,
+     isInitialSale: options.isInitialSale,
+    };
+    await db.insertFinanceTransaction(transaction);
+    createdTransactions.push(transaction);
+   }
+
+   const subtotal = Number((convFinancedTotal / (1 + taxPercentage / 100)).toFixed(2));
+   await db.insertFinanceInvoice({
+    id: invoiceId,
+    clientId: contact.id,
+    clientName: contact.name,
+    clientEmail: safeClientEmail,
+    date: todayKey,
+    dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+    status: 'sent',
+    items: invoiceItems,
+    subtotal,
+    taxPercentage,
+    taxAmount: Number((convFinancedTotal - subtotal).toFixed(2)),
+    total: convFinancedTotal,
+    notes: `${options.isInitialSale ? 'Venta inicial' : 'Nuevo servicio'} registrado desde CRM. Productos: ${convSelectedProducts.join(', ') || 'Sin especificar'}.`,
+    comercialId: commercial?.id,
+    comercialEmail: commercialEmail,
+    isInitialSale: options.isInitialSale,
+   });
+
+   if (convPaymentMethod === 'stripe') {
+    const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({
+      clientId: contact.id,
+      clientName: contact.name,
+      clientEmail: safeClientEmail,
+      amount: installmentAmount.toFixed(2),
+      interval: installmentCount > 1 ? 'month' : 'once',
+      installments: installmentCount.toString(),
+      concept: `${convConcept} - ${installmentCount > 1 ? `${installmentCount} cuotas` : 'pago inicial'}`,
+      pendingTxId: createdTransactions[0]?.id || '',
+      stripePlanId,
+      installmentIndex: '1',
+     }),
+    });
+    const data = await readStripeJson(response);
+    if (!response.ok) throw new Error(data.error || 'No se pudo generar el enlace del pago inicial.');
+    const upfrontTransactions = createdTransactions.filter(transaction => transaction.stripePlanId === stripePlanId);
+    await Promise.all(upfrontTransactions.map(transaction => db.updateFinanceTransaction({
+     ...transaction,
+     stripeCheckoutUrl: data.url,
+     stripeCheckoutSessionId: data.sessionId,
+    })));
+    stripeUrls.push({ label: installmentCount > 1 ? 'Financiación' : 'Pago inicial', url: data.url });
+   }
+  }
+
+  if (hasRecurringServicePayment && convRecurringPrice > 0) {
+   const recurringPlanId = `plan_recurring_${Math.random().toString(36).slice(2, 9)}`;
+   const recurringTemplate: FinanceTransaction = {
+    id: `recurring_service_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    type: 'income',
+    category: 'Mensualidad',
+    amount: convRecurringPrice,
+    nextAmount: convRecurringPrice,
+    date: todayKey,
+    description: `${convConcept} · ${convSelectedProducts.join(' + ') || 'Servicio recurrente'}`,
+    isRecurring: true,
+    recurrencePeriod: convRecurringInterval === 'year' ? 'yearly' : 'monthly',
+    status: 'paid',
+    paymentMethod: convPaymentMethod,
+    clientId: contact.id,
+    stripePlanId: recurringPlanId,
+    comercialId: commercial?.id,
+    comercialEmail: commercialEmail,
+    isInitialSale: false,
+   };
+
+   if (convPaymentMethod === 'stripe') {
+    const pendingRecurring: FinanceTransaction = {
+     ...recurringTemplate,
+     id: `tx_recurring_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+     isRecurring: false,
+     status: 'pending',
+     description: `${recurringTemplate.description} (Pendiente)`,
+    };
+    const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({
+      clientId: contact.id,
+      clientName: contact.name,
+      clientEmail: safeClientEmail,
+      amount: convRecurringPrice.toFixed(2),
+      interval: convRecurringInterval,
+      concept: recurringTemplate.description,
+      pendingTxId: pendingRecurring.id,
+      stripePlanId: recurringPlanId,
+     }),
+    });
+    const data = await readStripeJson(response);
+    if (!response.ok) throw new Error(data.error || 'No se pudo generar el enlace de la recurrencia.');
+    await Promise.all([
+     db.insertFinanceTransaction(recurringTemplate),
+     db.insertFinanceTransaction({ ...pendingRecurring, stripeCheckoutUrl: data.url, stripeCheckoutSessionId: data.sessionId }),
+    ]);
+    stripeUrls.push({ label: convRecurringInterval === 'year' ? 'Suscripción anual' : 'Suscripción mensual', url: data.url });
+   } else {
+    await db.insertFinanceTransaction(recurringTemplate);
+    const refreshedTransactions = await db.getFinanceTransactions();
+    await db.materializeDueRecurringFinanceTransactions(refreshedTransactions);
+   }
+  }
+
+  return { stripeUrls, upfrontTotal: hasUpfrontServicePayment ? convFinancedTotal : 0 };
+ };
+
  // Handle lead to client conversion
  const handleConfirmConvertToClient = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!convertingLead) return;
+ if (convSelectedProducts.length === 0) {
+  alert('Selecciona al menos un producto para registrar el servicio.');
+  return;
+ }
  const finishConversion = beginBlockingDatabaseOperation(`crm-conversion:${convertingLead.id}`, 'convertLeadToClient');
  if (!finishConversion) return;
 
@@ -663,7 +860,13 @@ React.useEffect(() => {
  const matchedCom = eligibleCommissionCommercials.find(c => c.id === convSelectedComercialId);
  const assignedEmail = matchedCom ? matchedCom.email : '';
  const commPct = matchedCom?.commissionPercentage ?? 0;
+ const commissionableSaleTotal = hasUpfrontServicePayment ? convFinancedTotal : 0;
 
+ let generatedStripeUrl = '';
+ let pricePerInstallment = hasUpfrontServicePayment && convInstallments > 0 ? convFinancedTotal / convInstallments : convRecurringPrice;
+
+ // Legacy conversion writer retained as reference while the unified service writer handles both conversion and later services.
+ if (false) {
  // 2. Generate the Invoice (Factura) and Transactions (Cobros)
  const invoiceId = getNextInvoiceNumber(invoices);
  const stripePlanId = 'plan_crm_' + Math.random().toString(36).substring(2, 9);
@@ -794,6 +997,17 @@ React.useEffect(() => {
   }
  }
 
+ }
+
+ const serviceFinancialResult = await registerServiceFinancials(convertingLead, {
+  isInitialSale: true,
+  commercial: matchedCom,
+ });
+ generatedStripeUrl = serviceFinancialResult.stripeUrls[0]?.url || '';
+ pricePerInstallment = hasUpfrontServicePayment && convInstallments > 0
+  ? convFinancedTotal / convInstallments
+  : convRecurringPrice;
+
  // Sync/create ComercialLead for metrics
  if (matchedCom) {
   try {
@@ -808,7 +1022,7 @@ React.useEffect(() => {
    const updatedLead: ComercialLead = {
    ...existingLead,
    status: 'Ganado',
-   value: convFinancedTotal,
+   value: commissionableSaleTotal,
    comercialId: matchedCom.id,
    comercialName: matchedCom.name,
    notes: `${existingLead.notes || ''}\n[SOURCE_CONTACT_ID:${convertingLead.id}]`.trim()
@@ -824,7 +1038,7 @@ React.useEffect(() => {
    email: convertingLead.email || '',
    phone: convertingLead.phone || '',
    status: 'Ganado',
-   value: convFinancedTotal,
+   value: commissionableSaleTotal,
    notes: `Creado al convertir desde CRM por ${matchedCom.name}\n[SOURCE_CONTACT_ID:${convertingLead.id}]`,
    createdAt: new Date().toISOString(),
    temperature: 'Caliente',
@@ -866,9 +1080,14 @@ React.useEffect(() => {
  assignedUserEmail: convertingLead.assignedUserEmail,
  contactedByComercialEmail: matchedCom?.email || undefined,
  contactedByComercialName: matchedCom?.name || undefined,
-  stripeSubscriptionStatus: convPaymentMethod === 'stripe' && convInstallments > 1 ? 'active' : convertingLead.stripeSubscriptionStatus,
-  stripeSubscriptionPrice: convPaymentMethod === 'stripe' ? pricePerInstallment.toFixed(2) : convertingLead.stripeSubscriptionPrice,
-  stripeSubscriptionInterval: convPaymentMethod === 'stripe' && convInstallments > 1 ? 'month' : convertingLead.stripeSubscriptionInterval
+  requestedProducts: Array.from(new Set([...(convertingLead.requestedProducts || []), ...convSelectedProducts])),
+  stripeSubscriptionStatus: convPaymentMethod === 'stripe' && (hasRecurringServicePayment || convInstallments > 1) ? 'active' : convertingLead.stripeSubscriptionStatus,
+  stripeSubscriptionPrice: convPaymentMethod === 'stripe'
+   ? (hasRecurringServicePayment ? convRecurringPrice : pricePerInstallment).toFixed(2)
+   : convertingLead.stripeSubscriptionPrice,
+  stripeSubscriptionInterval: convPaymentMethod === 'stripe' && hasRecurringServicePayment
+   ? convRecurringInterval
+   : convPaymentMethod === 'stripe' && convInstallments > 1 ? 'month' : convertingLead.stripeSubscriptionInterval
  };
 
  if (onUpdateContact) {
@@ -888,19 +1107,72 @@ React.useEffect(() => {
 
  setConversionSuccess({
   clientName: convertingLead.name,
-  total: convFinancedTotal,
-  baseAmount: convSalePrice,
-  financingExtra: convInstallments > 1 ? convFinancingExtra : 0,
+  total: serviceFinancialResult.upfrontTotal + (hasRecurringServicePayment ? convRecurringPrice : 0),
+  baseAmount: serviceFinancialResult.upfrontTotal,
+  financingExtra: hasUpfrontServicePayment && convInstallments > 1 ? convFinancingExtra : 0,
   paymentMethod: convPaymentMethod,
-  installments: convInstallments,
+  installments: hasUpfrontServicePayment ? convInstallments : 0,
   commercialName: matchedCom?.name,
   commissionPercentage: matchedCom ? commPct : undefined,
-  commissionAmount: matchedCom ? convFinancedTotal * commPct / 100 : undefined,
-  stripeUrl: generatedStripeUrl || undefined
+  commissionAmount: matchedCom ? commissionableSaleTotal * commPct / 100 : undefined,
+  stripeUrl: generatedStripeUrl || undefined,
+ stripeUrls: serviceFinancialResult.stripeUrls,
+ isNewClient: true,
  });
+ } catch (error: any) {
+  console.error('Error converting lead and registering service:', error);
+  alert(error?.message || 'No se pudo convertir el lead y registrar el servicio.');
  } finally {
   finishConversion();
  }
+ };
+
+ const handleRegisterAdditionalService = async (event: React.FormEvent) => {
+  event.preventDefault();
+  if (!serviceRegistrationContact) return;
+  if (convSelectedProducts.length === 0) {
+   alert('Selecciona al menos un producto para registrar el servicio.');
+   return;
+  }
+  const finishRegistration = beginBlockingDatabaseOperation(`crm-service:${serviceRegistrationContact.id}`, 'registerClientService');
+  if (!finishRegistration) return;
+
+  try {
+   const result = await registerServiceFinancials(serviceRegistrationContact, { isInitialSale: false });
+   const updatedContact: ClientContact = {
+    ...serviceRegistrationContact,
+    requestedProducts: Array.from(new Set([...(serviceRegistrationContact.requestedProducts || []), ...convSelectedProducts])),
+    stripeSubscriptionStatus: convPaymentMethod === 'stripe' && (hasRecurringServicePayment || convInstallments > 1)
+     ? 'active'
+     : serviceRegistrationContact.stripeSubscriptionStatus,
+    stripeSubscriptionPrice: convPaymentMethod === 'stripe'
+     ? (hasRecurringServicePayment ? convRecurringPrice : convFinancedTotal / Math.max(convInstallments, 1)).toFixed(2)
+     : serviceRegistrationContact.stripeSubscriptionPrice,
+    stripeSubscriptionInterval: convPaymentMethod === 'stripe' && hasRecurringServicePayment
+     ? convRecurringInterval
+     : serviceRegistrationContact.stripeSubscriptionInterval,
+   };
+   if (onUpdateContact) await onUpdateContact(updatedContact);
+   setServiceRegistrationContact(null);
+   await fetchFinancials();
+   if (onRefreshFinance) onRefreshFinance();
+   setConversionSuccess({
+    clientName: serviceRegistrationContact.name,
+    total: result.upfrontTotal + (hasRecurringServicePayment ? convRecurringPrice : 0),
+    baseAmount: result.upfrontTotal,
+    financingExtra: hasUpfrontServicePayment && convInstallments > 1 ? convFinancingExtra : 0,
+    paymentMethod: convPaymentMethod,
+    installments: hasUpfrontServicePayment ? convInstallments : 0,
+    stripeUrl: result.stripeUrls[0]?.url,
+    stripeUrls: result.stripeUrls,
+    isNewClient: false,
+   });
+  } catch (error: any) {
+   console.error('Error registering additional client service:', error);
+   alert(error?.message || 'No se pudo registrar el nuevo servicio.');
+  } finally {
+   finishRegistration();
+  }
  };
 
  // Connected Accounting & Invoice state definitions
@@ -2759,6 +3031,22 @@ React.useEffect(() => {
       </select>
       <span className="absolute right-2 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none text-[8px] scale-75">▼</span>
      </div>
+     {selectedContact.status === 'Client' && (
+      <button
+       type="button"
+       onClick={() => {
+        setServiceRegistrationContact(selectedContact);
+        setConvSalePrice(0);
+        setConvInstallments(1);
+        setConvFinancingExtra(0);
+        setConvPaymentMethod('transfer');
+        setConvConcept('Nuevo servicio Althera');
+       }}
+       className="inline-flex items-center gap-1 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 py-1 text-[8.5px] font-black uppercase tracking-wider text-emerald-300 transition hover:bg-emerald-400/[0.14] hover:text-white"
+      >
+       <Plus className="h-3 w-3" /> Servicio
+      </button>
+     )}
      {selectedContact.priority && (
       <span className="px-2.5 py-1 rounded-xl text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
       High Priority
@@ -5032,21 +5320,21 @@ React.useEffect(() => {
   )}
 
   {/* LEAD TO CLIENT CONVERSION MODAL */}
-  {convertingLead && createPortal(
+  {serviceFormContact && createPortal(
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
    <div className="w-full max-w-lg bg-[#0a0a14] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 max-h-[90vh] flex flex-col">
    {/* Header banner cover */}
    <div className="bg-gradient-to-tr from-emerald-600/20 via-emerald-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
     <h3 className="text-sm font-bold text-white flex items-center gap-2">
     <Check className="w-5 h-5 text-emerald-400" />
-    <span>Cerrar Venta / Convertir Lead en Cliente 🎯</span>
+    <span>{convertingLead ? 'Convertir lead y registrar servicio' : 'Registrar nuevo servicio'}</span>
     </h3>
     <p className="text-[11px] text-slate-400 mt-1 font-sans">
-    Asocia el servicio principal, precio y número de plazos. La comisión solo se calculará para esta venta principal, no para servicios futuros.
+    Selecciona el producto y combina pago inicial, financiación o recurrencia según el acuerdo con el cliente.
     </p>
     <button
     type="button"
-    onClick={() => setConvertingLead(null)}
+    onClick={() => { setConvertingLead(null); setServiceRegistrationContact(null); }}
     className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg bg-slate-955/60 border border-white/5 cursor-pointer transition-colors"
     >
     <X className="w-4 h-4" />
@@ -5054,14 +5342,42 @@ React.useEffect(() => {
    </div>
 
    {/* Modal Body / Form */}
-   <form onSubmit={handleConfirmConvertToClient} className="p-6 overflow-y-auto space-y-4 text-left">
+   <form onSubmit={convertingLead ? handleConfirmConvertToClient : handleRegisterAdditionalService} className="p-6 overflow-y-auto space-y-4 text-left">
     {/* Lead Info */}
     <div className="bg-slate-950/60 p-3 rounded-xl border border-white/5 space-y-1">
-    <span className="block text-[8px] font-mono text-slate-500 uppercase">Lead a Convertir</span>
-    <span className="text-xs font-semibold text-slate-200">{convertingLead.name}</span>
+    <span className="block text-[8px] font-mono text-slate-500 uppercase">{convertingLead ? 'Lead a convertir' : 'Cliente'}</span>
+    <span className="text-xs font-semibold text-slate-200">{serviceFormContact.name}</span>
     <span className="text-[10px] text-slate-400 block font-sans">
-     {convertingLead.company ? `${convertingLead.company} ` : ''}{convertingLead.email}
+     {serviceFormContact.company ? `${serviceFormContact.company} · ` : ''}{serviceFormContact.email}
     </span>
+    </div>
+
+    <div className="space-y-2">
+     <div className="flex items-center justify-between gap-2">
+      <label className="text-[10px] font-mono font-bold uppercase text-slate-400">Producto</label>
+      <span className="text-[8px] text-slate-600">Puedes seleccionar varios</span>
+     </div>
+     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {SERVICE_PRODUCTS.map(product => {
+       const selected = convSelectedProducts.includes(product.value);
+       return (
+        <button
+         key={product.value}
+         type="button"
+         onClick={() => setConvSelectedProducts(current => current.includes(product.value)
+          ? current.filter(value => value !== product.value)
+          : [...current, product.value])}
+         className={`rounded-xl border p-2.5 text-left transition ${selected ? product.accent : 'border-white/[0.07] bg-black/20 text-slate-500 hover:border-white/15 hover:text-slate-300'}`}
+        >
+         <span className="block text-[10px] font-black">{product.label}</span>
+         <span className="mt-0.5 block text-[7px] leading-3 opacity-70">{product.description}</span>
+         <span className={`mt-2 grid h-4 w-4 place-items-center rounded-md border text-[9px] ${selected ? 'border-current/30 bg-current/10' : 'border-white/10'}`}>
+          {selected ? <Check className="h-2.5 w-2.5" /> : <Plus className="h-2.5 w-2.5" />}
+         </span>
+        </button>
+       );
+      })}
+     </div>
     </div>
 
     {/* Servicio / Concepto */}
@@ -5077,7 +5393,33 @@ React.useEffect(() => {
     />
     </div>
 
+    <div className="space-y-2">
+     <label className="text-[10px] font-mono font-bold uppercase text-slate-400">Estructura del cobro</label>
+     <div className="grid grid-cols-3 gap-2">
+      {([
+       { value: 'upfront', label: 'Solo inicial', detail: 'Único o financiado' },
+       { value: 'recurring', label: 'Solo recurrencia', detail: 'Mensual o anual' },
+       { value: 'upfront_recurring', label: 'Inicial + recurrencia', detail: 'Ambos conceptos' },
+      ] as Array<{ value: ServiceBillingStructure; label: string; detail: string }>).map(option => (
+       <button
+        key={option.value}
+        type="button"
+        onClick={() => setConvBillingStructure(option.value)}
+        className={`rounded-xl border px-2 py-2.5 text-left transition ${convBillingStructure === option.value
+         ? 'border-emerald-400/30 bg-emerald-400/[0.09] text-emerald-200'
+         : 'border-white/[0.07] bg-black/20 text-slate-500 hover:text-slate-300'}`}
+       >
+        <span className="block text-[8.5px] font-black">{option.label}</span>
+        <span className="mt-0.5 block text-[6.5px] opacity-70">{option.detail}</span>
+       </button>
+      ))}
+     </div>
+    </div>
+
     {/* Precio y Plazos */}
+    {hasUpfrontServicePayment && (
+    <div className="space-y-3 rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.025] p-3">
+     <span className="text-[8px] font-black uppercase tracking-[.16em] text-cyan-300">Pago inicial</span>
     <div className="grid grid-cols-2 gap-4">
     <div className="space-y-1.5">
      <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Importe base (€)</label>
@@ -5127,6 +5469,27 @@ React.useEffect(() => {
       <p className="text-[9px] text-slate-500">Se suma al importe base y se reparte entre todas las cuotas.</p>
      </div>
     )}
+    </div>
+    )}
+
+    {hasRecurringServicePayment && (
+     <div className="space-y-3 rounded-2xl border border-violet-400/10 bg-violet-400/[0.025] p-3">
+      <span className="text-[8px] font-black uppercase tracking-[.16em] text-violet-300">Recurrencia</span>
+      <div className="grid grid-cols-[1fr_150px] gap-3">
+       <label className="space-y-1.5">
+        <span className="block text-[9px] font-bold uppercase text-slate-500">Importe recurrente (€)</span>
+        <input type="number" min="0.01" step="0.01" required value={convRecurringPrice || ''} onChange={event => setConvRecurringPrice(Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-xl border border-white/10 bg-[#030305] px-3 py-2.5 text-xs text-slate-200 outline-none focus:border-violet-400" placeholder="0,00" />
+       </label>
+       <label className="space-y-1.5">
+        <span className="block text-[9px] font-bold uppercase text-slate-500">Frecuencia</span>
+        <select value={convRecurringInterval} onChange={event => setConvRecurringInterval(event.target.value as 'month' | 'year')} className="w-full rounded-xl border border-white/10 bg-[#030305] px-3 py-2.5 text-xs text-slate-200 outline-none focus:border-violet-400">
+         <option value="month">Mensual</option>
+         <option value="year">Anual</option>
+        </select>
+       </label>
+      </div>
+     </div>
+    )}
 
     {/* Cuotas de cálculo informativo */}
     <div className="space-y-1.5">
@@ -5153,12 +5516,16 @@ React.useEffect(() => {
     </div>
     {convPaymentMethod === 'stripe' && (
      <p className="text-[9px] text-violet-300 leading-relaxed bg-violet-500/5 border border-violet-500/15 rounded-xl p-2">
-     Se generara un unico link de Stripe. Si hay varias cuotas, Stripe cobrara una mensualidad de {(convFinancedTotal / Math.max(convInstallments, 1)).toFixed(2)} EUR y la suscripcion se programa para cancelarse al llegar al total.
+     {convBillingStructure === 'upfront_recurring'
+      ? 'Se generarán dos enlaces identificados: uno para el pago inicial o financiación y otro para activar la suscripción.'
+      : hasRecurringServicePayment
+       ? `Se generará el enlace de la suscripción ${convRecurringInterval === 'year' ? 'anual' : 'mensual'}.`
+       : `Se generará el enlace del pago ${convInstallments > 1 ? `financiado en ${convInstallments} cuotas` : 'único'}.`}
      </p>
     )}
     </div>
 
-    {convInstallments > 1 && (
+    {hasUpfrontServicePayment && convInstallments > 1 && (
     <div className="bg-amber-500/5 p-3 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 font-mono space-y-0.5">
      <span className="block font-bold">DISTRIBUCIÓN EN PLAZOS:</span>
      <span> Importe base: {Number(convSalePrice || 0).toFixed(2)} EUR</span>
@@ -5169,6 +5536,7 @@ React.useEffect(() => {
     )}
 
     {/* Comercial a asignar */}
+    {convertingLead && (
     <div className="space-y-1.5">
     <div className="flex flex-wrap items-center justify-between gap-2">
      <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Comercial de origen (Comisión)</label>
@@ -5190,7 +5558,7 @@ React.useEffect(() => {
      const com = (comercialesList || []).find(c => c.id === effectiveCommissionCommercialId);
      if (com) {
      const pct = com.commissionPercentage ?? 10;
-     const commVal = (convFinancedTotal * pct) / 100;
+     const commVal = ((hasUpfrontServicePayment ? convFinancedTotal : 0) * pct) / 100;
      return (
       <p className="text-[10px] text-emerald-400 font-mono mt-1">
       👉 Se asignará una comisión de <strong>{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> ({pct}%) a <strong>{com.name}</strong> en el balance del comercial.
@@ -5202,22 +5570,24 @@ React.useEffect(() => {
     {!effectiveCommissionCommercialId && <p className="text-[9px] text-slate-500">Puedes confirmar la venta sin asignar comisión a ningún comercial.</p>}
     {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Se ha preseleccionado al comercial que captó el lead. Puedes cambiarlo antes de confirmar la venta. Carlos nunca recibe comisión de ventas.</p>}
     </div>
+    )}
 
     {/* Buttons */}
     <div className="flex gap-3 pt-4 border-t border-white/5">
     <button
      type="button"
-     onClick={() => setConvertingLead(null)}
+     onClick={() => { setConvertingLead(null); setServiceRegistrationContact(null); }}
      className="flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs text-slate-400 font-semibold cursor-pointer transition-all text-center"
     >
      Cancelar
     </button>
     <button
      type="submit"
-     className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5 uppercase tracking-wider"
+     disabled={convSelectedProducts.length === 0}
+     className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5 uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-40"
     >
      <Check className="w-4 h-4" />
-     <span>Confirmar Venta 🎯</span>
+     <span>{convertingLead ? 'Convertir y registrar' : 'Registrar servicio'}</span>
     </button>
     </div>
    </form>
@@ -5300,10 +5670,10 @@ React.useEffect(() => {
 
      <p className="mb-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-400">Venta registrada</p>
      <h2 id="conversion-success-title" className="pr-10 text-2xl font-black tracking-tight text-white sm:text-[28px]">
-      ¡{conversionSuccess.clientName} ya es cliente!
+      {conversionSuccess.isNewClient ? `¡${conversionSuccess.clientName} ya es cliente!` : `Servicio añadido a ${conversionSuccess.clientName}`}
      </h2>
      <p className="mt-2 text-sm leading-6 text-slate-400">
-      La conversión se ha completado y toda la información financiera ha quedado registrada.
+      {conversionSuccess.isNewClient ? 'La conversión se ha completado y toda la información financiera ha quedado registrada.' : 'El nuevo servicio y su estructura de cobro han quedado registrados.'}
      </p>
 
      <div className="my-6 rounded-2xl border border-emerald-400/15 bg-gradient-to-br from-emerald-400/[0.09] to-cyan-400/[0.03] px-5 py-4">
@@ -5328,7 +5698,7 @@ React.useEffect(() => {
       <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Plan de pago</p>
        <p className="mt-1.5 text-sm font-bold text-slate-100">
-        {conversionSuccess.installments} {conversionSuccess.installments === 1 ? 'cuota' : 'cuotas'}
+        {conversionSuccess.installments === 0 ? 'Solo recurrencia' : `${conversionSuccess.installments} ${conversionSuccess.installments === 1 ? 'cuota' : 'cuotas'}`}
        </p>
       </div>
       <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
@@ -5347,31 +5717,21 @@ React.useEffect(() => {
       </div>
      </div>
 
-     {conversionSuccess.stripeUrl && (
-      <div className="mt-3 flex gap-2">
-       <a
-        href={conversionSuccess.stripeUrl}
-        target="_blank"
-        rel="noreferrer"
-        className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-violet-400/20 bg-violet-400/[0.08] px-4 py-3 text-xs font-bold text-violet-200 transition hover:bg-violet-400/[0.14]"
-       >
-        Abrir enlace de Stripe
+     {(conversionSuccess.stripeUrls?.length ? conversionSuccess.stripeUrls : conversionSuccess.stripeUrl ? [{ label: 'Cobro', url: conversionSuccess.stripeUrl }] : []).map(link => (
+      <div key={`${link.label}-${link.url}`} className="mt-3 flex gap-2">
+       <a href={link.url} target="_blank" rel="noreferrer" className="flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-violet-400/20 bg-violet-400/[0.08] px-4 py-3 text-xs font-bold text-violet-200 transition hover:bg-violet-400/[0.14]">
+        {link.label} · Abrir en Stripe
         <ExternalLink className="h-3.5 w-3.5 shrink-0" />
        </a>
-       <button
-        type="button"
-        onClick={() => navigator.clipboard.writeText(conversionSuccess.stripeUrl!)}
-        className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white"
-        title="Copiar enlace de Stripe"
-       >
+       <button type="button" onClick={() => navigator.clipboard.writeText(link.url)} className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/10 hover:text-white" title={`Copiar enlace: ${link.label}`}>
         <Copy className="h-4 w-4" />
        </button>
       </div>
-     )}
+     ))}
 
      <div className="mt-6 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-black/20 px-4 py-3">
       <Receipt className="h-4 w-4 shrink-0 text-emerald-400" />
-      <p className="text-[11px] leading-4 text-slate-400">Factura e ingresos creados correctamente.</p>
+      <p className="text-[11px] leading-4 text-slate-400">Servicio e ingresos creados correctamente.</p>
      </div>
 
      <button
