@@ -3899,17 +3899,46 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <div className="flex items-center justify-between">
      <div>
       <h4 className="text-base font-black text-white">Pulso financiero</h4>
-      <span className="text-[9px] font-mono text-slate-500 uppercase">Últimos movimientos</span>
+      <span className="text-[9px] font-mono text-slate-500 uppercase">Ingresos y gastos · últimos 12 días</span>
      </div>
-     <TrendingUp className="w-4 h-4 text-emerald-400" />
+     <div className="flex items-center gap-3 font-mono text-[8px] uppercase tracking-wider">
+      <span className="inline-flex items-center gap-1 text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Ingresos</span>
+      <span className="inline-flex items-center gap-1 text-rose-300"><span className="h-1.5 w-1.5 rounded-full bg-rose-400" />Gastos</span>
      </div>
-     <div className="h-44 mt-8 flex items-end gap-2 border-b border-white/10 px-2">
-     {(transactions.slice(0, 12).reverse().length ? transactions.slice(0, 12).reverse() : [{ amount: 1, type: 'income' } as FinanceTransaction]).map((tx, index, list) => {
-      const max = Math.max(...list.map(item => Math.abs(Number(item.amount)) || 1));
-      return <div key={tx.id || index} title={`${tx.description || 'Sin movimientos'}: ${tx.amount} €`} className={`flex-1 min-w-2 rounded-t-md transition hover:opacity-80 ${tx.type === 'expense' ? 'bg-rose-500/70' : 'bg-gradient-to-t from-violet-600 to-blue-400'}`} style={{ height: `${Math.max(8, (Math.abs(Number(tx.amount)) / max) * 100)}%` }} />;
-     })}
      </div>
-     <div className="flex justify-between mt-3 text-[9px] font-mono text-slate-600"><span>Anterior</span><span>Ahora</span></div>
+     {(() => {
+      const today = new Date();
+      today.setHours(12, 0, 0, 0);
+      const dailyData = Array.from({ length: 12 }, (_, index) => {
+       const date = new Date(today);
+       date.setDate(today.getDate() - (11 - index));
+       const key = getFinanceDateKey(date.toISOString());
+       const dayTransactions = transactions.filter(transaction => !transaction.isRecurring && getFinanceDateKey(transaction.date) === key);
+       return {
+        key,
+        date,
+        income: dayTransactions.filter(transaction => transaction.type === 'income').reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0),
+        expense: dayTransactions.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0),
+       };
+      });
+      const maximum = Math.max(1, ...dailyData.flatMap(day => [day.income, day.expense]));
+
+      return (
+       <div className="mt-7">
+        <div className="flex h-44 items-end gap-1.5 border-b border-white/10 px-1.5">
+         {dailyData.map(day => (
+          <div key={day.key} className="group flex h-full min-w-0 flex-1 flex-col justify-end">
+           <div className="flex h-[calc(100%-18px)] items-end justify-center gap-0.5">
+            <div title={`${day.date.toLocaleDateString('es-ES')}: ingresos ${day.income.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}`} className="w-[42%] max-w-5 rounded-t bg-gradient-to-t from-emerald-600 to-cyan-300 transition-all group-hover:brightness-125" style={{ height: day.income > 0 ? `${Math.max(5, (day.income / maximum) * 100)}%` : '0%' }} />
+            <div title={`${day.date.toLocaleDateString('es-ES')}: gastos ${day.expense.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}`} className="w-[42%] max-w-5 rounded-t bg-gradient-to-t from-rose-700 to-rose-400 transition-all group-hover:brightness-125" style={{ height: day.expense > 0 ? `${Math.max(5, (day.expense / maximum) * 100)}%` : '0%' }} />
+           </div>
+           <span className="mt-1 block truncate text-center font-mono text-[7px] text-slate-600 group-hover:text-slate-400">{day.date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}</span>
+          </div>
+         ))}
+        </div>
+       </div>
+      );
+     })()}
     </div>
 
     <div className="bg-[#080b16]/70 border border-white/5 rounded-3xl p-5 flex flex-col">
