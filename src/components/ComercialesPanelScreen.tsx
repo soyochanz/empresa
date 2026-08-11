@@ -46,7 +46,7 @@ import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, Client
 import { db } from '../supabaseClient';
 import ColdCallingScreen from './ColdCallingScreen';
 import DossierModal from './DossierModal';
-import { calculateLegacyPoints, countUniqueInitialSales } from '../utils/salesRewards';
+import { calculateLegacyPoints, countUniqueInitialSales, dedupeCommercialLeads } from '../utils/salesRewards';
 import CommercialAnalyticsDashboard from './CommercialAnalyticsDashboard';
 import CommercialTrainingCenter from './CommercialTrainingCenter';
 import CommercialCalendarWorkspace from './CommercialCalendarWorkspace';
@@ -752,7 +752,7 @@ export default function ComercialesPanelScreen({
   }
  });
 
- return [...updated, ...newLeadsFromClients];
+ return dedupeCommercialLeads([...updated, ...newLeadsFromClients]);
  }, [leadsList, contacts, finTransactions, comercial]);
 
  // Filtering leads belonging to THIS commercial

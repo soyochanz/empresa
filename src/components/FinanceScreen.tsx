@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
 import { db, invalidateSharedPipelineCache, supabase } from '../supabaseClient';
-import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
+import { countUniqueInitialSales, getRankableCommercials, getUniqueInitialSales } from '../utils/salesRewards';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { clearInvoicePrefill, peekInvoicePrefill } from '../utils/invoicePrefill';
@@ -185,7 +185,7 @@ const TransactionOriginSignals = React.memo(function TransactionOriginSignals({
  stripeDashboardUrl,
 }: TransactionOriginSignalsProps) {
  const description = transaction.description || '';
- const hasCommercial = Boolean(transaction.comercialId || transaction.comercialEmail || transaction.isInitialSale);
+ const hasCommercial = Boolean(transaction.comercialId || transaction.comercialEmail);
  const isRecurring = Boolean(
   transaction.isRecurring ||
   transaction.recurrenceSourceId ||
@@ -4728,7 +4728,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </thead>
     <tbody className="divide-y divide-white/5">
      {(() => {
-     const initialTxs = ledgerTransactions.filter(t => t.isInitialSale === true);
+     const initialTxs = getUniqueInitialSales(ledgerTransactions);
      if (initialTxs.length === 0) {
       return (
       <tr>

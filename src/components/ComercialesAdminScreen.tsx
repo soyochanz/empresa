@@ -45,7 +45,7 @@ import DossierModal from './DossierModal';
 import AdminRewardsPanel from './AdminRewardsPanel';
 import AdminCommercialEvolution from './AdminCommercialEvolution';
 import { db, supabase } from '../supabaseClient';
-import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
+import { countUniqueInitialSales, dedupeCommercialLeads, getRankableCommercials } from '../utils/salesRewards';
 import { downloadCommercialAnalyticsReport, printCommercialAnalyticsReport } from '../utils/commercialAnalyticsReport';
 
 export const getTieredCommission = (closures: number): number => {
@@ -519,7 +519,7 @@ export default function ComercialesAdminScreen({
   }
  });
 
- return [...updated, ...newLeadsFromClients];
+ return dedupeCommercialLeads([...updated, ...newLeadsFromClients]);
  }, [leadsList, contacts, finTransactions, comercialesList]);
 
  // --- COMPUTE GLOBAL METRICS ---

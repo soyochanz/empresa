@@ -749,7 +749,7 @@ export default function CrmScreen({
    await db.updateComercialLead(updatedLead);
   } else {
    const newLead: ComercialLead = {
-   id: 'lead_' + Math.random().toString(36).substring(2, 9),
+   id: `lead_from_${convertingLead.id}`,
    comercialId: matchedCom.id,
    comercialName: matchedCom.name,
    name: convertingLead.name,
@@ -1093,7 +1093,7 @@ export default function CrmScreen({
     await db.updateComercialLead(updatedLead);
    } else {
     const newLead: ComercialLead = {
-    id: 'lead_' + Math.random().toString(36).substring(2, 9),
+    id: `lead_from_${selectedContact.id}`,
     comercialId: matchedCom.id,
     comercialName: matchedCom.name,
     name: selectedContact.name,

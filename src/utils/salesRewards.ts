@@ -1,4 +1,4 @@
-import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, CommercialPresence, CommercialWorkSession, FinanceTransaction, MonthlyPerformanceReview } from '../types';
+import { CalendarEvent, ClientContact, ColdCallingLead, ComercialAccount, ComercialLead, CommercialPresence, CommercialWorkSession, FinanceTransaction, MonthlyPerformanceReview } from '../types';
 
 export interface SalesRewardRow {
   comercial: ComercialAccount;
@@ -95,10 +95,62 @@ export const getRankableCommercials = (comerciales: ComercialAccount[]): Comerci
   comerciales.filter(comercial => !isTestCommercial(comercial));
 
 export const getInitialSaleKey = (tx: any): string =>
-  String(tx.invoiceId || tx.stripePlanId || tx.clientId || tx.id);
+  String(tx.clientId || tx.invoiceId || tx.stripePlanId || tx.id);
+
+export const getUniqueInitialSales = (transactions: FinanceTransaction[] | any[]): FinanceTransaction[] => {
+  const sales = transactions.filter(tx => tx.type === 'income' && tx.isInitialSale === true);
+  const unique = new Map<string, FinanceTransaction>();
+  sales.forEach(tx => {
+    const key = getInitialSaleKey(tx);
+    const current = unique.get(key);
+    if (!current) {
+      unique.set(key, tx);
+      return;
+    }
+    const currentInstallment = Number(current.stripeInstallmentIndex || Number.MAX_SAFE_INTEGER);
+    const candidateInstallment = Number(tx.stripeInstallmentIndex || Number.MAX_SAFE_INTEGER);
+    const currentDate = String(current.date || '9999-12-31');
+    const candidateDate = String(tx.date || '9999-12-31');
+    if (candidateInstallment < currentInstallment || (candidateInstallment === currentInstallment && candidateDate < currentDate)) {
+      unique.set(key, tx);
+    }
+  });
+  return [...unique.values()];
+};
 
 export const countUniqueInitialSales = (transactions: FinanceTransaction[] | any[]): number =>
-  new Set(transactions.filter(tx => tx.type === 'income' && tx.isInitialSale === true).map(getInitialSaleKey)).size;
+  getUniqueInitialSales(transactions).length;
+
+const normalizeCommercialIdentity = (value?: string): string =>
+  (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+export const getCommercialLeadBusinessKey = (lead: ComercialLead): string => {
+  const sourceContactId = lead.notes?.match(/\[SOURCE_CONTACT_ID:([^\]]+)\]/)?.[1];
+  if (sourceContactId) return `contact:${sourceContactId}`;
+  const sourceColdLeadId = lead.notes?.match(/\[SOURCE_COLD_LEAD_ID:([^\]]+)\]/)?.[1];
+  if (sourceColdLeadId) return `cold:${sourceColdLeadId}`;
+  const email = normalizeCommercialIdentity(lead.email);
+  if (email) return `email:${email}`;
+  const company = normalizeCommercialIdentity(lead.company);
+  if (company) return `company:${company}`;
+  return `name:${normalizeCommercialIdentity(lead.name) || lead.id}`;
+};
+
+export const dedupeCommercialLeads = (leads: ComercialLead[]): ComercialLead[] => {
+  const unique = new Map<string, ComercialLead>();
+  leads.forEach(lead => {
+    const key = getCommercialLeadBusinessKey(lead);
+    const current = unique.get(key);
+    if (!current) {
+      unique.set(key, lead);
+      return;
+    }
+    const currentCreatedAt = new Date(current.createdAt || 0).getTime();
+    const candidateCreatedAt = new Date(lead.createdAt || 0).getTime();
+    if (candidateCreatedAt < currentCreatedAt) unique.set(key, lead);
+  });
+  return [...unique.values()];
+};
 
 const isSalesAppointmentEvent = (event: CalendarEvent) =>
   event.id?.startsWith('cc_appointment_') ||
