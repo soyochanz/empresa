@@ -477,13 +477,23 @@ app.get("/api/stripe/balance", async (_req, res) => {
 // Create subscription or single payment checkout session
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
-    const { clientId, clientName, clientEmail, amount, interval, installments, concept, pendingTxId, stripePlanId, installmentIndex } = req.body;
+    const { clientId, clientName, clientEmail, amount, interval, installments, concept, pendingTxId, stripePlanId, installmentIndex, previousSessionId } = req.body;
 
     if (!clientId || !clientEmail || !amount) {
       return res.status(400).json({ error: "clientId, clientEmail, and amount are required" });
     }
 
     const stripe = getStripe();
+    if (previousSessionId) {
+      const previousSession = await stripe.checkout.sessions.retrieve(previousSessionId);
+      const belongsToSameTransaction = !previousSession.metadata?.pendingTxId || previousSession.metadata.pendingTxId === pendingTxId;
+      if (!belongsToSameTransaction) {
+        return res.status(409).json({ error: "El enlace anterior no pertenece a este cobro." });
+      }
+      if (previousSession.payment_status === "paid" || previousSession.status !== "expired") {
+        return res.status(409).json({ error: "El enlace solo se puede renovar cuando Stripe confirma que ha caducado y sigue sin pagar." });
+      }
+    }
     const appUrl = getAppUrl(req);
     const isSubscription = interval !== "once";
     const installmentCount = Number.parseInt(installments || "", 10);
@@ -544,7 +554,14 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     // Create a checkout session
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
-    res.json({ url: session.url, sessionId: session.id });
+    res.json({
+      url: session.url,
+      sessionId: session.id,
+      mode: session.mode,
+      status: session.status,
+      paymentStatus: session.payment_status,
+      expiresAt: session.expires_at,
+    });
   } catch (error: any) {
     console.error("Error creating stripe checkout session:", error);
     res.status(500).json({ error: error?.message || "Internal Server Error" });
@@ -859,8 +876,11 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
     res.json({
       customerId: session.customer,
       subscriptionId,
+      mode: session.mode,
       paymentStatus: session.payment_status,
       status: session.status,
+      expiresAt: session.expires_at,
+      url: session.url,
       transactionUpdated: paymentResult.updated,
       transactionId: paymentResult.txId,
     });

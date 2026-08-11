@@ -36,7 +36,9 @@ import {
  Target,
  TrendingUp,
  BriefcaseBusiness,
- Receipt
+ Receipt,
+ RefreshCw,
+ Clock3
 } from 'lucide-react';
 
 export const safeConfirm = (msg: string): boolean => {
@@ -351,9 +353,94 @@ export default function CrmScreen({
  // Dynamic Stripe link generation states for individual pending transactions/installments
  const [activeTxStripeUrl, setActiveTxStripeUrl] = useState<{[txId: string]: string}>({});
  const [txStripeLoading, setTxStripeLoading] = useState<{[txId: string]: boolean}>({});
+ const [txStripeError, setTxStripeError] = useState<{[txId: string]: string}>({});
+ const [checkoutSessionState, setCheckoutSessionState] = useState<{[txId: string]: {
+  status: 'open' | 'complete' | 'expired' | 'unknown';
+  paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' | 'unknown';
+  mode?: 'payment' | 'subscription' | 'setup';
+  expiresAt?: number;
+  loading?: boolean;
+  error?: string;
+ }}>({});
+
+ const inspectCheckoutSession = React.useCallback(async (tx: FinanceTransaction) => {
+  if (!tx.stripeCheckoutSessionId || tx.stripeCheckoutSessionId.startsWith('cs_test_mock_')) {
+  setCheckoutSessionState(prev => ({
+   ...prev,
+   [tx.id]: {
+   status: 'unknown',
+   paymentStatus: 'unknown',
+   error: 'Este enlace antiguo no se puede verificar en Stripe.',
+   },
+  }));
+  return;
+  }
+
+  setCheckoutSessionState(prev => ({
+  ...prev,
+  [tx.id]: {
+   ...(prev[tx.id] || { status: 'unknown', paymentStatus: 'unknown' }),
+   loading: true,
+   error: undefined,
+  },
+  }));
+
+  try {
+  const response = await fetch(`/api/stripe/retrieve-session?sessionId=${encodeURIComponent(tx.stripeCheckoutSessionId)}`);
+  const data = await readStripeJson(response);
+  if (!response.ok) throw new Error(data.error || 'No se pudo comprobar el enlace en Stripe.');
+
+  setCheckoutSessionState(prev => ({
+   ...prev,
+   [tx.id]: {
+   status: data.status || 'unknown',
+   paymentStatus: data.paymentStatus || 'unknown',
+   mode: data.mode,
+   expiresAt: data.expiresAt,
+   },
+  }));
+
+  if (data.transactionUpdated && data.paymentStatus === 'paid') {
+   setTransactions(prev => prev.map(item => item.id === tx.id ? { ...item, status: 'paid' } : item));
+  }
+  } catch (err: any) {
+  setCheckoutSessionState(prev => ({
+   ...prev,
+   [tx.id]: {
+   status: 'unknown',
+   paymentStatus: 'unknown',
+   error: err?.message || 'No se pudo comprobar el enlace en Stripe.',
+   },
+  }));
+  }
+ }, []);
+
+ const pendingStripeSessionKey = React.useMemo(
+  () => selectedClientTransactions
+  .filter(tx => tx.status === 'pending' && tx.stripeCheckoutSessionId)
+  .map(tx => `${tx.id}:${tx.stripeCheckoutSessionId}`)
+  .sort()
+  .join('|'),
+  [selectedClientTransactions]
+ );
+
+ React.useEffect(() => {
+  const pendingStripeTransactions = selectedClientTransactions.filter(
+  tx => tx.status === 'pending' && tx.stripeCheckoutSessionId
+  );
+  pendingStripeTransactions.forEach(tx => void inspectCheckoutSession(tx));
+ }, [pendingStripeSessionKey, inspectCheckoutSession]);
 
  const handleGenerateStripeForTx = async (tx: FinanceTransaction) => {
+ const currentSession = checkoutSessionState[tx.id];
+ if (tx.status !== 'pending') return;
+ if (tx.stripeCheckoutUrl && currentSession?.status !== 'expired') {
+  setTxStripeError(prev => ({ ...prev, [tx.id]: 'El enlace actual sigue activo o todavía no se ha podido confirmar como caducado.' }));
+  return;
+ }
+
  setTxStripeLoading(prev => ({ ...prev, [tx.id]: true }));
+ setTxStripeError(prev => ({ ...prev, [tx.id]: '' }));
  try {
   const targetEmail = selectedContact?.email || 'cliente@email.com';
   const response = await fetch('/api/stripe/create-checkout-session', {
@@ -366,12 +453,13 @@ export default function CrmScreen({
    clientName: selectedContact?.name || 'Cliente',
    clientEmail: targetEmail,
    amount: tx.amount.toString(),
-   interval: 'once', // Installments are one-off payments
+   interval: currentSession?.mode === 'subscription' ? 'month' : 'once',
    pendingTxId: tx.id,
    stripePlanId: tx.stripePlanId,
    installmentIndex: tx.stripeInstallmentIndex,
    installments: tx.stripeInstallmentCount?.toString() || '',
    concept: tx.description,
+   previousSessionId: tx.stripeCheckoutUrl ? tx.stripeCheckoutSessionId : undefined,
   }),
   });
 
@@ -383,17 +471,21 @@ export default function CrmScreen({
   await db.updateFinanceTransaction(updatedTx);
   setTransactions(prev => prev.map(item => item.id === tx.id ? updatedTx : item));
   setActiveTxStripeUrl(prev => ({ ...prev, [tx.id]: data.url }));
- } catch (err) {
-  console.error("Stripe error, using fallback simulated URL", err);
-  const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${selectedContact?.id || 'c2'}&amount=${tx.amount}&interval=once&pending_tx_id=${tx.id}&stripe_plan_id=${tx.stripePlanId || ''}&installment_index=${tx.stripeInstallmentIndex || ''}&installments=${tx.stripeInstallmentCount || ''}&concept=${encodeURIComponent(tx.description)}&stripe_session_id=cs_test_mock_${tx.id}&simulated=true`;
-  const updatedTx = { ...tx, stripeCheckoutUrl: simulatedUrl, stripeCheckoutSessionId: `cs_test_mock_${tx.id}` };
-  try {
-  await db.updateFinanceTransaction(updatedTx);
-  setTransactions(prev => prev.map(item => item.id === tx.id ? updatedTx : item));
-  } catch (saveErr) {
-  console.error("Could not persist simulated Stripe URL", saveErr);
-  }
-  setActiveTxStripeUrl(prev => ({ ...prev, [tx.id]: simulatedUrl }));
+  setCheckoutSessionState(prev => ({
+  ...prev,
+  [tx.id]: {
+   status: data.status || 'open',
+   paymentStatus: data.paymentStatus || 'unpaid',
+   mode: data.mode,
+   expiresAt: data.expiresAt,
+  },
+  }));
+ } catch (err: any) {
+  console.error('Stripe checkout generation error', err);
+  setTxStripeError(prev => ({
+  ...prev,
+  [tx.id]: err?.message || 'No se pudo generar el enlace de Stripe.',
+  }));
  } finally {
   setTxStripeLoading(prev => ({ ...prev, [tx.id]: false }));
  }
@@ -2301,9 +2393,9 @@ export default function CrmScreen({
   </section>
 
   {/* Detailed Side Panel Bio Inspector */}
-  <aside className="w-full xl:w-[420px] 2xl:w-[440px] shrink-0 flex flex-col gap-5 min-h-[560px] xl:min-h-0">
+  <aside className="w-full xl:w-[500px] 2xl:w-[560px] shrink-0 flex flex-col gap-5 min-h-[560px] xl:min-h-0">
   {selectedContact ? (
-   <div className="bg-gradient-to-b from-white/[0.065] to-white/[0.025] backdrop-blur-xl rounded-[28px] overflow-hidden flex flex-col h-full border border-white/[0.09] shadow-[0_24px_70px_rgba(0,0,0,.28)]">
+   <div className="bg-gradient-to-b from-white/[0.07] to-white/[0.025] backdrop-blur-xl rounded-[30px] overflow-hidden flex flex-col h-full border border-white/[0.1] shadow-[0_28px_80px_rgba(0,0,0,.36)]">
    
    {/* Detail Banner cover */}
    <div className={`relative h-36 border-b border-white/[0.06] transition-all duration-300 ${
@@ -2372,7 +2464,7 @@ export default function CrmScreen({
     </div>
    </div>
    {/* Profile Detail Stack */}
-   <div className="px-6 -mt-10 relative z-10 flex flex-col gap-5 pb-6 overflow-y-auto flex-1 scrollbar-thin">
+   <div className="px-6 2xl:px-7 -mt-10 relative z-10 flex flex-col gap-5 pb-7 overflow-y-auto flex-1 scrollbar-thin">
     
     {/* Profile Card Center Headshot */}
     <div className="flex flex-col items-center text-center">
@@ -3152,12 +3244,15 @@ export default function CrmScreen({
     const totalInvoiced = clientInvoices.length > 0 ? totalInvoicedFromInvoices : (totalPaid + totalPending);
 
     return (
-     <div className="space-y-3.5 border-b border-white/5 pb-5">
+     <div className="space-y-4 bg-slate-950/35 border border-white/[0.08] rounded-2xl p-4 shadow-[0_14px_35px_rgba(0,0,0,.16)]">
      <div className="flex justify-between items-center">
-      <h4 className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-extrabold flex items-center gap-1.5">
-      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-      <span>Contabilidad y Facturas</span>
-      </h4>
+      <div>
+       <h4 className="text-[11px] uppercase tracking-[0.16em] text-slate-100 font-extrabold flex items-center gap-2">
+       <span className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center"><Receipt className="w-3.5 h-3.5 text-emerald-400" /></span>
+       <span>Área financiera</span>
+       </h4>
+       <p className="text-[9px] text-slate-500 mt-1 ml-9">Facturación y cobros vinculados exclusivamente a este cliente</p>
+      </div>
       <button
       onClick={() => {
        setInvoicePrefill({
@@ -3174,26 +3269,26 @@ export default function CrmScreen({
        onNavigate('finanzas', 'push');
        }
       }}
-      className="text-[9px] font-mono text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 hover:border-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded transition-all cursor-pointer"
+      className="text-[9px] font-bold text-emerald-300 hover:text-white border border-emerald-500/30 hover:border-emerald-400/60 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap"
       >
       + Nueva Factura
       </button>
      </div>
 
-     <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-3 rounded-xl border border-white/5 shadow-inner">
-      <div className="text-center p-1.5 rounded-lg bg-white/2">
+     <div className="grid grid-cols-3 gap-2.5">
+      <div className="text-left p-3 rounded-xl bg-white/[0.025] border border-white/[0.06]">
       <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-wider">Facturado</span>
       <span className="text-xs font-mono font-extrabold text-slate-200 block mt-0.5">
        {totalInvoiced.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
       </span>
       </div>
-      <div className="text-center p-1.5 rounded-lg bg-emerald-500/5 border border-emerald-500/5">
+      <div className="text-left p-3 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/15">
       <span className="block text-[8px] font-mono text-emerald-500 uppercase tracking-wider">Cobrado</span>
       <span className="text-xs font-mono font-extrabold text-emerald-400 block mt-0.5">
        {totalPaid.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
       </span>
       </div>
-      <div className="text-center p-1.5 rounded-lg bg-amber-500/5 border border-amber-500/5">
+      <div className="text-left p-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/15">
       <span className="block text-[8px] font-mono text-amber-500 uppercase tracking-wider">Pendiente</span>
       <span className="text-xs font-mono font-extrabold text-amber-400 block mt-0.5">
        {totalPending.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
@@ -3201,19 +3296,22 @@ export default function CrmScreen({
       </div>
      </div>
 
-     <div className="space-y-2">
-      <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wide block">Facturas emitidas ({clientInvoices.length})</span>
+     <div className="space-y-2.5 pt-1 border-t border-white/[0.06]">
+      <div className="flex items-center justify-between pt-3">
+       <span className="text-[10px] font-bold text-slate-200 uppercase tracking-wide">Facturas emitidas</span>
+       <span className="text-[9px] font-mono text-slate-400 bg-white/5 border border-white/5 rounded-full px-2 py-0.5">{clientInvoices.length}</span>
+      </div>
       {clientInvoices.length === 0 ? (
       <div className="bg-[#030305] p-3.5 rounded-xl border border-white/5 text-center">
        <p className="text-[10px] text-slate-500 font-sans">No hay facturas emitidas para este cliente.</p>
       </div>
       ) : (
-      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
        {clientInvoices.map(inv => {
        const paymentSummary = getInvoicePaymentSummary(inv);
        const isEffectivelyPaid = paymentSummary.state === 'paid';
        return (
-       <div key={inv.id} className="bg-[#030305] p-2.5 rounded-xl border border-white/5 flex justify-between items-center hover:border-white/10 transition-colors">
+       <div key={inv.id} className="bg-[#05070c]/85 p-3 rounded-xl border border-white/[0.07] flex justify-between items-center gap-3 hover:border-emerald-500/20 hover:bg-[#070b12] transition-colors">
         <div className="space-y-0.5">
         <div className="flex items-center gap-2">
          <span className="text-[10px] font-mono font-bold text-slate-200">{inv.id}</span>
@@ -3275,9 +3373,12 @@ export default function CrmScreen({
       )}
      </div>
 
-     <div className="space-y-2 pt-1">
-      <div className="flex justify-between items-center">
-      <span className="text-[9px] font-mono text-slate-400 uppercase tracking-wide block">Historial de Cobros ({clientTransactions.length})</span>
+     <div className="space-y-2.5 pt-1 border-t border-white/[0.06]">
+      <div className="flex justify-between items-center pt-3">
+      <div className="flex items-center gap-2">
+       <span className="text-[10px] font-bold text-slate-200 uppercase tracking-wide">Cobros del cliente</span>
+       <span className="text-[9px] font-mono text-slate-400 bg-white/5 border border-white/5 rounded-full px-2 py-0.5">{clientTransactions.length}</span>
+      </div>
       <button
        onClick={() => {
        setPaymentAmount('');
@@ -3286,7 +3387,7 @@ export default function CrmScreen({
        setPaymentDesc(`Cobro Cliente: ${selectedContact.name}`);
        setShowAddPaymentModal(true);
        }}
-       className="text-[8px] font-mono text-emerald-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+       className="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition"
       >
        <Plus className="w-2.5 h-2.5" /> Registrar Cobro
       </button>
@@ -3297,15 +3398,19 @@ export default function CrmScreen({
        <p className="text-[10px] text-slate-500 font-sans">No hay cobros registrados para este cliente.</p>
       </div>
       ) : (
-      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+      <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
        {clientTransactions.map(tx => {
        const isPending = tx.status === 'pending';
        const stripeUrl = tx.stripeCheckoutUrl || activeTxStripeUrl[tx.id];
        const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId, tx.stripeInvoiceId);
        const isLoading = txStripeLoading[tx.id];
+       const sessionState = checkoutSessionState[tx.id];
+       const isStripeExpired = sessionState?.status === 'expired' && sessionState.paymentStatus !== 'paid';
+       const isStripePaid = sessionState?.paymentStatus === 'paid';
+       const canCreateStripeLink = isPending && !stripeUrl;
 
        return (
-        <div key={tx.id} className="bg-slate-950/30 p-3 rounded-xl border border-white/5 flex flex-col gap-2 hover:bg-slate-950/55 transition-all">
+        <div key={tx.id} className="bg-[#05070c]/75 p-3.5 rounded-xl border border-white/[0.07] flex flex-col gap-2.5 hover:border-violet-500/15 hover:bg-[#070a11] transition-all">
         <div className="flex justify-between items-center gap-2">
          <div className="space-y-0.5 max-w-[70%]">
          <p className="text-[10px] text-slate-200 truncate font-semibold flex items-center gap-1.5">
@@ -3347,20 +3452,32 @@ export default function CrmScreen({
           <Receipt className="w-3.5 h-3.5" />
          </button>
 
-         {/* Stripe Button for Pending Installment */}
-         {isPending && (
+         {/* Stripe link creation is available once, and renewal only after Stripe confirms expiration. */}
+         {canCreateStripeLink && (
           <button
           type="button"
           disabled={isLoading}
           onClick={() => handleGenerateStripeForTx(tx)}
-          className="p-1 bg-violet-600/15 hover:bg-violet-600/30 text-violet-400 border border-violet-500/25 rounded-lg transition-all cursor-pointer flex items-center justify-center"
-          title={tx.stripeCheckoutUrl ? 'Regenerar enlace de Stripe para este plazo' : 'Generar enlace de cobro por Stripe para este plazo'}
+          className="p-1 border rounded-lg transition-all cursor-pointer flex items-center justify-center bg-violet-600/15 hover:bg-violet-600/30 text-violet-400 border-violet-500/25"
+          title="Generar enlace de cobro por Stripe"
           >
           {isLoading ? (
            <span className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin" />
           ) : (
            <CreditCard className="w-3.5 h-3.5 text-violet-400" />
           )}
+          </button>
+         )}
+
+         {isPending && stripeUrl && tx.stripeCheckoutSessionId && !isStripeExpired && !isStripePaid && (
+          <button
+          type="button"
+          disabled={sessionState?.loading}
+          onClick={() => inspectCheckoutSession(tx)}
+          className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-white/5 rounded-lg transition-all cursor-pointer"
+          title="Actualizar estado del enlace en Stripe"
+          >
+          <RefreshCw className={`w-3.5 h-3.5 ${sessionState?.loading ? 'animate-spin' : ''}`} />
           </button>
          )}
 
@@ -3388,13 +3505,32 @@ export default function CrmScreen({
          </div>
         </div>
 
+        {txStripeError[tx.id] && (
+         <p className="text-[9px] text-rose-400 bg-rose-500/5 border border-rose-500/15 rounded-lg px-2.5 py-1.5">
+         {txStripeError[tx.id]}
+         </p>
+        )}
+
         {/* Generated Stripe Link box */}
         {stripeUrl && (
-         <div className="bg-[#05050a] border border-violet-500/20 rounded-lg p-2 flex flex-col gap-1.5 text-left transition-all animate-fadeIn">
+         <div className={`bg-[#05050a] rounded-xl p-2.5 flex flex-col gap-2 text-left transition-all animate-fadeIn border ${isStripeExpired ? 'border-amber-500/25' : isStripePaid ? 'border-emerald-500/25' : 'border-violet-500/20'}`}>
          <div className="flex items-center justify-between">
-          <span className="text-[8px] font-mono text-emerald-400 font-bold uppercase">Enlace Stripe Listo!</span>
-          <span className="text-[7px] font-mono text-slate-500">Auto-cobro para el vencimiento</span>
+          <span className={`text-[8px] font-mono font-bold uppercase flex items-center gap-1.5 ${isStripeExpired ? 'text-amber-400' : isStripePaid ? 'text-emerald-400' : 'text-violet-300'}`}>
+           {isStripeExpired ? <Clock3 className="w-3 h-3" /> : isStripePaid ? <Check className="w-3 h-3" /> : <CreditCard className="w-3 h-3" />}
+           {isStripeExpired ? 'Enlace caducado' : isStripePaid ? 'Pagado en Stripe' : sessionState?.loading ? 'Comprobando enlace…' : 'Enlace Stripe activo'}
+          </span>
+          <span className="text-[7px] font-mono text-slate-500">
+           {sessionState?.expiresAt && !isStripeExpired
+           ? `Caduca ${new Date(sessionState.expiresAt * 1000).toLocaleDateString('es-ES')}`
+           : isStripeExpired ? 'El cobro original se conserva' : 'Cobro vinculado'}
+          </span>
          </div>
+         {sessionState?.error && (
+          <p className="text-[8px] text-amber-300/80 bg-amber-500/5 border border-amber-500/10 rounded-lg px-2 py-1.5">
+          {sessionState.error}
+          </p>
+         )}
+         {!isStripeExpired && !isStripePaid && (
          <div className="flex items-center gap-1">
           <input
           type="text"
@@ -3426,6 +3562,18 @@ export default function CrmScreen({
           Pagar
           </a>
          </div>
+         )}
+         {isStripeExpired && (
+          <button
+          type="button"
+          disabled={isLoading}
+          onClick={() => handleGenerateStripeForTx(tx)}
+          className="w-full py-1.5 px-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-amber-300 text-[9px] font-bold rounded-lg transition flex items-center justify-center gap-1.5"
+          >
+          <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+          Generar nuevo enlace para este mismo cobro
+          </button>
+         )}
          </div>
         )}
         </div>
