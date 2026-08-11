@@ -117,9 +117,9 @@ app.use((req, res, next) => {
 
 // Lazy Stripe initialization to prevent crashes on startup if secret key is missing
 let stripeInstance: Stripe | null = null;
-// Inicio contable solicitado: 12/08/2026 a las 00:00 en Dubái (UTC+4).
+// Primer cobro real confirmado por el usuario: 31/07/2026 14:08:53 en Dubái (UTC+4).
 // Los cargos anteriores permanecen en Stripe, pero no cuentan en Finanzas porque eran pruebas.
-const STRIPE_FINANCE_TRACKING_START_AT = "2026-08-11T20:00:00.000Z";
+const STRIPE_FINANCE_TRACKING_START_AT = "2026-07-31T10:08:53.000Z";
 const STRIPE_FINANCE_TRACKING_START_UNIX = Math.floor(new Date(STRIPE_FINANCE_TRACKING_START_AT).getTime() / 1000);
 
 function getStripe(): Stripe {
@@ -571,6 +571,11 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
     const monthlyRecurringTotals = new Map<string, number>();
     const chargedVolumeTotals = new Map<string, number>();
 
+    const isFiniteInstallmentSubscription = (subscription: Stripe.Subscription): boolean =>
+      subscription.metadata?.althera_finite_installment_plan === "true" ||
+      Number.parseInt(subscription.metadata?.althera_cancel_after_installments || subscription.metadata?.installments || "0", 10) > 1;
+    const recurringMembershipSubscriptions = subscriptions.filter(subscription => !isFiniteInstallmentSubscription(subscription));
+
     const getMonthlyFactor = (recurring: Stripe.Price.Recurring | null | undefined): number => {
       if (!recurring) return 0;
       const intervalCount = Math.max(1, Number(recurring.interval_count || 1));
@@ -580,7 +585,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
       return 1 / intervalCount;
     };
 
-    subscriptions.forEach(subscription => {
+    recurringMembershipSubscriptions.forEach(subscription => {
       subscription.items.data.forEach(item => {
         if (!item.price.recurring) return;
         const unitAmount = Number(item.price.unit_amount_decimal || item.price.unit_amount || 0) / 100;
@@ -625,6 +630,8 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         currency: firstItem?.price.currency || "eur",
         interval: firstItem?.price.recurring?.interval || "month",
         intervalCount: firstItem?.price.recurring?.interval_count || 1,
+        billingType: isFiniteInstallmentSubscription(subscription) ? "installment" : "subscription",
+        installmentCount: Number.parseInt(subscription.metadata?.althera_cancel_after_installments || subscription.metadata?.installments || "0", 10) || null,
         paymentCount: subscriptionPaidInvoices.length,
         paidAmount: subscriptionPaidInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0) / 100,
         openAmount: subscriptionOpenInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_remaining || 0), 0) / 100,
@@ -667,7 +674,8 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
       activeSubscriptions,
       paymentHistory,
       totals: {
-        activeSubscriptions: activeSubscriptions.length,
+        activeSubscriptions: recurringMembershipSubscriptions.length,
+        activeInstallmentPlans: subscriptions.length - recurringMembershipSubscriptions.length,
         mrr: normalizeTotals(monthlyRecurringTotals),
         chargedVolume: normalizeTotals(chargedVolumeTotals),
         successfulPayments: successfulCharges.length,

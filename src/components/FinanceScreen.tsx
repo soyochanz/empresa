@@ -69,6 +69,8 @@ type StripeAccountSubscription = {
  currency: string;
  interval: string;
  intervalCount: number;
+ billingType: 'subscription' | 'installment';
+ installmentCount: number | null;
  paymentCount: number;
  paidAmount: number;
  openAmount: number;
@@ -96,6 +98,7 @@ type StripeFinanceOverview = {
  paymentHistory: StripeAccountPayment[];
  totals: {
   activeSubscriptions: number;
+  activeInstallmentPlans: number;
   mrr: StripeFundAmount[];
   chargedVolume: StripeFundAmount[];
   successfulPayments: number;
@@ -4183,7 +4186,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         {stripeFinanceOverview?.livemode ? 'Datos reales' : 'Modo prueba'}
        </span>
       </div>
-      <p className="text-[9px] text-slate-400">Suscripciones y cobros consultados directamente en Stripe · pagos contabilizados desde el 12/08/2026.</p>
+      <p className="text-[9px] text-slate-400">Suscripciones y cobros consultados directamente en Stripe · pagos contabilizados desde el 31/07/2026.</p>
      </div>
     </div>
     <button type="button" onClick={() => void Promise.all([refreshStripeFinanceOverview(), refreshStripeFunds()])} disabled={stripeFinanceLoading || stripeFundsLoading} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-[9px] font-bold text-slate-300 transition hover:border-[#635bff]/30 hover:text-white disabled:opacity-50">
@@ -4224,7 +4227,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="absolute top-5 right-5 bg-emerald-500/10 rounded-2xl p-3 border border-emerald-500/20">
     <ShieldCheck className="w-5 h-5 text-emerald-400" />
     </div>
-    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Volumen Cobrado desde 12/08</span>
+    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Volumen Cobrado desde 31/07</span>
     <h3 className="text-3xl font-black text-white mt-2 font-mono">
     {stripeFinanceLoading && !stripeFinanceOverview ? '...' : formatStripeFundAmounts(stripeFinanceOverview?.totals.chargedVolume)}
     </h3>
@@ -4387,10 +4390,10 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="flex items-center justify-between border-b border-white/5 pb-3">
      <div className="flex items-center gap-2">
      <Repeat className="w-5 h-5 text-violet-400" />
-     <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Suscripciones Activas</h3>
+     <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Planes activos en Stripe</h3>
      </div>
      <span className="text-[10px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-2 py-0.5 rounded-full font-mono font-bold">
-     {stripeFinanceOverview?.activeSubscriptions.length ?? 0} en Stripe
+     {stripeFinanceOverview?.totals.activeSubscriptions ?? 0} suscripciones · {stripeFinanceOverview?.totals.activeInstallmentPlans ?? 0} financiaciones
      </span>
     </div>
 
@@ -4419,6 +4422,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        </span>
        <span className="text-[8px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/15 px-1.5 py-0.5 rounded-md uppercase tracking-wider font-extrabold">
         Pagos: {subscription.paymentCount}
+       </span>
+       <span className={`text-[8px] font-mono border px-1.5 py-0.5 rounded-md uppercase tracking-wider font-extrabold ${subscription.billingType === 'installment' ? 'border-amber-400/15 bg-amber-400/[0.07] text-amber-300' : 'border-violet-400/15 bg-violet-400/[0.07] text-violet-300'}`}>
+        {subscription.billingType === 'installment' ? `Financiación · ${subscription.installmentCount || '?'} cuotas` : 'Suscripción recurrente'}
        </span>
        </div>
        <div className="mt-2 flex flex-wrap gap-2 font-mono text-[8px]">
