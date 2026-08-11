@@ -233,7 +233,7 @@ export default function CrmScreen({
 
  const selectedClientTransactions = React.useMemo(() => {
  if (!selectedContact) return [];
- return transactions.filter(t => transactionBelongsToContact(t, selectedContact, selectedClientInvoices));
+ return transactions.filter(t => t.type === 'income' && transactionBelongsToContact(t, selectedContact, selectedClientInvoices));
  }, [transactions, selectedContact, selectedClientInvoices]);
 
  const selectedPaymentSummary = React.useMemo(() => {
@@ -299,7 +299,7 @@ export default function CrmScreen({
 
  if (selectedContact) {
   const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, selectedContact));
-  const clientTransactions = transactions.filter(t => transactionBelongsToContact(t, selectedContact, clientInvoices));
+  const clientTransactions = transactions.filter(t => t.type === 'income' && transactionBelongsToContact(t, selectedContact, clientInvoices));
 
   const pendingTxs = clientTransactions.filter(t => t.status === 'pending');
   if (pendingTxs.length > 0) {
@@ -3109,7 +3109,7 @@ export default function CrmScreen({
     {/* Módulo de Contabilidad y Facturas de Cliente */}
     {(() => {
     const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, selectedContact));
-    const clientTransactions = transactions.filter(t => transactionBelongsToContact(t, selectedContact, clientInvoices));
+    const clientTransactions = transactions.filter(t => t.type === 'income' && transactionBelongsToContact(t, selectedContact, clientInvoices));
 
     const getInvoicePaymentSummary = (invoice: Invoice) => {
      const invoiceTotal = Number(invoice.total || 0);
