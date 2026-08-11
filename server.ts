@@ -53,6 +53,34 @@ function resolveSupabaseKey(): string {
 
 const supabaseAdmin = createClient(resolveSupabaseUrl(), resolveSupabaseKey());
 
+const normalizeAdminEmail = (value?: string | null) => (value || "").trim().toLowerCase();
+const authorizedAdminEmails = new Set([
+  "carlosronco14@gmail.com",
+  "mgnacho96@gmail.com",
+  ...cleanEnv(process.env.ADMIN_EMAILS || process.env.VITE_ADMIN_EMAILS)
+    .split(",")
+    .map(normalizeAdminEmail)
+    .filter(Boolean),
+]);
+const authorizedAdminIds = new Set([
+  "c2eef079-4ab8-4711-8641-45f0fd4a14e",
+  "711ab85b-db59-447c-93df-1951d24b133f",
+]);
+
+async function requireAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authorization = req.get("authorization") || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!token) return res.status(401).json({ error: "Sesión administrativa requerida." });
+
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+  const authorized = Boolean(user && (
+    authorizedAdminIds.has(user.id) || authorizedAdminEmails.has(normalizeAdminEmail(user.email))
+  ));
+  if (error || !authorized) return res.status(403).json({ error: "Acceso administrativo no autorizado." });
+  res.locals.adminUserId = user!.id;
+  next();
+}
+
 app.disable("x-powered-by");
 
 app.use((req, res, next) => {
@@ -60,6 +88,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'");
   if (process.env.NODE_ENV === "production") {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
@@ -76,7 +105,7 @@ function redactHeaders(headers: express.Request["headers"]) {
 
 // Request logging middleware for debugging API calls
 app.use((req, res, next) => {
-  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.url} - Headers: ${JSON.stringify(redactHeaders(req.headers))}\n`;
+  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.path} - Headers: ${JSON.stringify(redactHeaders(req.headers))}\n`;
   console.log(logMsg.trim());
   try {
     fs.appendFileSync(path.join(process.cwd(), "server.log"), logMsg);
@@ -250,6 +279,40 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
   }
 
   const isFirstInvoice = (invoice as any).billing_reason === "subscription_create";
+  const installmentCount = Number.parseInt(String(installments || ""), 10);
+  const isFiniteInstallmentPlan = Number.isFinite(installmentCount) && installmentCount > 1;
+
+  if (!isFiniteInstallmentPlan && !isFirstInvoice) {
+    const sourceTx = matchingRows.find((tx: any) => tx.id === firstPendingTxId) || matchingRows[0];
+    if (!sourceTx) return { updated: false, reason: "missing_subscription_source" };
+    let recurringDescription = (sourceTx.description || "")
+      .replace(/\s*\(Pendiente\)/gi, "")
+      .replace(/\s*\[STRIPEINVOICE:[^\]]+\]/g, "")
+      .replace(/\s*\[STRIPEURL:[^\]]+\]/g, "")
+      .replace(/\s*\[STRIPESESSION:[^\]]+\]/g, "")
+      .trim();
+    recurringDescription = `${recurringDescription} (Ingreso recurrente Stripe)`;
+    recurringDescription = writeTag(recurringDescription, "STRIPEINVOICE", invoiceId);
+
+    const recurringTxId = `tx_stripe_invoice_${invoiceId}`;
+    const { error: recurringInsertError } = await supabaseAdmin
+      .from("finance_transactions")
+      .insert({
+        id: recurringTxId,
+        user_id: sourceTx.user_id || null,
+        type: "income",
+        category: sourceTx.category || "Mensualidad",
+        amount: Number(invoice.amount_paid || invoice.amount_due || 0) / 100 || Number(sourceTx.amount || 0),
+        date: getStripePaidDate(invoice),
+        description: recurringDescription,
+        "isRecurring": false,
+        "recurrencePeriod": null,
+        status: "paid",
+      });
+    if (recurringInsertError && recurringInsertError.code !== "23505") throw recurringInsertError;
+    return { updated: !recurringInsertError, reason: recurringInsertError ? "already_processed" : undefined, txId: recurringTxId };
+  }
+
   let targetTx =
     isFirstInvoice && firstPendingTxId
       ? matchingRows.find((tx: any) => tx.id === firstPendingTxId)
@@ -452,7 +515,7 @@ app.get("/api/stripe/config", (req, res) => {
   });
 });
 
-app.get("/api/stripe/balance", async (_req, res) => {
+app.get("/api/stripe/balance", requireAdminAuth, async (_req, res) => {
   try {
     const balance = await getStripe().balance.retrieve();
     const normalizeAmounts = (items: Stripe.Balance.Available[] | Stripe.Balance.Pending[]) =>
@@ -482,6 +545,16 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     if (!clientId || !clientEmail || !amount) {
       return res.status(400).json({ error: "clientId, clientEmail, and amount are required" });
     }
+    const amountNumber = Number(amount);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0 || amountNumber > 1_000_000) {
+      return res.status(400).json({ error: "El importe debe ser un número válido superior a cero." });
+    }
+    if (!new Set(["once", "month", "year"]).has(interval || "month")) {
+      return res.status(400).json({ error: "La modalidad de cobro no es válida." });
+    }
+    if (String(concept || "").length > 180) {
+      return res.status(400).json({ error: "El concepto no puede superar los 180 caracteres." });
+    }
 
     const stripe = getStripe();
     if (previousSessionId) {
@@ -496,8 +569,6 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     }
     const appUrl = getAppUrl(req);
     const isSubscription = interval !== "once";
-    const installmentCount = Number.parseInt(installments || "", 10);
-    const isFiniteInstallmentSubscription = isSubscription && Number.isFinite(installmentCount) && installmentCount > 1;
 
     const lineItem: any = {
       price_data: {
@@ -510,7 +581,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
             ? `Suscripción recurrente de pago para el cliente ${clientName || clientEmail}` 
             : `Pago único de servicio para el cliente ${clientName || clientEmail}`,
         },
-        unit_amount: Math.round(Number(amount) * 100), // convert to cents
+        unit_amount: Math.round(amountNumber * 100), // convert to cents
       },
       quantity: 1,
     };
@@ -532,6 +603,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         clientId,
         clientName: clientName || "",
         clientEmail,
+        interval: interval || "month",
         installments: installments || "",
         concept: concept || "",
         pendingTxId: pendingTxId || "",
@@ -540,13 +612,14 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       },
     };
 
-    if (isFiniteInstallmentSubscription) {
+    if (isSubscription) {
       sessionConfig.subscription_data = {
         metadata: {
           clientId,
           pendingTxId: pendingTxId || "",
           stripePlanId: stripePlanId || "",
           installments: installments || "",
+          interval: interval || "month",
         },
       };
     }
@@ -569,7 +642,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
 });
 
 // Create billing customer portal session
-app.post("/api/stripe/create-portal-session", async (req, res) => {
+app.post("/api/stripe/create-portal-session", requireAdminAuth, async (req, res) => {
   try {
     const { stripeCustomerId } = req.body;
 
@@ -592,7 +665,7 @@ app.post("/api/stripe/create-portal-session", async (req, res) => {
   }
 });
 
-app.post("/api/stripe/customer-overview", async (req, res) => {
+app.post("/api/stripe/customer-overview", requireAdminAuth, async (req, res) => {
   try {
     const { customerId, subscriptionId, checkoutSessionId, invoiceId, email } = req.body || {};
     const stripe = getStripe();
@@ -727,7 +800,7 @@ app.post("/api/stripe/customer-overview", async (req, res) => {
   }
 });
 
-app.post("/api/stripe/cancel-subscription", async (req, res) => {
+app.post("/api/stripe/cancel-subscription", requireAdminAuth, async (req, res) => {
   try {
     const { subscriptionId } = req.body || {};
     if (!subscriptionId || typeof subscriptionId !== "string") {

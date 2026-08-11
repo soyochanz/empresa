@@ -37,7 +37,14 @@ const getSupabaseConfig = () => {
 
 const { url: SUPABASE_URL, key: SUPABASE_ANON_KEY } = getSupabaseConfig();
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+ auth: {
+  persistSession: true,
+  autoRefreshToken: true,
+  detectSessionInUrl: true,
+  storageKey: 'sb-czyrolmczcwtexxgxzrg-auth-token',
+ },
+});
 
 export interface DatabaseMutationState {
  active: boolean;

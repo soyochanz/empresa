@@ -1,14 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, User, AlertCircle, CheckCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { isAuthorizedAdminUser } from '../utils/adminAuth';
 
 interface LoginScreenProps {
  onSignIn: (sessionUser?: { id: string | null; email: string; name: string }) => void;
  onBackToLanding?: () => void;
 }
-
-// TEMPORAL: volver a false para restaurar el bloqueo local tras 5 intentos fallidos.
-const ADMIN_LOGIN_GUARD_TEMPORARILY_DISABLED = true;
 
 export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenProps) {
  const LOCK_KEY = 'althera_admin_login_guard';
@@ -31,12 +29,6 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
  };
  const clearLoginGuard = () => localStorage.removeItem(LOCK_KEY);
 
- useEffect(() => {
-  if (ADMIN_LOGIN_GUARD_TEMPORARILY_DISABLED) {
-   clearLoginGuard();
-  }
- }, []);
-
  // Navigation states
  const [isSignUp, setIsSignUp] = useState(false);
 
@@ -45,7 +37,6 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
  const [email, setEmail] = useState('');
  const [password, setPassword] = useState('');
  const [showPassword, setShowPassword] = useState(false);
- const [rememberMe, setRememberMe] = useState(false);
 
  // Status/Interaction states
  const [loading, setLoading] = useState(false);
@@ -65,13 +56,11 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
   setErrorMsg('La contraseña debe tener al menos 8 caracteres.');
   return;
  }
- if (!ADMIN_LOGIN_GUARD_TEMPORARILY_DISABLED) {
-  const guard = getLoginGuard();
-  if (guard.lockedUntil && guard.lockedUntil > Date.now()) {
-   const minutes = Math.ceil((guard.lockedUntil - Date.now()) / 60000);
-   setErrorMsg(`Demasiados intentos fallidos. Vuelve a intentarlo en ${minutes} min.`);
-   return;
-  }
+ const guard = getLoginGuard();
+ if (guard.lockedUntil && guard.lockedUntil > Date.now()) {
+  const minutes = Math.ceil((guard.lockedUntil - Date.now()) / 60000);
+  setErrorMsg(`Demasiados intentos fallidos. Vuelve a intentarlo en ${minutes} min.`);
+  return;
  }
  setLoading(true);
 
@@ -123,6 +112,10 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
   if (error) throw error;
 
   if (data.session && data.user) {
+   if (!isAuthorizedAdminUser(data.user)) {
+   await supabase.auth.signOut();
+   throw new Error('ADMIN_NOT_AUTHORIZED');
+   }
    clearLoginGuard();
    setSuccessMsg('Inicio de sesión correcto. Redirigiendo...');
    setTimeout(() => {
@@ -135,11 +128,7 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
   }
   }
  } catch (err: any) {
-  console.error('Auth error detailed:', err);
-  if (ADMIN_LOGIN_GUARD_TEMPORARILY_DISABLED) {
-   setErrorMsg('Credenciales no válidas. Comprueba el correo y la contraseña.');
-   return;
-  }
+  console.warn('Admin authentication failed');
   const failed = recordFailedAttempt();
   const remaining = Math.max(0, MAX_ATTEMPTS - failed.attempts);
   setErrorMsg(
@@ -258,6 +247,7 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
      autoComplete="email"
      inputMode="email"
      spellCheck={false}
+     maxLength={254}
      className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-4 text-xs focus:outline-none focus:border-amber-500/30 ring-offset-[#020204] focus:ring-1 focus:ring-amber-500/10 transition-all text-slate-100 placeholder:text-slate-600 text-left font-sans"
      placeholder="nombre@agency.com"
      required
@@ -277,6 +267,7 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
      value={password}
      onChange={(e) => setPassword(e.target.value)}
      autoComplete={isSignUp ? 'new-password' : 'current-password'}
+     maxLength={128}
      className="w-full bg-[#020204]/80 border border-white/5 rounded-xl py-3 pl-11 pr-12 text-xs focus:outline-none focus:border-amber-500/30 ring-offset-[#020204] focus:ring-1 focus:ring-amber-500/10 transition-all text-slate-100 placeholder:text-slate-600 text-left font-sans"
      placeholder="••••••••"
      required
@@ -295,17 +286,10 @@ export default function LoginScreen({ onSignIn, onBackToLanding }: LoginScreenPr
    {/* Remember Me & Help Links */}
    {!isSignUp && (
     <div className="flex items-center justify-between pt-1 text-[11px]">
-    <label className="flex items-center space-x-2 cursor-pointer group select-none">
-     <input
-     type="checkbox"
-     checked={rememberMe}
-     onChange={() => setRememberMe(!rememberMe)}
-     className="rounded border-white/5 bg-[#020204] text-amber-500 focus:ring-0 focus:ring-offset-0 transition cursor-pointer w-3.5 h-3.5"
-     />
-     <span className="text-slate-450 group-hover:text-slate-200 transition-colors font-sans font-medium">
-     Recordarme en este equipo
-     </span>
-    </label>
+    <span className="flex items-center gap-2 text-slate-450 font-medium">
+     <Lock className="w-3.5 h-3.5 text-emerald-500/80" />
+     Sesión persistente hasta cerrar sesión
+    </span>
     <a 
      href="#" 
      onClick={(e) => { 

@@ -5,6 +5,7 @@ import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesR
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { clearInvoicePrefill, peekInvoicePrefill } from '../utils/invoicePrefill';
+import { authenticatedFetch } from '../utils/authenticatedFetch';
 import {
  buildManualRecurringTransaction,
  getFinanceRecurrenceDate,
@@ -391,7 +392,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const handleOpenFinanceStripePortal = async (stripeCustomerId: string, contactId: string) => {
  setStripePortalLoading(contactId);
  try {
-  const response = await fetch('/api/stripe/create-portal-session', {
+  const response = await authenticatedFetch('/api/stripe/create-portal-session', {
   method: 'POST',
   headers: {
    'Content-Type': 'application/json',
@@ -426,7 +427,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setStripeOverviewLoading(client.id);
  setStripeOverviewError('');
  try {
-  const response = await fetch('/api/stripe/customer-overview', {
+  const response = await authenticatedFetch('/api/stripe/customer-overview', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -454,7 +455,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setStripeCancelLoading(subscriptionId);
  setStripeOverviewError('');
  try {
-  const response = await fetch('/api/stripe/cancel-subscription', {
+  const response = await authenticatedFetch('/api/stripe/cancel-subscription', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ subscriptionId }),
@@ -573,7 +574,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   setStripeFundsLoading(true);
   setStripeFundsError('');
   try {
-   const response = await fetch('/api/stripe/balance', { cache: 'no-store' });
+   const response = await authenticatedFetch('/api/stripe/balance', { cache: 'no-store' });
    const data = await readStripeJson(response);
    if (!response.ok) throw new Error(data.error || 'No se pudieron consultar los fondos de Stripe.');
    setStripeFunds(data);

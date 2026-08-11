@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall } from 'lucide-react';
 import { installAuditTracking, recordAuditEvent, setAuditContext } from './utils/auditLog';
+import { isAuthorizedAdminUser } from './utils/adminAuth';
 
 const BUSINESS_CACHE_KEYS = [
  'crm_cold_leads',
@@ -187,13 +188,12 @@ export default function App() {
  // Screens state
  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
  const initialPath = window.location.pathname || '/';
- const savedUser = sessionStorage.getItem('agency_user');
- const parsedUser = savedUser ? JSON.parse(savedUser) : null;
- const isLoggedIn = !!parsedUser?.email;
  const savedComercial = sessionStorage.getItem('agency_current_comercial');
  const isComercialLoggedIn = !!savedComercial;
 
- const { screen } = getScreenFromPath(initialPath, isLoggedIn, isComercialLoggedIn);
+ // Never trust a browser-stored profile to unlock an admin route. The verified
+ // Supabase session will restore the exact route once Auth is ready.
+ const { screen } = getScreenFromPath(initialPath, false, isComercialLoggedIn);
  return screen;
  });
  const [transitionType, setTransitionType] = useState<'none' | 'push' | 'push_back'>('none');
@@ -212,11 +212,7 @@ export default function App() {
  });
 
  // Authentication state
- const [currentUser, setCurrentUser] = useState<{ id: string | null; email: string; name: string } | null>(() => {
- const saved = sessionStorage.getItem('agency_user');
- const parsed = saved ? JSON.parse(saved) : null;
- return parsed?.email ? parsed : null;
- });
+ const [currentUser, setCurrentUser] = useState<{ id: string | null; email: string; name: string } | null>(null);
  const [authReady, setAuthReady] = useState(false);
 
  // Persistence Engine Database State (with standard fallback to empty arrays)
@@ -1051,6 +1047,7 @@ export default function App() {
 
  // Refresh shared data frequently without blocking the currently rendered cache.
  useEffect(() => {
+ if (!currentUser && !currentComercial) return;
  const refreshVisibleData = () => {
   if (document.visibilityState === 'visible') syncWithSupabase(undefined, true);
  };
@@ -1067,6 +1064,7 @@ export default function App() {
  }, [currentUser, currentComercial]);
 
  useEffect(() => {
+  if (!currentUser && !currentComercial) return;
   const refreshSharedPipeline = (table: string) => {
    invalidateSharedPipelineCache([table]);
    void syncWithSupabase(undefined, true);
@@ -1115,63 +1113,68 @@ export default function App() {
 
  // Auth synchronization effect
  useEffect(() => {
- // Check initial active session
- supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session?.user) {
-  const u = {
-   id: session.user.id,
-   email: session.user.email || '',
-   name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Agency Member'
+ let active = true;
+
+ const clearAdminSession = () => {
+  setCurrentUser(null);
+  sessionStorage.removeItem('agency_user');
+ };
+
+ const applyAdminSession = (user: { id: string; email?: string | null; user_metadata?: Record<string, any> }) => {
+  if (!isAuthorizedAdminUser(user)) return false;
+  const verifiedUser = {
+  id: user.id,
+  email: user.email || '',
+  name: user.user_metadata?.name || user.email?.split('@')[0] || 'Agency Member'
   };
-  setCurrentUser(u);
-  sessionStorage.setItem('agency_user', JSON.stringify(u));
-  syncWithSupabase(session.user.id);
-  
-  // Let the path determine the screen; if they were on /acceso or login, redirect to admin
-  const initialPath = window.location.pathname || '';
-  if (initialPath === '/acceso' || initialPath === '/login') {
+  setCurrentUser(verifiedUser);
+  sessionStorage.setItem('agency_user', JSON.stringify(verifiedUser));
+  void syncWithSupabase(user.id);
+  return true;
+ };
+
+ const restoreAdminSession = async () => {
+  try {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) {
+   clearAdminSession();
+   return;
+  }
+
+  // getUser validates the stored access token against Supabase Auth instead of
+  // trusting browser storage as authorization.
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user || !applyAdminSession(user)) {
+   clearAdminSession();
+   await supabase.auth.signOut({ scope: 'local' });
+   return;
+  }
+
+  const currentPath = window.location.pathname || '';
+  if (currentPath === '/acceso' || currentPath === '/login') {
    navigateTo('dashboard', 'none');
   }
-  } else {
-  const saved = sessionStorage.getItem('agency_user');
-  const savedUser = saved ? JSON.parse(saved) : null;
-  if (savedUser && savedUser.id === null) {
-   // Preserve demo/local session
-   setCurrentUser(savedUser);
-  } else {
-   setCurrentUser(null);
-   sessionStorage.removeItem('agency_user');
-   
-   // If they were on an admin screen but not logged in, redirect to login
-   const initialPath = window.location.pathname || '';
-   if (initialPath.startsWith('/admin')) {
-   navigateTo('acceso', 'none');
-   }
+  } catch (error) {
+  console.warn('No se pudo validar la sesión administrativa guardada.');
+  clearAdminSession();
+  } finally {
+  if (active) setAuthReady(true);
   }
-  }
- }).finally(() => setAuthReady(true));
+ };
+
+ void restoreAdminSession();
 
  // Listen to real auth state changes
  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-  if (session?.user) {
-  const u = {
-   id: session.user.id,
-   email: session.user.email || '',
-   name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Agency Member'
-  };
-  setCurrentUser(u);
-  sessionStorage.setItem('agency_user', JSON.stringify(u));
-  syncWithSupabase(session.user.id);
-  
-  const initialPath = window.location.pathname || '/';
-  if (initialPath === '/acceso' || initialPath === '/login') {
-   navigateTo('dashboard', 'none');
-  }
-  } else if (event === 'SIGNED_OUT') {
-  setCurrentUser(null);
-  sessionStorage.removeItem('agency_user');
+  if (event === 'INITIAL_SESSION') return;
+  if (session?.user && isAuthorizedAdminUser(session.user)) {
+  applyAdminSession(session.user);
+  const currentPath = window.location.pathname || '/';
+  if (currentPath === '/acceso' || currentPath === '/login') navigateTo('dashboard', 'none');
+  } else if (event === 'SIGNED_OUT' || session?.user) {
+  clearAdminSession();
   sessionStorage.removeItem('agency_current_screen');
-  navigateTo('landing', 'none');
+  if (window.location.pathname.startsWith('/admin')) navigateTo('acceso', 'none');
   }
  });
 
@@ -1180,9 +1183,9 @@ export default function App() {
  void checkSupabaseConnection().then(status => {
   setSupabaseStatus({ ...status, loading: false });
  });
- void syncWithSupabase(undefined, true);
 
  return () => {
+  active = false;
   subscription.unsubscribe();
  };
  }, []);
@@ -1975,6 +1978,17 @@ export default function App() {
  };
 
  // Render Landing and Login screens separately to exclude sidebar and header layout boundaries
+ if (!authReady && window.location.pathname.startsWith('/admin')) {
+ return (
+  <div className="min-h-screen w-full bg-[#020204] flex items-center justify-center text-slate-300">
+  <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
+   <div className="w-7 h-7 rounded-full border-2 border-amber-400/25 border-t-amber-400 animate-spin" />
+   <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-500">Validando sesión segura</span>
+  </div>
+  </div>
+ );
+ }
+
  if (currentScreen === 'landing') {
  return (
   <AnimatePresence mode="wait">

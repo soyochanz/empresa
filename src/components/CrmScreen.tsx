@@ -5,6 +5,7 @@ import { beginBlockingDatabaseOperation, db } from '../supabaseClient';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { setInvoicePrefill } from '../utils/invoicePrefill';
+import { authenticatedFetch } from '../utils/authenticatedFetch';
 import { PanelUser } from '../mockData';
 import { 
  Plus, 
@@ -245,6 +246,8 @@ export default function CrmScreen({
  const latestStripeTx = [...saleTransactions]
   .filter(t => t.stripeCheckoutUrl)
   .sort((a, b) => {
+  const pendingDelta = Number(b.status === 'pending') - Number(a.status === 'pending');
+  if (pendingDelta !== 0) return pendingDelta;
   const aTime = new Date(a.date).getTime() || 0;
   const bTime = new Date(b.date).getTime() || 0;
   return bTime - aTime;
@@ -260,12 +263,14 @@ export default function CrmScreen({
   checkoutUrl: latestStripeTx?.stripeCheckoutUrl || '',
   checkoutSessionId: latestStripeTx?.stripeCheckoutSessionId || '',
   stripeInvoiceId: latestStripeTx?.stripeInvoiceId || '',
+  checkoutTransaction: latestStripeTx,
  };
  }, [selectedClientTransactions]);
 
  // Stripe Subscription States
  const [stripeAmount, setStripeAmount] = useState('50');
  const [stripeInterval, setStripeInterval] = useState<'month' | 'year' | 'once'>('month');
+ const [stripeConcept, setStripeConcept] = useState('Gestión mensual de redes sociales');
  const [stripeLoading, setStripeLoading] = useState(false);
  const [generatedCheckoutUrl, setGeneratedCheckoutUrl] = useState('');
  const [generatedCheckoutSessionId, setGeneratedCheckoutSessionId] = useState('');
@@ -327,7 +332,7 @@ export default function CrmScreen({
  setStripeOverviewLoading(true);
  setStripeOverviewError('');
  try {
-  const response = await fetch('/api/stripe/customer-overview', {
+  const response = await authenticatedFetch('/api/stripe/customer-overview', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -351,7 +356,6 @@ export default function CrmScreen({
  };
 
  // Dynamic Stripe link generation states for individual pending transactions/installments
- const [activeTxStripeUrl, setActiveTxStripeUrl] = useState<{[txId: string]: string}>({});
  const [txStripeLoading, setTxStripeLoading] = useState<{[txId: string]: boolean}>({});
  const [txStripeError, setTxStripeError] = useState<{[txId: string]: string}>({});
  const [checkoutSessionState, setCheckoutSessionState] = useState<{[txId: string]: {
@@ -467,19 +471,35 @@ export default function CrmScreen({
   if (!response.ok) {
   throw new Error(data.error || 'Error Stripe');
   }
-  const updatedTx = { ...tx, stripeCheckoutUrl: data.url, stripeCheckoutSessionId: data.sessionId };
-  await db.updateFinanceTransaction(updatedTx);
-  setTransactions(prev => prev.map(item => item.id === tx.id ? updatedTx : item));
-  setActiveTxStripeUrl(prev => ({ ...prev, [tx.id]: data.url }));
-  setCheckoutSessionState(prev => ({
-  ...prev,
-  [tx.id]: {
+  const relatedTransactions = transactions.filter(item =>
+   item.id === tx.id || (
+   Boolean(tx.stripeCheckoutSessionId) &&
+   item.clientId === tx.clientId &&
+   item.stripeCheckoutSessionId === tx.stripeCheckoutSessionId
+   )
+  );
+  const renewedTransactions = relatedTransactions.map(item => ({
+   ...item,
+   stripeCheckoutUrl: data.url,
+   stripeCheckoutSessionId: data.sessionId,
+  }));
+  await Promise.all(renewedTransactions.map(item => db.updateFinanceTransaction(item)));
+  setTransactions(prev => prev.map(item => renewedTransactions.find(renewed => renewed.id === item.id) || item));
+  setGeneratedCheckoutUrl(data.url);
+  setGeneratedCheckoutSessionId(data.sessionId);
+  if (instGeneratedUrl === tx.stripeCheckoutUrl) setInstGeneratedUrl(data.url);
+  setCheckoutSessionState(prev => {
+  const next = { ...prev };
+  renewedTransactions.forEach(item => {
+   next[item.id] = {
    status: data.status || 'open',
    paymentStatus: data.paymentStatus || 'unpaid',
    mode: data.mode,
    expiresAt: data.expiresAt,
-  },
-  }));
+   };
+  });
+  return next;
+  });
  } catch (err: any) {
   console.error('Stripe checkout generation error', err);
   setTxStripeError(prev => ({
@@ -1571,6 +1591,15 @@ export default function CrmScreen({
  setStripeLoading(true);
  setStripeError('');
  try {
+  const amountNumber = Number(stripeAmount);
+  const concept = stripeConcept.trim();
+  if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+   throw new Error('Introduce un importe válido superior a cero.');
+  }
+  if (!concept) {
+   throw new Error('Introduce el concepto del cobro.');
+  }
+
   // If the email is missing or has changed, update the contact in Supabase/db
   if (contact.email !== targetEmail) {
   if (onUpdateContact) {
@@ -1581,6 +1610,8 @@ export default function CrmScreen({
   }
   }
 
+  const txId = `tx_stripe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const stripePlanId = `plan_stripe_${Math.random().toString(36).slice(2, 10)}`;
   const response = await fetch('/api/stripe/create-checkout-session', {
   method: 'POST',
   headers: {
@@ -1592,6 +1623,9 @@ export default function CrmScreen({
    clientEmail: targetEmail,
    amount: stripeAmount,
    interval: stripeInterval,
+   concept,
+   pendingTxId: txId,
+   stripePlanId,
   }),
   });
 
@@ -1600,15 +1634,30 @@ export default function CrmScreen({
   throw new Error(data.error || 'Error al generar la sesión de Stripe');
   }
 
+  const isRecurring = stripeInterval !== 'once';
+  const pendingTransaction: FinanceTransaction = {
+   id: txId,
+   type: 'income',
+   category: isRecurring ? 'Mensualidad' : 'Ventas',
+   amount: amountNumber,
+   date: toLocalDateKey(new Date()),
+   description: `${concept} (Pendiente)`,
+   // It becomes recurrent only after Stripe confirms the first subscription payment.
+   isRecurring: false,
+   status: 'pending',
+   paymentMethod: 'stripe',
+   clientId: contact.id,
+   stripePlanId,
+   stripeCheckoutUrl: data.url,
+   stripeCheckoutSessionId: data.sessionId,
+  };
+  await db.insertFinanceTransaction(pendingTransaction);
+  setTransactions(prev => [pendingTransaction, ...prev.filter(tx => tx.id !== pendingTransaction.id)]);
   setGeneratedCheckoutUrl(data.url);
   setGeneratedCheckoutSessionId(data.sessionId);
  } catch (err: any) {
   console.error(err);
-  const simulatedSessionId = `cs_test_mock_direct_${contact.id}_${Date.now()}`;
-  const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${contact.id}&amount=${stripeAmount}&interval=${stripeInterval}&stripe_session_id=${simulatedSessionId}&simulated=true`;
-  setGeneratedCheckoutUrl(simulatedUrl);
-  setGeneratedCheckoutSessionId(simulatedSessionId);
-  setStripeError('Backend Stripe no disponible: se ha generado un enlace simulado para pruebas.');
+  setStripeError(err?.message || 'No se pudo generar el enlace de Stripe.');
  } finally {
   setStripeLoading(false);
  }
@@ -1629,26 +1678,28 @@ export default function CrmScreen({
 
  setInstLoading(true);
  setInstError('');
- let txForCheckout: FinanceTransaction | null = null;
  try {
- const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, contact));
-
-  const pendingTxs = transactions
-  .filter(t => t.type === 'income' && t.status === 'pending' && transactionBelongsToContact(t, contact, clientInvoices))
-  .sort((a, b) => {
-   const byInstallment = (a.stripeInstallmentIndex || 999) - (b.stripeInstallmentIndex || 999);
-   if (byInstallment !== 0) return byInstallment;
-   return new Date(a.date).getTime() - new Date(b.date).getTime();
-  });
-
-  txForCheckout = pendingTxs[0] || null;
-  if (!txForCheckout) {
-  setInstError('No hay plazos pendientes para este cliente. Crea primero la venta con sus plazos.');
-  return;
-  }
-
-  const installmentAmount = txForCheckout.amount.toFixed(2);
-  const formattedConcept = txForCheckout.description || `${instConcept} - Plazo ${txForCheckout.stripeInstallmentIndex || 1} de ${txForCheckout.stripeInstallmentCount || instCount}`;
+  const concept = instConcept.trim();
+  if (!concept) throw new Error('Introduce el concepto del cobro en plazos.');
+  const stripePlanId = `plan_stripe_${Math.random().toString(36).slice(2, 10)}`;
+  const firstDate = new Date();
+  firstDate.setHours(12, 0, 0, 0);
+  const installmentAmount = Math.round((total / instCount) * 100) / 100;
+  const plannedTransactions: FinanceTransaction[] = Array.from({ length: instCount }, (_, index) => ({
+   id: `tx_stripe_${Date.now()}_${index + 1}_${Math.random().toString(36).slice(2, 7)}`,
+   type: 'income' as const,
+   category: 'Ventas',
+   amount: installmentAmount,
+   date: toLocalDateKey(addMonthsKeepingDay(firstDate, index)),
+   description: `${concept} - Cuota ${index + 1} de ${instCount} (Pendiente)`,
+   status: 'pending' as const,
+   paymentMethod: 'stripe' as const,
+   clientId: contact.id,
+   stripePlanId,
+   stripeInstallmentIndex: index + 1,
+   stripeInstallmentCount: instCount,
+  }));
+  const firstTransaction = plannedTransactions[0];
 
   const response = await fetch('/api/stripe/create-checkout-session', {
   method: 'POST',
@@ -1659,13 +1710,13 @@ export default function CrmScreen({
    clientId: contact.id,
    clientName: contact.name,
    clientEmail: targetEmail,
-   amount: installmentAmount,
+   amount: installmentAmount.toFixed(2),
    interval: 'month',
-   installments: (txForCheckout.stripeInstallmentCount || instCount).toString(),
-   concept: formattedConcept,
-   pendingTxId: txForCheckout.id,
-   stripePlanId: txForCheckout.stripePlanId,
-   installmentIndex: txForCheckout.stripeInstallmentIndex,
+   installments: instCount.toString(),
+   concept: `${concept} - ${instCount} cuotas mensuales`,
+   pendingTxId: firstTransaction.id,
+   stripePlanId,
+   installmentIndex: '1',
   }),
   });
 
@@ -1674,29 +1725,20 @@ export default function CrmScreen({
   throw new Error(data.error || 'Error al generar el plan de plazos');
   }
 
-  const updatedTx = { ...txForCheckout, stripeCheckoutUrl: data.url, stripeCheckoutSessionId: data.sessionId };
-  await db.updateFinanceTransaction(updatedTx);
-  setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
+  const linkedTransactions = plannedTransactions.map(tx => ({
+   ...tx,
+   stripeCheckoutUrl: data.url,
+   stripeCheckoutSessionId: data.sessionId,
+  }));
+  await Promise.all(linkedTransactions.map(tx => db.insertFinanceTransaction(tx)));
+  setTransactions(prev => [
+   ...linkedTransactions,
+   ...prev.filter(existing => !linkedTransactions.some(created => created.id === existing.id)),
+  ]);
   setInstGeneratedUrl(data.url);
  } catch (err: any) {
   console.error(err);
-  if (!txForCheckout) {
-  setInstError(err?.message || 'No se pudo localizar un plazo pendiente para generar el enlace.');
-  return;
-  }
-  // Fallback simulated link if Stripe is not fully set up
-  const installmentAmount = txForCheckout.amount.toFixed(2);
-  const formattedConcept = txForCheckout.description || `${instConcept} - Plazo ${txForCheckout.stripeInstallmentIndex || 1} de ${txForCheckout.stripeInstallmentCount || instCount}`;
-  const simulatedUrl = `${window.location.origin}?stripe_status=success&client_id=${contact.id}&amount=${installmentAmount}&interval=month&pending_tx_id=${txForCheckout.id}&stripe_plan_id=${txForCheckout.stripePlanId || ''}&installment_index=${txForCheckout.stripeInstallmentIndex || ''}&installments=${txForCheckout.stripeInstallmentCount || instCount}&concept=${encodeURIComponent(formattedConcept)}&stripe_session_id=cs_test_mock_inst_${txForCheckout.id}_${Date.now()}&simulated=true`;
-  
-  const updatedTx = { ...txForCheckout, stripeCheckoutUrl: simulatedUrl, stripeCheckoutSessionId: `cs_test_mock_inst_${txForCheckout.id}` };
-  try {
-  await db.updateFinanceTransaction(updatedTx);
-  setTransactions(prev => prev.map(t => t.id === updatedTx.id ? updatedTx : t));
-  } catch (saveErr) {
-  console.error('Could not persist fallback installment link', saveErr);
-  }
-  setInstGeneratedUrl(simulatedUrl);
+  setInstError(err?.message || 'No se pudo generar el plan de pagos con Stripe.');
  } finally {
   setInstLoading(false);
  }
@@ -1706,7 +1748,7 @@ export default function CrmScreen({
  setStripeLoading(true);
  setStripeError('');
  try {
-  const response = await fetch('/api/stripe/create-portal-session', {
+  const response = await authenticatedFetch('/api/stripe/create-portal-session', {
   method: 'POST',
   headers: {
    'Content-Type': 'application/json',
@@ -2626,11 +2668,15 @@ export default function CrmScreen({
     <div className="bg-[#030305] p-4 rounded-2xl border border-white/5 space-y-3.5 text-left w-full shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
     <div className="flex items-center gap-2 border-b border-white/5 pb-2.5">
      <CreditCard className="w-4 h-4 text-violet-400" />
-     <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Mensualidad Stripe</span>
+     <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Stripe del cliente</span>
     </div>
 
     {(() => {
      const visibleCheckoutUrl = generatedCheckoutUrl || instGeneratedUrl || selectedPaymentSummary.checkoutUrl;
+     const visibleCheckoutTransaction = selectedPaymentSummary.checkoutTransaction;
+     const visibleCheckoutState = visibleCheckoutTransaction ? checkoutSessionState[visibleCheckoutTransaction.id] : undefined;
+     const visibleCheckoutExpired = visibleCheckoutState?.status === 'expired' && visibleCheckoutState.paymentStatus !== 'paid';
+     const visibleCheckoutPaid = visibleCheckoutState?.paymentStatus === 'paid';
      const stripeDashboardUrl = getStripeDashboardUrl(selectedPaymentSummary.checkoutSessionId, selectedPaymentSummary.stripeInvoiceId);
      const hasPaymentInfo = selectedPaymentSummary.totalCount > 0;
      const isSubscribedOrLinked = selectedContact.stripeSubscriptionStatus === 'active' || !!visibleCheckoutUrl || selectedPaymentSummary.paidCount > 0;
@@ -2640,12 +2686,15 @@ export default function CrmScreen({
       <div className="flex items-center justify-between gap-2">
       <span className="text-[11px] text-slate-400">Estado:</span>
       <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest border ${
-       isSubscribedOrLinked ?
+       visibleCheckoutExpired ?
+        'bg-amber-500/10 text-amber-400 border-amber-500/25'
+       : isSubscribedOrLinked ?
         'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
         : 'bg-slate-855 text-slate-400 border-slate-700'
       }`}>
-       {selectedContact.stripeSubscriptionStatus === 'active' ?
-       'Activo'
+       {visibleCheckoutExpired ? 'Link caducado'
+       : visibleCheckoutPaid ? 'Pagado'
+       : selectedContact.stripeSubscriptionStatus === 'active' ? 'Activo'
        : visibleCheckoutUrl
         ? 'Link generado'
         : selectedPaymentSummary.paidCount > 0 ?
@@ -2682,10 +2731,16 @@ export default function CrmScreen({
 
       {visibleCheckoutUrl && (
       <div className="space-y-1.5 border-t border-white/5 pt-2">
-       <span className="block text-[8px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
-       Link de pago guardado
+       <span className={`text-[8px] font-mono uppercase tracking-widest font-bold flex items-center gap-1.5 ${visibleCheckoutExpired ? 'text-amber-400' : 'text-emerald-400'}`}>
+       {visibleCheckoutExpired ? <Clock3 className="w-3 h-3" /> : <Check className="w-3 h-3" />}
+       {visibleCheckoutExpired ? 'Link de pago caducado' : 'Link de pago guardado'}
        </span>
+       {visibleCheckoutExpired && (
+       <p className="text-[9px] text-slate-400 leading-snug">Stripe ha confirmado que no fue pagado. Puedes renovarlo sin crear otro concepto ni otro movimiento.</p>
+       )}
        <div className="flex gap-1.5">
+       {!visibleCheckoutExpired && !visibleCheckoutPaid && (
+       <>
        <button
         type="button"
         onClick={() => {
@@ -2705,9 +2760,30 @@ export default function CrmScreen({
         className="flex-1 py-1.5 px-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/20 text-[10px] rounded-lg text-violet-300 font-semibold flex items-center justify-center gap-1 transition-all text-center"
        >
         <ExternalLink className="w-3 h-3" />
-        <span>Abrir link</span>
+       <span>Abrir link</span>
        </a>
+       </>
+       )}
+       {visibleCheckoutPaid && (
+       <span className="w-full py-1.5 px-2 bg-emerald-500/10 border border-emerald-500/20 text-[10px] rounded-lg text-emerald-300 font-semibold text-center">
+        Pago confirmado por Stripe
+       </span>
+       )}
+       {visibleCheckoutExpired && visibleCheckoutTransaction && (
+       <button
+        type="button"
+        disabled={txStripeLoading[visibleCheckoutTransaction.id]}
+        onClick={() => handleGenerateStripeForTx(visibleCheckoutTransaction)}
+        className="w-full py-1.5 px-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-[10px] rounded-lg text-amber-300 font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+       >
+        <RefreshCw className={`w-3 h-3 ${txStripeLoading[visibleCheckoutTransaction.id] ? 'animate-spin' : ''}`} />
+        <span>Regenerar este enlace</span>
+       </button>
+       )}
        </div>
+       {visibleCheckoutTransaction && txStripeError[visibleCheckoutTransaction.id] && (
+       <p className="text-[9px] text-rose-400 bg-rose-500/5 border border-rose-500/15 rounded-lg px-2 py-1.5">{txStripeError[visibleCheckoutTransaction.id]}</p>
+       )}
       </div>
       )}
 
@@ -2725,7 +2801,10 @@ export default function CrmScreen({
 
       <button
       type="button"
-      onClick={handleLoadStripeOverview}
+      onClick={() => {
+       void handleLoadStripeOverview();
+       if (visibleCheckoutTransaction?.stripeCheckoutSessionId) void inspectCheckoutSession(visibleCheckoutTransaction);
+      }}
       disabled={stripeOverviewLoading}
       className="w-full py-1.5 px-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 text-[10px] rounded-lg text-slate-300 font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
       >
@@ -2820,7 +2899,7 @@ export default function CrmScreen({
      );
     })()}
 
-    {selectedContact.stripeSubscriptionStatus === 'active' ? (
+    {selectedContact.stripeSubscriptionStatus === 'active' && (
      <div className="space-y-3">
      <div className="bg-slate-950/45 p-3 rounded-xl border border-white/5 space-y-1.5">
       <div className="flex justify-between text-xs">
@@ -2857,10 +2936,13 @@ export default function CrmScreen({
       <span>Portal de Facturación</span>
      </button>
      </div>
-    ) : (
+    )}
      <div className="space-y-3">
+     <div className="pt-3 border-t border-white/5">
+      <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-violet-300">Crear nuevo cobro</span>
+     </div>
      <p className="text-[10px] text-slate-400 leading-normal">
-      Configura un plan recurrente para cobrar automáticamente desde la tarjeta/cuenta del cliente.
+      Elige un pago único o una membresía recurrente. El movimiento quedará vinculado a este cliente desde que se genere el enlace.
      </p>
 
      <div>
@@ -2877,13 +2959,31 @@ export default function CrmScreen({
       />
      </div>
 
+     <div>
+      <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">Concepto del cobro</label>
+      <input
+       type="text"
+       value={stripeConcept}
+       onChange={(e) => {
+        setStripeConcept(e.target.value);
+        setGeneratedCheckoutUrl('');
+       }}
+       maxLength={180}
+       className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
+       placeholder="Ej. Gestión mensual de redes sociales"
+      />
+     </div>
+
      <div className="grid grid-cols-2 gap-2">
       <div>
-      <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">Importe (?)</label>
+      <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">Importe (€)</label>
       <input
        type="number"
        value={stripeAmount}
-       onChange={(e) => setStripeAmount(e.target.value)}
+       onChange={(e) => {
+        setStripeAmount(e.target.value);
+        setGeneratedCheckoutUrl('');
+       }}
        className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
        placeholder="50"
       />
@@ -2892,12 +2992,15 @@ export default function CrmScreen({
       <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">Frecuencia</label>
       <select
        value={stripeInterval}
-       onChange={(e) => setStripeInterval(e.target.value as any)}
+       onChange={(e) => {
+        setStripeInterval(e.target.value as 'month' | 'year' | 'once');
+        setGeneratedCheckoutUrl('');
+       }}
        className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2 py-1.5 text-xs text-slate-200 focus:outline-none transition"
       >
-       <option value="month">Mensual</option>
-       <option value="year">Anual</option>
        <option value="once">Pago único</option>
+       <option value="month">Membresía mensual</option>
+       <option value="year">Membresía anual</option>
       </select>
       </div>
      </div>
@@ -2955,17 +3058,27 @@ export default function CrmScreen({
        <span>Abrir</span>
        </a>
       </div>
+      <button
+       type="button"
+       onClick={() => {
+        setGeneratedCheckoutUrl('');
+        setGeneratedCheckoutSessionId('');
+        setStripeError('');
+       }}
+       className="w-full py-1.5 px-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 text-[9px] rounded-lg text-slate-400 hover:text-slate-200 transition"
+      >
+       Crear otro cobro
+      </button>
       </div>
      )}
      </div>
-    )}
     </div>
 
     {/* Financiación / Generación de Enlace de Plazos (Cobro Automático) */}
     <div className="bg-[#030305] p-4 rounded-2xl border border-white/5 space-y-3.5 text-left w-full shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
     <div className="flex items-center gap-2 border-b border-white/5 pb-2.5">
      <CreditCard className="w-4 h-4 text-emerald-400" />
-     <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Cobro en Plazos (Stripe Automático)</span>
+     <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Crear cobro en plazos</span>
     </div>
 
     <div className="space-y-3">
@@ -2975,7 +3088,7 @@ export default function CrmScreen({
 
      <div>
      <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">
-      Monto Pendiente para Generar Link (EUR)
+      Importe total del nuevo cobro (EUR)
      </label>
      <input
       type="number"
@@ -2985,7 +3098,7 @@ export default function CrmScreen({
       setInstGeneratedUrl('');
       }}
       className="w-full bg-[#07070b] border border-white/5 hover:border-white/10 focus:border-violet-500/60 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none transition"
-      placeholder="Sin pagos pendientes"
+      placeholder="Ej. 1.200"
      />
      </div>
 
@@ -3121,6 +3234,16 @@ export default function CrmScreen({
        <span>Abrir</span>
       </a>
       </div>
+      <button
+       type="button"
+       onClick={() => {
+        setInstGeneratedUrl('');
+        setInstError('');
+       }}
+       className="w-full py-1.5 px-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 text-[9px] rounded-lg text-slate-400 hover:text-slate-200 transition"
+      >
+       Crear otro cobro en plazos
+      </button>
      </div>
      )}
     </div>
@@ -3401,13 +3524,7 @@ export default function CrmScreen({
       <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
        {clientTransactions.map(tx => {
        const isPending = tx.status === 'pending';
-       const stripeUrl = tx.stripeCheckoutUrl || activeTxStripeUrl[tx.id];
        const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId, tx.stripeInvoiceId);
-       const isLoading = txStripeLoading[tx.id];
-       const sessionState = checkoutSessionState[tx.id];
-       const isStripeExpired = sessionState?.status === 'expired' && sessionState.paymentStatus !== 'paid';
-       const isStripePaid = sessionState?.paymentStatus === 'paid';
-       const canCreateStripeLink = isPending && !stripeUrl;
 
        return (
         <div key={tx.id} className="bg-[#05070c]/75 p-3.5 rounded-xl border border-white/[0.07] flex flex-col gap-2.5 hover:border-violet-500/15 hover:bg-[#070a11] transition-all">
@@ -3452,35 +3569,6 @@ export default function CrmScreen({
           <Receipt className="w-3.5 h-3.5" />
          </button>
 
-         {/* Stripe link creation is available once, and renewal only after Stripe confirms expiration. */}
-         {canCreateStripeLink && (
-          <button
-          type="button"
-          disabled={isLoading}
-          onClick={() => handleGenerateStripeForTx(tx)}
-          className="p-1 border rounded-lg transition-all cursor-pointer flex items-center justify-center bg-violet-600/15 hover:bg-violet-600/30 text-violet-400 border-violet-500/25"
-          title="Generar enlace de cobro por Stripe"
-          >
-          {isLoading ? (
-           <span className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin" />
-          ) : (
-           <CreditCard className="w-3.5 h-3.5 text-violet-400" />
-          )}
-          </button>
-         )}
-
-         {isPending && stripeUrl && tx.stripeCheckoutSessionId && !isStripeExpired && !isStripePaid && (
-          <button
-          type="button"
-          disabled={sessionState?.loading}
-          onClick={() => inspectCheckoutSession(tx)}
-          className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-white/5 rounded-lg transition-all cursor-pointer"
-          title="Actualizar estado del enlace en Stripe"
-          >
-          <RefreshCw className={`w-3.5 h-3.5 ${sessionState?.loading ? 'animate-spin' : ''}`} />
-          </button>
-         )}
-
          {/* Delete Button */}
          {stripeDashboardUrl && (
           <a
@@ -3505,77 +3593,6 @@ export default function CrmScreen({
          </div>
         </div>
 
-        {txStripeError[tx.id] && (
-         <p className="text-[9px] text-rose-400 bg-rose-500/5 border border-rose-500/15 rounded-lg px-2.5 py-1.5">
-         {txStripeError[tx.id]}
-         </p>
-        )}
-
-        {/* Generated Stripe Link box */}
-        {stripeUrl && (
-         <div className={`bg-[#05050a] rounded-xl p-2.5 flex flex-col gap-2 text-left transition-all animate-fadeIn border ${isStripeExpired ? 'border-amber-500/25' : isStripePaid ? 'border-emerald-500/25' : 'border-violet-500/20'}`}>
-         <div className="flex items-center justify-between">
-          <span className={`text-[8px] font-mono font-bold uppercase flex items-center gap-1.5 ${isStripeExpired ? 'text-amber-400' : isStripePaid ? 'text-emerald-400' : 'text-violet-300'}`}>
-           {isStripeExpired ? <Clock3 className="w-3 h-3" /> : isStripePaid ? <Check className="w-3 h-3" /> : <CreditCard className="w-3 h-3" />}
-           {isStripeExpired ? 'Enlace caducado' : isStripePaid ? 'Pagado en Stripe' : sessionState?.loading ? 'Comprobando enlace…' : 'Enlace Stripe activo'}
-          </span>
-          <span className="text-[7px] font-mono text-slate-500">
-           {sessionState?.expiresAt && !isStripeExpired
-           ? `Caduca ${new Date(sessionState.expiresAt * 1000).toLocaleDateString('es-ES')}`
-           : isStripeExpired ? 'El cobro original se conserva' : 'Cobro vinculado'}
-          </span>
-         </div>
-         {sessionState?.error && (
-          <p className="text-[8px] text-amber-300/80 bg-amber-500/5 border border-amber-500/10 rounded-lg px-2 py-1.5">
-          {sessionState.error}
-          </p>
-         )}
-         {!isStripeExpired && !isStripePaid && (
-         <div className="flex items-center gap-1">
-          <input
-          type="text"
-          readOnly
-          value={stripeUrl}
-          className="bg-[#030305] border border-white/5 text-[9px] text-slate-350 px-2 py-1 rounded focus:outline-none flex-1 font-mono truncate"
-          />
-          <button
-          type="button"
-          onClick={() => {
-           navigator.clipboard.writeText(stripeUrl);
-           const toast = document.getElementById('toast-msg');
-           if (toast) {
-           toast.innerText = `Éxito: Enlace Stripe copiado al portapapeles!`;
-           toast.classList.remove('opacity-0');
-           setTimeout(() => toast.classList.add('opacity-0'), 3000);
-           }
-          }}
-          className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-[9px] text-white font-bold rounded border border-white/5 transition cursor-pointer"
-          >
-          Copiar
-          </button>
-          <a
-          href={stripeUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-[9px] text-white font-bold rounded transition text-center"
-          >
-          Pagar
-          </a>
-         </div>
-         )}
-         {isStripeExpired && (
-          <button
-          type="button"
-          disabled={isLoading}
-          onClick={() => handleGenerateStripeForTx(tx)}
-          className="w-full py-1.5 px-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-amber-300 text-[9px] font-bold rounded-lg transition flex items-center justify-center gap-1.5"
-          >
-          <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-          Generar nuevo enlace para este mismo cobro
-          </button>
-         )}
-         </div>
-        )}
         </div>
        );
        })}
