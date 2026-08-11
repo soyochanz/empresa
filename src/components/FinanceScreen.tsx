@@ -1001,11 +1001,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    workbook.modified = new Date();
    workbook.calcProperties.fullCalcOnLoad = true;
 
-   const summarySheet = workbook.addWorksheet('Resumen', {
-    views: [{ showGridLines: false }]
-   });
    const transactionsSheet = workbook.addWorksheet('Transacciones', {
     views: [{ state: 'frozen', ySplit: 1, showGridLines: false }]
+   });
+   const summarySheet = workbook.addWorksheet('Resumen', {
+    views: [{ showGridLines: false }]
    });
 
    const typeLabel = exportType === 'income' ? 'Solo ingresos' : exportType === 'expense' ? 'Solo gastos' : 'Todas las transacciones';
@@ -1039,14 +1039,20 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    }
 
    const lastTransactionRow = exportTransactions.length + 1;
+   const exportedIncomeTotal = exportTransactions
+    .filter(transaction => transaction.type === 'income')
+    .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+   const exportedExpenseTotal = exportTransactions
+    .filter(transaction => transaction.type === 'expense')
+    .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
    summarySheet.getCell('A9').value = 'MOVIMIENTOS';
    summarySheet.getCell('B9').value = 'INGRESOS';
    summarySheet.getCell('C9').value = 'GASTOS';
    summarySheet.getCell('D9').value = 'BALANCE NETO';
-   summarySheet.getCell('A10').value = { formula: `COUNTA(Transacciones!A2:A${lastTransactionRow})` };
-   summarySheet.getCell('B10').value = { formula: `SUMIF(Transacciones!B2:B${lastTransactionRow},"Ingreso",Transacciones!G2:G${lastTransactionRow})` };
-   summarySheet.getCell('C10').value = { formula: `SUMIF(Transacciones!B2:B${lastTransactionRow},"Gasto",Transacciones!G2:G${lastTransactionRow})` };
-   summarySheet.getCell('D10').value = { formula: 'B10-C10' };
+   summarySheet.getCell('A10').value = { formula: `COUNTA('Transacciones'!A2:A${lastTransactionRow})`, result: exportTransactions.length };
+   summarySheet.getCell('B10').value = { formula: `SUMIF('Transacciones'!B2:B${lastTransactionRow},"Ingreso",'Transacciones'!G2:G${lastTransactionRow})`, result: exportedIncomeTotal };
+   summarySheet.getCell('C10').value = { formula: `SUMIF('Transacciones'!B2:B${lastTransactionRow},"Gasto",'Transacciones'!G2:G${lastTransactionRow})`, result: exportedExpenseTotal };
+   summarySheet.getCell('D10').value = { formula: 'B10-C10', result: exportedIncomeTotal - exportedExpenseTotal };
    summarySheet.getRow(9).eachCell({ includeEmpty: true }, cell => {
     cell.font = { bold: true, color: { argb: 'FFCBD5E1' }, size: 10 };
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10233D' } };
