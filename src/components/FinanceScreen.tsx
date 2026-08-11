@@ -639,6 +639,15 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  // Invoice view preview modal controls
  const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
 
+ useEffect(() => {
+  if (!previewInvoice) return;
+  const handlePreviewEscape = (event: KeyboardEvent) => {
+   if (event.key === 'Escape') setPreviewInvoice(null);
+  };
+  document.addEventListener('keydown', handlePreviewEscape);
+  return () => document.removeEventListener('keydown', handlePreviewEscape);
+ }, [previewInvoice]);
+
  // Invoice form states
  const [invClientId, setInvClientId] = useState('');
  const [invClientName, setInvClientName] = useState('');
@@ -896,28 +905,26 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     ];
    });
 
-   transactionsSheet.addTable({
-    name: 'BitacoraTransacciones',
-    ref: 'A1',
-    headerRow: true,
-    totalsRow: false,
-    style: { theme: 'TableStyleMedium2', showRowStripes: true },
-    columns: [
-     { name: 'ID' },
-     { name: 'Tipo' },
-     { name: 'Estado' },
-     { name: 'Fecha' },
-     { name: 'Concepto' },
-     { name: 'Categoría' },
-     { name: 'Importe (€)' },
-     { name: 'Método de pago' },
-     { name: 'Factura' },
-     { name: 'Cliente' },
-     { name: 'Referencia Stripe' },
-     { name: 'Venta inicial' }
-    ],
-    rows: transactionRows
-   });
+   const transactionHeaders = [
+    'ID',
+    'Tipo',
+    'Estado',
+    'Fecha',
+    'Concepto',
+    'Categoría',
+    'Importe (€)',
+    'Método de pago',
+    'Factura',
+    'Cliente',
+    'Referencia Stripe',
+    'Venta inicial'
+   ];
+   transactionsSheet.addRow(transactionHeaders);
+   transactionsSheet.addRows(transactionRows);
+   transactionsSheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: transactionRows.length + 1, column: transactionHeaders.length }
+   };
    transactionsSheet.columns = [
     { width: 22 }, { width: 13 }, { width: 14 }, { width: 13 },
     { width: 46 }, { width: 22 }, { width: 16 }, { width: 20 },
@@ -925,6 +932,19 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    ];
    transactionsSheet.getRow(1).height = 24;
    transactionsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+   transactionsSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
+   transactionsSheet.getRow(1).alignment = { vertical: 'middle' };
+   for (let rowNumber = 2; rowNumber <= transactionRows.length + 1; rowNumber += 1) {
+    const row = transactionsSheet.getRow(rowNumber);
+    row.height = 21;
+    if (rowNumber % 2 === 0) {
+     row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDFA' } };
+    }
+    row.eachCell({ includeEmpty: true }, cell => {
+     cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
+     cell.alignment = { ...cell.alignment, vertical: 'middle' };
+    });
+   }
    transactionsSheet.getColumn(4).numFmt = 'dd/mm/yyyy';
    transactionsSheet.getColumn(7).numFmt = '#,##0.00 [$€-es-ES]';
    transactionsSheet.getColumn(7).alignment = { horizontal: 'right' };
@@ -5487,20 +5507,25 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
   {/* MODAL WINDOW 3: DETAILED INVOICE LOOKUP PREVIEW (COSMIC PRINT COMD) */}
   {previewInvoice && (
-  <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-   <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-5xl my-8 overflow-hidden shadow-2xl relative text-left">
+  <div
+   className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/90 p-0 backdrop-blur-md sm:p-4"
+   onMouseDown={(event) => {
+    if (event.currentTarget === event.target) setPreviewInvoice(null);
+   }}
+  >
+   <div className="relative my-0 w-full max-w-5xl overflow-visible rounded-none border border-white/10 bg-slate-900 text-left shadow-2xl sm:my-4 sm:rounded-3xl">
    
    {/* Action Bar inside view modal */}
-   <div className="p-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01] print:hidden">
-    <div className="flex items-center gap-2">
+   <div className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-3 rounded-t-none border-b border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur-xl print:hidden sm:rounded-t-3xl sm:p-4">
+    <div className="flex min-w-0 items-center gap-2">
     <span className="text-[10px] uppercase font-mono tracking-widest text-slate-400 font-bold bg-white/5 px-2 py-0.5 rounded">PDF FACTURA</span>
     <span className="text-slate-500">•</span>
-    <span className="text-xs text-slate-400 font-light">{previewInvoice.id}</span>
+    <span className="truncate text-xs font-light text-slate-400">{previewInvoice.id}</span>
     </div>
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
     <button
      onClick={() => handleDownloadInvoiceHtml(previewInvoice)}
-     className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+     className="hidden cursor-pointer items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-blue-500 sm:flex"
      title="Descargar factura en PDF"
     >
      <Download className="w-3.5 h-3.5" />
@@ -5508,16 +5533,19 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </button>
     <button
      onClick={handlePrintPreview}
-     className="bg-white/5 hover:bg-white/10 text-white font-bold text-xs px-3.5 py-2 rounded-xl border border-white/10 transition flex items-center gap-1.5 cursor-pointer"
+     className="hidden cursor-pointer items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-white/10 md:flex"
     >
      <Printer className="w-3.5 h-3.5" />
      <span>Imprimir / PDF</span>
     </button>
     <button 
      onClick={() => setPreviewInvoice(null)}
-     className="text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded-lg cursor-pointer transition"
+     className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs font-bold text-rose-200 transition hover:bg-rose-400/20 hover:text-white"
+     aria-label="Cerrar visualización de la factura"
+     title="Cerrar (Esc)"
     >
-     <X className="w-4 h-4" />
+    <X className="w-4 h-4" />
+    <span>Cerrar</span>
     </button>
     </div>
    </div>
@@ -5744,7 +5772,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
 
     {/* View modal close button footer */}
-   <div className="p-4 border-t border-white/5 flex justify-end items-center bg-white/[0.01] print:hidden">
+   <div className="sticky bottom-0 z-30 flex items-center justify-end border-t border-white/10 bg-slate-900/95 p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl print:hidden sm:rounded-b-3xl">
     <button
     onClick={() => setPreviewInvoice(null)}
     className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs py-2 px-6 rounded-xl cursor-pointer"
