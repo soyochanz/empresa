@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
-import { db } from '../supabaseClient';
+import { db, invalidateSharedPipelineCache, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials } from '../utils/salesRewards';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
@@ -39,8 +39,23 @@ import {
  ShieldCheck,
  LayoutDashboard,
  Activity,
- CalendarDays
+ CalendarDays,
+ FileSpreadsheet,
+ RefreshCw,
+ WalletCards
 } from 'lucide-react';
+
+type StripeFundAmount = {
+ amount: number;
+ currency: string;
+};
+
+type StripeFunds = {
+ available: StripeFundAmount[];
+ pending: StripeFundAmount[];
+ livemode: boolean;
+ fetchedAt: string;
+};
 
 const safeConfirm = (msg: string): boolean => {
  const isIframe = window.self !== window.top;
@@ -136,6 +151,20 @@ const parseFinanceDate = (value?: string): Date | null => {
 
 const getMonthKey = (date: Date): string =>
  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const getFinanceDateKey = (value?: string): string => {
+ const parsed = parseFinanceDate(value);
+ if (!parsed) return '';
+ return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+};
+
+const formatStripeFundAmounts = (amounts: StripeFundAmount[] = []): string => {
+ if (amounts.length === 0) return '0,00 €';
+ return amounts.map(item => new Intl.NumberFormat('es-ES', {
+  style: 'currency',
+  currency: item.currency.toUpperCase()
+ }).format(item.amount)).join(' · ');
+};
 
 const getRecurringIncomeOccurrences = (transaction: FinanceTransaction, monthKey: string): Date[] => {
  const start = parseFinanceDate(transaction.date);
@@ -464,6 +493,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [syncStatus, setSyncStatus] = useState<'syncing' | 'synced' | 'error' | 'offline'>('syncing');
  const [syncError, setSyncError] = useState<string | null>(null);
  const [showMonthlyCloseReport, setShowMonthlyCloseReport] = useState(false);
+ const [analyticsRange, setAnalyticsRange] = useState<'month' | 'all'>('month');
+ const [stripeFunds, setStripeFunds] = useState<StripeFunds | null>(null);
+ const [stripeFundsLoading, setStripeFundsLoading] = useState(false);
+ const [stripeFundsError, setStripeFundsError] = useState('');
 
  // Transactions local state
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
@@ -504,6 +537,22 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   }
   }
   fetchDatabaseFinanceData();
+  const financeChannel = supabase
+   .channel('finance-screen-live-sync')
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transactions' }, () => {
+    invalidateSharedPipelineCache(['finance_transactions']);
+    void fetchDatabaseFinanceData();
+   })
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_invoices' }, () => {
+    invalidateSharedPipelineCache(['finance_invoices']);
+    void fetchDatabaseFinanceData();
+   })
+   .subscribe(status => {
+    if (status === 'CHANNEL_ERROR' && active) {
+     setSyncStatus('error');
+     setSyncError('La sincronización en directo no está disponible; se mantiene la actualización automática.');
+    }
+   });
   const refreshTimer = window.setInterval(fetchDatabaseFinanceData, 15000);
   const refreshWhenVisible = () => {
    if (document.visibilityState === 'visible') fetchDatabaseFinanceData();
@@ -513,16 +562,44 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   window.addEventListener('finance-invoices-updated', refreshWhenInvoiceChanges);
   return () => {
    active = false;
+   void supabase.removeChannel(financeChannel);
    window.clearInterval(refreshTimer);
    document.removeEventListener('visibilitychange', refreshWhenVisible);
    window.removeEventListener('finance-invoices-updated', refreshWhenInvoiceChanges);
   };
  }, []);
 
+ const refreshStripeFunds = async () => {
+  setStripeFundsLoading(true);
+  setStripeFundsError('');
+  try {
+   const response = await fetch('/api/stripe/balance', { cache: 'no-store' });
+   const data = await readStripeJson(response);
+   if (!response.ok) throw new Error(data.error || 'No se pudieron consultar los fondos de Stripe.');
+   setStripeFunds(data);
+  } catch (error: any) {
+   setStripeFundsError(error?.message || 'No se pudieron consultar los fondos de Stripe.');
+  } finally {
+   setStripeFundsLoading(false);
+  }
+ };
+
+ useEffect(() => {
+  void refreshStripeFunds();
+  const stripeFundsTimer = window.setInterval(refreshStripeFunds, 60000);
+  return () => window.clearInterval(stripeFundsTimer);
+ }, []);
+
  // Filters
  const [txTypeFilter, setTxTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
  const [txCategoryFilter, setTxCategoryFilter] = useState<string>('All');
  const [txDateRangeFilter, setTxDateRangeFilter] = useState<'all' | 'today' | 'week'>('all');
+ const [showExportPanel, setShowExportPanel] = useState(false);
+ const [exportType, setExportType] = useState<'all' | 'income' | 'expense'>('all');
+ const [exportPeriod, setExportPeriod] = useState<'all' | 'month' | 'date'>('all');
+ const [exportMonth, setExportMonth] = useState(() => getMonthKey(new Date()));
+ const [exportDate, setExportDate] = useState(() => new Date().toISOString().slice(0, 10));
+ const [exportLoading, setExportLoading] = useState(false);
  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'draft' | 'sent' | 'paid' | 'overdue'>('all');
  const [invoiceDueFilter, setInvoiceDueFilter] = useState<'all' | 'today' | 'week'>('all');
  const [adminMessage, setAdminMessage] = useState('');
@@ -710,20 +787,188 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }
  };
 
+ const handleExportTransactions = async () => {
+  const exportTransactions = ledgerTransactions
+   .filter(transaction => exportType === 'all' || transaction.type === exportType)
+   .filter(transaction => {
+    const dateKey = getTxDateKey(transaction);
+    if (exportPeriod === 'month') return dateKey.startsWith(exportMonth);
+    if (exportPeriod === 'date') return dateKey === exportDate;
+    return true;
+   })
+   .sort((a, b) => `${b.date}_${b.id}`.localeCompare(`${a.date}_${a.id}`));
+
+  if (exportTransactions.length === 0) {
+   showToast('No hay movimientos que coincidan con los filtros de exportación.', true);
+   return;
+  }
+
+  setExportLoading(true);
+  try {
+   const ExcelJS = await import('exceljs');
+   const workbook = new ExcelJS.Workbook();
+   workbook.creator = 'Althera Solutions';
+   workbook.company = 'Althera Solutions';
+   workbook.created = new Date();
+   workbook.modified = new Date();
+   workbook.calcProperties.fullCalcOnLoad = true;
+
+   const summarySheet = workbook.addWorksheet('Resumen', {
+    views: [{ showGridLines: false }]
+   });
+   const transactionsSheet = workbook.addWorksheet('Transacciones', {
+    views: [{ state: 'frozen', ySplit: 1, showGridLines: false }]
+   });
+
+   const typeLabel = exportType === 'income' ? 'Solo ingresos' : exportType === 'expense' ? 'Solo gastos' : 'Todas las transacciones';
+   const periodLabel = exportPeriod === 'month'
+    ? new Date(`${exportMonth}-01T12:00:00`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+    : exportPeriod === 'date'
+     ? new Date(`${exportDate}T12:00:00`).toLocaleDateString('es-ES')
+     : 'Todo el histórico';
+
+   summarySheet.mergeCells('A1:D2');
+   summarySheet.getCell('A1').value = 'BITÁCORA FINANCIERA · ALTHERA SOLUTIONS';
+   summarySheet.getCell('A1').font = { name: 'Aptos Display', size: 18, bold: true, color: { argb: 'FFFFFFFF' } };
+   summarySheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
+   summarySheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF071426' } };
+   summarySheet.getRow(1).height = 26;
+   summarySheet.getRow(2).height = 18;
+   summarySheet.getColumn('A').width = 24;
+   summarySheet.getColumn('B').width = 24;
+   summarySheet.getColumn('C').width = 24;
+   summarySheet.getColumn('D').width = 24;
+
+   summarySheet.getCell('A4').value = 'Tipo exportado';
+   summarySheet.getCell('B4').value = typeLabel;
+   summarySheet.getCell('A5').value = 'Periodo';
+   summarySheet.getCell('B5').value = periodLabel;
+   summarySheet.getCell('A6').value = 'Generado';
+   summarySheet.getCell('B6').value = new Date();
+   summarySheet.getCell('B6').numFmt = 'dd/mm/yyyy hh:mm';
+   for (let row = 4; row <= 6; row += 1) {
+    summarySheet.getCell(row, 1).font = { bold: true, color: { argb: 'FF475569' } };
+   }
+
+   const lastTransactionRow = exportTransactions.length + 1;
+   summarySheet.getCell('A9').value = 'MOVIMIENTOS';
+   summarySheet.getCell('B9').value = 'INGRESOS';
+   summarySheet.getCell('C9').value = 'GASTOS';
+   summarySheet.getCell('D9').value = 'BALANCE NETO';
+   summarySheet.getCell('A10').value = { formula: `COUNTA(Transacciones!A2:A${lastTransactionRow})` };
+   summarySheet.getCell('B10').value = { formula: `SUMIF(Transacciones!B2:B${lastTransactionRow},"Ingreso",Transacciones!G2:G${lastTransactionRow})` };
+   summarySheet.getCell('C10').value = { formula: `SUMIF(Transacciones!B2:B${lastTransactionRow},"Gasto",Transacciones!G2:G${lastTransactionRow})` };
+   summarySheet.getCell('D10').value = { formula: 'B10-C10' };
+   summarySheet.getRow(9).eachCell({ includeEmpty: true }, cell => {
+    cell.font = { bold: true, color: { argb: 'FFCBD5E1' }, size: 10 };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10233D' } };
+    cell.alignment = { horizontal: 'center' };
+   });
+   summarySheet.getRow(10).eachCell({ includeEmpty: true }, cell => {
+    cell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 16 };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+    cell.alignment = { horizontal: 'center' };
+   });
+   summarySheet.getCell('A10').numFmt = '#,##0';
+   for (let column = 2; column <= 4; column += 1) summarySheet.getCell(10, column).numFmt = '#,##0.00 [$€-es-ES]';
+   for (let row = 9; row <= 10; row += 1) {
+    for (let column = 1; column <= 4; column += 1) {
+     summarySheet.getCell(row, column).border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+    }
+   }
+
+   const transactionRows = exportTransactions.map(transaction => {
+    const parsedDate = parseFinanceDate(transaction.date);
+    const client = contacts.find(contact => contact.id === transaction.clientId);
+    return [
+     transaction.id,
+     transaction.type === 'income' ? 'Ingreso' : 'Gasto',
+     transaction.status === 'paid' ? 'Liquidado' : 'Pendiente',
+     parsedDate || transaction.date,
+     getCleanBillingConcept(transaction.description),
+     transaction.category,
+     Number(transaction.amount || 0),
+     transaction.paymentMethod === 'stripe' ? 'Stripe' : transaction.paymentMethod === 'cash' ? 'Efectivo' : transaction.paymentMethod === 'transfer' ? 'Transferencia' : '',
+     transaction.invoiceId || '',
+     client?.name || transaction.clientId || '',
+     transaction.stripeCheckoutSessionId || transaction.stripeInvoiceId || '',
+     transaction.isInitialSale ? 'Sí' : 'No'
+    ];
+   });
+
+   transactionsSheet.addTable({
+    name: 'BitacoraTransacciones',
+    ref: 'A1',
+    headerRow: true,
+    totalsRow: false,
+    style: { theme: 'TableStyleMedium2', showRowStripes: true },
+    columns: [
+     { name: 'ID' },
+     { name: 'Tipo' },
+     { name: 'Estado' },
+     { name: 'Fecha' },
+     { name: 'Concepto' },
+     { name: 'Categoría' },
+     { name: 'Importe (€)' },
+     { name: 'Método de pago' },
+     { name: 'Factura' },
+     { name: 'Cliente' },
+     { name: 'Referencia Stripe' },
+     { name: 'Venta inicial' }
+    ],
+    rows: transactionRows
+   });
+   transactionsSheet.columns = [
+    { width: 22 }, { width: 13 }, { width: 14 }, { width: 13 },
+    { width: 46 }, { width: 22 }, { width: 16 }, { width: 20 },
+    { width: 18 }, { width: 28 }, { width: 30 }, { width: 14 }
+   ];
+   transactionsSheet.getRow(1).height = 24;
+   transactionsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+   transactionsSheet.getColumn(4).numFmt = 'dd/mm/yyyy';
+   transactionsSheet.getColumn(7).numFmt = '#,##0.00 [$€-es-ES]';
+   transactionsSheet.getColumn(7).alignment = { horizontal: 'right' };
+   transactionsSheet.getColumn(5).alignment = { wrapText: true, vertical: 'top' };
+
+   const buffer = await workbook.xlsx.writeBuffer();
+   const blob = new Blob([buffer as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+   const downloadUrl = URL.createObjectURL(blob);
+   const link = document.createElement('a');
+   const periodSuffix = exportPeriod === 'month' ? exportMonth : exportPeriod === 'date' ? exportDate : 'historico';
+   link.href = downloadUrl;
+   link.download = `bitacora_althera_${exportType}_${periodSuffix}.xlsx`;
+   document.body.appendChild(link);
+   link.click();
+   link.remove();
+   URL.revokeObjectURL(downloadUrl);
+   showToast(`Excel exportado con ${exportTransactions.length} movimientos.`);
+  } catch (error) {
+   console.error('Excel export error:', error);
+   showToast('No se pudo generar el archivo Excel.', true);
+  } finally {
+   setExportLoading(false);
+  }
+ };
+
  // Calculations for transactions
  const ledgerTransactions = transactions.filter(transaction => !transaction.isRecurring);
 
- const totalIncomes = ledgerTransactions
+ const analyticsMonthKey = getMonthKey(new Date());
+ const analyticsTransactions = analyticsRange === 'month'
+  ? ledgerTransactions.filter(transaction => getFinanceDateKey(transaction.date).startsWith(analyticsMonthKey))
+  : ledgerTransactions;
+
+ const totalIncomes = analyticsTransactions
  .filter(t => t.type === 'income')
  .reduce((sum, t) => sum + t.amount, 0);
 
- const totalExpenses = ledgerTransactions
+ const totalExpenses = analyticsTransactions
  .filter(t => t.type === 'expense')
  .reduce((sum, t) => sum + t.amount, 0);
 
  const commercialSalaries = comercialesList
  .flatMap(com => com.payouts || [])
- .filter(p => p.status === 'completed')
+ .filter(p => p.status === 'completed' && (analyticsRange === 'all' || getFinanceDateKey(p.date).startsWith(analyticsMonthKey)))
  .reduce((sum, p) => sum + p.amount, 0);
  const extraCommissionsAccrued = comercialesList
  .flatMap(com => com.extraCommissions || [])
@@ -732,22 +977,22 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const netProfit = totalIncomes - totalExpenses - commercialSalaries;
 
  // Cálculo de Saldos Consolidado y Pendiente según requerimiento
- const consolidatedIncomes = ledgerTransactions
+ const consolidatedIncomes = analyticsTransactions
  .filter(t => t.type === 'income' && t.status === 'paid')
  .reduce((sum, t) => sum + t.amount, 0);
 
- const consolidatedExpenses = ledgerTransactions
+ const consolidatedExpenses = analyticsTransactions
  .filter(t => t.type === 'expense' && t.status === 'paid')
  .reduce((sum, t) => sum + t.amount, 0);
 
  const consolidatedBalance = consolidatedIncomes;
  const netCashBalance = consolidatedIncomes - consolidatedExpenses - commercialSalaries;
 
- const pendingIncomes = ledgerTransactions
+ const pendingIncomes = analyticsTransactions
  .filter(t => t.type === 'income' && t.status === 'pending')
  .reduce((sum, t) => sum + t.amount, 0);
 
- const pendingExpenses = ledgerTransactions
+ const pendingExpenses = analyticsTransactions
  .filter(t => t.type === 'expense' && t.status === 'pending')
  .reduce((sum, t) => sum + t.amount, 0);
 
@@ -2199,14 +2444,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
  };
 
  const getTxDateKey = (tx: FinanceTransaction): string => {
- const raw = tx.date || '';
- if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
- const parsed = new Date(raw);
- if (Number.isNaN(parsed.getTime())) return '';
- const year = parsed.getFullYear();
- const month = String(parsed.getMonth() + 1).padStart(2, '0');
- const day = String(parsed.getDate()).padStart(2, '0');
- return `${year}-${month}-${day}`;
+ return getFinanceDateKey(tx.date);
  };
 
  const matchesTxDateRange = (tx: FinanceTransaction, range: 'all' | 'today' | 'week'): boolean => {
@@ -2517,6 +2755,62 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </div>
   </div>
   )}
+
+  {/* Analytics scope and live Stripe funds */}
+  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.85fr)]">
+   <section className="rounded-3xl border border-white/5 bg-[#0b1329]/30 p-4 sm:p-5">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+     <div>
+      <span className="text-[9px] font-black uppercase tracking-[.2em] text-slate-500">Periodo de analíticas</span>
+      <h3 className="mt-1 text-sm font-bold text-white">Vista financiera superior</h3>
+      <p className="mt-1 text-[10px] text-slate-500">Los seis indicadores se recalculan con el periodo elegido.</p>
+     </div>
+     <div className="flex rounded-2xl border border-white/10 bg-black/25 p-1">
+      <button
+       type="button"
+       onClick={() => setAnalyticsRange('month')}
+       className={`rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-wider transition ${analyticsRange === 'month' ? 'bg-cyan-400/15 text-cyan-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+      >
+       Este mes
+      </button>
+      <button
+       type="button"
+       onClick={() => setAnalyticsRange('all')}
+       className={`rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-wider transition ${analyticsRange === 'all' ? 'bg-cyan-400/15 text-cyan-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+      >
+       Todo
+      </button>
+     </div>
+    </div>
+   </section>
+
+   <section className="relative overflow-hidden rounded-3xl border border-indigo-300/15 bg-gradient-to-br from-indigo-400/[0.09] via-[#0b1329]/70 to-cyan-400/[0.04] p-4 sm:p-5">
+    <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-indigo-400/10 blur-3xl" />
+    <div className="relative flex items-start justify-between gap-3">
+     <div className="flex items-center gap-3">
+      <div className="rounded-2xl border border-indigo-300/15 bg-indigo-400/10 p-2.5"><WalletCards className="h-5 w-5 text-indigo-300" /></div>
+      <div>
+       <span className="text-[9px] font-black uppercase tracking-[.2em] text-indigo-300">Fondos Stripe</span>
+       <p className="mt-0.5 text-[9px] text-slate-500">Saldo real de la cuenta {stripeFunds?.livemode ? 'live' : 'test'}</p>
+      </div>
+     </div>
+     <button type="button" onClick={() => void refreshStripeFunds()} disabled={stripeFundsLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 transition hover:text-white disabled:opacity-50" title="Actualizar fondos de Stripe">
+      <RefreshCw className={`h-3.5 w-3.5 ${stripeFundsLoading ? 'animate-spin' : ''}`} />
+     </button>
+    </div>
+    <div className="relative mt-4 grid grid-cols-2 gap-3">
+     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.06] p-3">
+      <span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Disponible</span>
+      <strong className="mt-1 block text-lg font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.available)}</strong>
+     </div>
+     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.06] p-3">
+      <span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pendiente</span>
+      <strong className="mt-1 block text-lg font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.pending)}</strong>
+     </div>
+    </div>
+    {stripeFundsError && <p className="relative mt-2 text-[9px] text-rose-300">{stripeFundsError}</p>}
+   </section>
+  </div>
 
   {/* Financial Bento Scoreboard Metrics */}
   <div className="finance-metric-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-5">
@@ -2837,6 +3131,62 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
    </div>
    </div>
+
+   <div className="flex justify-end">
+    <button
+     type="button"
+     onClick={() => setShowExportPanel(previous => !previous)}
+     className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300 transition hover:bg-emerald-400/15"
+    >
+     <FileSpreadsheet className="h-4 w-4" />
+     Exportar Excel
+    </button>
+   </div>
+
+   {showExportPanel && (
+    <section className="rounded-3xl border border-emerald-300/15 bg-gradient-to-br from-emerald-300/[0.07] via-[#0b1329]/70 to-cyan-300/[0.03] p-4 sm:p-5">
+     <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div>
+       <span className="text-[9px] font-black uppercase tracking-[.2em] text-emerald-300">Exportación profesional</span>
+       <h3 className="mt-1 text-sm font-bold text-white">Descargar bitácora en Excel</h3>
+       <p className="mt-1 text-[10px] text-slate-500">Incluye resumen, totales, filtros, columnas ordenadas y referencias de factura y Stripe.</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[170px_170px_180px_auto]">
+       <label className="block">
+        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Movimientos</span>
+        <select value={exportType} onChange={event => setExportType(event.target.value as typeof exportType)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
+         <option value="all">Todos</option>
+         <option value="income">Solo ingresos</option>
+         <option value="expense">Solo gastos</option>
+        </select>
+       </label>
+       <label className="block">
+        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Periodo</span>
+        <select value={exportPeriod} onChange={event => setExportPeriod(event.target.value as typeof exportPeriod)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
+         <option value="all">Todo</option>
+         <option value="month">Un mes</option>
+         <option value="date">Fecha concreta</option>
+        </select>
+       </label>
+       {exportPeriod === 'month' ? (
+        <label className="block">
+         <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Mes</span>
+         <input type="month" value={exportMonth} onChange={event => setExportMonth(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40" />
+        </label>
+       ) : exportPeriod === 'date' ? (
+        <label className="block">
+         <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Fecha</span>
+         <input type="date" value={exportDate} onChange={event => setExportDate(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40" />
+        </label>
+       ) : <div className="hidden xl:block" />}
+       <button type="button" onClick={() => void handleExportTransactions()} disabled={exportLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-slate-950 transition hover:bg-emerald-300 disabled:opacity-60">
+        {exportLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        {exportLoading ? 'Generando...' : 'Descargar .xlsx'}
+       </button>
+      </div>
+     </div>
+    </section>
+   )}
 
     {txDateRangeFilter !== 'all' && (
     <div id="finance-transactions-log" className="bg-cyan-500/5 border border-cyan-400/20 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">

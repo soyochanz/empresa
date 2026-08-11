@@ -452,6 +452,28 @@ app.get("/api/stripe/config", (req, res) => {
   });
 });
 
+app.get("/api/stripe/balance", async (_req, res) => {
+  try {
+    const balance = await getStripe().balance.retrieve();
+    const normalizeAmounts = (items: Stripe.Balance.Available[] | Stripe.Balance.Pending[]) =>
+      items.map(item => ({
+        amount: Number(item.amount || 0) / 100,
+        currency: item.currency,
+      }));
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      available: normalizeAmounts(balance.available),
+      pending: normalizeAmounts(balance.pending),
+      livemode: balance.livemode,
+      fetchedAt: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Error retrieving Stripe balance:", error);
+    res.status(500).json({ error: error?.message || "No se pudieron consultar los fondos de Stripe." });
+  }
+});
+
 // Create subscription or single payment checkout session
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
