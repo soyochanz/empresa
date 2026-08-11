@@ -113,6 +113,25 @@ const contactHasAssignedWebsite = (contact: ClientContact): boolean => Boolean(
  contact.demoWebsiteId?.trim()
 );
 
+const normalizeClientEmail = (value?: string): string => (value || '').trim().toLowerCase();
+
+const invoiceBelongsToContact = (invoice: Invoice, contact: ClientContact): boolean => {
+ if (invoice.clientId) return invoice.clientId === contact.id;
+ const invoiceEmail = normalizeClientEmail(invoice.clientEmail);
+ const contactEmail = normalizeClientEmail(contact.email);
+ return Boolean(invoiceEmail && contactEmail && invoiceEmail === contactEmail);
+};
+
+const transactionBelongsToContact = (
+ transaction: FinanceTransaction,
+ contact: ClientContact,
+ clientInvoices: Invoice[]
+): boolean => {
+ if (transaction.clientId) return transaction.clientId === contact.id;
+ if (transaction.invoiceId) return clientInvoices.some(invoice => invoice.id === transaction.invoiceId);
+ return false;
+};
+
 const isCarlosExcludedFromSalesCommission = (commercial: ComercialAccount): boolean => {
  const normalizedName = commercial.name.trim().toLocaleLowerCase('es-ES');
  const normalizedEmail = commercial.email.trim().toLowerCase();
@@ -209,24 +228,12 @@ export default function CrmScreen({
 
  const selectedClientInvoices = React.useMemo(() => {
  if (!selectedContact) return [];
- return invoices.filter(inv => {
-  const matchesId = inv.clientId === selectedContact.id;
-  const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
-  const matchesName = inv.clientName?.toLowerCase().includes(selectedContact.name?.toLowerCase() || '');
-  return matchesId || matchesEmail || matchesName;
- });
+ return invoices.filter(inv => invoiceBelongsToContact(inv, selectedContact));
  }, [invoices, selectedContact]);
 
  const selectedClientTransactions = React.useMemo(() => {
  if (!selectedContact) return [];
- return transactions.filter(t => {
-  if (t.clientId === selectedContact.id) return true;
-  if (selectedClientInvoices.some(inv => inv.id === t.invoiceId)) return true;
-  const descLower = t.description.toLowerCase();
-  const containsName = descLower.includes(selectedContact.name.toLowerCase());
-  const containsCompany = selectedContact.company ? descLower.includes(selectedContact.company.toLowerCase()) : false;
-  return containsName || containsCompany;
- });
+ return transactions.filter(t => transactionBelongsToContact(t, selectedContact, selectedClientInvoices));
  }, [transactions, selectedContact, selectedClientInvoices]);
 
  const selectedPaymentSummary = React.useMemo(() => {
@@ -291,21 +298,8 @@ export default function CrmScreen({
  setInstCopied(false);
 
  if (selectedContact) {
-  const clientInvoices = invoices.filter(inv => {
-  const matchesId = inv.clientId === selectedContact.id;
-  const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
-  const matchesName = inv.clientName?.toLowerCase().includes(selectedContact.name?.toLowerCase() || '');
-  return matchesId || matchesEmail || matchesName;
-  });
-
-  const clientTransactions = transactions.filter(t => {
-  if (t.clientId === selectedContact.id) return true;
-  const invoiceMatches = clientInvoices.some(inv => inv.id === t.invoiceId);
-  if (invoiceMatches) return true;
-  const containsName = t.description.toLowerCase().includes(selectedContact.name.toLowerCase());
-  const containsCompany = selectedContact.company ? t.description.toLowerCase().includes(selectedContact.company.toLowerCase()) : false;
-  return containsName || containsCompany;
-  });
+  const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, selectedContact));
+  const clientTransactions = transactions.filter(t => transactionBelongsToContact(t, selectedContact, clientInvoices));
 
   const pendingTxs = clientTransactions.filter(t => t.status === 'pending');
   if (pendingTxs.length > 0) {
@@ -1000,11 +994,7 @@ export default function CrmScreen({
    // 3. Automated payment allocation (Auto-Matching pending invoices!)
    // Find pending invoices of this client and automatically apply this payment to cover them
    const clientPendingInvoices = invoices
-   .filter(inv => {
-    const matchesId = inv.clientId === selectedContact.id;
-    const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
-    return (matchesId || matchesEmail) && inv.status !== 'paid';
-   })
+   .filter(inv => invoiceBelongsToContact(inv, selectedContact) && inv.status !== 'paid')
    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
    let remainingPayment = amt;
@@ -1549,23 +1539,10 @@ export default function CrmScreen({
  setInstError('');
  let txForCheckout: FinanceTransaction | null = null;
  try {
-  const clientInvoices = invoices.filter(inv => {
-  const matchesId = inv.clientId === contact.id;
-  const matchesEmail = inv.clientEmail?.toLowerCase() === contact.email?.toLowerCase();
-  const matchesName = inv.clientName?.toLowerCase().includes(contact.name?.toLowerCase() || '');
-  return matchesId || matchesEmail || matchesName;
-  });
+ const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, contact));
 
   const pendingTxs = transactions
-  .filter(t => {
-   if (t.type !== 'income' || t.status !== 'pending') return false;
-   if (t.clientId === contact.id) return true;
-   if (clientInvoices.some(inv => inv.id === t.invoiceId)) return true;
-   const descLower = t.description.toLowerCase();
-   const containsName = descLower.includes(contact.name.toLowerCase());
-   const containsCompany = contact.company ? descLower.includes(contact.company.toLowerCase()) : false;
-   return containsName || containsCompany;
-  })
+  .filter(t => t.type === 'income' && t.status === 'pending' && transactionBelongsToContact(t, contact, clientInvoices))
   .sort((a, b) => {
    const byInstallment = (a.stripeInstallmentIndex || 999) - (b.stripeInstallmentIndex || 999);
    if (byInstallment !== 0) return byInstallment;
@@ -1995,10 +1972,7 @@ export default function CrmScreen({
    return;
   }
   }
-  const linkedInvoices = invoices.filter(invoice =>
-   invoice.clientId === updatedContact.id ||
-   (!!editingContact.email && invoice.clientEmail?.toLowerCase() === editingContact.email.toLowerCase())
-  );
+  const linkedInvoices = invoices.filter(invoice => invoiceBelongsToContact(invoice, editingContact));
   const updatedInvoices = linkedInvoices.map(invoice => {
    const taxPercentage = updatedContact.taxPercentage ?? invoice.taxPercentage;
    const linkedTransactionIds = new Set(
@@ -3134,21 +3108,8 @@ export default function CrmScreen({
 
     {/* Módulo de Contabilidad y Facturas de Cliente */}
     {(() => {
-    const clientInvoices = invoices.filter(inv => {
-     const matchesId = inv.clientId === selectedContact.id;
-     const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
-     const matchesName = inv.clientName?.toLowerCase().includes(selectedContact.name?.toLowerCase() || '');
-     return matchesId || matchesEmail || matchesName;
-    });
-
-    const clientTransactions = transactions.filter(t => {
-     if (t.clientId === selectedContact.id) return true;
-     const invoiceMatches = clientInvoices.some(inv => inv.id === t.invoiceId);
-     if (invoiceMatches) return true;
-     const containsName = t.description.toLowerCase().includes(selectedContact.name.toLowerCase());
-     const containsCompany = selectedContact.company ? t.description.toLowerCase().includes(selectedContact.company.toLowerCase()) : false;
-     return containsName || containsCompany;
-    });
+    const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, selectedContact));
+    const clientTransactions = transactions.filter(t => transactionBelongsToContact(t, selectedContact, clientInvoices));
 
     const getInvoicePaymentSummary = (invoice: Invoice) => {
      const invoiceTotal = Number(invoice.total || 0);
@@ -4409,12 +4370,7 @@ export default function CrmScreen({
     >
      <option value="general">Automático / Saldo General (Auto-completar facturas)</option>
      {invoices
-     .filter(inv => {
-      const matchesId = inv.clientId === selectedContact.id;
-      const matchesEmail = inv.clientEmail?.toLowerCase() === selectedContact.email?.toLowerCase();
-      const matchesName = inv.clientName?.toLowerCase().includes(selectedContact.name?.toLowerCase() || '');
-      return (matchesId || matchesEmail || matchesName) && inv.status !== 'paid';
-     })
+     .filter(inv => invoiceBelongsToContact(inv, selectedContact) && inv.status !== 'paid')
      .map(inv => (
       <option key={inv.id} value={inv.id}>
       {inv.id} - Total: {inv.total.toFixed(2)} ({inv.date})

@@ -596,11 +596,12 @@ export default function App() {
    // Mark only the paid installment in client invoices.
    try {
     const allInvoices = await db.getFinanceInvoices();
-    const clientInvoices = allInvoices.filter(inv => 
-    inv.clientId === clientId || 
-    inv.clientEmail?.toLowerCase() === client.email?.toLowerCase() ||
-    inv.clientName?.toLowerCase().includes(client.name.toLowerCase())
-    );
+    const normalizedClientEmail = (client.email || '').trim().toLowerCase();
+    const clientInvoices = allInvoices.filter(inv => {
+     if (inv.clientId) return inv.clientId === clientId;
+     const invoiceEmail = (inv.clientEmail || '').trim().toLowerCase();
+     return Boolean(invoiceEmail && normalizedClientEmail && invoiceEmail === normalizedClientEmail);
+    });
 
     for (const inv of clientInvoices) {
     const hasPaidItem = inv.items.some(item => item.pendingTxId === paidTx.id);

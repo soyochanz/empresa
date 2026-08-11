@@ -1061,11 +1061,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const getClientStripeMoneySummary = (client: ClientContact) => {
  const clientTxs = transactions.filter(tx =>
   isConfirmedStripePayment(tx) &&
-  (
-  tx.clientId === client.id ||
-  (tx.description || '').toLowerCase().includes(client.name.toLowerCase()) ||
-  (client.email && (tx.description || '').toLowerCase().includes(client.email.toLowerCase()))
-  )
+  tx.clientId === client.id
  );
  const localPaid = clientTxs.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + (tx.amount || 0), 0);
  const overview = stripeOverviewByClient[client.id];
@@ -1998,11 +1994,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
  setInvIssuerEmail(DEFAULT_INVOICE_ISSUER.email);
  
  // Find client in contacts list if possible
- const matchedContact = contacts.find(c =>
-  c.id === tx.clientId ||
-  tx.description.toLowerCase().includes(c.name.toLowerCase()) ||
-  tx.description.toLowerCase().includes(c.company.toLowerCase())
- );
+ const matchedContact = contacts.find(c => c.id === tx.clientId);
  const relatedTransactions = [
   tx,
   ...transactions.filter(candidate =>
