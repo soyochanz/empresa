@@ -88,6 +88,17 @@ const CLIENT_CHARGE_PLAN_OPTIONS: Array<{ value: ClientChargePlan; label: string
  { value: 'year', label: 'Anual' },
 ];
 
+const CLIENT_CHARGE_PLAN_GROUPS: Array<{
+ label: string;
+ description: string;
+ accent: 'slate' | 'cyan' | 'violet';
+ options: ClientChargePlan[];
+}> = [
+ { label: 'Cobro puntual', description: 'Un solo pago', accent: 'slate', options: ['once'] },
+ { label: 'Financiación', description: 'Cuotas con final definido', accent: 'cyan', options: ['installments_2', 'installments_3', 'installments_4'] },
+ { label: 'Suscripción', description: 'Cobro recurrente real', accent: 'violet', options: ['month', 'year'] },
+];
+
 const CLIENT_CHARGE_METHOD_OPTIONS: Array<{ value: ClientChargeMethod; label: string }> = [
  { value: 'cash', label: 'Efectivo' },
  { value: 'transfer', label: 'Transferencia' },
@@ -2777,9 +2788,30 @@ React.useEffect(() => {
      {(() => {
      const currentColor = getContactColor(selectedContact.color);
      return (
-      <div className="mt-4 bg-[#030305] p-3 rounded-2xl border border-white/5 space-y-2.5 text-left w-full">
-      <div className="flex justify-between items-center">
-       <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-extrabold text-[#7e7e8e]">Color / Etiqueta:</span>
+      <div className="mt-4 w-full rounded-2xl border border-white/[0.06] bg-black/25 p-2.5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+      <div className="flex items-center gap-2">
+       <span className="shrink-0 text-[8px] font-mono font-bold uppercase tracking-[.16em] text-slate-500">Etiqueta</span>
+       <div className="grid min-w-0 flex-1 grid-cols-5 gap-1">
+       {AESTHETIC_COLORS.map(({ val, label, activeStyle }) => {
+       const isCurrent = currentColor === val;
+       return (
+        <button
+        key={val}
+        type="button"
+        onClick={() => {
+         if (onUpdateContact) onUpdateContact({ ...selectedContact, color: val });
+        }}
+        className={`grid h-6 place-items-center rounded-lg border transition-all active:scale-95 ${isCurrent
+         ? activeStyle
+         : 'border-white/[0.05] bg-white/[0.025] hover:border-white/10 hover:bg-white/[0.05]'}`}
+        title={label}
+        aria-label={`Etiqueta ${label}`}
+        >
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: val === 'indigo' ? '#6366f1' : val === 'emerald' ? '#10b981' : val === 'amber' ? '#f59e0b' : val === 'rose' ? '#f43f5e' : '#8b5cf6' }} />
+        </button>
+       );
+       })}
+       </div>
        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border uppercase ${
        currentColor === 'indigo' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' :
        currentColor === 'emerald' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
@@ -2790,41 +2822,13 @@ React.useEffect(() => {
        {currentColor === 'rose' ? 'ROJO' : currentColor}
        </span>
       </div>
-      
-      <div className="grid grid-cols-5 gap-1.5">
-       {AESTHETIC_COLORS.map(({ val, label, activeStyle }) => {
-       const isCurrent = currentColor === val;
-       return (
-        <button
-        key={val}
-        type="button"
-        onClick={() => {
-         if (onUpdateContact) {
-         onUpdateContact({
-          ...selectedContact,
-          color: val
-         });
-         }
-        }}
-        className={`py-1.5 px-0.5 rounded-xl border text-[10px] font-bold transition-all flex items-center justify-center cursor-pointer active:scale-95 ${
-         isCurrent ?
-          activeStyle
-         : 'bg-slate-900/40 border-white/5 text-slate-450 hover:text-slate-200'
-        }`}
-        title={label}
-        >
-        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: val === 'indigo' ? '#6366f1' : val === 'emerald' ? '#10b981' : val === 'amber' ? '#f59e0b' : val === 'rose' ? '#f43f5e' : '#8b5cf6' }} />
-        </button>
-       );
-       })}
-      </div>
 
       {/* Agendar Cita Presencial Action Button */}
-      <div className="pt-2 border-t border-white/5 flex flex-col gap-2">
+      <div className="mt-2 border-t border-white/[0.05] pt-2">
        <button
        type="button"
        onClick={() => handleOpenScheduleMeeting(selectedContact)}
-       className="w-full py-2 px-3.5 bg-violet-600/10 hover:bg-violet-600/20 border border-violet-500/30 text-violet-350 hover:text-white font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-[0_0_10px_rgba(139,92,246,0.05)]"
+       className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-violet-400/20 bg-gradient-to-r from-violet-500/[0.10] to-indigo-500/[0.06] px-3 py-1.5 text-[9px] font-bold text-violet-200 transition hover:border-violet-300/30 hover:from-violet-500/[0.16] hover:text-white"
        >
        <Calendar className="w-3.5 h-3.5 text-violet-400" />
        <span>Agendar Cita Presencial</span>
@@ -2837,10 +2841,18 @@ React.useEffect(() => {
     </div>
 
     {/* Stripe Recurring Payments Auto-billing Engine */}
-    <div className="bg-[#030305] p-4 rounded-2xl border border-white/5 space-y-3.5 text-left w-full shadow-[0_4px_24px_rgba(0,0,0,0.2)]">
-    <div className="flex items-center gap-2 border-b border-white/5 pb-2.5">
-     <CreditCard className="w-4 h-4 text-violet-400" />
-     <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-[#7e7e8e]">Stripe del cliente</span>
+    <div className="w-full space-y-3 rounded-[22px] border border-[#635bff]/20 bg-[radial-gradient(circle_at_top_right,rgba(99,91,255,0.10),transparent_38%),linear-gradient(180deg,#070810_0%,#030407_100%)] p-3.5 text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
+    <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
+     <div className="flex items-center gap-2.5">
+      <span className="grid h-8 w-8 place-items-center rounded-xl border border-[#635bff]/25 bg-[#635bff]/10 shadow-[0_0_18px_rgba(99,91,255,0.12)]">
+       <img src="/stripe-mark.png" alt="Stripe" className="h-5 w-5 rounded-md" />
+      </span>
+      <div>
+       <span className="block text-[10px] font-black uppercase tracking-[.16em] text-slate-200">Stripe</span>
+       <span className="block text-[8px] text-slate-500">Cobros, cuotas y enlaces del cliente</span>
+      </div>
+     </div>
+     <span className="rounded-full border border-[#635bff]/20 bg-[#635bff]/10 px-2 py-0.5 text-[7px] font-bold uppercase tracking-[.14em] text-[#a9a4ff]">Conectado</span>
     </div>
 
     {(() => {
@@ -2884,19 +2896,56 @@ React.useEffect(() => {
       || getStripeDashboardUrl(selectedPaymentSummary.checkoutSessionId, selectedPaymentSummary.stripeInvoiceId);
      const hasPaymentInfo = selectedPaymentSummary.totalCount > 0;
      const isSubscribedOrLinked = selectedContact.stripeSubscriptionStatus === 'active' || !!visibleCheckoutUrl || selectedPaymentSummary.paidCount > 0;
+     const isPartiallyPaid = selectedPaymentSummary.paidCount > 0 && selectedPaymentSummary.pendingCount > 0;
+     const installmentTransactions = selectedClientTransactions
+      .map(transaction => {
+       const descriptionMatch = transaction.description.match(/cuota\s*(\d+)\s*de\s*(\d+)/i);
+       return {
+        transaction,
+        index: transaction.stripeInstallmentIndex || Number(descriptionMatch?.[1] || 0),
+        total: transaction.stripeInstallmentCount || Number(descriptionMatch?.[2] || 0),
+       };
+      })
+      .filter(item => item.total > 1)
+      .sort((a, b) => (a.index || 999) - (b.index || 999));
+     const installmentCount = Math.max(
+      Number(latestClientCheckout?.metadata?.installments || 0),
+      ...installmentTransactions.map(item => item.total),
+      0,
+     );
+     const failedStripeRecords = (stripeOverview?.invoices || []).filter((invoice: any) =>
+      invoice.status === 'uncollectible' || invoice.status === 'void'
+     ).length;
+     let failuresLeft = failedStripeRecords;
+     const installmentStates = Array.from({ length: installmentCount }, (_, offset) => {
+      const index = offset + 1;
+      const item = installmentTransactions.find(candidate => candidate.index === index) || installmentTransactions[offset];
+      const transaction = item?.transaction;
+      const hasExplicitFailure = /fallid|rechazad|impagad|failed/i.test(transaction?.description || '');
+      const status = transaction?.status === 'paid'
+       ? 'paid'
+       : hasExplicitFailure || failuresLeft > 0
+        ? 'failed'
+        : 'pending';
+      if (status === 'failed' && !hasExplicitFailure) failuresLeft -= 1;
+      return { index, status, amount: Number(transaction?.amount || 0), date: transaction?.date || '' };
+     });
 
      return (
-     <div className="bg-slate-950/45 p-3 rounded-xl border border-white/5 space-y-2">
+     <div className="space-y-2.5 rounded-2xl border border-white/[0.07] bg-black/20 p-3">
       <div className="flex items-center justify-between gap-2">
       <span className="text-[11px] text-slate-400">Estado:</span>
       <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest border ${
        visibleCheckoutExpired ?
         'bg-amber-500/10 text-amber-400 border-amber-500/25'
+       : isPartiallyPaid ?
+        'bg-cyan-500/10 text-cyan-300 border-cyan-400/20'
        : isSubscribedOrLinked ?
         'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
         : 'bg-slate-855 text-slate-400 border-slate-700'
       }`}>
        {visibleCheckoutExpired ? 'Link caducado'
+       : isPartiallyPaid ? 'Pago parcial'
        : visibleCheckoutPaid ? 'Pagado'
        : selectedContact.stripeSubscriptionStatus === 'active' ? 'Activo'
        : visibleCheckoutUrl
@@ -2909,15 +2958,15 @@ React.useEffect(() => {
 
       {hasPaymentInfo && (
       <div className="grid grid-cols-3 gap-1.5 text-center">
-       <div className="bg-black/20 rounded-lg p-2 border border-white/5">
+       <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] p-2">
        <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Total</span>
        <span className="block text-[11px] font-black text-slate-200">{selectedPaymentSummary.total.toFixed(2)} €</span>
        </div>
-       <div className="bg-black/20 rounded-lg p-2 border border-emerald-500/10">
+       <div className="rounded-xl border border-emerald-400/10 bg-emerald-400/[0.035] p-2">
        <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Pagado</span>
        <span className="block text-[11px] font-black text-emerald-400">{selectedPaymentSummary.paid.toFixed(2)} €</span>
        </div>
-       <div className="bg-black/20 rounded-lg p-2 border border-amber-500/10">
+       <div className="rounded-xl border border-amber-400/10 bg-amber-400/[0.035] p-2">
        <span className="block text-[8px] uppercase tracking-widest text-slate-500 font-mono">Pendiente</span>
        <span className="block text-[11px] font-black text-amber-400">{selectedPaymentSummary.pending.toFixed(2)} €</span>
        </div>
@@ -2937,7 +2986,7 @@ React.useEffect(() => {
       <div className="space-y-1.5 border-t border-white/5 pt-2">
        <span className={`text-[8px] font-mono uppercase tracking-widest font-bold flex items-center gap-1.5 ${visibleCheckoutExpired ? 'text-amber-400' : 'text-emerald-400'}`}>
        {visibleCheckoutExpired ? <Clock3 className="w-3 h-3" /> : <Check className="w-3 h-3" />}
-       {visibleCheckoutExpired ? 'Link de pago caducado' : visibleCheckoutPaid ? 'Pago confirmado por Stripe' : 'Link de pago operativo'}
+       {visibleCheckoutExpired ? 'Link de pago caducado' : isPartiallyPaid ? 'Enlace activo · primera cuota confirmada' : visibleCheckoutPaid ? 'Pago confirmado por Stripe' : 'Link de pago operativo'}
        </span>
        {visibleCheckoutExpired && (
        <p className="text-[9px] text-slate-400 leading-snug">Stripe ha confirmado que no fue pagado. Puedes renovarlo sin crear otro concepto ni otro movimiento.</p>
@@ -2968,11 +3017,6 @@ React.useEffect(() => {
        </a>
        </>
        )}
-       {visibleCheckoutPaid && (
-       <span className="w-full py-1.5 px-2 bg-emerald-500/10 border border-emerald-500/20 text-[10px] rounded-lg text-emerald-300 font-semibold text-center">
-        Pago confirmado por Stripe
-       </span>
-       )}
        {visibleCheckoutExpired && visibleCheckoutTransaction && (
        <button
         type="button"
@@ -2991,34 +3035,67 @@ React.useEffect(() => {
       </div>
       )}
 
-      {stripeDashboardUrl && (
-      <a
-       href={stripeDashboardUrl}
-       target="_blank"
-       rel="noreferrer"
-       className="w-full py-1.5 px-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-[10px] rounded-lg text-indigo-300 font-semibold flex items-center justify-center gap-1 transition-all text-center"
-      >
-       <ExternalLink className="w-3 h-3" />
-       <span>Ver cobro en Stripe</span>
-      </a>
+      {installmentStates.length > 1 && (
+       <div className="rounded-xl border border-white/[0.055] bg-white/[0.018] p-2.5">
+        <div className="mb-2 flex items-center justify-between">
+         <span className="text-[8px] font-bold uppercase tracking-[.16em] text-slate-500">Estado de las cuotas</span>
+         <div className="flex items-center gap-2 text-[7px] text-slate-500">
+          <span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-sm bg-emerald-400" /> Pagada</span>
+          <span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-sm bg-amber-400" /> Pendiente</span>
+          <span className="flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-sm bg-rose-400" /> Fallida</span>
+         </div>
+        </div>
+        <div className={`grid gap-2 ${installmentStates.length === 2 ? 'grid-cols-2' : installmentStates.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
+         {installmentStates.map(installment => {
+          const stateStyle = installment.status === 'paid'
+           ? 'border-emerald-400/30 bg-emerald-400/[0.10] text-emerald-300 shadow-[inset_0_0_18px_rgba(52,211,153,0.05)]'
+           : installment.status === 'failed'
+            ? 'border-rose-400/30 bg-rose-400/[0.10] text-rose-300 shadow-[inset_0_0_18px_rgba(251,113,133,0.05)]'
+            : 'border-amber-400/25 bg-amber-400/[0.08] text-amber-300 shadow-[inset_0_0_18px_rgba(251,191,36,0.04)]';
+          return (
+           <div key={installment.index} className={`flex min-h-14 items-center gap-2 rounded-xl border p-2 ${stateStyle}`} title={installment.date || undefined}>
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-current/20 bg-black/20 text-[10px] font-black">{installment.index}</span>
+            <div className="min-w-0">
+             <span className="block text-[7px] font-black uppercase tracking-wider">{installment.status === 'paid' ? 'Pagada' : installment.status === 'failed' ? 'Fallida' : 'Pendiente'}</span>
+             {installment.amount > 0 && <span className="block truncate font-mono text-[8px] opacity-80">{installment.amount.toFixed(2)} €</span>}
+            </div>
+           </div>
+          );
+         })}
+        </div>
+       </div>
       )}
 
-      <button
-      type="button"
-      onClick={() => {
-       void handleLoadStripeOverview();
-       if (visibleCheckoutTransaction?.stripeCheckoutSessionId) void inspectCheckoutSession(visibleCheckoutTransaction);
-      }}
-      disabled={stripeOverviewLoading}
-      className="w-full py-1.5 px-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 border border-white/5 text-[10px] rounded-lg text-slate-300 font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer"
-      >
-      {stripeOverviewLoading ? (
-       <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />
-      ) : (
-       <CreditCard className="w-3 h-3" />
-      )}
-      <span>{stripeOverviewLoading ? 'Consultando Stripe...' : 'Actualizar info de Stripe'}</span>
-      </button>
+      <div className={`grid gap-1.5 ${stripeDashboardUrl ? 'grid-cols-2' : 'grid-cols-1'}`}>
+       {stripeDashboardUrl && (
+       <a
+        href={stripeDashboardUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-[#635bff]/20 bg-[#635bff]/10 px-2 text-[8.5px] font-bold text-[#b8b4ff] transition hover:bg-[#635bff]/16 hover:text-white"
+       >
+        <img src="/stripe-mark.png" alt="" className="h-3.5 w-3.5 rounded-[3px]" />
+        <span>Ver en Stripe</span>
+       </a>
+       )}
+
+       <button
+       type="button"
+       onClick={() => {
+        void handleLoadStripeOverview();
+        if (visibleCheckoutTransaction?.stripeCheckoutSessionId) void inspectCheckoutSession(visibleCheckoutTransaction);
+       }}
+       disabled={stripeOverviewLoading}
+       className="flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 text-[8.5px] font-bold text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-200 disabled:opacity-60"
+       >
+       {stripeOverviewLoading ? (
+        <span className="h-3 w-3 rounded-full border border-slate-400 border-t-transparent animate-spin" />
+       ) : (
+        <RefreshCw className="h-3 w-3" />
+       )}
+       <span>{stripeOverviewLoading ? 'Consultando…' : 'Sincronizar'}</span>
+       </button>
+      </div>
 
       {stripeOverviewError && (
       <div className="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-[9px] text-rose-400 leading-normal">
@@ -3103,50 +3180,42 @@ React.useEffect(() => {
      );
     })()}
 
-    {selectedContact.stripeSubscriptionStatus === 'active' && (
-     <div className="space-y-3">
-     <div className="bg-slate-950/45 p-3 rounded-xl border border-white/5 space-y-1.5">
-      <div className="flex justify-between text-xs">
-      <span className="text-slate-500 text-[10px]">Cuota mensual:</span>
-      <span className="font-extrabold text-slate-200">{selectedContact.stripeSubscriptionPrice || '0'} €</span>
+    {selectedContact.stripeSubscriptionStatus === 'active' && (() => {
+     const isFinancedStripePlan = selectedClientTransactions.some(transaction =>
+      Number(transaction.stripeInstallmentCount || 0) > 1 || /cuota\s*\d+\s*de\s*\d+/i.test(transaction.description)
+     );
+     return (
+      <div className="flex flex-col gap-2 rounded-xl border border-white/[0.055] bg-white/[0.018] p-2.5 sm:flex-row sm:items-center">
+       <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
+        <div>
+         <span className="block text-[7px] font-bold uppercase tracking-[.14em] text-slate-600">{isFinancedStripePlan ? 'Cuota financiada' : 'Importe recurrente'}</span>
+         <span className="mt-0.5 block text-[11px] font-black text-slate-200">{selectedContact.stripeSubscriptionPrice || '0'} €</span>
+        </div>
+        <div>
+         <span className="block text-[7px] font-bold uppercase tracking-[.14em] text-slate-600">Modalidad</span>
+         <span className="mt-0.5 block text-[9px] font-bold text-slate-300">{isFinancedStripePlan ? 'Financiación limitada' : selectedContact.stripeSubscriptionInterval === 'year' ? 'Suscripción anual' : 'Suscripción mensual'}</span>
+        </div>
+       </div>
+       {selectedContact.stripeCustomerId && (
+        <button
+         type="button"
+         disabled={stripeLoading}
+         onClick={() => handleOpenStripePortal(selectedContact.stripeCustomerId!)}
+         className="flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#635bff]/20 bg-[#635bff]/10 px-3 text-[8.5px] font-bold text-[#b8b4ff] transition hover:bg-[#635bff]/16 hover:text-white disabled:opacity-50"
+        >
+         {stripeLoading ? <span className="h-3 w-3 rounded-full border border-[#b8b4ff] border-t-transparent animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+         <span>Portal Stripe</span>
+        </button>
+       )}
       </div>
-      <div className="flex justify-between text-xs">
-      <span className="text-slate-500 text-[10px]">Intervalo:</span>
-      <span className="font-medium text-slate-300">
-       {selectedContact.stripeSubscriptionInterval === 'year' ? 'Anual' : 'Mensual'}
-      </span>
-      </div>
-      {selectedContact.stripeCustomerId && (
-      <div className="flex justify-between text-[10px] text-slate-500">
-       <span>ID Cliente:</span>
-       <span className="font-mono text-[9px] truncate max-w-[120px]" title={selectedContact.stripeCustomerId}>
-       {selectedContact.stripeCustomerId}
-       </span>
-      </div>
-      )}
-     </div>
-
-     <button
-      type="button"
-      disabled={stripeLoading}
-      onClick={() => handleOpenStripePortal(selectedContact.stripeCustomerId!)}
-      className="w-full py-2 bg-violet-600/10 hover:bg-violet-600/20 border border-violet-500/20 text-violet-300 hover:text-white font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-     >
-      {stripeLoading ? (
-      <span className="w-3.5 h-3.5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-      ) : (
-      <ExternalLink className="w-3.5 h-3.5" />
-      )}
-      <span>Portal de Facturación</span>
-     </button>
-     </div>
-    )}
+     );
+    })()}
 
     <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#080b12] to-[#030407] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)]">
      <div className="mb-3 flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
        <span className="grid h-7 w-7 place-items-center rounded-lg border border-violet-400/20 bg-violet-500/10 text-violet-300">
-        <CreditCard className="h-3.5 w-3.5" />
+        {chargePaymentMethod === 'stripe' ? <img src="/stripe-mark.png" alt="Stripe" className="h-4 w-4 rounded-[4px]" /> : <CreditCard className="h-3.5 w-3.5" />}
        </span>
        <div>
         <h4 className="text-[11px] font-bold text-slate-100">Nuevo cobro</h4>
@@ -3158,24 +3227,50 @@ React.useEffect(() => {
       </span>
      </div>
 
-     <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="Modalidad del cobro">
-      {CLIENT_CHARGE_PLAN_OPTIONS.map(option => (
-       <button
-        key={option.value}
-        type="button"
-        onClick={() => {
-         setChargePlan(option.value);
-         setGeneratedCheckoutUrl('');
-         setStripeError('');
-         setChargeSuccess('');
-        }}
-        className={`min-h-8 rounded-lg border px-1.5 py-1 text-[8.5px] font-bold transition ${chargePlan === option.value
-         ? 'border-violet-400/35 bg-violet-500/15 text-violet-200 shadow-[inset_0_0_12px_rgba(139,92,246,0.06)]'
-         : 'border-white/[0.06] bg-black/20 text-slate-500 hover:border-white/10 hover:text-slate-300'}`}
-       >
-        {option.label}
-       </button>
-      ))}
+     <div className="grid gap-2 sm:grid-cols-[0.8fr_1.45fr_1fr]" role="group" aria-label="Modalidad del cobro">
+      {CLIENT_CHARGE_PLAN_GROUPS.map(group => {
+       const accentClasses = group.accent === 'cyan'
+        ? 'border-cyan-400/10 bg-cyan-400/[0.025]'
+        : group.accent === 'violet'
+         ? 'border-violet-400/10 bg-violet-400/[0.025]'
+         : 'border-white/[0.06] bg-white/[0.018]';
+       return (
+        <div key={group.label} className={`rounded-xl border p-2 ${accentClasses}`}>
+         <div className="mb-1.5">
+          <span className={`block text-[7.5px] font-black uppercase tracking-[.14em] ${group.accent === 'cyan' ? 'text-cyan-300' : group.accent === 'violet' ? 'text-violet-300' : 'text-slate-300'}`}>{group.label}</span>
+          <span className="block text-[6.5px] text-slate-600">{group.description}</span>
+         </div>
+         <div className={`grid gap-1 ${group.options.length === 3 ? 'grid-cols-3' : group.options.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {group.options.map(value => {
+           const option = CLIENT_CHARGE_PLAN_OPTIONS.find(candidate => candidate.value === value)!;
+           const selected = chargePlan === option.value;
+           const selectedClass = group.accent === 'cyan'
+            ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+            : group.accent === 'violet'
+             ? 'border-violet-400/30 bg-violet-400/10 text-violet-200'
+             : 'border-slate-300/20 bg-white/[0.08] text-slate-100';
+           return (
+            <button
+             key={option.value}
+             type="button"
+             onClick={() => {
+              setChargePlan(option.value);
+              setGeneratedCheckoutUrl('');
+              setStripeError('');
+              setChargeSuccess('');
+             }}
+             className={`min-h-7 rounded-lg border px-1 py-1 text-[7.5px] font-bold transition ${selected
+              ? selectedClass
+              : 'border-white/[0.055] bg-black/20 text-slate-500 hover:border-white/10 hover:text-slate-300'}`}
+            >
+             {option.label.replace('meses', 'cuotas')}
+            </button>
+           );
+          })}
+         </div>
+        </div>
+       );
+      })}
      </div>
 
      <div className="mt-2.5 grid grid-cols-3 gap-1.5" role="group" aria-label="Forma de pago">
@@ -3193,6 +3288,7 @@ React.useEffect(() => {
          ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
          : 'border-white/[0.06] bg-black/20 text-slate-500 hover:text-slate-300'}`}
        >
+        {option.value === 'stripe' && <img src="/stripe-mark.png" alt="" className="mr-1 inline h-3 w-3 rounded-[3px] align-middle" />}
         {option.label}
        </button>
       ))}
