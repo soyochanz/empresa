@@ -271,7 +271,25 @@ export default function LandingScreen({ onNavigate, projects, partners = [] }: L
         </div></div></section>
       </main>
 
-      <footer className="relative z-10 mx-auto max-w-[1480px] px-5 py-12 sm:px-8 lg:px-12"><div className="flex flex-col gap-8 border-t border-white/[0.08] pt-8 sm:flex-row sm:items-end sm:justify-between"><div className="flex items-center gap-4"><img src="/althera-logo.png" alt="Althera" className="h-12 w-12 rounded-xl object-cover opacity-90" /><div><p className="text-sm font-semibold uppercase tracking-[0.24em]">Althera</p><p className="mt-1 text-[8px] uppercase tracking-[0.28em] text-white/28">Althera, soluciones digitales · Ibiza</p></div></div><div className="flex flex-wrap gap-x-6 gap-y-3 text-[9px] uppercase tracking-[0.18em] text-white/30"><button onClick={() => onNavigate('portal', 'push')} className="transition hover:text-white">Área privada</button><span>© {new Date().getFullYear()} Althera Solutions</span></div></div></footer>
+      <footer className="relative z-10 mx-auto max-w-[1480px] px-5 py-12 sm:px-8 lg:px-12">
+        <div className="flex flex-col gap-8 border-t border-white/[0.08] pt-8 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-start gap-4">
+            <img src="/althera-logo.png" alt="Althera" className="h-12 w-12 rounded-xl object-cover opacity-90" />
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.24em]">Althera</p>
+              <p className="mt-1 text-[8px] uppercase tracking-[0.28em] text-white/28">Althera, soluciones digitales · Ibiza</p>
+              <div className="mt-4 space-y-1 text-[10px] leading-4 text-white/35">
+                <p className="font-medium text-white/50">Carlos Ronco Meneses</p>
+                <p>C/ Dels Tamarells 1, Bloque 1, Puerta 5 · 07820 Sant Antoni de Portmany</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-3 text-[9px] uppercase tracking-[0.18em] text-white/30">
+            <button onClick={() => onNavigate('portal', 'push')} className="transition hover:text-white">Área privada</button>
+            <span>© {new Date().getFullYear()} Althera Solutions</span>
+          </div>
+        </div>
+      </footer>
 
       <style>{`
         .althera-landing h1,.althera-landing h2,.althera-landing h3{font-family:"Space Grotesk",sans-serif}.althera-noise{background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E")}.althera-grid{background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:56px 56px;mask-image:linear-gradient(to bottom,transparent,black 20%,black 70%,transparent)}.althera-hero-video{filter:contrast(1.55) brightness(.82) saturate(1.08);-webkit-mask-image:radial-gradient(ellipse 70% 72% at 50% 49%,#000 52%,rgba(0,0,0,.95) 64%,transparent 91%);mask-image:radial-gradient(ellipse 70% 72% at 50% 49%,#000 52%,rgba(0,0,0,.95) 64%,transparent 91%)}.althera-marquee{width:max-content;animation:altheraMarquee 28s linear infinite}.althera-input{width:100%;border:1px solid rgba(255,255,255,.09);border-radius:16px;background:rgba(255,255,255,.035);padding:14px 16px;font-size:14px;color:#fff;outline:none;transition:border-color .2s,background .2s,box-shadow .2s}.althera-input::placeholder{color:rgba(255,255,255,.2)}.althera-input:focus{border-color:rgba(214,185,111,.5);background:rgba(255,255,255,.05);box-shadow:0 0 0 4px rgba(214,185,111,.06)}@keyframes altheraMarquee{to{transform:translateX(-50%)}}@media(max-width:1279px){.althera-landing header>div.border-t{display:block!important}}@media(prefers-reduced-motion:reduce){.althera-marquee{animation:none}}
