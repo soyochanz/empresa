@@ -5555,6 +5555,7 @@ React.useEffect(() => {
      <input
      type="number"
      min="1"
+     step="0.01"
      required
      value={convSalePrice}
      onChange={(e) => setConvSalePrice(Number(e.target.value))}
