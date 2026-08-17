@@ -1,4 +1,4 @@
-export type Screen = 'landing' | 'portal' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub' | 'activity_log' | 'marketing' | 'departamentos';
+export type Screen = 'landing' | 'portal' | 'acceso' | 'dashboard' | 'calendar' | 'crm' | 'notes' | 'projects' | 'contactos' | 'finanzas' | 'contratos' | 'citas' | 'comerciales_acceso' | 'comerciales_panel' | 'comerciales_admin' | 'cold_calling' | 'developer_hub' | 'activity_log' | 'marketing' | 'departamentos' | 'bites';
 
 export interface PartnerCompany {
  id: string;

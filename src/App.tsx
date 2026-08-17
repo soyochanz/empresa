@@ -23,6 +23,7 @@ import DeveloperHubScreen from './components/DeveloperHubScreen';
 import ActivityLogScreen from './components/ActivityLogScreen';
 import MarketingScreen from './components/MarketingScreen';
 import DepartmentsScreen from './components/DepartmentsScreen';
+import BitesScreen from './components/BitesScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall } from 'lucide-react';
@@ -152,6 +153,7 @@ function getScreenFromPath(pathString: string, isLoggedIn: boolean, isComercialL
  if (path === '/admin/activity-log') return { screen: 'activity_log' };
  if (path === '/admin/marketing') return { screen: 'marketing' };
  if (path === '/admin/departamentos') return { screen: 'departamentos' };
+ if (path === '/admin/bites') return { screen: 'bites' };
  
  return { screen: 'dashboard' };
  }
@@ -175,6 +177,7 @@ function getPathFromScreen(screen: Screen): string {
  case 'activity_log': return '/admin/activity-log';
  case 'marketing': return '/admin/marketing';
  case 'departamentos': return '/admin/departamentos';
+ case 'bites': return '/admin/bites';
  case 'finanzas': return '/admin/finanzas';
  case 'contactos': return '/admin/contactos';
  case 'citas': return '/admin/citas';
@@ -1792,7 +1795,8 @@ export default function App() {
  developer_hub: { title: 'Organizacion devs', eyebrow: 'Demos y entregas' },
  activity_log: { title: 'Registro de actividad', eyebrow: 'Producto y tecnologia' },
  marketing: { title: 'Marketing', eyebrow: 'Contenido' },
- departamentos: { title: 'Departamentos', eyebrow: 'Equipo y operaciones' }
+ departamentos: { title: 'Departamentos', eyebrow: 'Equipo y operaciones' },
+ bites: { title: 'Bites', eyebrow: 'SaaS · suscripciones y clientes' }
  };
 
  const activeMeta = screenMeta[currentScreen] || { title: 'Althera', eyebrow: 'Admin panel' };
@@ -1816,6 +1820,8 @@ export default function App() {
   );
   case 'departamentos':
   return <DepartmentsScreen onNavigate={navigateTo} />;
+  case 'bites':
+  return <BitesScreen />;
   case 'calendar':
   return (
    <CalendarScreen 

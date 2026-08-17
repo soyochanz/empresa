@@ -53,6 +53,51 @@ function resolveSupabaseKey(): string {
 
 const supabaseAdmin = createClient(resolveSupabaseUrl(), resolveSupabaseKey());
 
+let bitesAdminClient: ReturnType<typeof createClient> | null = null;
+
+function getBitesAdminClient() {
+  if (bitesAdminClient) return bitesAdminClient;
+
+  const url = cleanEnv(process.env.BITES_SUPABASE_URL);
+  const secret = cleanEnv(
+    process.env.BITES_SUPABASE_SECRET_KEY || process.env.BITES_SUPABASE_SERVICE_ROLE_KEY,
+  );
+  if (isPlaceholder(url) || !/^https:\/\//i.test(url) || isPlaceholder(secret) || secret.length < 20) {
+    throw new Error("BITES_CONNECTION_NOT_CONFIGURED");
+  }
+
+  bitesAdminClient = createClient(url, secret, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { headers: { "X-Client-Info": "althera-bites-readonly-dashboard" } },
+  });
+  return bitesAdminClient;
+}
+
+async function listBitesAuthUsers(client: ReturnType<typeof createClient>) {
+  const users: Array<{
+    id: string;
+    email: string | null;
+    createdAt: string;
+    lastSignInAt: string | null;
+    confirmedAt: string | null;
+  }> = [];
+
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await client.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const batch = data.users || [];
+    users.push(...batch.map((user) => ({
+      id: user.id,
+      email: user.email || null,
+      createdAt: user.created_at,
+      lastSignInAt: user.last_sign_in_at || null,
+      confirmedAt: user.email_confirmed_at || user.confirmed_at || null,
+    })));
+    if (batch.length < 1000) break;
+  }
+  return users;
+}
+
 const normalizeAdminEmail = (value?: string | null) => (value || "").trim().toLowerCase();
 const authorizedAdminEmails = new Set([
   "carlosronco14@gmail.com",
@@ -567,6 +612,99 @@ app.get("/api/stripe/config", (req, res) => {
   res.json({
     hasKey: !!process.env.STRIPE_SECRET_KEY,
   });
+});
+
+app.get("/api/bites/overview", requireAdminAuth, async (_req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  try {
+    const bites = getBitesAdminClient();
+    const [authUsers, accountsResult, restaurantsResult, paymentsResult] = await Promise.all([
+      listBitesAuthUsers(bites),
+      bites
+        .from("users")
+        .select("id,username,name,plan,subscriptionStatus,restaurantId,trialEndsAt,accessType,accessEndsAt,stripeCustomerId,stripeSubscriptionId,setupPaidAt,subscriptionStartedAt,subscriptionCurrentPeriodEnd,subscriptionCancelAtPeriodEnd,subscriptionCancelAt,pendingPlan,pendingPlanEffectiveAt,subscriptionUpdatedAt")
+        .order("subscriptionUpdatedAt", { ascending: false, nullsFirst: false })
+        .limit(5000),
+      bites
+        .from("restaurants")
+        .select("id,name,username,country,isOpen,ownerUserId,moderationStatus")
+        .order("name")
+        .limit(5000),
+      bites
+        .from("subscription_payments")
+        .select("id,account_id,status,description,amount_due_cents,amount_paid_cents,currency,period_start,period_end,paid_at,hosted_invoice_url,invoice_pdf_url,created_at")
+        .order("created_at", { ascending: false })
+        .limit(5000),
+    ]);
+
+    const queryError = accountsResult.error || restaurantsResult.error || paymentsResult.error;
+    if (queryError) throw queryError;
+
+    const emailById = new Map(authUsers.map((user) => [user.id, user.email]));
+    const restaurants = restaurantsResult.data || [];
+    const restaurantCountByOwner = new Map<string, number>();
+    restaurants.forEach((restaurant: any) => {
+      const ownerId = String(restaurant.ownerUserId || "");
+      if (ownerId) restaurantCountByOwner.set(ownerId, (restaurantCountByOwner.get(ownerId) || 0) + 1);
+    });
+
+    const accounts = (accountsResult.data || []).map((account: any) => ({
+      ...account,
+      email: emailById.get(account.id) || null,
+      restaurantCount: restaurantCountByOwner.get(account.id) || 0,
+    }));
+
+    const accountNameById = new Map(accounts.map((account: any) => [account.id, account.name || account.email || account.username || "Cuenta Bites"]));
+    const payments = (paymentsResult.data || []).map((payment: any) => ({
+      ...payment,
+      accountName: accountNameById.get(payment.account_id) || "Cuenta Bites",
+      accountEmail: emailById.get(payment.account_id) || null,
+    }));
+
+    const userById = new Map(authUsers.map((user) => [user.id, user]));
+    const registeredUsers = authUsers.map((user) => {
+      const account: any = accounts.find((item: any) => item.id === user.id);
+      return {
+        ...user,
+        name: account?.name || null,
+        username: account?.username || null,
+        plan: account?.plan || null,
+        subscriptionStatus: account?.subscriptionStatus || null,
+        accessType: account?.accessType || null,
+      };
+    });
+    accounts.forEach((account: any) => {
+      if (!userById.has(account.id)) registeredUsers.push({
+        id: account.id,
+        email: account.email,
+        createdAt: account.subscriptionStartedAt || account.setupPaidAt || account.subscriptionUpdatedAt || "",
+        lastSignInAt: null,
+        confirmedAt: null,
+        name: account.name,
+        username: account.username,
+        plan: account.plan,
+        subscriptionStatus: account.subscriptionStatus,
+        accessType: account.accessType,
+      });
+    });
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      accounts,
+      payments,
+      users: registeredUsers,
+      restaurants,
+    });
+  } catch (error: any) {
+    if (error?.message === "BITES_CONNECTION_NOT_CONFIGURED") {
+      return res.status(503).json({
+        error: "La conexión segura de Bites todavía no está configurada en el servidor.",
+        code: "BITES_CONNECTION_NOT_CONFIGURED",
+      });
+    }
+    console.error("Bites overview error:", error?.message || error);
+    return res.status(502).json({ error: "No se pudo consultar Bites de forma segura." });
+  }
 });
 
 app.get("/api/stripe/balance", requireAdminAuth, async (_req, res) => {
