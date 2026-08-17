@@ -76,6 +76,13 @@ const addMonthsKeepingDay = (baseDate: Date, monthsToAdd: number): Date => {
  );
 };
 
+const getMinimumScheduledStripeDate = (): string => {
+ const date = new Date();
+ date.setHours(12, 0, 0, 0);
+ date.setDate(date.getDate() + 3);
+ return toLocalDateKey(date);
+};
+
 type ClientChargePlan = 'once' | 'installments_2' | 'installments_3' | 'installments_4' | 'month' | 'year';
 type ClientChargeMethod = 'cash' | 'transfer' | 'stripe';
 type ServiceBillingStructure = 'upfront' | 'recurring' | 'upfront_recurring';
@@ -439,7 +446,8 @@ export default function CrmScreen({
  const [checkoutSessionState, setCheckoutSessionState] = useState<{[txId: string]: {
   status: 'open' | 'complete' | 'expired' | 'unknown';
   paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' | 'unknown';
- mode?: 'payment' | 'subscription' | 'setup';
+  mode?: 'payment' | 'subscription' | 'setup';
+  firstPaymentDate?: string;
   url?: string;
  expiresAt?: number;
   loading?: boolean;
@@ -480,7 +488,8 @@ export default function CrmScreen({
    paymentStatus: data.paymentStatus || 'unknown',
    mode: data.mode,
    url: data.url || tx.stripeCheckoutUrl,
-   expiresAt: data.expiresAt,
+    expiresAt: data.expiresAt,
+    firstPaymentDate: data.firstPaymentDate || '',
    },
   }));
 
@@ -634,6 +643,8 @@ React.useEffect(() => {
  const [convInstallments, setConvInstallments] = useState(1);
  const [convFinancingExtra, setConvFinancingExtra] = useState(0);
  const [convPaymentMethod, setConvPaymentMethod] = useState<'cash' | 'transfer' | 'stripe'>('transfer');
+ const [convFirstPaymentTiming, setConvFirstPaymentTiming] = useState<'today' | 'scheduled'>('today');
+ const [convFirstPaymentDate, setConvFirstPaymentDate] = useState(getMinimumScheduledStripeDate);
  const [convConcept, setConvConcept] = useState('Servicio de Consultoría Althera');
  const [convSelectedProducts, setConvSelectedProducts] = useState<ServiceProduct[]>([]);
  const [convBillingStructure, setConvBillingStructure] = useState<ServiceBillingStructure>('upfront');
@@ -654,9 +665,11 @@ React.useEffect(() => {
   setConvBillingStructure('upfront');
   setConvRecurringPrice(0);
   setConvRecurringInterval('month');
-  setConvRecurringLimited(false);
-  setConvRecurringCount(12);
- }, [serviceFormContact?.id, Boolean(convertingLead)]);
+   setConvRecurringLimited(false);
+   setConvRecurringCount(12);
+   setConvFirstPaymentTiming('today');
+   setConvFirstPaymentDate(getMinimumScheduledStripeDate());
+  }, [serviceFormContact?.id, Boolean(convertingLead)]);
 
  const eligibleCommissionCommercials = (comercialesList || []).filter(commercial => {
   if (isCarlosExcludedFromSalesCommission(commercial)) return false;
@@ -695,6 +708,15 @@ React.useEffect(() => {
   const now = new Date();
   now.setHours(12, 0, 0, 0);
   const todayKey = toLocalDateKey(now);
+  const isUpfrontPaymentScheduled = hasUpfrontServicePayment
+   && convPaymentMethod === 'stripe'
+   && convFirstPaymentTiming === 'scheduled';
+  if (isUpfrontPaymentScheduled && convFirstPaymentDate < getMinimumScheduledStripeDate()) {
+   throw new Error('Stripe exige que el primer cobro programado sea al menos 48 horas después. Elige una fecha disponible.');
+  }
+  const firstUpfrontPaymentDate = isUpfrontPaymentScheduled
+   ? new Date(`${convFirstPaymentDate}T12:00:00`)
+   : now;
   const safeClientEmail = contact.email?.trim() || `${contact.id}@clientes.althera.local`;
   const commercial = options.commercial;
   const commercialEmail = commercial?.email || '';
@@ -709,7 +731,7 @@ React.useEffect(() => {
 
    for (let index = 1; index <= installmentCount; index += 1) {
     const transactionId = `tx_service_${Math.random().toString(36).slice(2, 9)}_${index}`;
-    const installmentDate = addMonthsKeepingDay(now, index - 1);
+    const installmentDate = addMonthsKeepingDay(firstUpfrontPaymentDate, index - 1);
     invoiceItems.push({
      id: `item_service_${Date.now()}_${index}`,
      description: `${convConcept} - ${installmentCount > 1 ? `Plazo ${index} de ${installmentCount}` : 'Pago inicial'}`,
@@ -750,7 +772,7 @@ React.useEffect(() => {
     clientName: contact.name,
     clientEmail: safeClientEmail,
     date: todayKey,
-    dueDate: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+     dueDate: toLocalDateKey(firstUpfrontPaymentDate),
     status: 'sent',
     items: invoiceItems,
     subtotal,
@@ -778,6 +800,7 @@ React.useEffect(() => {
       pendingTxId: createdTransactions[0]?.id || '',
       stripePlanId,
       installmentIndex: '1',
+      firstPaymentDate: isUpfrontPaymentScheduled ? convFirstPaymentDate : '',
      }),
     });
     const data = await readStripeJson(response);
@@ -3258,12 +3281,15 @@ React.useEffect(() => {
      const visibleCheckoutExpired = !generatedCheckoutUrl
       && (latestClientCheckout?.status === 'expired' || visibleCheckoutState?.status === 'expired')
       && latestClientCheckout?.paymentStatus !== 'paid'
-      && visibleCheckoutState?.paymentStatus !== 'paid';
-     const visibleCheckoutPaid = latestClientCheckout?.paymentStatus === 'paid'
-      || latestClientCheckout?.paymentStatus === 'no_payment_required'
-      || visibleCheckoutState?.paymentStatus === 'paid'
-      || visibleCheckoutState?.paymentStatus === 'no_payment_required'
-      || visibleCheckoutTransaction?.status === 'paid';
+       && visibleCheckoutState?.paymentStatus !== 'paid';
+      const visibleCheckoutScheduled = Boolean(
+       latestClientCheckout?.metadata?.firstPaymentDate || visibleCheckoutState?.firstPaymentDate
+      );
+      const visibleCheckoutPaid = latestClientCheckout?.paymentStatus === 'paid'
+       || (latestClientCheckout?.paymentStatus === 'no_payment_required' && !visibleCheckoutScheduled)
+       || visibleCheckoutState?.paymentStatus === 'paid'
+       || (visibleCheckoutState?.paymentStatus === 'no_payment_required' && !visibleCheckoutScheduled)
+       || visibleCheckoutTransaction?.status === 'paid';
      const stripeDashboardUrl = latestClientCheckout?.dashboardUrl
       || getStripeDashboardUrl(selectedPaymentSummary.checkoutSessionId, selectedPaymentSummary.stripeInvoiceId);
      const hasPaymentInfo = selectedPaymentSummary.totalCount > 0;
@@ -5450,7 +5476,7 @@ React.useEffect(() => {
 
   {/* LEAD TO CLIENT CONVERSION MODAL */}
   {serviceFormContact && createPortal(
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
+  <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
    <div className="w-full max-w-lg bg-[#0a0a14] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 max-h-[90vh] flex flex-col">
    {/* Header banner cover */}
    <div className="bg-gradient-to-tr from-emerald-600/20 via-emerald-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
@@ -5673,12 +5699,53 @@ React.useEffect(() => {
     )}
     </div>
 
+    {convPaymentMethod === 'stripe' && hasUpfrontServicePayment && (
+     <div className="space-y-2 rounded-2xl border border-violet-400/15 bg-violet-400/[0.035] p-3">
+      <label className="text-[9px] font-black uppercase tracking-[.14em] text-violet-300">Primer cobro</label>
+      <div className="grid grid-cols-2 gap-2">
+       <button
+        type="button"
+        onClick={() => setConvFirstPaymentTiming('today')}
+        className={`rounded-xl border px-3 py-2.5 text-left transition ${convFirstPaymentTiming === 'today' ? 'border-violet-400/40 bg-violet-500/15 text-violet-100' : 'border-white/[0.07] bg-black/20 text-slate-500'}`}
+       >
+        <span className="block text-[9px] font-black">Cobrar hoy</span>
+        <span className="mt-0.5 block text-[7px] opacity-70">El cargo se realiza al completar Stripe</span>
+       </button>
+       <button
+        type="button"
+        onClick={() => {
+         setConvFirstPaymentTiming('scheduled');
+         if (convFirstPaymentDate < getMinimumScheduledStripeDate()) setConvFirstPaymentDate(getMinimumScheduledStripeDate());
+        }}
+        className={`rounded-xl border px-3 py-2.5 text-left transition ${convFirstPaymentTiming === 'scheduled' ? 'border-violet-400/40 bg-violet-500/15 text-violet-100' : 'border-white/[0.07] bg-black/20 text-slate-500'}`}
+       >
+        <span className="block text-[9px] font-black">Programar fecha</span>
+        <span className="mt-0.5 block text-[7px] opacity-70">Guarda la tarjeta hoy y cobra después</span>
+       </button>
+      </div>
+      {convFirstPaymentTiming === 'scheduled' && (
+       <div className="space-y-1.5">
+        <input
+         type="date"
+         min={getMinimumScheduledStripeDate()}
+         required
+         value={convFirstPaymentDate}
+         onChange={event => setConvFirstPaymentDate(event.target.value)}
+         className="w-full rounded-xl border border-violet-400/20 bg-[#030305] px-3 py-2.5 text-xs text-slate-200 outline-none focus:border-violet-400"
+        />
+        <p className="text-[8px] leading-3 text-slate-500">El cliente completa Stripe hoy sin cargo. El primer cobro se intentará en la fecha elegida y, si hay plazos, los siguientes serán mensuales desde ese día.</p>
+       </div>
+      )}
+     </div>
+    )}
+
     {hasUpfrontServicePayment && convInstallments > 1 && (
     <div className="bg-amber-500/5 p-3 rounded-xl border border-amber-500/10 text-[10px] text-amber-300 font-mono space-y-0.5">
      <span className="block font-bold">DISTRIBUCIÓN EN PLAZOS:</span>
      <span> Importe base: {Number(convSalePrice || 0).toFixed(2)} EUR</span>
      {convFinancingExtra > 0 && <span className="block"> Extra por financiación: {convFinancingExtra.toFixed(2)} EUR</span>}
      <span className="block"> Cuota mensual: {(convFinancedTotal / convInstallments).toFixed(2)} EUR</span>
+     {convPaymentMethod === 'stripe' && convFirstPaymentTiming === 'scheduled' && <span className="block"> Primer cobro: {new Date(`${convFirstPaymentDate}T12:00:00`).toLocaleDateString('es-ES')}</span>}
      <span className="block"> Total: {convInstallments} cuotas hasta completar {convFinancedTotal.toFixed(2)} EUR.</span>
     </div>
     )}

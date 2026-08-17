@@ -415,8 +415,9 @@ export default function App() {
  show: boolean;
  clientName: string;
  amount: string;
- interval: string;
- status: 'success' | 'cancel' | 'error';
+  interval: string;
+  firstPaymentDate?: string;
+  status: 'success' | 'cancel' | 'error';
  error?: string;
  } | null>(null);
 
@@ -456,8 +457,10 @@ export default function App() {
   try {
    // Retrieve Stripe details from backend to get customerId and subscriptionId
    let customerId = 'cus_mock_123';
-   let subscriptionId = 'sub_mock_123';
-   let paymentConfirmed = sessionId.startsWith('cs_test_mock_');
+    let subscriptionId = 'sub_mock_123';
+    let paymentConfirmed = sessionId.startsWith('cs_test_mock_');
+    let scheduledFirstPaymentDate = '';
+    let scheduledSetupConfirmed = false;
    
    if (sessionId && sessionId.startsWith('cs_test_mock_')) {
    // Simulated mock payment session
@@ -466,36 +469,54 @@ export default function App() {
    const res = await fetch(`/api/stripe/retrieve-session?sessionId=${sessionId}`);
    const sessionData = await res.json();
    if (!res.ok) throw new Error(sessionData.error || 'No se pudo verificar el pago con Stripe.');
-   customerId = sessionData.customerId;
-   subscriptionId = sessionData.subscriptionId;
-   paymentConfirmed = sessionData.paymentStatus === 'paid' || sessionData.paymentStatus === 'no_payment_required';
-   }
-   if (!paymentConfirmed) throw new Error('Stripe todavía no ha confirmado este pago.');
+    customerId = sessionData.customerId;
+    subscriptionId = sessionData.subscriptionId;
+    scheduledFirstPaymentDate = sessionData.firstPaymentDate || '';
+    paymentConfirmed = sessionData.paymentStatus === 'paid';
+    scheduledSetupConfirmed = sessionData.paymentStatus === 'no_payment_required' && Boolean(scheduledFirstPaymentDate);
+    }
+    if (!paymentConfirmed && !scheduledSetupConfirmed) throw new Error('Stripe todavía no ha confirmado este pago.');
 
    setStripeSuccessData({
     show: true,
     clientName,
-    amount,
-    interval,
-    status: 'success'
+     amount,
+     interval,
+     firstPaymentDate: scheduledFirstPaymentDate || undefined,
+     status: 'success'
    });
 
-   const isSubscription = interval !== 'once';
+    const isSubscription = interval !== 'once';
+    const hasStripeSubscription = isSubscription || Boolean(scheduledFirstPaymentDate);
 
    if (client) {
    const updatedClient: ClientContact = {
-    ...client,
-    stripeCustomerId: customerId || client.stripeCustomerId,
-    stripeSubscriptionId: isSubscription ? subscriptionId : client.stripeSubscriptionId,
-    stripeSubscriptionStatus: isSubscription ? 'active' : (client.stripeSubscriptionStatus || 'none'),
-    stripeSubscriptionPrice: isSubscription ? amount : client.stripeSubscriptionPrice,
-    stripeSubscriptionInterval: isSubscription ? interval : client.stripeSubscriptionInterval,
+     ...client,
+     stripeCustomerId: customerId || client.stripeCustomerId,
+     stripeSubscriptionId: hasStripeSubscription ? subscriptionId : client.stripeSubscriptionId,
+     stripeSubscriptionStatus: hasStripeSubscription ? 'active' : (client.stripeSubscriptionStatus || 'none'),
+     stripeSubscriptionPrice: hasStripeSubscription ? amount : client.stripeSubscriptionPrice,
+     stripeSubscriptionInterval: hasStripeSubscription ? (interval === 'once' ? 'month' : interval) : client.stripeSubscriptionInterval,
    };
 
    // Update client in database
-   await db.updateContact(updatedClient);
+    await db.updateContact(updatedClient);
    // Refresh local contacts list
-   setContacts(prev => prev.map(c => c.id === clientId ? updatedClient : c));
+    setContacts(prev => prev.map(c => c.id === clientId ? updatedClient : c));
+
+    if (scheduledFirstPaymentDate) {
+     const scheduledActivity: Activity = {
+      id: `act_stripe_scheduled_${Date.now()}`,
+      type: 'CRM',
+      timestamp: 'Hace un momento',
+      title: `Cobro programado - ${client.name}`,
+      subtitle: `Tarjeta guardada; primer cobro de ${amount} € previsto para el ${new Date(`${scheduledFirstPaymentDate}T12:00:00`).toLocaleDateString('es-ES')}`,
+      accentColor: 'secondary'
+     };
+     await db.insertActivity(scheduledActivity);
+     setActivities(prev => [scheduledActivity, ...prev]);
+     return;
+    }
 
    const allTxsBeforePayment = await db.getFinanceTransactions();
    const todayStr = new Date().toISOString().split('T')[0];
@@ -2387,10 +2408,12 @@ export default function App() {
      <Check className="w-8 h-8" />
     </div>
     <h3 className="text-xl font-bold text-slate-100 font-sans tracking-tight">
-     {stripeSuccessData.interval === 'once' ? '¡Pago Recibido con ÉÉxito!' : '¡Mensualidad Configurada!'}
+      {stripeSuccessData.firstPaymentDate ? '¡Cobro programado!' : stripeSuccessData.interval === 'once' ? '¡Pago recibido con éxito!' : '¡Mensualidad configurada!'}
     </h3>
     <p className="text-xs text-slate-400 font-sans leading-relaxed">
-     {stripeSuccessData.interval === 'once' ? (
+      {stripeSuccessData.firstPaymentDate ? (
+      <>La tarjeta de <strong className="text-slate-200">{stripeSuccessData.clientName}</strong> ha quedado registrada. No se ha realizado ningún cargo hoy.</>
+      ) : stripeSuccessData.interval === 'once' ? (
      <>Se ha registrado y cobrado correctamente el pago único por Stripe para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong>.</>
      ) : (
      <>Se ha activado correctamente el cobro automático por Stripe para <strong className="text-slate-200">{stripeSuccessData.clientName}</strong>. El cliente recibirá su cobro de manera recurrente.</>
@@ -2400,7 +2423,13 @@ export default function App() {
      <div className="flex justify-between text-xs">
      <span className="text-slate-500 font-mono uppercase text-[9px] tracking-wider">Importe:</span>
      <span className="font-extrabold text-emerald-400">{stripeSuccessData.amount} €</span>
-     </div>
+      </div>
+      {stripeSuccessData.firstPaymentDate && (
+       <div className="flex justify-between text-xs">
+        <span className="text-slate-500 font-mono uppercase text-[9px] tracking-wider">Primer cobro:</span>
+        <span className="font-bold text-violet-300">{new Date(`${stripeSuccessData.firstPaymentDate}T12:00:00`).toLocaleDateString('es-ES')}</span>
+       </div>
+      )}
      <div className="flex justify-between text-xs">
      <span className="text-slate-500 font-mono uppercase text-[9px] tracking-wider">Frecuencia:</span>
      <span className="font-bold text-slate-300">
@@ -2413,7 +2442,7 @@ export default function App() {
      </div>
     </div>
     <p className="text-[10px] text-slate-500 italic">
-     Las transacciones correspondientes se registrarán automáticamente en el historial de finanzas.
+      {stripeSuccessData.firstPaymentDate ? 'La transacción se marcará como pagada únicamente cuando Stripe confirme el cargo en la fecha programada.' : 'Las transacciones correspondientes se registrarán automáticamente en el historial de finanzas.'}
     </p>
     <button
      onClick={() => setStripeSuccessData(null)}

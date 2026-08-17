@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import { createHmac } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 
 import fs from "fs";
 
@@ -292,7 +292,7 @@ async function ensureFiniteSubscriptionSchedule(
   const requestedCount = Number.parseInt(String(
     billingType === "subscription" ? options.recurrenceCount || "" : options.installments || "",
   ), 10);
-  const minimumCount = billingType === "subscription" ? 1 : 2;
+  const minimumCount = 1;
   if (!Number.isFinite(requestedCount) || requestedCount < minimumCount) {
     return { updated: false, reason: "not_finite_subscription" };
   }
@@ -308,7 +308,7 @@ async function ensureFiniteSubscriptionSchedule(
   const effectiveCount = Number.isFinite(existingCount) && existingCount >= minimumCount ? existingCount : requestedCount;
   const recurringInterval = options.interval || subscription.metadata?.interval || subscription.items.data[0]?.price.recurring?.interval || "month";
 
-  const startAt = (subscription.start_date || Math.floor(Date.now() / 1000)) * 1000;
+  const startAt = (subscription.trial_end || subscription.start_date || Math.floor(Date.now() / 1000)) * 1000;
   const cancelAt = Math.floor(addStripeBillingIntervalsKeepingDay(startAt, effectiveCount, recurringInterval) / 1000);
 
   if (subscription.cancel_at && subscription.cancel_at <= cancelAt) {
@@ -343,6 +343,9 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
 
   if (!invoiceId) return { updated: false, reason: "missing_invoice_id" };
   if (!subscriptionId) return { updated: false, reason: "not_subscription_invoice" };
+  if (Number(invoice.amount_paid || invoice.amount_due || 0) <= 0) {
+    return { updated: false, reason: "invoice_has_no_charge" };
+  }
 
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   const invoiceMetadata = (invoice as any).subscription_details?.metadata || {};
@@ -508,7 +511,7 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
 }
 
 async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session): Promise<{ updated: boolean; reason?: string; txId?: string }> {
-  const isPaid = session.payment_status === "paid" || session.payment_status === "no_payment_required";
+  const isPaid = session.payment_status === "paid";
   if (!isPaid) return { updated: false, reason: "payment_not_confirmed" };
 
   const pendingTxId = session.metadata?.pendingTxId || "";
@@ -628,6 +631,41 @@ app.use(express.json());
 // API Routes
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Stripe CRM API is active!" });
+});
+
+// Public, compact payment link. The opaque transaction id resolves to the
+// Stripe Checkout Session stored in the existing finance transaction record.
+app.get("/p/:shortCode", async (req, res) => {
+  try {
+    const shortCode = String(req.params.shortCode || "").trim();
+    if (!/^[a-zA-Z0-9_-]{10,32}$/.test(shortCode)) {
+      return res.status(400).send("Enlace de pago no válido.");
+    }
+
+    const { data: transaction, error } = await supabaseAdmin
+      .from("finance_transactions")
+      .select("description")
+      .ilike("description", `%${shortCode}]%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!transaction) return res.status(404).send("Este enlace de pago no existe.");
+
+    const checkoutSessionId = readTag(transaction.description || "", "STRIPESESSION");
+    if (!checkoutSessionId) return res.status(404).send("El enlace de Stripe todavía no está disponible.");
+
+    const session = await getStripe().checkout.sessions.retrieve(checkoutSessionId);
+    if (!session.url || session.status === "expired") {
+      return res.status(410).send("Este enlace de pago ha caducado.");
+    }
+
+    res.setHeader("Cache-Control", "no-store");
+    return res.redirect(302, session.url);
+  } catch (error: any) {
+    console.error("Error resolving compact Stripe payment link:", error);
+    return res.status(500).send("No se pudo abrir el enlace de pago.");
+  }
 });
 
 // Check if Stripe is configured
@@ -797,6 +835,7 @@ app.get("/api/stripe/client-checkout-session", requireAdminAuth, async (req, res
           stripePlanId: latestSession.metadata?.stripePlanId || "",
           installmentIndex: latestSession.metadata?.installmentIndex || "",
           installments: latestSession.metadata?.installments || "",
+          firstPaymentDate: latestSession.metadata?.firstPaymentDate || "",
         },
       },
     });
@@ -993,7 +1032,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
 // Create subscription or single payment checkout session
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
-    const { clientId, clientName, clientEmail, amount, interval, installments, recurrenceCount, billingType, concept, pendingTxId, stripePlanId, installmentIndex, previousSessionId } = req.body;
+    const { clientId, clientName, clientEmail, amount, interval, installments, recurrenceCount, billingType, concept, pendingTxId, stripePlanId, installmentIndex, previousSessionId, firstPaymentDate } = req.body;
 
     if (!clientId || !clientEmail || !amount) {
       return res.status(400).json({ error: "clientId, clientEmail, and amount are required" });
@@ -1019,6 +1058,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     let effectivePendingTxId = pendingTxId || "";
     let effectiveStripePlanId = stripePlanId || "";
     let effectiveInstallmentIndex = installmentIndex || "";
+    let effectiveFirstPaymentDate = typeof firstPaymentDate === "string" ? firstPaymentDate.trim() : "";
 
     if (previousSessionId) {
       const previousSession = await stripe.checkout.sessions.retrieve(previousSessionId);
@@ -1045,19 +1085,35 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       effectivePendingTxId = previousPendingTxId || effectivePendingTxId;
       effectiveStripePlanId = previousStripePlanId || effectiveStripePlanId;
       effectiveInstallmentIndex = previousSession.metadata?.installmentIndex || effectiveInstallmentIndex;
+      effectiveFirstPaymentDate = previousSession.metadata?.firstPaymentDate || effectiveFirstPaymentDate;
+    }
+    let scheduledFirstPaymentAt: number | undefined;
+    if (effectiveFirstPaymentDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFirstPaymentDate)) {
+        return res.status(400).json({ error: "La fecha del primer cobro no es válida." });
+      }
+      scheduledFirstPaymentAt = Math.floor(Date.parse(`${effectiveFirstPaymentDate}T12:00:00Z`) / 1000);
+      if (!Number.isFinite(scheduledFirstPaymentAt) || scheduledFirstPaymentAt < Math.floor(Date.now() / 1000) + (48 * 60 * 60)) {
+        return res.status(400).json({ error: "Stripe exige programar el primer cobro con al menos 48 horas de antelación." });
+      }
+      effectiveBillingType = billingType || "installment";
     }
     const appUrl = getAppUrl(req);
-    const isSubscription = effectiveInterval !== "once";
+    const isSubscription = effectiveInterval !== "once" || Boolean(scheduledFirstPaymentAt);
 
     const lineItem: any = {
       price_data: {
         currency: "eur",
         product_data: {
-          name: effectiveConcept || (isSubscription
-            ? `Mensualidad Automática - ${clientName || "Cliente"}` 
+          name: effectiveConcept || (effectiveFirstPaymentDate
+            ? `Pago Programado - ${clientName || "Cliente"}`
+            : isSubscription
+            ? `Mensualidad Automática - ${clientName || "Cliente"}`
             : `Pago Único - ${clientName || "Cliente"}`),
-          description: isSubscription 
-            ? `Suscripción recurrente de pago para el cliente ${clientName || clientEmail}` 
+          description: effectiveFirstPaymentDate
+            ? `Primer cobro programado para el ${effectiveFirstPaymentDate}`
+            : isSubscription
+            ? `Suscripción recurrente de pago para el cliente ${clientName || clientEmail}`
             : `Pago único de servicio para el cliente ${clientName || clientEmail}`,
         },
         unit_amount: Math.round(effectiveAmountNumber * 100), // convert to cents
@@ -1090,6 +1146,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         pendingTxId: effectivePendingTxId,
         stripePlanId: effectiveStripePlanId,
         installmentIndex: effectiveInstallmentIndex,
+        firstPaymentDate: effectiveFirstPaymentDate,
       },
     };
 
@@ -1103,15 +1160,21 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
           recurrenceCount: effectiveRecurrenceCount,
           billingType: effectiveBillingType,
           interval: effectiveInterval,
+          firstPaymentDate: effectiveFirstPaymentDate,
         },
+        ...(scheduledFirstPaymentAt ? { trial_end: scheduledFirstPaymentAt } : {}),
       };
     }
 
     // Create a checkout session
     const session = await stripe.checkout.sessions.create(sessionConfig);
+    const compactCode = randomBytes(9).toString("base64url");
+    const compactUrl = effectivePendingTxId
+      ? `${appUrl}/p/${compactCode}`
+      : session.url;
 
     res.json({
-      url: session.url,
+      url: compactUrl,
       sessionId: session.id,
       mode: session.mode,
       status: session.status,
@@ -1444,6 +1507,7 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
       url: session.url,
       transactionUpdated: paymentResult.updated,
       transactionId: paymentResult.txId,
+      firstPaymentDate: session.metadata?.firstPaymentDate || "",
     });
   } catch (error: any) {
     console.error("Error retrieving checkout session:", error);
