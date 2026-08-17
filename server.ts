@@ -4,9 +4,11 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import { createHmac } from "crypto";
 
 import fs from "fs";
 
+dotenv.config({ path: ".env.local" });
 dotenv.config();
 
 const app = express();
@@ -54,6 +56,24 @@ function resolveSupabaseKey(): string {
 const supabaseAdmin = createClient(resolveSupabaseUrl(), resolveSupabaseKey());
 
 let bitesAdminClient: ReturnType<typeof createClient> | null = null;
+const BITES_PROJECT_URL = "https://ziwumcqfykbshcvycnnb.supabase.co";
+const BITES_PUBLISHABLE_KEY = "sb_publishable__zbCiwuAZY4tgqRpHjuCEg_UFU_6-WF";
+
+function getBitesIntegrationConfig() {
+  const url = cleanEnv(process.env.BITES_SUPABASE_URL) || BITES_PROJECT_URL;
+  const publishableKey = cleanEnv(process.env.BITES_SUPABASE_PUBLISHABLE_KEY) || BITES_PUBLISHABLE_KEY;
+  const explicitToken = cleanEnv(process.env.BITES_ALTHERA_INTEGRATION_TOKEN);
+  const derivationSecret = cleanEnv(
+    process.env.BITES_INTEGRATION_DERIVATION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+  const token = explicitToken || (derivationSecret
+    ? createHmac("sha256", derivationSecret).update("althera:bites:overview:v1").digest("base64url")
+    : "");
+  if (isPlaceholder(url) || !/^https:\/\//i.test(url) || isPlaceholder(publishableKey) || isPlaceholder(token)) {
+    return null;
+  }
+  return { url: url.replace(/\/$/, ""), publishableKey, token };
+}
 
 function getBitesAdminClient() {
   if (bitesAdminClient) return bitesAdminClient;
@@ -617,6 +637,21 @@ app.get("/api/stripe/config", (req, res) => {
 app.get("/api/bites/overview", requireAdminAuth, async (_req, res) => {
   res.setHeader("Cache-Control", "private, no-store");
   try {
+    const integration = getBitesIntegrationConfig();
+    if (integration) {
+      const response = await fetch(`${integration.url}/functions/v1/althera-overview`, {
+        method: "GET",
+        headers: {
+          apikey: integration.publishableKey,
+          "x-althera-bites-token": integration.token,
+        },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(`BITES_EDGE_${response.status}`);
+      return res.json(payload);
+    }
+
     const bites = getBitesAdminClient();
     const [authUsers, accountsResult, restaurantsResult, paymentsResult] = await Promise.all([
       listBitesAuthUsers(bites),

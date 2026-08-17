@@ -1,0 +1,81 @@
+.bites-screen {
+  color-scheme: dark;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(214, 185, 111, 0.07), transparent 28%),
+    radial-gradient(circle at 90% 12%, rgba(99, 213, 242, 0.045), transparent 30%),
+    #050608 !important;
+}
+
+.bites-screen [class*="bg-white"],
+.bites-screen [class*="bg-[#f"] {
+  background-color: rgba(12, 14, 19, 0.88) !important;
+}
+
+.bites-screen [class*="border-black"] {
+  border-color: rgba(255, 255, 255, 0.075) !important;
+}
+
+.bites-screen [class*="text-[#11180f]"],
+.bites-screen [class*="text-black"] {
+  color: #f8fafc !important;
+}
+
+.bites-screen [class*="bg-[#eef1e9]"],
+.bites-screen [class*="bg-[#f5f7f1]"],
+.bites-screen [class*="bg-[#f8f9f6]"],
+.bites-screen [class*="bg-[#f6f7f3]"] {
+  background-color: rgba(255, 255, 255, 0.035) !important;
+}
+
+.bites-screen input {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.035) !important;
+  border-color: rgba(255, 255, 255, 0.09) !important;
+}
+
+.bites-screen input:focus {
+  border-color: rgba(214, 185, 111, 0.42) !important;
+  box-shadow: 0 0 0 3px rgba(214, 185, 111, 0.06);
+}
+
+.bites-screen article {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.16);
+}
+
+.bites-screen table thead tr,
+.bites-screen table tbody tr {
+  border-color: rgba(255, 255, 255, 0.065) !important;
+}
+
+.bites-screen table tbody tr:hover {
+  background: rgba(214, 185, 111, 0.035) !important;
+}
+
+.bites-screen .bg-lime-100,
+.bites-screen .bg-emerald-100,
+.bites-screen .bg-sky-100,
+.bites-screen .bg-amber-100,
+.bites-screen [class*="bg-[#e9f2dd]"],
+.bites-screen [class*="bg-[#182116]"] {
+  background-color: rgba(214, 185, 111, 0.09) !important;
+}
+
+.bites-screen .text-lime-700,
+.bites-screen .text-emerald-700,
+.bites-screen .text-sky-700,
+.bites-screen .text-amber-700,
+.bites-screen [class*="text-[#679627]"],
+.bites-screen [class*="text-[#5d8825]"],
+.bites-screen [class*="text-[#79ad32]"] {
+  color: #e5cb8b !important;
+}
+
+.bites-screen ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.bites-screen ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}

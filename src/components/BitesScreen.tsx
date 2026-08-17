@@ -16,6 +16,7 @@ import {
  WalletCards,
 } from 'lucide-react';
 import { authenticatedFetch } from '../utils/authenticatedFetch';
+import './BitesScreen.css';
 
 type BitesAccount = {
  id: string;
@@ -184,20 +185,20 @@ export default function BitesScreen() {
  const users = (data?.users || []).filter((user) => !normalizedQuery || [user.name, user.email, user.username, user.plan]
   .some((value) => String(value || '').toLocaleLowerCase('es-ES').includes(normalizedQuery)));
 
- return <div className="relative h-full overflow-y-auto bg-[#f4f6f1] text-[#11180f]">
-  <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_85%_10%,rgba(138,195,57,.16),transparent_34%),linear-gradient(180deg,#fbfcf8_0%,transparent_100%)]" />
+ return <div className="bites-screen relative h-full overflow-y-auto bg-[#050608] text-slate-100">
+  <div className="pointer-events-none absolute inset-x-0 top-0 h-96 bg-[radial-gradient(circle_at_88%_4%,rgba(214,185,111,.12),transparent_32%),radial-gradient(circle_at_8%_10%,rgba(99,213,242,.055),transparent_28%),linear-gradient(180deg,#090b10_0%,transparent_100%)]" />
   <div className="relative mx-auto max-w-[1600px] px-4 py-5 sm:px-7 sm:py-7 xl:px-10">
    <section className="overflow-hidden rounded-[30px] border border-black/[.07] bg-[#10160e] text-white shadow-[0_22px_80px_rgba(29,44,22,.16)]">
     <div className="relative flex flex-col gap-7 overflow-hidden px-6 py-7 sm:px-9 lg:flex-row lg:items-end lg:justify-between lg:px-10 lg:py-9">
-     <div className="pointer-events-none absolute -right-20 -top-28 h-80 w-80 rounded-full bg-[#8bc53f]/25 blur-[90px]" />
+     <div className="pointer-events-none absolute -right-20 -top-28 h-80 w-80 rounded-full bg-[#d6b96f]/20 blur-[90px]" />
      <div className="pointer-events-none absolute inset-0 opacity-[.12] [background-image:linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:34px_34px]" />
      <div className="relative flex items-center gap-5">
-      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-white p-2 shadow-[0_14px_40px_rgba(0,0,0,.3)] sm:h-24 sm:w-24"><img src="/bites-logo.png" alt="Bites" className="h-full w-full object-contain" /></div>
-      <div><div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.2em] text-[#a9d76c]"><Sparkles className="h-3.5 w-3.5" />Inteligencia de negocio</div><h2 className="text-3xl font-black tracking-[-.05em] sm:text-4xl">Bites control.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-white/55">Suscripciones, cobros y clientes de la plataforma en una única vista operativa.</p></div>
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/[.09] bg-white/[.035] p-2 shadow-[0_14px_40px_rgba(0,0,0,.3)] sm:h-24 sm:w-24"><img src="/bites-logo.png" alt="Bites" className="h-full w-full object-contain brightness-0 invert" /></div>
+      <div><div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.2em] text-[#d6b96f]"><Sparkles className="h-3.5 w-3.5" />Inteligencia de negocio</div><h2 className="text-3xl font-black tracking-[-.05em] sm:text-4xl">Bites control<span className="text-[#d6b96f]">.</span></h2><p className="mt-2 max-w-xl text-sm leading-6 text-white/55">Suscripciones, cobros y clientes de la plataforma en una única vista operativa.</p></div>
      </div>
      <div className="relative flex flex-wrap items-center gap-3">
-      <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[.055] px-4 py-3 text-xs text-white/65"><ShieldCheck className="h-4 w-4 text-[#a9d76c]" /><span><b className="block text-[10px] uppercase tracking-wider text-white">Conexión aislada</b>Servidor · solo lectura</span></div>
-      <button onClick={() => void load()} disabled={loading} className="inline-flex h-12 items-center gap-2 rounded-2xl bg-[#8bc53f] px-4 text-xs font-black text-[#10160e] transition hover:bg-[#a4d45d] disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
+      <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[.055] px-4 py-3 text-xs text-white/65"><ShieldCheck className="h-4 w-4 text-[#d6b96f]" /><span><b className="block text-[10px] uppercase tracking-wider text-white">Conexión aislada</b>Servidor · solo lectura</span></div>
+      <button onClick={() => void load()} disabled={loading} className="inline-flex h-12 items-center gap-2 rounded-2xl border border-[#d6b96f]/25 bg-[#d6b96f]/10 px-4 text-xs font-black text-[#ead49c] transition hover:bg-[#d6b96f]/15 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Actualizar</button>
      </div>
     </div>
    </section>
@@ -205,7 +206,7 @@ export default function BitesScreen() {
    <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-black/[.07] bg-white/85 p-2 shadow-sm backdrop-blur-xl md:flex-row md:items-center md:justify-between">
     <div className="grid grid-cols-2 gap-1 sm:flex">{([
      ['overview', 'Resumen'], ['subscriptions', 'Suscripciones'], ['payments', 'Pagos'], ['users', 'Usuarios'],
-    ] as [View, string][]).map(([key, label]) => <button key={key} onClick={() => setView(key)} className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${view === key ? 'bg-[#10160e] text-white shadow-md' : 'text-slate-500 hover:bg-black/[.035] hover:text-black'}`}>{label}</button>)}</div>
+    ] as [View, string][]).map(([key, label]) => <button key={key} onClick={() => setView(key)} className={`rounded-xl px-4 py-2.5 text-xs font-bold transition ${view === key ? 'border border-[#d6b96f]/25 bg-[#d6b96f]/10 text-[#ead49c] shadow-md' : 'border border-transparent text-slate-500 hover:bg-white/[.035] hover:text-white'}`}>{label}</button>)}</div>
     {view !== 'overview' && <label className="relative block min-w-0 md:w-80"><Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar en Bites..." className="h-11 w-full rounded-xl border border-black/[.08] bg-[#f6f7f3] pl-10 pr-3 text-sm outline-none focus:border-[#8bc53f]" /></label>}
    </div>
 
