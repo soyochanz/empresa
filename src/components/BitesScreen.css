@@ -6,6 +6,12 @@
     #050608 !important;
 }
 
+.bites-screen-header-flat {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
 .bites-screen [class*="bg-white"],
 .bites-screen [class*="bg-[#f"] {
   background-color: rgba(12, 14, 19, 0.88) !important;

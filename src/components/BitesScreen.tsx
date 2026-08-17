@@ -188,12 +188,10 @@ export default function BitesScreen() {
  return <div className="bites-screen relative h-full overflow-y-auto bg-[#050608] text-slate-100">
   <div className="pointer-events-none absolute inset-x-0 top-0 h-96 bg-[radial-gradient(circle_at_88%_4%,rgba(214,185,111,.12),transparent_32%),radial-gradient(circle_at_8%_10%,rgba(99,213,242,.055),transparent_28%),linear-gradient(180deg,#090b10_0%,transparent_100%)]" />
   <div className="relative mx-auto max-w-[1600px] px-4 py-5 sm:px-7 sm:py-7 xl:px-10">
-   <section className="overflow-hidden rounded-[30px] border border-black/[.07] bg-[#10160e] text-white shadow-[0_22px_80px_rgba(29,44,22,.16)]">
-    <div className="relative flex flex-col gap-7 overflow-hidden px-6 py-7 sm:px-9 lg:flex-row lg:items-end lg:justify-between lg:px-10 lg:py-9">
-     <div className="pointer-events-none absolute -right-20 -top-28 h-80 w-80 rounded-full bg-[#d6b96f]/20 blur-[90px]" />
-     <div className="pointer-events-none absolute inset-0 opacity-[.12] [background-image:linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:34px_34px]" />
+   <section className="bites-screen-header-flat relative text-white">
+    <div className="relative flex flex-col gap-7 px-2 py-5 sm:px-3 lg:flex-row lg:items-end lg:justify-between lg:py-7">
      <div className="relative flex items-center gap-5">
-      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/[.09] bg-white/[.035] p-2 shadow-[0_14px_40px_rgba(0,0,0,.3)] sm:h-24 sm:w-24"><img src="/bites-logo.png" alt="Bites" className="h-full w-full object-contain brightness-0 invert" /></div>
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center sm:h-24 sm:w-24"><img src="/bites-logo.png" alt="Bites" className="h-full w-full object-contain brightness-0 invert" /></div>
       <div><div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.2em] text-[#d6b96f]"><Sparkles className="h-3.5 w-3.5" />Inteligencia de negocio</div><h2 className="text-3xl font-black tracking-[-.05em] sm:text-4xl">Bites control<span className="text-[#d6b96f]">.</span></h2><p className="mt-2 max-w-xl text-sm leading-6 text-white/55">Suscripciones, cobros y clientes de la plataforma en una única vista operativa.</p></div>
      </div>
      <div className="relative flex flex-wrap items-center gap-3">
@@ -225,7 +223,7 @@ function LoadingState() {
 }
 
 function ErrorState({ message, configurationMissing, onRetry }: { message: string; configurationMissing: boolean; onRetry: () => void }) {
- return <div className="mt-5 flex min-h-[360px] items-center justify-center rounded-[28px] border border-black/[.07] bg-white p-6"><div className="max-w-xl text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700"><TriangleAlert className="h-6 w-6" /></span><h3 className="mt-5 text-xl font-black">{configurationMissing ? 'Falta conectar Bites' : 'Bites no está disponible'}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{message}</p>{configurationMissing && <p className="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">Añade en el servidor la URL del proyecto y una clave secreta de Bites. La clave nunca se envía al navegador.</p>}<button onClick={onRetry} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#10160e] px-4 py-3 text-xs font-bold text-white"><RefreshCw className="h-4 w-4" />Reintentar</button></div></div>;
+ return <div className="mt-5 flex min-h-[360px] items-center justify-center rounded-[28px] border border-black/[.07] bg-white p-6"><div className="max-w-xl text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700"><TriangleAlert className="h-6 w-6" /></span><h3 className="mt-5 text-xl font-black">{configurationMissing ? 'No se pudo conectar con Bites' : 'Bites no está disponible'}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{configurationMissing ? 'La conexión segura no respondió. Vuelve a intentarlo en unos segundos.' : message}</p><button onClick={onRetry} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#10160e] px-4 py-3 text-xs font-bold text-white"><RefreshCw className="h-4 w-4" />Reintentar</button></div></div>;
 }
 
 function Overview({ metrics, months, maxMonth, accounts, payments, generatedAt }: { metrics: { users: number; restaurants: number; active: number; trials: number; mrr: number; collected: number }; months: { key: string; label: string; value: number }[]; maxMonth: number; accounts: BitesAccount[]; payments: BitesPayment[]; generatedAt: string }) {

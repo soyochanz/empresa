@@ -64,7 +64,10 @@ function getBitesIntegrationConfig() {
   const publishableKey = cleanEnv(process.env.BITES_SUPABASE_PUBLISHABLE_KEY) || BITES_PUBLISHABLE_KEY;
   const explicitToken = cleanEnv(process.env.BITES_ALTHERA_INTEGRATION_TOKEN);
   const derivationSecret = cleanEnv(
-    process.env.BITES_INTEGRATION_DERIVATION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.BITES_INTEGRATION_DERIVATION_SECRET ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.STRIPE_WEBHOOK_SECRET ||
+      process.env.STRIPE_SECRET_KEY,
   );
   const token = explicitToken || (derivationSecret
     ? createHmac("sha256", derivationSecret).update("althera:bites:overview:v1").digest("base64url")
