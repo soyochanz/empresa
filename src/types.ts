@@ -164,6 +164,8 @@ export interface FinanceTransaction {
  description: string;
  isRecurring?: boolean;
  recurrencePeriod?: 'weekly' | 'monthly' | 'yearly';
+ recurrenceEndDate?: string; // Inclusive last scheduled charge date (YYYY-MM-DD)
+ recurrenceOccurrenceCount?: number; // Maximum number of charges, including the first one
  invoiceId?: string; // Optional reference to a generated invoice
  status: 'paid' | 'pending';
  paymentMethod?: 'cash' | 'transfer' | 'stripe'; // New: payment method 'cash', 'transfer' or 'stripe'

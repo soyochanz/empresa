@@ -14,6 +14,17 @@ const parseDateKey = (value?: string): Date | null => {
 export const toFinanceDateKey = (date: Date): string =>
  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
+export const isFinanceRecurrenceOccurrenceAllowed = (
+ transaction: FinanceTransaction,
+ occurrenceIndex: number,
+ occurrenceDate: Date
+): boolean => {
+ const count = Number(transaction.recurrenceOccurrenceCount || 0);
+ if (count > 0 && occurrenceIndex >= count) return false;
+ if (transaction.recurrenceEndDate && toFinanceDateKey(occurrenceDate) > transaction.recurrenceEndDate.slice(0, 10)) return false;
+ return true;
+};
+
 const daysInMonth = (year: number, month: number): number => new Date(year, month + 1, 0).getDate();
 
 export const getFinanceRecurrenceDate = (
@@ -49,6 +60,7 @@ export const getNextFinanceRecurrenceDate = (
 
  for (let index = 0; index < MAX_OCCURRENCES_PER_CONCEPT; index += 1) {
   const occurrence = getFinanceRecurrenceDate(sourceDate, transaction.recurrencePeriod, index);
+  if (!isFinanceRecurrenceOccurrenceAllowed(transaction, index, occurrence)) return null;
   if (toFinanceDateKey(occurrence) > afterKey) return occurrence;
  }
  return null;
@@ -88,6 +100,7 @@ export const buildDueRecurringTransactions = (
 
   for (let index = 0; index < MAX_OCCURRENCES_PER_CONCEPT; index += 1) {
    const occurrenceDate = getFinanceRecurrenceDate(sourceDate, source.recurrencePeriod, index);
+   if (!isFinanceRecurrenceOccurrenceAllowed(source, index, occurrenceDate)) break;
    const scheduledDate = toFinanceDateKey(occurrenceDate);
    if (scheduledDate > throughKey) break;
 

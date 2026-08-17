@@ -9,7 +9,8 @@ import { authenticatedFetch } from '../utils/authenticatedFetch';
 import {
  buildManualRecurringTransaction,
  getFinanceRecurrenceDate,
- getNextFinanceRecurrenceDate
+ getNextFinanceRecurrenceDate,
+ isFinanceRecurrenceOccurrenceAllowed
 } from '../utils/financeRecurrence';
 import { 
  DollarSign, 
@@ -329,6 +330,7 @@ const getRecurringIncomeOccurrences = (transaction: FinanceTransaction, monthKey
  const occurrences: Date[] = [];
  for (let index = 0; index < 10_000; index += 1) {
   const occurrence = getFinanceRecurrenceDate(start, transaction.recurrencePeriod, index);
+  if (!isFinanceRecurrenceOccurrenceAllowed(transaction, index, occurrence)) break;
   if (occurrence >= monthEnd) break;
   if (occurrence >= monthStart) occurrences.push(occurrence);
  }
@@ -1280,7 +1282,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   }
  }
 
+ const existingTransaction = isEditingTx && editingTxId ? transactions.find(transaction => transaction.id === editingTxId) : undefined;
  const payload: FinanceTransaction = {
+  ...existingTransaction,
   id: isEditingTx && editingTxId ? editingTxId : 'tx_' + Date.now(),
   type: txType,
   category: txCategory.trim() || 'General',
@@ -1289,6 +1293,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   description: txDescription.trim() || `${txType === 'income' ? 'Ingreso' : 'Gasto'} registrado`,
   isRecurring: txIsRecurring,
   recurrencePeriod: txIsRecurring ? txPeriod : undefined,
+  recurrenceEndDate: txIsRecurring ? existingTransaction?.recurrenceEndDate : undefined,
+  recurrenceOccurrenceCount: txIsRecurring ? existingTransaction?.recurrenceOccurrenceCount : undefined,
   status: txStatus,
   invoiceId: txInvoiceId || undefined,
   paymentMethod: txPaymentMethod,
@@ -3680,6 +3686,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       }`}>
        {item.type === 'income' ? 'Ingreso' : 'Gasto'}
       </span>
+      {item.recurrenceOccurrenceCount && (
+       <span className="rounded-xl border border-amber-400/20 bg-amber-400/[0.08] px-2 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-amber-300">
+        {item.recurrenceOccurrenceCount} cobros · fin {item.recurrenceEndDate || 'programado'}
+       </span>
+      )}
       </div>
       <div className="text-right shrink-0">
       {item.firstAmount !== undefined || item.nextAmount !== undefined ? (

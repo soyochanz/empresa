@@ -28,6 +28,7 @@ import { db, supabase, checkSupabaseConnection, ConnectionStatus, invalidateShar
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall } from 'lucide-react';
 import { installAuditTracking, recordAuditEvent, setAuditContext } from './utils/auditLog';
 import { isAuthorizedAdminUser } from './utils/adminAuth';
+import { getNextFinanceRecurrenceDate } from './utils/financeRecurrence';
 
 const BUSINESS_CACHE_KEYS = [
  'crm_cold_leads',
@@ -768,24 +769,11 @@ export default function App() {
 
   // 2. Or is recurring and scheduled for tomorrow
   if (tx.isRecurring && tx.recurrencePeriod) {
-  const base = new Date(tx.date);
-  let next = new Date(base);
-  // keep adding recurrence period until next is equal or future relative to today
-  while (next < today) {
-   if (tx.recurrencePeriod === 'weekly') {
-   next.setDate(next.getDate() + 7);
-   } else if (tx.recurrencePeriod === 'monthly') {
-   next.setMonth(next.getMonth() + 1);
-   } else if (tx.recurrencePeriod === 'yearly') {
-   next.setFullYear(next.getFullYear() + 1);
-   } else {
-   next.setMonth(next.getMonth() + 1);
-   }
-  }
+  const next = getNextFinanceRecurrenceDate(tx, today);
 
-  const isOccurTomorrow = tomorrow.getFullYear() === next.getFullYear() &&
-        tomorrow.getMonth() === next.getMonth() &&
-        tomorrow.getDate() === next.getDate();
+  const isOccurTomorrow = Boolean(next) && tomorrow.getFullYear() === next!.getFullYear() &&
+        tomorrow.getMonth() === next!.getMonth() &&
+        tomorrow.getDate() === next!.getDate();
 
   if (isOccurTomorrow) {
    const tomorrowStr = tomorrow.toISOString().split('T')[0];

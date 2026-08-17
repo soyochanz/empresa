@@ -193,27 +193,55 @@ function getStripePaidDate(invoice: Stripe.Invoice): string {
   return new Date(paidAt).toISOString().split("T")[0];
 }
 
-async function ensureFiniteInstallmentSubscription(
+function addStripeBillingIntervalsKeepingDay(startAt: number, count: number, interval: string): number {
+  const source = new Date(startAt);
+  const monthOffset = interval === "year" ? count * 12 : count;
+  const absoluteMonth = source.getUTCMonth() + monthOffset;
+  const targetYear = source.getUTCFullYear() + Math.floor(absoluteMonth / 12);
+  const targetMonth = ((absoluteMonth % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  return Date.UTC(
+    targetYear,
+    targetMonth,
+    Math.min(source.getUTCDate(), lastDay),
+    source.getUTCHours(),
+    source.getUTCMinutes(),
+    source.getUTCSeconds(),
+  );
+}
+
+async function ensureFiniteSubscriptionSchedule(
   subscriptionId: string | undefined,
-  installmentsValue: string | number | undefined,
+  options: {
+    installments?: string | number;
+    recurrenceCount?: string | number;
+    billingType?: string;
+    interval?: string;
+  },
 ): Promise<{ updated: boolean; reason?: string; cancelAt?: number }> {
   if (!subscriptionId) return { updated: false, reason: "missing_subscription_id" };
-  const installmentCount = Number.parseInt(String(installmentsValue || ""), 10);
-  if (!Number.isFinite(installmentCount) || installmentCount <= 1) {
-    return { updated: false, reason: "not_finite_installment_plan" };
+  const billingType = options.billingType === "subscription" ? "subscription" : "installment";
+  const requestedCount = Number.parseInt(String(
+    billingType === "subscription" ? options.recurrenceCount || "" : options.installments || "",
+  ), 10);
+  const minimumCount = billingType === "subscription" ? 1 : 2;
+  if (!Number.isFinite(requestedCount) || requestedCount < minimumCount) {
+    return { updated: false, reason: "not_finite_subscription" };
   }
 
   const stripe = getStripe();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  const existingInstallments = Number.parseInt(subscription.metadata?.installments || "", 10);
-  const effectiveInstallments = Number.isFinite(existingInstallments) && existingInstallments > 1
-    ? existingInstallments
-    : installmentCount;
+  const existingCount = Number.parseInt(
+    billingType === "subscription"
+      ? subscription.metadata?.althera_recurrence_count || ""
+      : subscription.metadata?.installments || "",
+    10,
+  );
+  const effectiveCount = Number.isFinite(existingCount) && existingCount >= minimumCount ? existingCount : requestedCount;
+  const recurringInterval = options.interval || subscription.metadata?.interval || subscription.items.data[0]?.price.recurring?.interval || "month";
 
   const startAt = (subscription.start_date || Math.floor(Date.now() / 1000)) * 1000;
-  const cancelAtDate = new Date(startAt);
-  cancelAtDate.setMonth(cancelAtDate.getMonth() + effectiveInstallments);
-  const cancelAt = Math.floor(cancelAtDate.getTime() / 1000);
+  const cancelAt = Math.floor(addStripeBillingIntervalsKeepingDay(startAt, effectiveCount, recurringInterval) / 1000);
 
   if (subscription.cancel_at && subscription.cancel_at <= cancelAt) {
     return { updated: false, reason: "already_finite", cancelAt: subscription.cancel_at };
@@ -223,9 +251,17 @@ async function ensureFiniteInstallmentSubscription(
     cancel_at: cancelAt,
     metadata: {
       ...(subscription.metadata || {}),
-      installments: String(effectiveInstallments),
-      althera_finite_installment_plan: "true",
-      althera_cancel_after_installments: String(effectiveInstallments),
+      althera_billing_type: billingType,
+      ...(billingType === "subscription"
+        ? {
+            althera_recurrence_count: String(effectiveCount),
+            althera_finite_subscription: "true",
+          }
+        : {
+            installments: String(effectiveCount),
+            althera_finite_installment_plan: "true",
+            althera_cancel_after_installments: String(effectiveCount),
+          }),
     },
   });
 
@@ -257,8 +293,16 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
     invoiceMetadata.installments ||
     invoice.metadata?.installments ||
     "";
+  const billingType = subscription.metadata?.althera_billing_type || invoiceMetadata.billingType || invoice.metadata?.billingType || "";
+  const recurrenceCount = subscription.metadata?.althera_recurrence_count || invoiceMetadata.recurrenceCount || invoice.metadata?.recurrenceCount || "";
+  const recurrenceInterval = subscription.metadata?.interval || invoiceMetadata.interval || invoice.metadata?.interval || "month";
 
-  await ensureFiniteInstallmentSubscription(subscriptionId, installments);
+  await ensureFiniteSubscriptionSchedule(subscriptionId, {
+    installments,
+    recurrenceCount,
+    billingType: billingType || (Number.parseInt(String(installments || "0"), 10) > 1 ? "installment" : "subscription"),
+    interval: recurrenceInterval,
+  });
 
   const { data: transactions, error: txError } = await supabaseAdmin
     .from("finance_transactions")
@@ -285,7 +329,7 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
 
   const isFirstInvoice = (invoice as any).billing_reason === "subscription_create";
   const installmentCount = Number.parseInt(String(installments || ""), 10);
-  const isFiniteInstallmentPlan = Number.isFinite(installmentCount) && installmentCount > 1;
+  const isFiniteInstallmentPlan = billingType === "installment" || (!billingType && Number.isFinite(installmentCount) && installmentCount > 1);
 
   if (!isFiniteInstallmentPlan && !isFirstInvoice) {
     const sourceTx = matchingRows.find((tx: any) => tx.id === firstPendingTxId) || matchingRows[0];
@@ -482,7 +526,12 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       const session = event.data.object as Stripe.Checkout.Session;
       const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
       const [subscriptionResult, paymentResult] = await Promise.all([
-        ensureFiniteInstallmentSubscription(subscriptionId, session.metadata?.installments),
+        ensureFiniteSubscriptionSchedule(subscriptionId, {
+          installments: session.metadata?.installments,
+          recurrenceCount: session.metadata?.recurrenceCount,
+          billingType: session.metadata?.billingType,
+          interval: session.metadata?.interval,
+        }),
         markStripeCheckoutSessionAsPaid(session),
       ]);
       console.log("Processed Stripe checkout.session.completed webhook:", { subscriptionResult, paymentResult });
@@ -549,7 +598,7 @@ app.get("/api/stripe/client-checkout-session", requireAdminAuth, async (req, res
 
     const sessions = await getStripe().checkout.sessions.list({ limit: 100 });
     const latestSession = sessions.data
-      .filter(session => session.metadata?.clientId === clientId)
+      .filter(session => session.metadata?.clientId === clientId && session.metadata?.althera_deleted !== "true")
       .sort((a, b) => b.created - a.created)[0];
 
     res.setHeader("Cache-Control", "no-store");
@@ -578,6 +627,39 @@ app.get("/api/stripe/client-checkout-session", requireAdminAuth, async (req, res
   } catch (error: any) {
     console.error("Error retrieving latest client checkout session:", error);
     return res.status(500).json({ error: error?.message || "No se pudo recuperar el enlace de Stripe del cliente." });
+  }
+});
+
+app.post("/api/stripe/invalidate-checkout-sessions", requireAdminAuth, async (req, res) => {
+  try {
+    const requestedSessionIds: unknown[] = Array.isArray(req.body?.sessionIds) ? req.body.sessionIds : [];
+    const sessionIds = Array.from(new Set<string>(
+      requestedSessionIds
+        .filter((value: unknown): value is string => typeof value === "string" && value.startsWith("cs_"))
+        .slice(0, 50),
+    ));
+    if (sessionIds.length === 0) return res.json({ invalidated: [], skipped: [] });
+
+    const stripe = getStripe();
+    const results = await Promise.all(sessionIds.map(async sessionId => {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      await stripe.checkout.sessions.update(sessionId, {
+        metadata: { ...(session.metadata || {}), althera_deleted: "true" },
+      });
+      if (session.status === "open") {
+        await stripe.checkout.sessions.expire(sessionId);
+        return { sessionId, action: "expired" };
+      }
+      return { sessionId, action: "hidden", status: session.status, paymentStatus: session.payment_status };
+    }));
+
+    res.json({
+      invalidated: results.filter(result => result.action === "expired"),
+      skipped: results.filter(result => result.action !== "expired"),
+    });
+  } catch (error: any) {
+    console.error("Error invalidating Stripe checkout sessions:", error);
+    res.status(500).json({ error: error?.message || "No se pudieron retirar los enlaces de Stripe." });
   }
 });
 
@@ -611,8 +693,11 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
     const chargedVolumeTotals = new Map<string, number>();
 
     const isFiniteInstallmentSubscription = (subscription: Stripe.Subscription): boolean =>
-      subscription.metadata?.althera_finite_installment_plan === "true" ||
-      Number.parseInt(subscription.metadata?.althera_cancel_after_installments || subscription.metadata?.installments || "0", 10) > 1;
+      subscription.metadata?.althera_billing_type === "installment" ||
+      (subscription.metadata?.althera_billing_type !== "subscription" && (
+        subscription.metadata?.althera_finite_installment_plan === "true" ||
+        Number.parseInt(subscription.metadata?.althera_cancel_after_installments || subscription.metadata?.installments || "0", 10) > 1
+      ));
     const recurringMembershipSubscriptions = subscriptions.filter(subscription => !isFiniteInstallmentSubscription(subscription));
 
     const getMonthlyFactor = (recurring: Stripe.Price.Recurring | null | undefined): number => {
@@ -732,7 +817,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
 // Create subscription or single payment checkout session
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
-    const { clientId, clientName, clientEmail, amount, interval, installments, concept, pendingTxId, stripePlanId, installmentIndex, previousSessionId } = req.body;
+    const { clientId, clientName, clientEmail, amount, interval, installments, recurrenceCount, billingType, concept, pendingTxId, stripePlanId, installmentIndex, previousSessionId } = req.body;
 
     if (!clientId || !clientEmail || !amount) {
       return res.status(400).json({ error: "clientId, clientEmail, and amount are required" });
@@ -752,6 +837,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     let effectiveAmountNumber = amountNumber;
     let effectiveInterval = interval || "month";
     let effectiveInstallments = installments || "";
+    let effectiveRecurrenceCount = recurrenceCount || "";
+    let effectiveBillingType = billingType || (Number.parseInt(String(installments || "0"), 10) > 1 ? "installment" : "subscription");
     let effectiveConcept = concept || "";
     let effectivePendingTxId = pendingTxId || "";
     let effectiveStripePlanId = stripePlanId || "";
@@ -776,6 +863,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         : amountNumber;
       effectiveInterval = previousSession.metadata?.interval || effectiveInterval;
       effectiveInstallments = previousSession.metadata?.installments || effectiveInstallments;
+      effectiveRecurrenceCount = previousSession.metadata?.recurrenceCount || effectiveRecurrenceCount;
+      effectiveBillingType = previousSession.metadata?.billingType || effectiveBillingType;
       effectiveConcept = previousSession.metadata?.concept || effectiveConcept;
       effectivePendingTxId = previousPendingTxId || effectivePendingTxId;
       effectiveStripePlanId = previousStripePlanId || effectiveStripePlanId;
@@ -819,6 +908,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
         clientEmail,
         interval: effectiveInterval,
         installments: effectiveInstallments,
+        recurrenceCount: effectiveRecurrenceCount,
+        billingType: effectiveBillingType,
         concept: effectiveConcept,
         pendingTxId: effectivePendingTxId,
         stripePlanId: effectiveStripePlanId,
@@ -833,6 +924,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
           pendingTxId: effectivePendingTxId,
           stripePlanId: effectiveStripePlanId,
           installments: effectiveInstallments,
+          recurrenceCount: effectiveRecurrenceCount,
+          billingType: effectiveBillingType,
           interval: effectiveInterval,
         },
       };
@@ -1156,7 +1249,12 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
     const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["invoice"] });
     const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
     const [, paymentResult] = await Promise.all([
-      ensureFiniteInstallmentSubscription(subscriptionId, session.metadata?.installments),
+      ensureFiniteSubscriptionSchedule(subscriptionId, {
+        installments: session.metadata?.installments,
+        recurrenceCount: session.metadata?.recurrenceCount,
+        billingType: session.metadata?.billingType,
+        interval: session.metadata?.interval,
+      }),
       markStripeCheckoutSessionAsPaid(session),
     ]);
     

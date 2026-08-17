@@ -334,6 +334,8 @@ export default function CrmScreen({
  const [stripeConcept, setStripeConcept] = useState('Gestión mensual de redes sociales');
  const [chargePlan, setChargePlan] = useState<ClientChargePlan>('once');
  const [chargePaymentMethod, setChargePaymentMethod] = useState<ClientChargeMethod>('stripe');
+ const [chargeRecurrenceLimited, setChargeRecurrenceLimited] = useState(false);
+ const [chargeRecurrenceCount, setChargeRecurrenceCount] = useState('12');
  const [stripeLoading, setStripeLoading] = useState(false);
  const [generatedCheckoutUrl, setGeneratedCheckoutUrl] = useState('');
  const [generatedCheckoutSessionId, setGeneratedCheckoutSessionId] = useState('');
@@ -367,6 +369,7 @@ export default function CrmScreen({
  setStripeCopied(false);
  setStripeError('');
  setChargeSuccess('');
+ setInvoiceDeleteError('');
  setStripeOverview(null);
  setStripeOverviewError('');
  setLatestClientCheckout(null);
@@ -374,6 +377,8 @@ export default function CrmScreen({
 
  setChargePlan('once');
  setChargePaymentMethod('stripe');
+ setChargeRecurrenceLimited(false);
+ setChargeRecurrenceCount('12');
  }, [selectedContactId, selectedContact?.email]);
 
  React.useEffect(() => {
@@ -634,6 +639,8 @@ React.useEffect(() => {
  const [convBillingStructure, setConvBillingStructure] = useState<ServiceBillingStructure>('upfront');
  const [convRecurringPrice, setConvRecurringPrice] = useState(0);
  const [convRecurringInterval, setConvRecurringInterval] = useState<'month' | 'year'>('month');
+ const [convRecurringLimited, setConvRecurringLimited] = useState(false);
+ const [convRecurringCount, setConvRecurringCount] = useState(12);
  const [convSelectedComercialId, setConvSelectedComercialId] = useState('');
  const convFinancedTotal = Math.max(0, Number(convSalePrice) || 0) +
   (convInstallments > 1 ? Math.max(0, Number(convFinancingExtra) || 0) : 0);
@@ -647,6 +654,8 @@ React.useEffect(() => {
   setConvBillingStructure('upfront');
   setConvRecurringPrice(0);
   setConvRecurringInterval('month');
+  setConvRecurringLimited(false);
+  setConvRecurringCount(12);
  }, [serviceFormContact?.id, Boolean(convertingLead)]);
 
  const eligibleCommissionCommercials = (comercialesList || []).filter(commercial => {
@@ -785,6 +794,10 @@ React.useEffect(() => {
 
   if (hasRecurringServicePayment && convRecurringPrice > 0) {
    const recurringPlanId = `plan_recurring_${Math.random().toString(36).slice(2, 9)}`;
+   const recurrenceCount = convRecurringLimited ? Math.max(1, Math.min(120, Math.trunc(convRecurringCount || 1))) : undefined;
+   const recurrenceEndDate = recurrenceCount
+    ? toLocalDateKey(addMonthsKeepingDay(now, (recurrenceCount - 1) * (convRecurringInterval === 'year' ? 12 : 1)))
+    : undefined;
    const recurringTemplate: FinanceTransaction = {
     id: `recurring_service_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     type: 'income',
@@ -795,6 +808,8 @@ React.useEffect(() => {
     description: `${convConcept} · ${convSelectedProducts.join(' + ') || 'Servicio recurrente'}`,
     isRecurring: true,
     recurrencePeriod: convRecurringInterval === 'year' ? 'yearly' : 'monthly',
+    recurrenceEndDate,
+    recurrenceOccurrenceCount: recurrenceCount,
     status: 'paid',
     paymentMethod: convPaymentMethod,
     clientId: contact.id,
@@ -821,6 +836,8 @@ React.useEffect(() => {
       clientEmail: safeClientEmail,
       amount: convRecurringPrice.toFixed(2),
       interval: convRecurringInterval,
+      billingType: 'subscription',
+      recurrenceCount: recurrenceCount ? String(recurrenceCount) : '',
       concept: recurringTemplate.description,
       pendingTxId: pendingRecurring.id,
       stripePlanId: recurringPlanId,
@@ -1185,6 +1202,8 @@ React.useEffect(() => {
  const [paymentInvoiceId, setPaymentInvoiceId] = useState('general');
  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'pending'>('paid');
  const [paymentInstallments, setPaymentInstallments] = useState<1 | 2 | 3>(1);
+ const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+ const [invoiceDeleteError, setInvoiceDeleteError] = useState('');
 
  const fetchFinancials = async () => {
  setLoadingFinancials(true);
@@ -1281,6 +1300,60 @@ React.useEffect(() => {
   alert('No se pudo eliminar el cobro. Por favor, inténtelo de nuevo.');
   }
  }
+ };
+
+ const handleDeleteClientInvoice = async (invoice: Invoice) => {
+  const invoiceTransactionIds = new Set(
+   invoice.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
+  );
+  const linkedTransactions = transactions.filter(transaction =>
+   transaction.invoiceId === invoice.id || invoiceTransactionIds.has(transaction.id)
+  );
+  const stripeSessionIds = Array.from(new Set(
+   linkedTransactions.flatMap(transaction => {
+    const sessionIdFromUrl = transaction.stripeCheckoutUrl?.match(/cs_(?:test|live)_[A-Za-z0-9]+/)?.[0];
+    return [transaction.stripeCheckoutSessionId, sessionIdFromUrl].filter((id): id is string => Boolean(id));
+   })
+  ));
+  const warning = linkedTransactions.length > 0
+   ? `Se eliminará la factura ${invoice.id}, sus ${linkedTransactions.length} movimiento(s) vinculado(s) y se retirarán sus enlaces de Stripe. Los pagos ya procesados en Stripe no se reembolsarán. ¿Continuar?`
+   : `Se eliminará definitivamente la factura ${invoice.id}. ¿Continuar?`;
+  if (!safeConfirm(warning)) return;
+
+  const finishDeletion = beginBlockingDatabaseOperation(`crm-delete-invoice:${invoice.id}`, 'deleteClientInvoice');
+  if (!finishDeletion) return;
+  setDeletingInvoiceId(invoice.id);
+  setInvoiceDeleteError('');
+  try {
+   if (stripeSessionIds.length > 0) {
+    const response = await authenticatedFetch('/api/stripe/invalidate-checkout-sessions', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ sessionIds: stripeSessionIds }),
+    });
+    const data = await readStripeJson(response);
+    if (!response.ok) throw new Error(data.error || 'No se pudieron retirar los enlaces de Stripe.');
+   }
+
+   for (const transaction of linkedTransactions) {
+    await db.deleteFinanceTransaction(transaction.id);
+   }
+   await db.deleteFinanceInvoice(invoice.id);
+   setInvoices(current => current.filter(item => item.id !== invoice.id));
+   setTransactions(current => current.filter(item => !linkedTransactions.some(linked => linked.id === item.id)));
+   setGeneratedCheckoutUrl('');
+   setGeneratedCheckoutSessionId('');
+   setLatestClientCheckout(null);
+   setStripeOverview(null);
+   if (onRefreshFinance) onRefreshFinance();
+  } catch (error: any) {
+   console.error('Error deleting client invoice and Stripe links:', error);
+   setInvoiceDeleteError(error?.message || 'No se pudo eliminar la factura y sus enlaces asociados.');
+   await fetchFinancials();
+  } finally {
+   setDeletingInvoiceId(null);
+   finishDeletion();
+  }
  };
 
  useEffect(() => {
@@ -1963,6 +2036,10 @@ React.useEffect(() => {
   const concept = stripeConcept.trim();
   if (!Number.isFinite(amountNumber) || amountNumber <= 0) throw new Error('Introduce un importe válido superior a cero.');
   if (!concept) throw new Error('Introduce el concepto del cobro.');
+  const recurrenceCount = isSubscription && chargeRecurrenceLimited ? Number.parseInt(chargeRecurrenceCount, 10) : undefined;
+  if (isSubscription && chargeRecurrenceLimited && (!recurrenceCount || recurrenceCount < 1 || recurrenceCount > 120)) {
+   throw new Error('Indica un número de cobros entre 1 y 120.');
+  }
 
   if (isStripe && contact.email !== targetEmail && onUpdateContact) {
    onUpdateContact({ ...contact, email: targetEmail });
@@ -2034,6 +2111,9 @@ React.useEffect(() => {
   const txId = `tx_${chargePaymentMethod}_${timestamp}_${Math.random().toString(36).slice(2, 8)}`;
 
   if (isSubscription) {
+   const recurrenceEndDate = recurrenceCount
+    ? toLocalDateKey(addMonthsKeepingDay(today, (recurrenceCount - 1) * (chargePlan === 'year' ? 12 : 1)))
+    : undefined;
    const recurringTemplate: FinanceTransaction = {
     id: `recurring_${txId}`,
     type: 'income',
@@ -2044,6 +2124,8 @@ React.useEffect(() => {
     description: concept,
     isRecurring: true,
     recurrencePeriod: chargePlan === 'year' ? 'yearly' : 'monthly',
+    recurrenceEndDate,
+    recurrenceOccurrenceCount: recurrenceCount,
     status: 'paid',
     paymentMethod: chargePaymentMethod,
     clientId: contact.id,
@@ -2060,6 +2142,8 @@ React.useEffect(() => {
       clientEmail: targetEmail,
       amount: amountNumber.toFixed(2),
       interval: chargePlan,
+      billingType: 'subscription',
+      recurrenceCount: recurrenceCount ? String(recurrenceCount) : '',
       concept,
       pendingTxId: txId,
       stripePlanId,
@@ -3628,6 +3712,36 @@ React.useEffect(() => {
       </div>
      ) : null}
 
+     {(chargePlan === 'month' || chargePlan === 'year') && (
+      <div className="mt-2 rounded-xl border border-violet-400/10 bg-violet-400/[0.025] p-2.5">
+       <div className="flex items-center justify-between gap-3">
+        <div>
+         <span className="block text-[7.5px] font-black uppercase tracking-[.14em] text-violet-300">Duración de la recurrencia</span>
+         <span className="mt-0.5 block text-[7px] text-slate-600">El primer cobro queda fijado hoy y conserva este día en cada periodo.</span>
+        </div>
+        <div className="grid shrink-0 grid-cols-2 gap-1 rounded-lg bg-black/20 p-1">
+         <button type="button" onClick={() => setChargeRecurrenceLimited(false)} className={`rounded-md px-2 py-1 text-[7.5px] font-bold transition ${!chargeRecurrenceLimited ? 'bg-violet-500/15 text-violet-200' : 'text-slate-600 hover:text-slate-300'}`}>Sin fin</button>
+         <button type="button" onClick={() => setChargeRecurrenceLimited(true)} className={`rounded-md px-2 py-1 text-[7.5px] font-bold transition ${chargeRecurrenceLimited ? 'bg-violet-500/15 text-violet-200' : 'text-slate-600 hover:text-slate-300'}`}>Limitada</button>
+        </div>
+       </div>
+       {chargeRecurrenceLimited && (
+        <div className="mt-2 grid grid-cols-[92px_1fr] items-center gap-2">
+         <label className="relative">
+          <input type="number" min="1" max="120" step="1" value={chargeRecurrenceCount} onChange={event => setChargeRecurrenceCount(event.target.value)} aria-label="Número total de cobros" className="w-full rounded-lg border border-white/[0.07] bg-black/25 px-2.5 py-2 pr-10 text-[9px] font-semibold text-slate-100 outline-none focus:border-violet-400/45" />
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[7px] text-slate-600">cobros</span>
+         </label>
+         <div className="rounded-lg border border-white/[0.05] bg-black/15 px-2.5 py-1.5 text-[7.5px] leading-3 text-slate-500">
+          <span className="block">Primero: <strong className="text-slate-300">{new Date().toLocaleDateString('es-ES')}</strong></span>
+          <span className="block">Último: <strong className="text-violet-200">{(() => {
+           const count = Math.max(1, Number.parseInt(chargeRecurrenceCount, 10) || 1);
+           return addMonthsKeepingDay(new Date(), (count - 1) * (chargePlan === 'year' ? 12 : 1)).toLocaleDateString('es-ES');
+          })()}</strong></span>
+         </div>
+        </div>
+       )}
+      </div>
+     )}
+
      {chargePlan.startsWith('installments_') ? (
       <div className="mt-2 flex items-center justify-between rounded-lg border border-white/[0.05] bg-white/[0.025] px-2.5 py-2 text-[8.5px] text-slate-500">
        <span>{chargePlan.replace('installments_', '')} cuotas mensuales</span>
@@ -3671,7 +3785,7 @@ React.useEffect(() => {
      ) : (
       <button
        type="button"
-       disabled={stripeLoading || !stripeConcept.trim() || !stripeAmount.trim() || (chargePaymentMethod === 'stripe' && !stripeEmailInput.trim())}
+       disabled={stripeLoading || !stripeConcept.trim() || !stripeAmount.trim() || (chargePaymentMethod === 'stripe' && !stripeEmailInput.trim()) || ((chargePlan === 'month' || chargePlan === 'year') && chargeRecurrenceLimited && (!Number.parseInt(chargeRecurrenceCount, 10) || Number.parseInt(chargeRecurrenceCount, 10) > 120))}
        onClick={() => handleCreateClientCharge(selectedContact)}
        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-cyan-500 px-3 py-2 text-[9.5px] font-extrabold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
       >
@@ -4168,6 +4282,9 @@ React.useEffect(() => {
        <span className="text-[10px] font-bold text-slate-200 uppercase tracking-wide">Facturas emitidas</span>
        <span className="text-[9px] font-mono text-slate-400 bg-white/5 border border-white/5 rounded-full px-2 py-0.5">{clientInvoices.length}</span>
       </div>
+      {invoiceDeleteError && (
+       <p className="rounded-lg border border-rose-500/15 bg-rose-500/[0.06] px-2.5 py-2 text-[9px] text-rose-300">{invoiceDeleteError}</p>
+      )}
       {clientInvoices.length === 0 ? (
       <div className="bg-[#030305] p-3.5 rounded-xl border border-white/5 text-center">
        <p className="text-[10px] text-slate-500 font-sans">No hay facturas emitidas para este cliente.</p>
@@ -4231,6 +4348,18 @@ React.useEffect(() => {
          className="p-1 hover:bg-slate-800 text-slate-300 rounded-lg border border-white/5 transition-all cursor-pointer"
         >
          <Download className="w-3.5 h-3.5" />
+        </button>
+
+        <button
+         type="button"
+         disabled={deletingInvoiceId === inv.id}
+         onClick={() => handleDeleteClientInvoice(inv)}
+         title="Eliminar factura y retirar enlaces de Stripe"
+         className="p-1 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/20 transition-all cursor-pointer disabled:cursor-wait disabled:opacity-50"
+        >
+         {deletingInvoiceId === inv.id
+          ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border border-rose-300 border-t-transparent" />
+          : <Trash2 className="w-3.5 h-3.5" />}
         </button>
         </div>
        </div>
@@ -5487,6 +5616,24 @@ React.useEffect(() => {
          <option value="year">Anual</option>
         </select>
        </label>
+      </div>
+      <div className="rounded-xl border border-white/[0.06] bg-black/20 p-2.5">
+       <div className="flex items-center justify-between gap-3">
+        <div>
+         <span className="block text-[8px] font-black uppercase tracking-[.12em] text-violet-300">Duración</span>
+         <span className="mt-0.5 block text-[7px] text-slate-600">Primer cobro hoy; los siguientes mantienen el mismo día.</span>
+        </div>
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-black/25 p-1">
+         <button type="button" onClick={() => setConvRecurringLimited(false)} className={`rounded-md px-2 py-1 text-[7.5px] font-bold ${!convRecurringLimited ? 'bg-violet-500/15 text-violet-200' : 'text-slate-600'}`}>Sin fin</button>
+         <button type="button" onClick={() => setConvRecurringLimited(true)} className={`rounded-md px-2 py-1 text-[7.5px] font-bold ${convRecurringLimited ? 'bg-violet-500/15 text-violet-200' : 'text-slate-600'}`}>Limitada</button>
+        </div>
+       </div>
+       {convRecurringLimited && (
+        <div className="mt-2 grid grid-cols-[110px_1fr] items-center gap-2">
+         <input type="number" min="1" max="120" step="1" value={convRecurringCount} onChange={event => setConvRecurringCount(Math.max(1, Math.min(120, Number(event.target.value) || 1)))} aria-label="Número total de cobros recurrentes" className="w-full rounded-lg border border-white/10 bg-[#030305] px-3 py-2 text-[9px] text-slate-200 outline-none focus:border-violet-400" />
+         <span className="text-[8px] leading-3 text-slate-500">{convRecurringCount} cobros · último el <strong className="text-violet-200">{addMonthsKeepingDay(new Date(), (Math.max(1, convRecurringCount) - 1) * (convRecurringInterval === 'year' ? 12 : 1)).toLocaleDateString('es-ES')}</strong></span>
+        </div>
+       )}
       </div>
      </div>
     )}
