@@ -883,7 +883,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    );
    const taxPercentage = Number(client.taxPercentage ?? matchedContact?.taxPercentage ?? 21);
    setInvClientId(client.id);
-   setInvClientName(client.name || matchedContact?.name || '');
+   setInvClientName(matchedContact?.fiscalName || client.name || matchedContact?.name || '');
    setInvClientEmail(client.email || matchedContact?.email || previousInvoice?.clientEmail || '');
    setInvClientTaxId(client.taxId || matchedContact?.taxId || previousInvoice?.clientTaxId || '');
    setInvClientAddress(client.address || matchedContact?.fiscalAddress || previousInvoice?.clientAddress || matchedContact?.location || '');
@@ -1283,6 +1283,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }
 
  const existingTransaction = isEditingTx && editingTxId ? transactions.find(transaction => transaction.id === editingTxId) : undefined;
+ const selectedTransactionInvoice = txInvoiceId ? invoices.find(invoice => invoice.id === txInvoiceId) : undefined;
+ const selectedInvoiceIsInitialSale = selectedTransactionInvoice
+  ? (selectedTransactionInvoice.isInitialSale ?? Boolean(selectedTransactionInvoice.comercialId || selectedTransactionInvoice.comercialEmail))
+  : existingTransaction?.isInitialSale;
  const payload: FinanceTransaction = {
   ...existingTransaction,
   id: isEditingTx && editingTxId ? editingTxId : 'tx_' + Date.now(),
@@ -1299,7 +1303,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   invoiceId: txInvoiceId || undefined,
   paymentMethod: txPaymentMethod,
   firstAmount: txIsRecurring && txFirstAmount ? Math.abs(Number(txFirstAmount)) : undefined,
-  nextAmount: txIsRecurring && txNextAmount ? Math.abs(Number(txNextAmount)) : undefined
+  nextAmount: txIsRecurring && txNextAmount ? Math.abs(Number(txNextAmount)) : undefined,
+  comercialId: selectedTransactionInvoice?.comercialId || existingTransaction?.comercialId,
+  comercialEmail: selectedTransactionInvoice?.comercialEmail || existingTransaction?.comercialEmail,
+  isInitialSale: selectedInvoiceIsInitialSale,
  };
 
  try {
@@ -1572,7 +1579,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    (!!match.email && invoice.clientEmail?.toLowerCase() === match.email.toLowerCase()) ||
    invoice.clientName?.toLowerCase() === match.name.toLowerCase()
   );
-  setInvClientName(match.company !== 'Independent' ? match.company : match.name);
+  setInvClientName(match.fiscalName || (match.company !== 'Independent' ? match.company : match.name));
   setInvClientEmail(match.email || previousInvoice?.clientEmail || '');
   setInvClientAddress(match.fiscalAddress || previousInvoice?.clientAddress || match.location || '');
   setInvClientTaxId(match.taxId || previousInvoice?.clientTaxId || '');
@@ -1604,6 +1611,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const taxAmount = parseFloat((total - subtotal).toFixed(2));
 
  const invoiceId = isEditingInv && editingInvId ? editingInvId : getNextInvoiceNumber(invoices);
+ const editingInvoice = isEditingInv && editingInvId ? invoices.find(invoice => invoice.id === editingInvId) : undefined;
+ const inheritsInitialSaleCommission = editingInvoice
+  ? (editingInvoice.isInitialSale ?? Boolean(editingInvoice.comercialId || editingInvoice.comercialEmail))
+  : false;
 
  // New lines added to an existing invoice create their own paid/pending ledger movement.
  // On new invoices, pending lines keep the existing automatic transaction behavior.
@@ -1628,6 +1639,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    invoiceId: invoiceId,
    clientId: invClientId || undefined,
    paymentMethod: item.paymentMethod || 'transfer',
+   comercialId: editingInvoice?.comercialId,
+   comercialEmail: editingInvoice?.comercialEmail,
+   isInitialSale: inheritsInitialSaleCommission,
   };
   autoCreatedTxs.push(newTx);
   }
@@ -2204,7 +2218,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
  
  if (matchedContact) {
   setInvClientId(matchedContact.id);
-  setInvClientName(matchedContact.name);
+  setInvClientName(matchedContact.fiscalName || matchedContact.name);
   setInvClientEmail(matchedContact.email);
   setInvClientAddress(matchedContact.fiscalAddress || matchedContact.location || '');
   setInvClientTaxId(matchedContact.taxId || '');

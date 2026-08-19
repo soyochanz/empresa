@@ -901,6 +901,7 @@ const dbImplementation = {
  let assignedUserEmail: string | undefined = undefined;
  let phone: string | undefined = undefined;
  let linkedin: string | undefined = undefined;
+ let fiscalName: string | undefined = undefined;
  let taxId: string | undefined = undefined;
  let fiscalAddress: string | undefined = undefined;
  let currency: ClientContact['currency'] = undefined;
@@ -963,6 +964,7 @@ const dbImplementation = {
    if (key === 'assignedUserEmail') assignedUserEmail = val || undefined;
    if (key === 'phone') phone = val || undefined;
    if (key === 'linkedin') linkedin = val || undefined;
+   if (key === 'fiscalName') fiscalName = decodeInvoiceMetadataValue(val) || undefined;
    if (key === 'taxId') taxId = decodeInvoiceMetadataValue(val) || undefined;
    if (key === 'fiscalAddress') fiscalAddress = decodeInvoiceMetadataValue(val) || undefined;
    if (key === 'currency' && ['EUR', 'USD', 'GBP', 'MXN', 'CHF'].includes(val)) currency = val as ClientContact['currency'];
@@ -1067,6 +1069,7 @@ const dbImplementation = {
   assignedUserEmail,
   phone,
   linkedin,
+  fiscalName,
   taxId,
   fiscalAddress,
   currency,
@@ -1125,6 +1128,7 @@ const dbImplementation = {
   contact.assignedUserEmail || 
   contact.phone || 
   contact.linkedin ||
+  contact.fiscalName ||
   contact.taxId ||
   contact.fiscalAddress ||
   contact.currency ||
@@ -1177,6 +1181,7 @@ const dbImplementation = {
   if (contact.assignedUserEmail) metadataStr += `\nassignedUserEmail: ${contact.assignedUserEmail}`;
   if (contact.phone) metadataStr += `\nphone: ${contact.phone}`;
   if (contact.linkedin) metadataStr += `\nlinkedin: ${contact.linkedin}`;
+  if (contact.fiscalName) metadataStr += `\nfiscalName: ${encodeURIComponent(contact.fiscalName)}`;
   if (contact.taxId) metadataStr += `\ntaxId: ${encodeURIComponent(contact.taxId)}`;
   if (contact.fiscalAddress) metadataStr += `\nfiscalAddress: ${encodeURIComponent(contact.fiscalAddress)}`;
   if (contact.currency) metadataStr += `\ncurrency: ${contact.currency}`;

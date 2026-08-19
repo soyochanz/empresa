@@ -126,6 +126,9 @@ const getContactBusinessName = (contact: ClientContact): string => {
  return company && company.toLowerCase() !== 'independent' ? company : contact.name;
 };
 
+const getContactInvoiceName = (contact: ClientContact): string =>
+ contact.fiscalName?.trim() || getContactBusinessName(contact);
+
 const getEditableInvoiceConcept = (description: string): string =>
  description
   .replace(/^Cobro Pendiente:\s*/i, '')
@@ -221,6 +224,7 @@ interface CrmScreenProps {
  onAddProfile?: (profile: { name: string; email: string }) => void;
  onAddEvent?: (event: CalendarEvent) => void;
  comercialesList?: ComercialAccount[];
+ onUpdateComercial?: (account: ComercialAccount) => void | Promise<void>;
  onRefreshFinance?: () => void;
 }
 
@@ -235,6 +239,7 @@ export default function CrmScreen({
  onAddProfile,
  onAddEvent,
  comercialesList = [],
+ onUpdateComercial,
  onRefreshFinance
 }: CrmScreenProps) {
  const [selectedContactId, setSelectedContactId] = useState<string>('');
@@ -556,7 +561,7 @@ React.useEffect(() => {
   },
   body: JSON.stringify({
    clientId: selectedContact?.id || 'simulated',
-   clientName: selectedContact?.name || 'Cliente',
+   clientName: selectedContact ? getContactInvoiceName(selectedContact) : 'Cliente',
    clientEmail: targetEmail,
    amount: tx.amount.toString(),
    interval: currentSession?.mode === 'subscription' ? 'month' : 'once',
@@ -654,6 +659,8 @@ React.useEffect(() => {
  const [convRecurringCount, setConvRecurringCount] = useState(12);
  const [convSelectedComercialId, setConvSelectedComercialId] = useState('');
  const [convTargetInvoiceId, setConvTargetInvoiceId] = useState('new');
+ const [convExtraCommissionComercialId, setConvExtraCommissionComercialId] = useState('');
+ const [convExtraCommissionAmount, setConvExtraCommissionAmount] = useState(0);
  const convFinancedTotal = Math.max(0, Number(convSalePrice) || 0) +
   (convInstallments > 1 ? Math.max(0, Number(convFinancingExtra) || 0) : 0);
  const serviceFormContact = convertingLead || serviceRegistrationContact;
@@ -671,6 +678,8 @@ React.useEffect(() => {
    setConvFirstPaymentTiming('today');
    setConvFirstPaymentDate(getMinimumScheduledStripeDate());
    setConvTargetInvoiceId('new');
+   setConvExtraCommissionComercialId('');
+   setConvExtraCommissionAmount(0);
   }, [serviceFormContact?.id, Boolean(convertingLead)]);
 
  const eligibleCommissionCommercials = (comercialesList || []).filter(commercial => {
@@ -689,6 +698,30 @@ React.useEffect(() => {
   return Boolean(originName && commercial.name.trim().toLocaleLowerCase('es-ES') === originName);
  }) : undefined;
 
+ const assignExtraCommission = async (
+  comercialId: string,
+  amount: number,
+  reason: string,
+  linkedTransaction?: FinanceTransaction,
+ ) => {
+  if (!comercialId || amount <= 0) return;
+  const comercial = eligibleCommissionCommercials.find(item => item.id === comercialId);
+  if (!comercial) throw new Error('El comercial elegido para la comisión ya no está disponible.');
+  const extra = {
+   id: `extra_service_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+   amount: Number(amount.toFixed(2)),
+   date: new Date().toISOString(),
+   reason,
+   linkedTransactionId: linkedTransaction?.id,
+   linkedTransactionDescription: linkedTransaction?.description,
+   linkedTransactionAmount: linkedTransaction?.amount,
+   status: linkedTransaction?.status === 'paid' ? 'paid' as const : 'pending' as const,
+  };
+  const updated = { ...comercial, extraCommissions: [extra, ...(comercial.extraCommissions || [])] };
+  if (onUpdateComercial) await onUpdateComercial(updated);
+  else await db.updateComercialAccount(updated);
+ };
+
  const effectiveCommissionCommercialId = convSelectedComercialId;
 
  useEffect(() => {
@@ -704,7 +737,7 @@ React.useEffect(() => {
  const registerServiceFinancials = async (
   contact: ClientContact,
   options: { isInitialSale: boolean; commercial?: ComercialAccount }
- ): Promise<{ stripeUrls: Array<{ label: string; url: string }>; upfrontTotal: number }> => {
+ ): Promise<{ stripeUrls: Array<{ label: string; url: string }>; upfrontTotal: number; invoiceId?: string; createdTransactions: FinanceTransaction[] }> => {
   const stripeUrls: Array<{ label: string; url: string }> = [];
   const createdTransactions: FinanceTransaction[] = [];
   const now = new Date();
@@ -722,6 +755,7 @@ React.useEffect(() => {
   const safeClientEmail = contact.email?.trim() || `${contact.id}@clientes.althera.local`;
   const commercial = options.commercial;
   const commercialEmail = commercial?.email || '';
+  let createdInvoiceId: string | undefined;
 
   if (hasUpfrontServicePayment && convFinancedTotal > 0) {
    const targetInvoice = !options.isInitialSale && convTargetInvoiceId !== 'new'
@@ -731,6 +765,12 @@ React.useEffect(() => {
     throw new Error('La factura seleccionada ya no está disponible para este cliente. Actualiza y vuelve a intentarlo.');
    }
    const invoiceId = targetInvoice?.id || getNextInvoiceNumber(invoices);
+   createdInvoiceId = invoiceId;
+   const invoiceCommercialId = targetInvoice?.comercialId || commercial?.id;
+   const invoiceCommercialEmail = targetInvoice?.comercialEmail || commercialEmail;
+   const isCommissionableInitialInvoice = targetInvoice
+    ? (targetInvoice.isInitialSale ?? Boolean(targetInvoice.comercialId || targetInvoice.comercialEmail))
+    : options.isInitialSale;
    const stripePlanId = `plan_service_${Math.random().toString(36).slice(2, 9)}`;
    const installmentCount = Math.max(1, convInstallments);
    const installmentAmount = Math.round((convFinancedTotal / installmentCount) * 100) / 100;
@@ -765,9 +805,9 @@ React.useEffect(() => {
      stripeInstallmentIndex: index,
      stripeInstallmentCount: installmentCount,
      invoiceId,
-     comercialId: commercial?.id,
-     comercialEmail: commercialEmail,
-     isInitialSale: options.isInitialSale,
+     comercialId: invoiceCommercialId,
+     comercialEmail: invoiceCommercialEmail,
+     isInitialSale: isCommissionableInitialInvoice,
     };
     await db.insertFinanceTransaction(transaction);
     createdTransactions.push(transaction);
@@ -783,7 +823,7 @@ React.useEffect(() => {
     ...(targetInvoice || {} as Invoice),
     id: invoiceId,
     clientId: contact.id,
-    clientName: targetInvoice?.clientName || contact.name,
+    clientName: contact.fiscalName || targetInvoice?.clientName || getContactInvoiceName(contact),
     clientEmail: targetInvoice?.clientEmail || safeClientEmail,
     clientTaxId: targetInvoice?.clientTaxId || contact.taxId,
     clientAddress: targetInvoice?.clientAddress || contact.fiscalAddress || contact.location,
@@ -796,9 +836,9 @@ React.useEffect(() => {
     taxAmount: Number((grossTotal - subtotal).toFixed(2)),
     total: grossTotal,
     notes: [targetInvoice?.notes, `${options.isInitialSale ? 'Venta inicial' : 'Nuevo servicio'} registrado desde CRM. Productos: ${convSelectedProducts.join(', ') || 'Sin especificar'}.`].filter(Boolean).join('\n'),
-    comercialId: targetInvoice?.comercialId || commercial?.id,
-    comercialEmail: targetInvoice?.comercialEmail || commercialEmail,
-    isInitialSale: targetInvoice?.isInitialSale ?? options.isInitialSale,
+    comercialId: invoiceCommercialId,
+    comercialEmail: invoiceCommercialEmail,
+    isInitialSale: isCommissionableInitialInvoice,
    };
    if (targetInvoice) await db.updateFinanceInvoice(invoicePayload);
    else await db.insertFinanceInvoice(invoicePayload);
@@ -809,7 +849,7 @@ React.useEffect(() => {
      headers: { 'Content-Type': 'application/json' },
      body: JSON.stringify({
       clientId: contact.id,
-      clientName: contact.name,
+      clientName: getContactInvoiceName(contact),
       clientEmail: safeClientEmail,
       amount: installmentAmount.toFixed(2),
       interval: installmentCount > 1 ? 'month' : 'once',
@@ -873,7 +913,7 @@ React.useEffect(() => {
      headers: { 'Content-Type': 'application/json' },
      body: JSON.stringify({
       clientId: contact.id,
-      clientName: contact.name,
+      clientName: getContactInvoiceName(contact),
       clientEmail: safeClientEmail,
       amount: convRecurringPrice.toFixed(2),
       interval: convRecurringInterval,
@@ -898,7 +938,7 @@ React.useEffect(() => {
    }
   }
 
-  return { stripeUrls, upfrontTotal: hasUpfrontServicePayment ? convFinancedTotal : 0 };
+  return { stripeUrls, upfrontTotal: hasUpfrontServicePayment ? convFinancedTotal : 0, invoiceId: createdInvoiceId, createdTransactions };
  };
 
  // Handle lead to client conversion
@@ -1196,7 +1236,24 @@ React.useEffect(() => {
   if (!finishRegistration) return;
 
   try {
-   const result = await registerServiceFinancials(serviceRegistrationContact, { isInitialSale: false });
+   if (convTargetInvoiceId === 'new' && convExtraCommissionAmount > 0 && !convExtraCommissionComercialId) {
+    throw new Error('Selecciona el comercial que recibirá la comisión del nuevo servicio.');
+   }
+   const extraCommissionCommercial = convTargetInvoiceId === 'new' && convExtraCommissionAmount > 0
+    ? eligibleCommissionCommercials.find(comercial => comercial.id === convExtraCommissionComercialId)
+    : undefined;
+   const result = await registerServiceFinancials(serviceRegistrationContact, {
+    isInitialSale: false,
+    commercial: extraCommissionCommercial,
+   });
+   if (extraCommissionCommercial && convExtraCommissionAmount > 0) {
+    await assignExtraCommission(
+     extraCommissionCommercial.id,
+     convExtraCommissionAmount,
+     `Comisión acordada por nuevo servicio de ${serviceRegistrationContact.name} · Factura ${result.invoiceId || 'sin factura'}`,
+     result.createdTransactions[0],
+    );
+   }
    const updatedContact: ClientContact = {
     ...serviceRegistrationContact,
     requestedProducts: Array.from(new Set([...(serviceRegistrationContact.requestedProducts || []), ...convSelectedProducts])),
@@ -1243,6 +1300,14 @@ React.useEffect(() => {
  const [paymentInvoiceId, setPaymentInvoiceId] = useState('general');
  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'pending'>('paid');
  const [paymentInstallments, setPaymentInstallments] = useState<1 | 2 | 3>(1);
+ const [paymentCommissionComercialId, setPaymentCommissionComercialId] = useState('');
+ const [paymentCommissionAmount, setPaymentCommissionAmount] = useState(0);
+ const selectedPaymentInvoiceForForm = paymentInvoiceId !== 'general'
+  ? invoices.find(invoice => invoice.id === paymentInvoiceId)
+  : undefined;
+ const paymentUsesAutomaticCommission = Boolean(selectedPaymentInvoiceForForm && (
+  selectedPaymentInvoiceForForm.isInitialSale ?? Boolean(selectedPaymentInvoiceForForm.comercialId || selectedPaymentInvoiceForForm.comercialEmail)
+ ));
  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
  const [invoiceDeleteError, setInvoiceDeleteError] = useState('');
 
@@ -1309,7 +1374,7 @@ React.useEffect(() => {
    .map(item => item.id);
   setInvoicePrefill({
    id: selectedContact.id,
-   name: selectedContact.company !== 'Independent' ? selectedContact.company : selectedContact.name,
+   name: getContactInvoiceName(selectedContact),
    email: selectedContact.email,
    taxId: selectedContact.taxId || '',
    address: selectedContact.fiscalAddress || selectedContact.location || '',
@@ -1480,6 +1545,21 @@ React.useEffect(() => {
   if (paymentInvoiceId && paymentInvoiceId !== 'general') {
   finalInvoiceId = paymentInvoiceId;
   }
+  const selectedPaymentInvoice = finalInvoiceId
+   ? invoices.find(invoice => invoice.id === finalInvoiceId && invoiceBelongsToContact(invoice, selectedContact))
+   : undefined;
+  if (finalInvoiceId && !selectedPaymentInvoice) throw new Error('La factura seleccionada ya no está disponible para este cliente.');
+  const inheritedCommercial = selectedPaymentInvoice
+   ? (comercialesList || []).find(comercial => comercial.id === selectedPaymentInvoice.comercialId || comercial.email.toLowerCase() === selectedPaymentInvoice.comercialEmail?.toLowerCase())
+   : undefined;
+  const fallbackCommercial = (comercialesList || []).find(comercial => comercial.email.toLowerCase() === (selectedContact.contactedByComercialEmail || selectedContact.assignedUserEmail || '').toLowerCase());
+  const paymentCommercial = inheritedCommercial || fallbackCommercial;
+  const isInitialInvoicePayment = selectedPaymentInvoice
+   ? (selectedPaymentInvoice.isInitialSale ?? Boolean(selectedPaymentInvoice.comercialId || selectedPaymentInvoice.comercialEmail))
+   : false;
+  if (!isInitialInvoicePayment && paymentCommissionAmount > 0 && !paymentCommissionComercialId) {
+   throw new Error('Selecciona el comercial que recibirá la comisión de este pago.');
+  }
 
   const newTx: FinanceTransaction = {
   id: txId,
@@ -1493,9 +1573,9 @@ React.useEffect(() => {
   paymentMethod: paymentMethod,
   invoiceId: finalInvoiceId,
   clientId: selectedContact.id,
-  comercialId: (comercialesList || []).find(c => c.email.toLowerCase() === (selectedContact.contactedByComercialEmail || selectedContact.assignedUserEmail || '').toLowerCase())?.id,
-  comercialEmail: selectedContact.contactedByComercialEmail || selectedContact.assignedUserEmail,
-  isInitialSale: false
+  comercialId: paymentCommercial?.id,
+  comercialEmail: paymentCommercial?.email,
+  isInitialSale: isInitialInvoicePayment
   };
 
   const createdPaymentTransactions: FinanceTransaction[] = [];
@@ -1526,7 +1606,7 @@ React.useEffect(() => {
   // Every amount explicitly assigned to an invoice becomes a visible invoice line.
   // This keeps paid and pending additions auditable without overwriting prior concepts.
   if (finalInvoiceId) {
-   const targetInvoice = invoices.find(invoice => invoice.id === finalInvoiceId && invoiceBelongsToContact(invoice, selectedContact));
+   const targetInvoice = selectedPaymentInvoice;
    if (!targetInvoice) throw new Error('La factura seleccionada ya no está disponible para este cliente.');
    const taxPercentage = targetInvoice.taxPercentage ?? selectedContact.taxPercentage ?? 21;
    const addedItems: InvoiceItem[] = createdPaymentTransactions.map((transaction, index) => {
@@ -1560,6 +1640,15 @@ React.useEffect(() => {
     dueDate: [...pendingDates, targetInvoice.dueDate].filter(Boolean).sort((a, b) => b.localeCompare(a))[0] || targetInvoice.dueDate,
    };
    await db.updateFinanceInvoice(updatedInvoice);
+  }
+
+  if (!isInitialInvoicePayment && paymentCommissionAmount > 0) {
+   await assignExtraCommission(
+    paymentCommissionComercialId,
+    paymentCommissionAmount,
+    `Comisión acordada por pago adicional de ${selectedContact.name}${finalInvoiceId ? ` · Factura ${finalInvoiceId}` : ''}`,
+    createdPaymentTransactions[0],
+   );
   }
 
   // Sync/update ComercialLead status to 'Ganado' if this contact is a Client and a payment was registered
@@ -1642,6 +1731,8 @@ React.useEffect(() => {
   // Reset form states
   setPaymentAmount('');
   setPaymentInvoiceId('general');
+  setPaymentCommissionComercialId('');
+  setPaymentCommissionAmount(0);
   setShowAddPaymentModal(false);
 
   // Show toast
@@ -2157,7 +2248,7 @@ React.useEffect(() => {
      headers: { 'Content-Type': 'application/json' },
      body: JSON.stringify({
       clientId: contact.id,
-      clientName: contact.name,
+      clientName: getContactInvoiceName(contact),
       clientEmail: targetEmail,
       amount: firstTransaction.amount.toFixed(2),
       interval: 'month',
@@ -2215,7 +2306,7 @@ React.useEffect(() => {
      headers: { 'Content-Type': 'application/json' },
      body: JSON.stringify({
       clientId: contact.id,
-      clientName: contact.name,
+      clientName: getContactInvoiceName(contact),
       clientEmail: targetEmail,
       amount: amountNumber.toFixed(2),
       interval: chargePlan,
@@ -2264,7 +2355,7 @@ React.useEffect(() => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
      clientId: contact.id,
-     clientName: contact.name,
+     clientName: getContactInvoiceName(contact),
      clientEmail: targetEmail,
      amount: amountNumber.toFixed(2),
      interval: 'once',
@@ -2589,6 +2680,7 @@ React.useEffect(() => {
  const [newStatus, setNewStatus] = useState<'Client' | 'Lead'>('Lead');
  const [newRole, setNewRole] = useState('');
  const [newLocation, setNewLocation] = useState('San Francisco, CA');
+ const [newFiscalName, setNewFiscalName] = useState('');
  const [newTaxId, setNewTaxId] = useState('');
  const [newFiscalAddress, setNewFiscalAddress] = useState('');
  const [newCurrency, setNewCurrency] = useState<NonNullable<ClientContact['currency']>>('EUR');
@@ -2610,6 +2702,7 @@ React.useEffect(() => {
  setNewStatus('Lead');
  setNewRole('');
  setNewLocation('San Francisco, CA');
+ setNewFiscalName('');
  setNewTaxId('');
  setNewFiscalAddress('');
  setNewCurrency('EUR');
@@ -2689,6 +2782,7 @@ React.useEffect(() => {
   status: newStatus,
   role: newRole || 'Product Manager',
   location: newLocation,
+  fiscalName: newFiscalName || undefined,
   taxId: newTaxId || undefined,
   fiscalAddress: newFiscalAddress || newLocation || undefined,
   currency: newCurrency,
@@ -2745,7 +2839,7 @@ React.useEffect(() => {
    });
    return {
     ...invoice,
-    clientName: updatedContact.name,
+    clientName: getContactInvoiceName(updatedContact),
     clientEmail: updatedContact.email,
     clientTaxId: updatedContact.taxId,
     clientAddress: updatedContact.fiscalAddress || updatedContact.location,
@@ -2774,6 +2868,7 @@ React.useEffect(() => {
   lastContacted: 'Just now',
   role: newRole || 'Product Manager',
   location: newLocation,
+  fiscalName: newFiscalName || undefined,
   taxId: newTaxId || undefined,
   fiscalAddress: newFiscalAddress || newLocation || undefined,
   currency: newCurrency,
@@ -3098,6 +3193,7 @@ React.useEffect(() => {
      setNewStatus(selectedContact.status || 'Lead');
      setNewRole(selectedContact.role || '');
      setNewLocation(selectedContact.location || 'San Francisco, CA');
+     setNewFiscalName(selectedContact.fiscalName || '');
      setNewTaxId(selectedContact.taxId || '');
      setNewFiscalAddress(selectedContact.fiscalAddress || selectedContact.location || '');
      setNewCurrency(selectedContact.currency || 'EUR');
@@ -4219,9 +4315,10 @@ React.useEffect(() => {
      <MapPin className="text-slate-500 w-4 h-4 flex-shrink-0" />
      <span className="text-xs text-slate-300">{selectedContact.location || 'Not Specified'}</span>
      </div>
-     {(selectedContact.taxId || selectedContact.fiscalAddress || selectedContact.currency || selectedContact.language || selectedContact.taxPercentage !== undefined) && (
+     {(selectedContact.fiscalName || selectedContact.taxId || selectedContact.fiscalAddress || selectedContact.currency || selectedContact.language || selectedContact.taxPercentage !== undefined) && (
      <div className="rounded-lg border border-emerald-500/10 bg-emerald-500/[0.03] p-2.5 text-[10px] text-slate-300">
       <span className="block font-mono text-[8px] uppercase tracking-wider text-emerald-400">Datos fiscales</span>
+      {selectedContact.fiscalName && <span className="mt-1 block font-semibold">Nombre fiscal: {selectedContact.fiscalName}</span>}
       {selectedContact.taxId && <span className="mt-1 block">CIF/NIF/ID: {selectedContact.taxId}</span>}
       {selectedContact.fiscalAddress && <span className="block">{selectedContact.fiscalAddress}</span>}
       <span className="mt-1 block text-slate-400">
@@ -4318,7 +4415,7 @@ React.useEffect(() => {
       onClick={() => {
        setInvoicePrefill({
        id: selectedContact.id,
-       name: selectedContact.name,
+       name: getContactInvoiceName(selectedContact),
        email: selectedContact.email,
        taxId: selectedContact.taxId || '',
        address: selectedContact.fiscalAddress || selectedContact.location || '',
@@ -4461,6 +4558,9 @@ React.useEffect(() => {
        setPaymentMethod('transfer');
        setPaymentDate(new Date().toISOString().split('T')[0]);
        setPaymentDesc(`Cobro Cliente: ${selectedContact.name}`);
+       setPaymentInvoiceId('general');
+       setPaymentCommissionComercialId('');
+       setPaymentCommissionAmount(0);
        setShowAddPaymentModal(true);
        }}
        className="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition"
@@ -4952,6 +5052,17 @@ React.useEffect(() => {
     </div>
 
     <div className="grid grid-cols-1 gap-4 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.03] p-3 sm:grid-cols-2">
+     <div className="space-y-1 sm:col-span-2">
+      <label className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider">Nombre fiscal / Razón social</label>
+      <input
+       type="text"
+       value={newFiscalName}
+       onChange={(e) => setNewFiscalName(e.target.value)}
+       placeholder="Nombre legal que aparecerá en las facturas"
+       className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+      />
+      <p className="text-[8px] text-slate-500">Se usará como nombre del cliente en la factura, sin cambiar su nombre comercial en el CRM.</p>
+     </div>
      <div className="space-y-1">
       <label className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider">CIF / NIF / ID fiscal</label>
       <input
@@ -5494,6 +5605,26 @@ React.useEffect(() => {
     </select>
     </div>
 
+    {paymentUsesAutomaticCommission ? (
+     <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] p-3 text-[9px] leading-4 text-emerald-200/80">
+      Esta factura pertenece a la venta inicial. El pago heredará su comercial y se sumará automáticamente al volumen sobre el que se calcula su porcentaje, sin crear otro caso ganado.
+     </div>
+    ) : (
+     <div className="space-y-2 rounded-xl border border-amber-400/15 bg-amber-400/[0.035] p-3">
+      <div>
+       <span className="text-[9px] font-black uppercase tracking-[.13em] text-amber-300">Comisión de este pago</span>
+       <p className="mt-1 text-[8px] leading-3 text-slate-500">Para pagos posteriores puedes decidir el importe fijo que se lleva el comercial.</p>
+      </div>
+      <div className="grid grid-cols-[1fr_120px] gap-2">
+       <select value={paymentCommissionComercialId} onChange={event => setPaymentCommissionComercialId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-[#030305] px-2.5 py-2 text-[9px] text-slate-200 outline-none focus:border-amber-400">
+        <option value="">Sin comisión</option>
+        {eligibleCommissionCommercials.map(comercial => <option key={comercial.id} value={comercial.id}>{comercial.name}</option>)}
+       </select>
+       <input type="number" min="0" step="0.01" value={paymentCommissionAmount || ''} onChange={event => setPaymentCommissionAmount(Math.max(0, Number(event.target.value) || 0))} placeholder="Se lleva €" className="w-full rounded-lg border border-white/10 bg-[#030305] px-2.5 py-2 text-[9px] text-slate-200 outline-none focus:border-amber-400" />
+      </div>
+     </div>
+    )}
+
     {/* Payment Description */}
     <div className="space-y-1.5">
     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Concepto / Notas de Pago</label>
@@ -5648,6 +5779,22 @@ React.useEffect(() => {
         ))}
       </select>
       {convTargetInvoiceId !== 'new' && <p className="text-[8px] leading-3 text-blue-200/70">La factura conservará sus conceptos actuales y recibirá las nuevas cuotas. Si estaba pagada, volverá a pendiente hasta cobrar los nuevos importes.</p>}
+      {convTargetInvoiceId === 'new' && (
+       <div className="grid grid-cols-[1fr_130px] gap-2 border-t border-blue-400/10 pt-2">
+        <label className="space-y-1">
+         <span className="block text-[8px] font-bold uppercase text-slate-500">Comercial del nuevo servicio</span>
+         <select value={convExtraCommissionComercialId} onChange={event => setConvExtraCommissionComercialId(event.target.value)} className="w-full rounded-lg border border-white/10 bg-[#030305] px-2.5 py-2 text-[9px] text-slate-200 outline-none focus:border-blue-400">
+          <option value="">Sin comisión extra</option>
+          {eligibleCommissionCommercials.map(comercial => <option key={comercial.id} value={comercial.id}>{comercial.name}</option>)}
+         </select>
+        </label>
+        <label className="space-y-1">
+         <span className="block text-[8px] font-bold uppercase text-slate-500">Se lleva (€)</span>
+         <input type="number" min="0" step="0.01" value={convExtraCommissionAmount || ''} onChange={event => setConvExtraCommissionAmount(Math.max(0, Number(event.target.value) || 0))} placeholder="0,00" className="w-full rounded-lg border border-white/10 bg-[#030305] px-2.5 py-2 text-[9px] text-slate-200 outline-none focus:border-blue-400" />
+        </label>
+        <p className="col-span-2 text-[8px] leading-3 text-slate-500">Es un importe fijo para esta nueva factura y se sumará a las comisiones extra del comercial. No crea otro caso ganado.</p>
+       </div>
+      )}
      </div>
     )}
 

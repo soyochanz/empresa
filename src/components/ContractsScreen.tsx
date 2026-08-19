@@ -603,9 +603,9 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  if (invoiceClientId) {
   const contact = contacts.find(c => c.id === invoiceClientId);
   if (contact) {
-  setInvoiceClientName(contact.company !== 'Independent' ? contact.company : contact.name);
-  setInvoiceClientDni('DNI/CIF: ' + (contact.hostingCredentials?.split('\n')[0] || 'M-451290'));
-  setInvoiceClientAddress(contact.location || 'Camino de Ronda 120, Ibiza');
+  setInvoiceClientName(contact.fiscalName || (contact.company !== 'Independent' ? contact.company : contact.name));
+  setInvoiceClientDni(contact.taxId || '');
+  setInvoiceClientAddress(contact.fiscalAddress || contact.location || '');
   setInvoiceClientEmail(contact.email || '');
   }
  }

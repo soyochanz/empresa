@@ -1871,6 +1871,7 @@ export default function App() {
    onAddProfile={handleUpsertProfile}
    onAddEvent={handleAddEvent}
    comercialesList={comercialesList}
+   onUpdateComercial={handleUpdateComercialAccount}
    onRefreshFinance={handleRefreshFinance}
    />
   );
