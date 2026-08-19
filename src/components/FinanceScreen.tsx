@@ -4,7 +4,7 @@ import { db, invalidateSharedPipelineCache, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials, getUniqueInitialSales } from '../utils/salesRewards';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
-import { clearInvoicePrefill, peekInvoicePrefill } from '../utils/invoicePrefill';
+import { clearInvoicePrefill, peekInvoicePrefill, resolveInvoiceClientData } from '../utils/invoicePrefill';
 import { authenticatedFetch } from '../utils/authenticatedFetch';
 import {
  buildManualRecurringTransaction,
@@ -1605,26 +1605,29 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  const invoiceId = isEditingInv && editingInvId ? editingInvId : getNextInvoiceNumber(invoices);
 
- // Create automatic pending transactions for custom invoice items with isPending === true
+ // New lines added to an existing invoice create their own paid/pending ledger movement.
+ // On new invoices, pending lines keep the existing automatic transaction behavior.
  const autoCreatedTxs: FinanceTransaction[] = [];
  const mappedItems = validItems.map((item, idx) => {
   const isItemPending = !!item.isPending;
   let pTxId = item.pendingTxId;
   const savedItemId = item.id.startsWith('temp') ? 'item_' + idx + '_' + Date.now() : item.id;
+  const shouldCreateTransaction = !pTxId && (isItemPending || (isEditingInv && item.id.startsWith('temp')));
 
-  if (isItemPending && !pTxId) {
-  // Generate new pending transaction structure
-  pTxId = 'tx_item_pending_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 6);
+  if (shouldCreateTransaction) {
+  pTxId = `tx_item_${isItemPending ? 'pending' : 'paid'}_` + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 6);
   const newTx: FinanceTransaction = {
    id: pTxId,
    type: 'income',
    category: 'Desarrollo',
    amount: item.grossAmount ?? item.total * (1 + invTaxPercentage / 100),
-   date: invDueDate || invDate, // Will raise deadline notice nicely around due date
-   description: `Cobro Pendiente: ${item.description} (${invClientName})`,
+   date: isItemPending ? (invDueDate || invDate) : invDate,
+   description: `${isItemPending ? 'Cobro Pendiente' : 'Pago registrado'}: ${item.description} (${invClientName})`,
    isRecurring: false,
-   status: 'pending',
-   invoiceId: invoiceId
+   status: isItemPending ? 'pending' : 'paid',
+   invoiceId: invoiceId,
+   clientId: invClientId || undefined,
+   paymentMethod: item.paymentMethod || 'transfer',
   };
   autoCreatedTxs.push(newTx);
   }
@@ -1637,7 +1640,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   total: item.total,
   grossAmount: item.grossAmount ?? item.total * (1 + invTaxPercentage / 100),
   isPending: isItemPending,
-  pendingTxId: pTxId
+  pendingTxId: pTxId,
+  paymentMethod: item.paymentMethod || 'transfer',
   };
  });
 
@@ -1697,13 +1701,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   return;
  }
 
- // Insert any auto-created pending transactions
+ // Insert ledger movements created for new invoice lines.
  if (autoCreatedTxs.length > 0) {
   try {
    await Promise.all(autoCreatedTxs.map(tx => db.insertFinanceTransaction(tx)));
    setTransactions(prev => [...autoCreatedTxs, ...prev]);
   } catch (err: any) {
-   console.error('Error inserting item-pending transaction:', err);
+   console.error('Error inserting invoice item transaction:', err);
    showToast(`La factura se guardó, pero no todos sus cobros: ${err?.message || 'error de Supabase'}`, true);
   }
  }
@@ -2148,7 +2152,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
   paidAmount + 0.005 >= Number(previewInvoice.total || 0)
  );
  const dueDate = paidTransactions.map(tx => tx.date).filter(Boolean).sort((a, b) => b.localeCompare(a))[0] || previewInvoice.dueDate;
- const html = buildInvoiceHtml(previewInvoice, {
+ const html = buildInvoiceHtml(resolveInvoiceClientData(previewInvoice, contacts), {
   isPaid,
   dueDate,
   bank: {
@@ -2603,7 +2607,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
 </body>
 </html>`;
  void legacyHtmlContent;
- const htmlContent = buildInvoiceHtml(inv, {
+ const htmlContent = buildInvoiceHtml(resolveInvoiceClientData(inv, contacts), {
   isPaid: isInvoicePaid,
   dueDate: effectiveDueDate,
   bank: {
@@ -5552,7 +5556,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       </div>
 
       <div className="col-span-2 space-y-0.5">
-      <span className="text-[8px] font-mono text-emerald-400 uppercase">Importe pagado</span>
+      <span className="text-[8px] font-mono text-emerald-400 uppercase">Importe total</span>
       <input
        type="number"
        min="0"
@@ -5765,7 +5769,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     return (
      <iframe
       title={`Vista previa de factura ${previewInvoice.id}`}
-      srcDoc={buildInvoiceHtml(previewInvoice, {
+      srcDoc={buildInvoiceHtml(resolveInvoiceClientData(previewInvoice, contacts), {
        isPaid,
        dueDate,
        bank: {

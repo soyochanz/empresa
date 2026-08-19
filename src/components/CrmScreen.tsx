@@ -4,7 +4,7 @@ import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, Come
 import { beginBlockingDatabaseOperation, db } from '../supabaseClient';
 import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
-import { setInvoicePrefill } from '../utils/invoicePrefill';
+import { resolveInvoiceClientData, setInvoicePrefill } from '../utils/invoicePrefill';
 import { authenticatedFetch } from '../utils/authenticatedFetch';
 import { PanelUser } from '../mockData';
 import { 
@@ -653,6 +653,7 @@ React.useEffect(() => {
  const [convRecurringLimited, setConvRecurringLimited] = useState(false);
  const [convRecurringCount, setConvRecurringCount] = useState(12);
  const [convSelectedComercialId, setConvSelectedComercialId] = useState('');
+ const [convTargetInvoiceId, setConvTargetInvoiceId] = useState('new');
  const convFinancedTotal = Math.max(0, Number(convSalePrice) || 0) +
   (convInstallments > 1 ? Math.max(0, Number(convFinancingExtra) || 0) : 0);
  const serviceFormContact = convertingLead || serviceRegistrationContact;
@@ -669,6 +670,7 @@ React.useEffect(() => {
    setConvRecurringCount(12);
    setConvFirstPaymentTiming('today');
    setConvFirstPaymentDate(getMinimumScheduledStripeDate());
+   setConvTargetInvoiceId('new');
   }, [serviceFormContact?.id, Boolean(convertingLead)]);
 
  const eligibleCommissionCommercials = (comercialesList || []).filter(commercial => {
@@ -722,11 +724,17 @@ React.useEffect(() => {
   const commercialEmail = commercial?.email || '';
 
   if (hasUpfrontServicePayment && convFinancedTotal > 0) {
-   const invoiceId = getNextInvoiceNumber(invoices);
+   const targetInvoice = !options.isInitialSale && convTargetInvoiceId !== 'new'
+    ? invoices.find(invoice => invoice.id === convTargetInvoiceId && invoiceBelongsToContact(invoice, contact))
+    : undefined;
+   if (convTargetInvoiceId !== 'new' && !targetInvoice) {
+    throw new Error('La factura seleccionada ya no está disponible para este cliente. Actualiza y vuelve a intentarlo.');
+   }
+   const invoiceId = targetInvoice?.id || getNextInvoiceNumber(invoices);
    const stripePlanId = `plan_service_${Math.random().toString(36).slice(2, 9)}`;
    const installmentCount = Math.max(1, convInstallments);
    const installmentAmount = Math.round((convFinancedTotal / installmentCount) * 100) / 100;
-   const taxPercentage = contact.taxPercentage ?? 21;
+   const taxPercentage = targetInvoice?.taxPercentage ?? contact.taxPercentage ?? 21;
    const invoiceItems: InvoiceItem[] = [];
 
    for (let index = 1; index <= installmentCount; index += 1) {
@@ -765,25 +773,35 @@ React.useEffect(() => {
     createdTransactions.push(transaction);
    }
 
-   const subtotal = Number((convFinancedTotal / (1 + taxPercentage / 100)).toFixed(2));
-   await db.insertFinanceInvoice({
+   const previousGrossTotal = targetInvoice
+    ? targetInvoice.items.reduce((sum, item) => sum + Number(item.grossAmount ?? item.total * (1 + targetInvoice.taxPercentage / 100)), 0)
+    : 0;
+   const grossTotal = Number((previousGrossTotal + convFinancedTotal).toFixed(2));
+   const subtotal = Number((grossTotal / (1 + taxPercentage / 100)).toFixed(2));
+   const lastInstallmentDate = toLocalDateKey(addMonthsKeepingDay(firstUpfrontPaymentDate, installmentCount - 1));
+   const invoicePayload: Invoice = {
+    ...(targetInvoice || {} as Invoice),
     id: invoiceId,
     clientId: contact.id,
-    clientName: contact.name,
-    clientEmail: safeClientEmail,
-    date: todayKey,
-     dueDate: toLocalDateKey(firstUpfrontPaymentDate),
+    clientName: targetInvoice?.clientName || contact.name,
+    clientEmail: targetInvoice?.clientEmail || safeClientEmail,
+    clientTaxId: targetInvoice?.clientTaxId || contact.taxId,
+    clientAddress: targetInvoice?.clientAddress || contact.fiscalAddress || contact.location,
+    date: targetInvoice?.date || todayKey,
+    dueDate: [targetInvoice?.dueDate, lastInstallmentDate].filter((date): date is string => Boolean(date)).sort((a, b) => b.localeCompare(a))[0],
     status: 'sent',
-    items: invoiceItems,
+    items: [...(targetInvoice?.items || []), ...invoiceItems],
     subtotal,
     taxPercentage,
-    taxAmount: Number((convFinancedTotal - subtotal).toFixed(2)),
-    total: convFinancedTotal,
-    notes: `${options.isInitialSale ? 'Venta inicial' : 'Nuevo servicio'} registrado desde CRM. Productos: ${convSelectedProducts.join(', ') || 'Sin especificar'}.`,
-    comercialId: commercial?.id,
-    comercialEmail: commercialEmail,
-    isInitialSale: options.isInitialSale,
-   });
+    taxAmount: Number((grossTotal - subtotal).toFixed(2)),
+    total: grossTotal,
+    notes: [targetInvoice?.notes, `${options.isInitialSale ? 'Venta inicial' : 'Nuevo servicio'} registrado desde CRM. Productos: ${convSelectedProducts.join(', ') || 'Sin especificar'}.`].filter(Boolean).join('\n'),
+    comercialId: targetInvoice?.comercialId || commercial?.id,
+    comercialEmail: targetInvoice?.comercialEmail || commercialEmail,
+    isInitialSale: targetInvoice?.isInitialSale ?? options.isInitialSale,
+   };
+   if (targetInvoice) await db.updateFinanceInvoice(invoicePayload);
+   else await db.insertFinanceInvoice(invoicePayload);
 
    if (convPaymentMethod === 'stripe') {
     const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
@@ -1480,13 +1498,15 @@ React.useEffect(() => {
   isInitialSale: false
   };
 
+  const createdPaymentTransactions: FinanceTransaction[] = [];
+
   // Create a manual installment plan when the client agreed to pay in 2 or 3 months.
   if (paymentStatus === 'pending' && paymentInstallments > 1) {
   const installmentAmount = Math.round((amt / paymentInstallments) * 100) / 100;
   const firstPaymentDate = new Date(`${paymentDate}T12:00:00`);
   for (let index = 0; index < paymentInstallments; index++) {
    const dueDate = addMonthsKeepingDay(firstPaymentDate, index);
-   await db.insertFinanceTransaction({
+   const installmentTransaction: FinanceTransaction = {
    ...newTx,
    id: `${txId}_${index + 1}`,
    amount: index === paymentInstallments - 1 ? Math.round((amt - installmentAmount * index) * 100) / 100 : installmentAmount,
@@ -1494,10 +1514,52 @@ React.useEffect(() => {
    description: `${newTx.description} Cuota ${index + 1}/${paymentInstallments}`,
    stripeInstallmentIndex: index + 1,
    stripeInstallmentCount: paymentInstallments
-   });
+   };
+   await db.insertFinanceTransaction(installmentTransaction);
+   createdPaymentTransactions.push(installmentTransaction);
   }
   } else {
   await db.insertFinanceTransaction(newTx);
+  createdPaymentTransactions.push(newTx);
+  }
+
+  // Every amount explicitly assigned to an invoice becomes a visible invoice line.
+  // This keeps paid and pending additions auditable without overwriting prior concepts.
+  if (finalInvoiceId) {
+   const targetInvoice = invoices.find(invoice => invoice.id === finalInvoiceId && invoiceBelongsToContact(invoice, selectedContact));
+   if (!targetInvoice) throw new Error('La factura seleccionada ya no está disponible para este cliente.');
+   const taxPercentage = targetInvoice.taxPercentage ?? selectedContact.taxPercentage ?? 21;
+   const addedItems: InvoiceItem[] = createdPaymentTransactions.map((transaction, index) => {
+    const netAmount = Number((transaction.amount / (1 + taxPercentage / 100)).toFixed(2));
+    return {
+     id: `item_manual_${Date.now()}_${index + 1}`,
+     description: transaction.description,
+     quantity: 1,
+     unitPrice: netAmount,
+     total: netAmount,
+     grossAmount: transaction.amount,
+     isPending: transaction.status === 'pending',
+     pendingTxId: transaction.id,
+     paymentMethod: transaction.paymentMethod,
+    };
+   });
+   const updatedItems = [...targetInvoice.items, ...addedItems];
+   const grossTotal = Number(updatedItems.reduce(
+    (sum, item) => sum + Number(item.grossAmount ?? item.total * (1 + taxPercentage / 100)),
+    0
+   ).toFixed(2));
+   const subtotal = Number((grossTotal / (1 + taxPercentage / 100)).toFixed(2));
+   const pendingDates = createdPaymentTransactions.filter(transaction => transaction.status === 'pending').map(transaction => transaction.date);
+   const updatedInvoice: Invoice = {
+    ...targetInvoice,
+    items: updatedItems,
+    subtotal,
+    taxAmount: Number((grossTotal - subtotal).toFixed(2)),
+    total: grossTotal,
+    status: updatedItems.some(item => item.isPending) ? 'sent' : 'paid',
+    dueDate: [...pendingDates, targetInvoice.dueDate].filter(Boolean).sort((a, b) => b.localeCompare(a))[0] || targetInvoice.dueDate,
+   };
+   await db.updateFinanceInvoice(updatedInvoice);
   }
 
   // Sync/update ComercialLead status to 'Ganado' if this contact is a Client and a payment was registered
@@ -1551,14 +1613,7 @@ React.useEffect(() => {
   }
 
   // 2. If payment is paid, match/settle invoices
-  if (paymentStatus === 'paid') {
-  if (finalInvoiceId) {
-   const targetInvoice = invoices.find(i => i.id === finalInvoiceId);
-   if (targetInvoice) {
-   const updatedInv: Invoice = { ...targetInvoice, status: 'paid' };
-   await db.updateFinanceInvoice(updatedInv);
-   }
-  } else {
+  if (paymentStatus === 'paid' && !finalInvoiceId) {
    // 3. Automated payment allocation (Auto-Matching pending invoices!)
    // Find pending invoices of this client and automatically apply this payment to cover them
    const clientPendingInvoices = invoices
@@ -1579,7 +1634,6 @@ React.useEffect(() => {
     break;
    }
    }
-  }
   }
 
   // Reload financials
@@ -2022,7 +2076,7 @@ React.useEffect(() => {
 </body>
 </html>`;
  void legacyHtmlContent;
- const htmlContent = buildInvoiceHtml(inv, {
+ const htmlContent = buildInvoiceHtml(resolveInvoiceClientData(inv, contacts), {
   isPaid: isInvoicePaid,
   dueDate: effectiveDueDate
  });
@@ -5298,7 +5352,7 @@ React.useEffect(() => {
     <span>Registrar Cobro / Transacción</span>
     </h3>
     <p className="text-[11px] text-slate-400 mt-1 font-sans">
-    Registra un cobro de forma manual. Si el cliente tiene facturas pendientes, se aplicará y marcará la correspondiente como cobrada automáticamente.
+    Añade un pago realizado o un importe pendiente. Al elegir una factura, el movimiento aparecerá como una nueva línea sin borrar sus conceptos actuales.
     </p>
     <button
     type="button"
@@ -5321,7 +5375,7 @@ React.useEffect(() => {
     {/* Amount and Date */}
     <div className="grid grid-cols-2 gap-4">
     <div className="space-y-1.5">
-     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Importe Recibido (?)</label>
+     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Importe a añadir (€)</label>
      <input
      type="number"
      step="0.01"
@@ -5401,7 +5455,7 @@ React.useEffect(() => {
      </button>
     </div>
     <p className="text-[9px] text-slate-500 font-sans italic leading-tight mt-1">
-     Nota: Para cobrar un nuevo servicio, primero regístralo como "Pendiente". Así aparecerá por defecto en el panel de plazos y links de Stripe.
+     El importe quedará reflejado en la factura elegida como pagado o pendiente, según este estado.
     </p>
     </div>
 
@@ -5427,12 +5481,13 @@ React.useEffect(() => {
      onChange={(e) => setPaymentInvoiceId(e.target.value)}
      className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
     >
-     <option value="general">Automático / Saldo General (Auto-completar facturas)</option>
+     <option value="general">Sin factura concreta / saldo general</option>
      {invoices
-     .filter(inv => invoiceBelongsToContact(inv, selectedContact) && inv.status !== 'paid')
+     .filter(inv => invoiceBelongsToContact(inv, selectedContact))
+     .sort((a, b) => b.date.localeCompare(a.date))
      .map(inv => (
       <option key={inv.id} value={inv.id}>
-      {inv.id} - Total: {inv.total.toFixed(2)} ({inv.date})
+      {inv.id} - Total actual: {inv.total.toFixed(2)} € ({inv.status === 'paid' ? 'Pagada' : 'Pendiente'})
       </option>
      ))
      }
@@ -5570,6 +5625,31 @@ React.useEffect(() => {
       ))}
      </div>
     </div>
+
+    {!convertingLead && hasUpfrontServicePayment && (
+     <div className="space-y-2 rounded-2xl border border-blue-400/15 bg-blue-400/[0.035] p-3">
+      <div>
+       <label className="text-[9px] font-black uppercase tracking-[.14em] text-blue-300">Factura del servicio</label>
+       <p className="mt-1 text-[8px] leading-3 text-slate-500">Puedes crear una factura nueva o sumar este servicio y sus pagos a una factura ya generada del cliente.</p>
+      </div>
+      <select
+       value={convTargetInvoiceId}
+       onChange={event => setConvTargetInvoiceId(event.target.value)}
+       className="w-full rounded-xl border border-white/10 bg-[#030305] px-3 py-2.5 text-xs text-slate-200 outline-none focus:border-blue-400"
+      >
+       <option value="new">Crear una factura nueva</option>
+       {invoices
+        .filter(invoice => serviceRegistrationContact && invoiceBelongsToContact(invoice, serviceRegistrationContact))
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .map(invoice => (
+         <option key={invoice.id} value={invoice.id}>
+          Añadir a {invoice.id} · {invoice.total.toLocaleString('es-ES', { style: 'currency', currency: invoice.currency || 'EUR' })} · {invoice.status === 'paid' ? 'Pagada' : 'Pendiente'}
+         </option>
+        ))}
+      </select>
+      {convTargetInvoiceId !== 'new' && <p className="text-[8px] leading-3 text-blue-200/70">La factura conservará sus conceptos actuales y recibirá las nuevas cuotas. Si estaba pagada, volverá a pendiente hasta cobrar los nuevos importes.</p>}
+     </div>
+    )}
 
     {/* Precio y Plazos */}
     {hasUpfrontServicePayment && (
