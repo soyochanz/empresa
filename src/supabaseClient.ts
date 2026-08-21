@@ -411,6 +411,27 @@ CREATE POLICY "Public Update Access" ON finance_transactions FOR UPDATE USING (t
 CREATE POLICY "Public Delete Access" ON finance_transactions FOR DELETE USING (true);
 
 
+-- Server-only mappings for compact Stripe URLs generated from now on.
+-- Existing Stripe URLs are deliberately not migrated or modified.
+CREATE TABLE IF NOT EXISTS stripe_short_links (
+ slug TEXT PRIMARY KEY CHECK (slug ~ '^[a-f0-9]{8}$'),
+ stripe_url TEXT NOT NULL CHECK (stripe_url ~ '^https://(checkout|buy)\\.stripe\\.com/'),
+ stripe_checkout_session_id TEXT NOT NULL UNIQUE,
+ client_id TEXT NOT NULL,
+ pending_tx_id TEXT,
+ stripe_plan_id TEXT,
+ concept TEXT,
+ click_count BIGINT NOT NULL DEFAULT 0 CHECK (click_count >= 0),
+ last_clicked_at TIMESTAMP WITH TIME ZONE,
+ created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS stripe_short_links_client_id_idx ON stripe_short_links (client_id);
+CREATE INDEX IF NOT EXISTS stripe_short_links_created_at_idx ON stripe_short_links (created_at DESC);
+ALTER TABLE stripe_short_links ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE stripe_short_links FROM anon, authenticated;
+
+
 -- 8. Create finance_invoices table
 CREATE TABLE IF NOT EXISTS finance_invoices (
  id TEXT PRIMARY KEY,

@@ -223,6 +223,37 @@ function getAppUrl(req: express.Request): string {
   return `${req.protocol}://${host}`.replace(/\/$/, "");
 }
 
+const STRIPE_SHORT_LINK_CODE_PATTERN = /^[a-f0-9]{8}$/;
+
+async function createStripeShortLink(input: {
+  stripeUrl: string;
+  stripeCheckoutSessionId: string;
+  clientId: string;
+  pendingTxId?: string;
+  stripePlanId?: string;
+  concept?: string;
+}): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const slug = randomBytes(4).toString("hex");
+    const { error } = await supabaseAdmin
+      .from("stripe_short_links")
+      .insert({
+        slug,
+        stripe_url: input.stripeUrl,
+        stripe_checkout_session_id: input.stripeCheckoutSessionId,
+        client_id: input.clientId,
+        pending_tx_id: input.pendingTxId || null,
+        stripe_plan_id: input.stripePlanId || null,
+        concept: input.concept || null,
+      });
+
+    if (!error) return slug;
+    if (error.code !== "23505") throw error;
+  }
+
+  throw new Error("No se pudo reservar un identificador único para el enlace de pago.");
+}
+
 function formatStripeConnectAccount(account: any) {
   return {
     accountId: account.id,
@@ -633,13 +664,42 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Stripe CRM API is active!" });
 });
 
-// Public, compact payment link. The opaque transaction id resolves to the
-// Stripe Checkout Session stored in the existing finance transaction record.
+// Public compact payment links. New links use the dedicated mapping table.
+// The finance-transaction lookup remains only so previously generated compact
+// links continue to work without modifying or migrating them.
 app.get("/p/:shortCode", async (req, res) => {
   try {
     const shortCode = String(req.params.shortCode || "").trim();
-    if (!/^[a-zA-Z0-9_-]{10,32}$/.test(shortCode)) {
+    const isNewShortCode = STRIPE_SHORT_LINK_CODE_PATTERN.test(shortCode);
+    const isLegacyShortCode = /^[a-zA-Z0-9_-]{10,32}$/.test(shortCode);
+    if (!isNewShortCode && !isLegacyShortCode) {
       return res.status(400).send("Enlace de pago no válido.");
+    }
+
+    if (isNewShortCode) {
+      const { data: shortLink, error: shortLinkError } = await supabaseAdmin
+        .from("stripe_short_links")
+        .select("stripe_url, click_count")
+        .eq("slug", shortCode)
+        .maybeSingle();
+
+      if (shortLinkError) throw shortLinkError;
+      if (!shortLink) return res.status(404).send("Este enlace de pago no existe.");
+
+      // Click analytics must never delay or prevent the payment redirect.
+      void supabaseAdmin
+        .from("stripe_short_links")
+        .update({
+          click_count: Number(shortLink.click_count || 0) + 1,
+          last_clicked_at: new Date().toISOString(),
+        })
+        .eq("slug", shortCode)
+        .then(({ error }) => {
+          if (error) console.warn("Could not register Stripe short-link click:", error.message);
+        });
+
+      res.setHeader("Cache-Control", "no-store");
+      return res.redirect(302, shortLink.stripe_url);
     }
 
     const { data: transaction, error } = await supabaseAdmin
@@ -1134,6 +1194,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       customer_email: clientEmail,
       success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${effectiveAmountNumber}&interval=${effectiveInterval}&installments=${effectiveInstallments}&concept=${encodeURIComponent(effectiveConcept)}&pending_tx_id=${effectivePendingTxId}&stripe_plan_id=${effectiveStripePlanId}&installment_index=${effectiveInstallmentIndex}`,
       cancel_url: `${appUrl}?stripe_status=cancel&client_id=${clientId}`,
+      client_reference_id: effectivePendingTxId || clientId,
       metadata: {
         clientId,
         clientName: clientName || "",
@@ -1168,10 +1229,31 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
 
     // Create a checkout session
     const session = await stripe.checkout.sessions.create(sessionConfig);
-    const compactCode = randomBytes(9).toString("base64url");
-    const compactUrl = effectivePendingTxId
-      ? `${appUrl}/p/${compactCode}`
-      : session.url;
+    if (!session.url) {
+      throw new Error("Stripe no devolvió una URL para la sesión de pago.");
+    }
+
+    let compactCode: string;
+    try {
+      compactCode = await createStripeShortLink({
+        stripeUrl: session.url,
+        stripeCheckoutSessionId: session.id,
+        clientId,
+        pendingTxId: effectivePendingTxId,
+        stripePlanId: effectiveStripePlanId,
+        concept: effectiveConcept,
+      });
+    } catch (shortLinkError) {
+      // Avoid leaving a usable Stripe session whose shareable short URL was
+      // not persisted successfully.
+      try {
+        await stripe.checkout.sessions.expire(session.id);
+      } catch (expireError: any) {
+        console.warn("Could not expire orphaned Stripe Checkout Session:", expireError?.message || expireError);
+      }
+      throw shortLinkError;
+    }
+    const compactUrl = `${appUrl}/p/${compactCode}`;
 
     res.json({
       url: compactUrl,
