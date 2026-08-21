@@ -254,6 +254,21 @@ async function createStripeShortLink(input: {
   throw new Error("No se pudo reservar un identificador único para el enlace de pago.");
 }
 
+async function getShareableStripeUrl(
+  stripeCheckoutSessionId: string,
+  stripeUrl: string | null,
+  appUrl: string,
+): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("stripe_short_links")
+    .select("slug")
+    .eq("stripe_checkout_session_id", stripeCheckoutSessionId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.slug ? `${appUrl}/p/${data.slug}` : stripeUrl;
+}
+
 function formatStripeConnectAccount(account: any) {
   return {
     accountId: account.id,
@@ -879,13 +894,14 @@ app.get("/api/stripe/client-checkout-session", requireAdminAuth, async (req, res
     if (!latestSession) return res.json({ checkoutSession: null });
 
     const dashboardMode = latestSession.livemode ? "" : "/test";
+    const shareableUrl = await getShareableStripeUrl(latestSession.id, latestSession.url, getAppUrl(req));
     return res.json({
       checkoutSession: {
         id: latestSession.id,
         status: latestSession.status,
         paymentStatus: latestSession.payment_status,
         mode: latestSession.mode,
-        url: latestSession.url,
+        url: shareableUrl,
         expiresAt: latestSession.expires_at,
         amountTotal: latestSession.amount_total ? latestSession.amount_total / 100 : null,
         currency: latestSession.currency,
@@ -1388,6 +1404,10 @@ app.post("/api/stripe/customer-overview", requireAdminAuth, async (req, res) => 
 
     const activeCustomer = customer as Stripe.Customer;
 
+    const shareableCheckoutUrl = checkoutSession
+      ? await getShareableStripeUrl(checkoutSession.id, checkoutSession.url, getAppUrl(req))
+      : null;
+
     res.json({
       customer:
         "deleted" in customer && customer.deleted
@@ -1409,7 +1429,7 @@ app.post("/api/stripe/customer-overview", requireAdminAuth, async (req, res) => 
             paymentStatus: checkoutSession.payment_status,
             amountTotal: checkoutSession.amount_total ? checkoutSession.amount_total / 100 : null,
             currency: checkoutSession.currency,
-            url: checkoutSession.url,
+            url: shareableCheckoutUrl,
           }
         : null,
       subscriptions: normalizedSubscriptions,
@@ -1568,6 +1588,7 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
 
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["invoice"] });
+    const shareableUrl = await getShareableStripeUrl(session.id, session.url, getAppUrl(req));
     const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
     const [, paymentResult] = await Promise.all([
       ensureFiniteSubscriptionSchedule(subscriptionId, {
@@ -1586,7 +1607,7 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
       paymentStatus: session.payment_status,
       status: session.status,
       expiresAt: session.expires_at,
-      url: session.url,
+      url: shareableUrl,
       transactionUpdated: paymentResult.updated,
       transactionId: paymentResult.txId,
       firstPaymentDate: session.metadata?.firstPaymentDate || "",
