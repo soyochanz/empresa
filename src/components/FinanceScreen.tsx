@@ -821,7 +821,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invoiceDueFilter, setInvoiceDueFilter] = useState<'all' | 'today' | 'week'>('all');
  const [adminMessage, setAdminMessage] = useState('');
  const [adminMessages, setAdminMessages] = useState<{ id: string; text: string; time: string }[]>([]);
- const [revolutOpeningBalance, setRevolutOpeningBalance] = useState(() => Number(localStorage.getItem('althera-revolut-opening') || 0));
+ const [revolutOpeningBalance, setRevolutOpeningBalance] = useState(() => Number(localStorage.getItem('althera-revolut-opening') || 1345.66));
  const [financeGoals, setFinanceGoals] = useState(() => {
   try { return JSON.parse(localStorage.getItem('althera-finance-goals') || '{"weekRevenue":0,"monthRevenue":0,"monthWebsites":0,"reward":""}'); }
   catch { return { weekRevenue: 0, monthRevenue: 0, monthWebsites: 0, reward: '' }; }
