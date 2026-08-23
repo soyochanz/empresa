@@ -211,6 +211,7 @@ const TransactionOriginSignals = React.memo(function TransactionOriginSignals({
  );
  const isCash = transaction.paymentMethod === 'cash';
  const isTransfer = transaction.paymentMethod === 'transfer';
+ const isCard = transaction.paymentMethod === 'card';
  const baseClass = 'grid h-7 w-7 place-items-center rounded-lg border transition-colors';
  const inactiveClass = 'border-white/[0.05] bg-white/[0.025] text-slate-700';
 
@@ -229,7 +230,7 @@ const TransactionOriginSignals = React.memo(function TransactionOriginSignals({
  );
 
  return (
-  <div className="inline-grid grid-cols-5 gap-1 rounded-xl border border-white/[0.05] bg-black/20 p-1" aria-label="Origen del movimiento">
+  <div className="inline-grid grid-cols-6 gap-1 rounded-xl border border-white/[0.05] bg-black/20 p-1" aria-label="Origen del movimiento">
    <span className={`${baseClass} ${hasCommercial ? 'border-amber-400/25 bg-amber-400/10 text-amber-300' : inactiveClass}`} title={hasCommercial ? 'Procede de un comercial' : 'Sin comercial'} aria-label={hasCommercial ? 'Comercial activo' : 'Comercial inactivo'}>
     <Briefcase className="h-3.5 w-3.5" />
    </span>
@@ -241,6 +242,9 @@ const TransactionOriginSignals = React.memo(function TransactionOriginSignals({
      {stripeMark}
     </a>
    ) : stripeMark}
+   <span className={`${baseClass} ${isCard ? 'border-blue-400/25 bg-blue-400/10 text-blue-300' : inactiveClass}`} title={isCard ? 'Pago con tarjeta' : 'Sin pago con tarjeta'} aria-label={isCard ? 'Tarjeta activa' : 'Tarjeta inactiva'}>
+    <CreditCard className="h-3.5 w-3.5" />
+   </span>
    <span className={`${baseClass} ${isCash ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300' : inactiveClass}`} title={isCash ? 'Pago en efectivo' : 'No pagado en efectivo'} aria-label={isCash ? 'Efectivo activo' : 'Efectivo inactivo'}>
     <Banknote className="h-3.5 w-3.5" />
    </span>
@@ -821,7 +825,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invoiceDueFilter, setInvoiceDueFilter] = useState<'all' | 'today' | 'week'>('all');
  const [adminMessage, setAdminMessage] = useState('');
  const [adminMessages, setAdminMessages] = useState<{ id: string; text: string; time: string }[]>([]);
- const [revolutOpeningBalance, setRevolutOpeningBalance] = useState(() => Number(localStorage.getItem('althera-revolut-opening') || 1345.66));
+ const [revolutOpeningBalance, setRevolutOpeningBalance] = useState(() => {
+  const stored = localStorage.getItem('althera-revolut-opening');
+  return stored === null || Number(stored) === 0 ? 1345.66 : Number(stored);
+ });
  const [financeGoals, setFinanceGoals] = useState(() => {
   try { return JSON.parse(localStorage.getItem('althera-finance-goals') || '{"weekRevenue":0,"monthRevenue":0,"monthWebsites":0,"reward":""}'); }
   catch { return { weekRevenue: 0, monthRevenue: 0, monthWebsites: 0, reward: '' }; }
@@ -849,7 +856,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [txPeriod, setTxPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
  const [txStatus, setTxStatus] = useState<'paid' | 'pending'>('paid');
  const [txInvoiceId, setTxInvoiceId] = useState<string>('');
- const [txPaymentMethod, setTxPaymentMethod] = useState<'cash' | 'transfer' | undefined>(undefined);
+ const [txPaymentMethod, setTxPaymentMethod] = useState<'cash' | 'transfer' | 'card' | undefined>(undefined);
  const [txPaymentAccount, setTxPaymentAccount] = useState<FinanceTransaction['paymentAccount']>(undefined);
  const [txFirstAmount, setTxFirstAmount] = useState('');
  const [txNextAmount, setTxNextAmount] = useState('');
@@ -1241,7 +1248,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const consolidatedBalance = consolidatedIncomes;
  const netCashBalance = consolidatedIncomes - consolidatedExpenses - commercialSalaries;
  const revolutExpenses = transactions.filter(transaction => transaction.type === 'expense' && transaction.status === 'paid' && transaction.paymentAccount === 'revolut_pro').reduce((sum, transaction) => sum + transaction.amount, 0);
- const revolutBalance = revolutOpeningBalance - revolutExpenses;
+ // This is the reconciled balance shown by Revolut. Existing ledger expenses
+ // are already reflected in it; only update the value on the next bank sync.
+ const revolutBalance = revolutOpeningBalance;
 
  const pendingIncomes = analyticsTransactions
  .filter(t => t.type === 'income' && t.status === 'pending')
@@ -3157,7 +3166,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   </div>
 
   <div className="grid gap-4 lg:grid-cols-2">
-   <section className="rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.08] to-[#0b1329]/60 p-5"><div className="flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo de empresa</h3></div><Landmark className="h-5 w-5 text-cyan-300" /></div><strong className={`mt-4 block text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[10px] text-slate-500">Saldo inicial menos {revolutExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € en gastos pagados con Revolut Pro.</p><label className="mt-4 block text-[8px] font-black uppercase tracking-wider text-slate-500">Saldo actual importado<input type="number" value={revolutOpeningBalance || ''} onChange={event => setRevolutOpeningBalance(Number(event.target.value) || 0)} placeholder="0,00" className="mt-1 block w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /></label></section>
+   <section className="rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.08] to-[#0b1329]/60 p-5"><div className="flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo de empresa</h3></div><Landmark className="h-5 w-5 text-cyan-300" /></div><strong className={`mt-4 block text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[10px] text-slate-500">Saldo conciliado actual. Incluye los gastos ya registrados ({revolutExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € con Revolut Pro).</p><label className="mt-4 block text-[8px] font-black uppercase tracking-wider text-slate-500">Saldo actual importado<input type="number" value={revolutOpeningBalance || ''} onChange={event => setRevolutOpeningBalance(Number(event.target.value) || 0)} placeholder="0,00" className="mt-1 block w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /></label></section>
    <section className="rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.08] to-[#0b1329]/60 p-5"><div className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-300" /><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Objetivos y recompensa</span><h3 className="mt-1 text-sm font-bold text-white">Incentivo de administración</h3></div></div><div className="mt-4 grid grid-cols-3 gap-2"><label className="text-[8px] text-slate-500">Semana €<input type="number" value={financeGoals.weekRevenue || ''} onChange={event => setFinanceGoals({ ...financeGoals, weekRevenue: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label><label className="text-[8px] text-slate-500">Mes €<input type="number" value={financeGoals.monthRevenue || ''} onChange={event => setFinanceGoals({ ...financeGoals, monthRevenue: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label><label className="text-[8px] text-slate-500">Webs/mes<input type="number" value={financeGoals.monthWebsites || ''} onChange={event => setFinanceGoals({ ...financeGoals, monthWebsites: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label></div><label className="mt-2 block text-[8px] text-slate-500">Recompensa<input value={financeGoals.reward || ''} onChange={event => setFinanceGoals({ ...financeGoals, reward: event.target.value })} placeholder="Ej. sueldo fundadores: 500 € → 1.000 €" className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white" /></label></section>
   </div>
 
@@ -5219,27 +5228,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      onChange={(e) => setTxCategory(e.target.value)}
      className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-slate-100 focus:outline-none cursor-pointer"
      >
-     <option value="Desarrollo">Desarrollo</option>
-     <option value="Consultoría">Consultoría</option>
-     <option value="Infraestructura">Infraestructura</option>
-     <option value="Software Herramientas">Software Herramientas</option>
-     <option value="Dominios">Dominios</option>
-     <option value="Marketing">Marketing</option>
-     <option value="Salarios">Salarios</option>
-     <option value="Gasolina y combustible">Gasolina y combustible</option>
-     <option value="Restaurantes y comidas">Restaurantes y comidas</option>
-     <option value="Viajes y transporte">Viajes y transporte</option>
-     <option value="Alojamiento">Alojamiento</option>
-     <option value="Alquiler de vehículo">Alquiler de vehículo</option>
-     <option value="Formación">Formación</option>
-     <option value="Servicios profesionales">Servicios profesionales</option>
-     <option value="Suscripciones">Suscripciones</option>
-     <option value="Comisiones bancarias">Comisiones bancarias</option>
-     <option value="Impuestos">Impuestos</option>
-     <option value="Material y suministros">Material y suministros</option>
-     <option value="Otros gastos">Otros gastos</option>
-     <option value="Oficina">Oficina</option>
-     <option value="Facturado">Facturado</option>
+     <option value="Desarrollo">💻 Desarrollo</option><option value="Consultoría">🤝 Consultoría</option><option value="Infraestructura">🏗️ Infraestructura</option><option value="Software Herramientas">⚙️ Software y herramientas</option><option value="Dominios">🌐 Dominios</option><option value="Marketing">📣 Marketing</option><option value="Salarios">👥 Salarios</option><option value="Gasolina y combustible">⛽ Gasolina y combustible</option><option value="Restaurantes y comidas">🍽️ Restaurantes y comidas</option><option value="Viajes y transporte">✈️ Viajes y transporte</option><option value="Alojamiento">🏨 Alojamiento</option><option value="Alquiler de vehículo">🚗 Alquiler de vehículo</option><option value="Formación">🎓 Formación</option><option value="Servicios profesionales">📋 Servicios profesionales</option><option value="Suscripciones">🔁 Suscripciones</option><option value="Comisiones bancarias">🏦 Comisiones bancarias</option><option value="Impuestos">🧾 Impuestos</option><option value="Material y suministros">📦 Material y suministros</option><option value="Otros gastos">••• Otros gastos</option><option value="Oficina">🏢 Oficina</option><option value="Facturado">💶 Facturado</option>
      </select>
     </div>
 
@@ -5299,7 +5288,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     {/* Método de Pago input */}
     <div className="space-y-1">
     <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Método de Pago</label>
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-4 gap-2">
      <button
      type="button"
      onClick={() => setTxPaymentMethod(undefined)}
@@ -5332,6 +5321,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      }`}
      >
      <span>🏦 Transferencia</span>
+     </button>
+     <button type="button" onClick={() => setTxPaymentMethod('card')} className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer flex items-center justify-center gap-1 ${txPaymentMethod === 'card' ? 'bg-blue-500/10 border-blue-500/30 text-blue-300 shadow-sm' : 'bg-transparent border-white/5 text-slate-400 hover:bg-white/5'}`}>
+      <CreditCard className="h-3.5 w-3.5" /><span>Tarjeta</span>
      </button>
     </div>
     </div>

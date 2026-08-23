@@ -169,7 +169,7 @@ export interface FinanceTransaction {
  recurrenceOccurrenceCount?: number; // Maximum number of charges, including the first one
  invoiceId?: string; // Optional reference to a generated invoice
  status: 'paid' | 'pending';
- paymentMethod?: 'cash' | 'transfer' | 'stripe'; // New: payment method 'cash', 'transfer' or 'stripe'
+ paymentMethod?: 'cash' | 'transfer' | 'stripe' | 'card'; // Cash, transfer, Stripe or card
  paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
  firstAmount?: number; // Cost of the first occurrence
  nextAmount?: number; // Cost of the subsequent occurrences
@@ -197,7 +197,7 @@ export interface InvoiceItem {
  grossAmount?: number;
  isPending?: boolean;  // New: indicates if this item is currently pending payment (cobró pendiente)
  pendingTxId?: string; // New: matching pending FinanceTransaction ID
- paymentMethod?: 'cash' | 'transfer' | 'stripe'; // New: payment method 'cash', 'transfer' or 'stripe'
+ paymentMethod?: 'cash' | 'transfer' | 'stripe' | 'card';
 }
 
 export interface Invoice {
@@ -240,7 +240,7 @@ export interface PayoutTransaction {
  bankName?: string;
  stripeTransferId?: string;
  stripeConnectAccountId?: string;
- paymentMethod?: 'stripe' | 'transfer' | 'cash';
+ paymentMethod?: 'stripe' | 'transfer' | 'cash' | 'card';
 }
 
 export interface ExtraCommission {

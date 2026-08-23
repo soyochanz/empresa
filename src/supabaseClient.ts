@@ -1460,7 +1460,7 @@ const dbImplementation = {
  // These helpers serialize/deserialize virtual fields into the description column
  // to avoid column-not-found errors on any Supabase DB setup.
  _encodeDescription(description: string, metadata: {
- paymentMethod?: 'cash' | 'transfer' | 'stripe';
+ paymentMethod?: 'cash' | 'transfer' | 'stripe' | 'card';
  paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
  firstAmount?: number;
  nextAmount?: number;
@@ -1541,7 +1541,7 @@ const dbImplementation = {
 
  _decodeDescription(rawDesc: string): {
  description: string;
- paymentMethod?: 'cash' | 'transfer' | 'stripe';
+ paymentMethod?: 'cash' | 'transfer' | 'stripe' | 'card';
  paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
  firstAmount?: number;
  nextAmount?: number;
@@ -1562,7 +1562,7 @@ const dbImplementation = {
  recurrenceOccurrenceCount?: number;
  } {
  let cleanDesc = rawDesc || '';
- let paymentMethod: 'cash' | 'transfer' | 'stripe' | undefined = undefined;
+ let paymentMethod: 'cash' | 'transfer' | 'stripe' | 'card' | undefined = undefined;
  let paymentAccount: 'revolut_pro' | 'carlos_personal' | 'nacho_personal' | undefined = undefined;
  let firstAmount: number | undefined = undefined;
  let nextAmount: number | undefined = undefined;
@@ -1582,7 +1582,7 @@ const dbImplementation = {
  let recurrenceEndDate: string | undefined = undefined;
  let recurrenceOccurrenceCount: number | undefined = undefined;
 
- const pmRegex = /\s*\[PM:(cash|transfer|stripe)\]/g;
+ const pmRegex = /\s*\[PM:(cash|transfer|stripe|card)\]/g;
  const paymentAccountRegex = /\s*\[PACC:(revolut_pro|carlos_personal|nacho_personal)\]/g;
  const faRegex = /\s*\[FA:([\d.]+)\]/g;
  const naRegex = /\s*\[NA:([\d.]+)\]/g;
