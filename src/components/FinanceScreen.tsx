@@ -817,6 +817,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [txDateRangeFilter, setTxDateRangeFilter] = useState<'all' | 'today' | 'week'>('all');
  const [showExportPanel, setShowExportPanel] = useState(false);
  const [exportType, setExportType] = useState<'all' | 'income' | 'expense'>('all');
+ const [exportSource, setExportSource] = useState<'all' | 'revolut_pro' | 'carlos_personal' | 'nacho_personal' | 'stripe_income'>('all');
  const [exportPeriod, setExportPeriod] = useState<'all' | 'month' | 'date'>('all');
  const [exportMonth, setExportMonth] = useState(() => getMonthKey(new Date()));
  const [exportDate, setExportDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1033,6 +1034,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const handleExportTransactions = async () => {
   const exportTransactions = ledgerTransactions
    .filter(transaction => exportType === 'all' || transaction.type === exportType)
+   .filter(transaction => exportSource === 'all' || (exportSource === 'stripe_income' ? transaction.type === 'income' && transaction.paymentMethod === 'stripe' : transaction.type === 'expense' && transaction.paymentAccount === exportSource))
    .filter(transaction => {
     const dateKey = getTxDateKey(transaction);
     if (exportPeriod === 'month') return dateKey.startsWith(exportMonth);
@@ -1261,6 +1263,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  .reduce((sum, t) => sum + t.amount, 0);
 
  const pendingBalance = pendingIncomes - pendingExpenses;
+ const expenseCategoryBreakdown = analyticsTransactions
+  .filter(transaction => transaction.type === 'expense')
+  .reduce<Record<string, number>>((groups, transaction) => ({ ...groups, [transaction.category]: (groups[transaction.category] || 0) + transaction.amount }), {});
+ const topExpenseCategories = (Object.entries(expenseCategoryBreakdown) as Array<[string, number]>).sort(([, a], [, b]) => b - a).slice(0, 6);
  const pendingIncomeItems = analyticsTransactions.filter(t => t.type === 'income' && t.status === 'pending');
  const pendingExpenseItems = analyticsTransactions.filter(t => t.type === 'expense' && t.status === 'pending');
  const todayFinanceKey = getFinanceDateKey(new Date().toISOString());
@@ -2860,7 +2866,9 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
    })()
   );
   const recurringItems = transactions
-   .filter(transaction => transaction.type === 'income' && transaction.isRecurring)
+   // Stripe plans are reconciled from Stripe itself. Never project them as an
+   // unlimited local recurrence, especially after Stripe has a final date.
+   .filter(transaction => transaction.type === 'income' && transaction.isRecurring && transaction.paymentMethod !== 'stripe')
    .flatMap(transaction => getRecurringIncomeOccurrences(transaction, key).map(date => ({
     transaction,
     date,
@@ -3271,6 +3279,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
   </div>
 
+  <section className="rounded-3xl border border-rose-300/12 bg-[#0b1329]/25 p-4 sm:p-5">
+   <div className="flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-rose-300">Analítica de gastos</span><h3 className="mt-1 text-sm font-bold text-white">En qué se está invirtiendo</h3></div><TrendingDown className="h-5 w-5 text-rose-300" /></div>
+   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{topExpenseCategories.length === 0 ? <p className="text-xs text-slate-500">Aún no hay gastos en el periodo seleccionado.</p> : topExpenseCategories.map(([category, amount]) => <div key={category} className="rounded-2xl border border-white/[0.06] bg-black/15 p-3"><div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-slate-200">{category}</span><strong className="font-mono text-sm text-rose-300">{amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-rose-400 to-amber-300" style={{ width: `${totalExpenses ? Math.min(100, amount / totalExpenses * 100) : 0}%` }} /></div><span className="mt-1.5 block text-[8px] text-slate-500">{totalExpenses ? Math.round(amount / totalExpenses * 100) : 0}% del gasto</span></div>)}</div>
+  </section>
+
   {/* Navigation Inside Finance Module - Modern Pillow Tab Controls */}
   <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-white/5 pb-2 pt-2">
   <div className="bg-[#0b1329]/60 p-1 border border-white/5 rounded-2xl flex flex-wrap gap-1">
@@ -3516,6 +3529,12 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
          <option value="all">Todos</option>
          <option value="income">Solo ingresos</option>
          <option value="expense">Solo gastos</option>
+        </select>
+       </label>
+       <label className="block">
+        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Cuenta / origen</span>
+        <select value={exportSource} onChange={event => setExportSource(event.target.value as typeof exportSource)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
+         <option value="all">Todos los orígenes</option><option value="revolut_pro">Gastos · Revolut Pro</option><option value="carlos_personal">Gastos · Carlos</option><option value="nacho_personal">Gastos · Nacho</option><option value="stripe_income">Ingresos · Stripe</option>
         </select>
        </label>
        <label className="block">
@@ -5228,6 +5247,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      onChange={(e) => setTxCategory(e.target.value)}
      className="w-full bg-slate-950 border border-white/10 rounded-xl py-2 px-3 text-xs text-slate-100 focus:outline-none cursor-pointer"
      >
+     <option value="IAs">✨ IAs y modelos</option>
      <option value="Desarrollo">💻 Desarrollo</option><option value="Consultoría">🤝 Consultoría</option><option value="Infraestructura">🏗️ Infraestructura</option><option value="Software Herramientas">⚙️ Software y herramientas</option><option value="Dominios">🌐 Dominios</option><option value="Marketing">📣 Marketing</option><option value="Salarios">👥 Salarios</option><option value="Gasolina y combustible">⛽ Gasolina y combustible</option><option value="Restaurantes y comidas">🍽️ Restaurantes y comidas</option><option value="Viajes y transporte">✈️ Viajes y transporte</option><option value="Alojamiento">🏨 Alojamiento</option><option value="Alquiler de vehículo">🚗 Alquiler de vehículo</option><option value="Formación">🎓 Formación</option><option value="Servicios profesionales">📋 Servicios profesionales</option><option value="Suscripciones">🔁 Suscripciones</option><option value="Comisiones bancarias">🏦 Comisiones bancarias</option><option value="Impuestos">🧾 Impuestos</option><option value="Material y suministros">📦 Material y suministros</option><option value="Otros gastos">••• Otros gastos</option><option value="Oficina">🏢 Oficina</option><option value="Facturado">💶 Facturado</option>
      </select>
     </div>
