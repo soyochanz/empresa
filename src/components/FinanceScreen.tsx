@@ -761,10 +761,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  const refreshStripeFinanceOverview = async () => {
-  setStripeFinanceLoading(true);
-  setStripeFinanceError('');
-  try {
-   const response = await authenticatedFetch('/api/stripe/finance-overview', { cache: 'no-store' });
+ setStripeFinanceLoading(true);
+ setStripeFinanceError('');
+ try {
+  // Reconcile delayed webhooks first. This prevents a successful Stripe charge
+  // from remaining visually pending in the local ledger.
+  const reconciliation = await authenticatedFetch('/api/stripe/reconcile-finance', { method: 'POST' });
+  if (reconciliation.ok) {
+   invalidateSharedPipelineCache(['finance_transactions']);
+   setTransactions(await db.getFinanceTransactions());
+  }
+  const response = await authenticatedFetch('/api/stripe/finance-overview', { cache: 'no-store' });
    const data = await readStripeJson(response);
    if (!response.ok) throw new Error(data.error || 'No se pudo consultar la información real de Stripe.');
    setStripeFinanceOverview(data);
@@ -782,7 +789,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }, []);
 
  useEffect(() => {
-  if (activeTab !== 'stripe' && activeTab !== 'recurring') return;
+  if (activeTab !== 'stripe' && activeTab !== 'recurring' && activeTab !== 'transactions') return;
   void refreshStripeFinanceOverview();
   const stripeOverviewTimer = window.setInterval(refreshStripeFinanceOverview, 60_000);
   return () => window.clearInterval(stripeOverviewTimer);

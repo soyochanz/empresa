@@ -674,6 +674,26 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
 app.use(express.json());
 
+// Repairs ledger state when a webhook was delayed or unavailable. Stripe is
+// the source of truth: only invoices Stripe reports as paid are marked paid.
+app.post("/api/stripe/reconcile-finance", requireAdminAuth, async (_req, res) => {
+  try {
+    const stripe = getStripe();
+    const paidInvoices = await stripe.invoices
+      .list({ status: "paid", limit: 100 })
+      .autoPagingToArray({ limit: 500 });
+    let updated = 0;
+    for (const invoice of paidInvoices) {
+      const result = await markStripeInvoiceAsPaid(invoice);
+      if (result.updated) updated += 1;
+    }
+    res.json({ checked: paidInvoices.length, updated });
+  } catch (error: any) {
+    console.error("Error reconciling Stripe finance:", error);
+    res.status(500).json({ error: error?.message || "No se pudo reconciliar Stripe." });
+  }
+});
+
 // API Routes
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Stripe CRM API is active!" });
