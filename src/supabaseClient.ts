@@ -1461,6 +1461,7 @@ const dbImplementation = {
  // to avoid column-not-found errors on any Supabase DB setup.
  _encodeDescription(description: string, metadata: {
  paymentMethod?: 'cash' | 'transfer' | 'stripe';
+ paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
  firstAmount?: number;
  nextAmount?: number;
  clientId?: string;
@@ -1483,6 +1484,7 @@ const dbImplementation = {
  if (metadata.paymentMethod) {
   res += ` [PM:${metadata.paymentMethod}]`;
  }
+ if (metadata.paymentAccount) res += ` [PACC:${metadata.paymentAccount}]`;
  if (metadata.firstAmount !== undefined && metadata.firstAmount !== null) {
   res += ` [FA:${metadata.firstAmount}]`;
  }
@@ -1540,6 +1542,7 @@ const dbImplementation = {
  _decodeDescription(rawDesc: string): {
  description: string;
  paymentMethod?: 'cash' | 'transfer' | 'stripe';
+ paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
  firstAmount?: number;
  nextAmount?: number;
  clientId?: string;
@@ -1560,6 +1563,7 @@ const dbImplementation = {
  } {
  let cleanDesc = rawDesc || '';
  let paymentMethod: 'cash' | 'transfer' | 'stripe' | undefined = undefined;
+ let paymentAccount: 'revolut_pro' | 'carlos_personal' | 'nacho_personal' | undefined = undefined;
  let firstAmount: number | undefined = undefined;
  let nextAmount: number | undefined = undefined;
  let clientId: string | undefined = undefined;
@@ -1579,6 +1583,7 @@ const dbImplementation = {
  let recurrenceOccurrenceCount: number | undefined = undefined;
 
  const pmRegex = /\s*\[PM:(cash|transfer|stripe)\]/g;
+ const paymentAccountRegex = /\s*\[PACC:(revolut_pro|carlos_personal|nacho_personal)\]/g;
  const faRegex = /\s*\[FA:([\d.]+)\]/g;
  const naRegex = /\s*\[NA:([\d.]+)\]/g;
  const clientRegex = /\s*\[CLIENT:([^\]]+)\]/g;
@@ -1602,6 +1607,8 @@ const dbImplementation = {
   paymentMethod = match[1] as any;
  }
  cleanDesc = cleanDesc.replace(pmRegex, '');
+ while ((match = paymentAccountRegex.exec(cleanDesc)) !== null) paymentAccount = match[1] as typeof paymentAccount;
+ cleanDesc = cleanDesc.replace(paymentAccountRegex, '');
 
  while ((match = faRegex.exec(cleanDesc)) !== null) {
   firstAmount = parseFloat(match[1]);
@@ -1695,6 +1702,7 @@ const dbImplementation = {
  return {
   description: cleanDesc.trim(),
   paymentMethod,
+  paymentAccount,
   firstAmount,
   nextAmount,
   clientId,
@@ -1740,6 +1748,7 @@ const dbImplementation = {
   recurrencePeriod: tx.recurrencePeriod,
   description: decoded.description,
   paymentMethod: decoded.paymentMethod,
+  paymentAccount: decoded.paymentAccount,
   firstAmount: decoded.firstAmount,
   nextAmount: decoded.nextAmount,
   clientId: decoded.clientId,
@@ -1779,6 +1788,7 @@ const dbImplementation = {
   date: transaction.date,
   description: this._encodeDescription(transaction.description, {
    paymentMethod: transaction.paymentMethod,
+   paymentAccount: transaction.paymentAccount,
    clientId: transaction.clientId,
    stripePlanId: transaction.stripePlanId,
    invoiceId: transaction.invoiceId,
@@ -1805,10 +1815,11 @@ const dbImplementation = {
 
  async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
  const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
- const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
+ const { paymentMethod, paymentAccount, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
 
  const encodedDesc = this._encodeDescription(description, {
   paymentMethod,
+  paymentAccount,
   firstAmount,
   nextAmount,
   clientId,
@@ -1849,10 +1860,11 @@ const dbImplementation = {
 
  async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
  const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
- const { paymentMethod, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
+ const { paymentMethod, paymentAccount, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
 
  const encodedDesc = this._encodeDescription(description, {
   paymentMethod,
+  paymentAccount,
   firstAmount,
   nextAmount,
   clientId,

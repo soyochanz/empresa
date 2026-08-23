@@ -48,7 +48,9 @@ import {
  Landmark,
  WalletCards,
  ReceiptText,
- Sparkles
+ Sparkles,
+ Target,
+ Trophy
 } from 'lucide-react';
 
 type StripeFundAmount = {
@@ -75,6 +77,8 @@ type StripeAccountSubscription = {
  intervalCount: number;
  billingType: 'subscription' | 'installment';
  installmentCount: number | null;
+ paymentLimit: number | null;
+ endsAt: string | null;
  paymentCount: number;
  paidAmount: number;
  openAmount: number;
@@ -286,6 +290,16 @@ function getNextPaymentDate(startDateStr: string, period?: string): string {
  day: 'numeric' 
  });
 }
+
+const getRecurringLastPaymentDate = (transaction: FinanceTransaction): string | null => {
+ if (transaction.recurrenceEndDate) {
+  return parseFinanceDate(transaction.recurrenceEndDate)?.toLocaleDateString('es-ES') || transaction.recurrenceEndDate;
+ }
+ const count = Number(transaction.recurrenceOccurrenceCount || 0);
+ const start = parseFinanceDate(transaction.date);
+ if (!start || count < 1) return null;
+ return getFinanceRecurrenceDate(start, transaction.recurrencePeriod, count - 1).toLocaleDateString('es-ES');
+};
 
 const parseFinanceDate = (value?: string): Date | null => {
  if (!value) return null;
@@ -788,6 +802,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invoiceDueFilter, setInvoiceDueFilter] = useState<'all' | 'today' | 'week'>('all');
  const [adminMessage, setAdminMessage] = useState('');
  const [adminMessages, setAdminMessages] = useState<{ id: string; text: string; time: string }[]>([]);
+ const [revolutOpeningBalance, setRevolutOpeningBalance] = useState(() => Number(localStorage.getItem('althera-revolut-opening') || 0));
+ const [financeGoals, setFinanceGoals] = useState(() => {
+  try { return JSON.parse(localStorage.getItem('althera-finance-goals') || '{"weekRevenue":0,"monthRevenue":0,"monthWebsites":0,"reward":""}'); }
+  catch { return { weekRevenue: 0, monthRevenue: 0, monthWebsites: 0, reward: '' }; }
+ });
+ useEffect(() => { localStorage.setItem('althera-revolut-opening', String(revolutOpeningBalance)); }, [revolutOpeningBalance]);
+ useEffect(() => { localStorage.setItem('althera-finance-goals', JSON.stringify(financeGoals)); }, [financeGoals]);
 
  // Active list searches
  const [txSearch, setTxSearch] = useState('');
@@ -810,8 +831,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [txStatus, setTxStatus] = useState<'paid' | 'pending'>('paid');
  const [txInvoiceId, setTxInvoiceId] = useState<string>('');
  const [txPaymentMethod, setTxPaymentMethod] = useState<'cash' | 'transfer' | undefined>(undefined);
+ const [txPaymentAccount, setTxPaymentAccount] = useState<FinanceTransaction['paymentAccount']>(undefined);
  const [txFirstAmount, setTxFirstAmount] = useState('');
  const [txNextAmount, setTxNextAmount] = useState('');
+ const [txRecurrenceCount, setTxRecurrenceCount] = useState('');
+ const [txRecurrenceEndDate, setTxRecurrenceEndDate] = useState('');
 
  // INVOICE MODAL controls
  const [isInvModalOpen, setIsInvModalOpen] = useState(false);
@@ -1197,6 +1221,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  const consolidatedBalance = consolidatedIncomes;
  const netCashBalance = consolidatedIncomes - consolidatedExpenses - commercialSalaries;
+ const revolutExpenses = transactions.filter(transaction => transaction.type === 'expense' && transaction.status === 'paid' && transaction.paymentAccount === 'revolut_pro').reduce((sum, transaction) => sum + transaction.amount, 0);
+ const revolutBalance = revolutOpeningBalance - revolutExpenses;
 
  const pendingIncomes = analyticsTransactions
  .filter(t => t.type === 'income' && t.status === 'pending')
@@ -1291,6 +1317,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   alert('Por favor introduce un importe de siguientes cargos válido.');
   return;
   }
+  if (txRecurrenceCount && (!Number.isInteger(Number(txRecurrenceCount)) || Number(txRecurrenceCount) < 1)) {
+   alert('El número de cuotas debe ser un número entero mayor que cero.');
+   return;
+  }
  }
 
  const existingTransaction = isEditingTx && editingTxId ? transactions.find(transaction => transaction.id === editingTxId) : undefined;
@@ -1308,11 +1338,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   description: txDescription.trim() || `${txType === 'income' ? 'Ingreso' : 'Gasto'} registrado`,
   isRecurring: txIsRecurring,
   recurrencePeriod: txIsRecurring ? txPeriod : undefined,
-  recurrenceEndDate: txIsRecurring ? existingTransaction?.recurrenceEndDate : undefined,
-  recurrenceOccurrenceCount: txIsRecurring ? existingTransaction?.recurrenceOccurrenceCount : undefined,
+  recurrenceEndDate: txIsRecurring ? (txRecurrenceEndDate || undefined) : undefined,
+  recurrenceOccurrenceCount: txIsRecurring && txRecurrenceCount ? Number(txRecurrenceCount) : undefined,
   status: txStatus,
   invoiceId: txInvoiceId || undefined,
   paymentMethod: txPaymentMethod,
+  paymentAccount: txPaymentAccount,
   firstAmount: txIsRecurring && txFirstAmount ? Math.abs(Number(txFirstAmount)) : undefined,
   nextAmount: txIsRecurring && txNextAmount ? Math.abs(Number(txNextAmount)) : undefined,
   comercialId: selectedTransactionInvoice?.comercialId || existingTransaction?.comercialId,
@@ -1371,8 +1402,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setTxStatus(tx.status);
  setTxInvoiceId(tx.invoiceId || '');
  setTxPaymentMethod(tx.paymentMethod);
+ setTxPaymentAccount(tx.paymentAccount);
  setTxFirstAmount(tx.firstAmount ? tx.firstAmount.toString() : '');
  setTxNextAmount(tx.nextAmount ? tx.nextAmount.toString() : '');
+ setTxRecurrenceCount(tx.recurrenceOccurrenceCount ? tx.recurrenceOccurrenceCount.toString() : '');
+ setTxRecurrenceEndDate(tx.recurrenceEndDate || '');
  setIsTxModalOpen(true);
  };
 
@@ -1410,8 +1444,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setTxStatus('paid');
  setTxInvoiceId('');
  setTxPaymentMethod(undefined);
+ setTxPaymentAccount(undefined);
  setTxFirstAmount('');
  setTxNextAmount('');
+ setTxRecurrenceCount('');
+ setTxRecurrenceEndDate('');
  };
 
  // Handler: Invoice items manipulation
@@ -3098,6 +3135,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </section>
   </div>
 
+  <div className="grid gap-4 lg:grid-cols-2">
+   <section className="rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.08] to-[#0b1329]/60 p-5"><div className="flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo de empresa</h3></div><Landmark className="h-5 w-5 text-cyan-300" /></div><strong className={`mt-4 block text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[10px] text-slate-500">Saldo inicial menos {revolutExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € en gastos pagados con Revolut Pro.</p><label className="mt-4 block text-[8px] font-black uppercase tracking-wider text-slate-500">Saldo actual importado<input type="number" value={revolutOpeningBalance || ''} onChange={event => setRevolutOpeningBalance(Number(event.target.value) || 0)} placeholder="0,00" className="mt-1 block w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /></label></section>
+   <section className="rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.08] to-[#0b1329]/60 p-5"><div className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-300" /><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Objetivos y recompensa</span><h3 className="mt-1 text-sm font-bold text-white">Incentivo de administración</h3></div></div><div className="mt-4 grid grid-cols-3 gap-2"><label className="text-[8px] text-slate-500">Semana €<input type="number" value={financeGoals.weekRevenue || ''} onChange={event => setFinanceGoals({ ...financeGoals, weekRevenue: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label><label className="text-[8px] text-slate-500">Mes €<input type="number" value={financeGoals.monthRevenue || ''} onChange={event => setFinanceGoals({ ...financeGoals, monthRevenue: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label><label className="text-[8px] text-slate-500">Webs/mes<input type="number" value={financeGoals.monthWebsites || ''} onChange={event => setFinanceGoals({ ...financeGoals, monthWebsites: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label></div><label className="mt-2 block text-[8px] text-slate-500">Recompensa<input value={financeGoals.reward || ''} onChange={event => setFinanceGoals({ ...financeGoals, reward: event.target.value })} placeholder="Ej. sueldo fundadores: 500 € → 1.000 €" className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white" /></label></section>
+  </div>
+
   {/* Financial Bento Scoreboard Metrics */}
   <div className="finance-metric-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-5">
   
@@ -3769,13 +3811,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <div className="mb-4 flex items-center justify-between gap-3"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-violet-300">Stripe · sincronizado</span><h4 className="mt-1 text-sm font-bold text-white">Suscripciones recurrentes</h4></div><button type="button" onClick={() => void refreshStripeFinanceOverview()} disabled={stripeFinanceLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 hover:text-white"><RefreshCw className={`h-4 w-4 ${stripeFinanceLoading ? 'animate-spin' : ''}`} /></button></div>
      {stripeFinanceError ? <p className="mb-3 text-[10px] text-rose-300">{stripeFinanceError}</p> : null}
      <div className="grid gap-3 lg:grid-cols-2">
-      {stripeFinanceLoading && !stripeFinanceOverview ? <div className="col-span-full py-10 text-center text-xs text-slate-500"><RefreshCw className="mx-auto mb-2 h-4 w-4 animate-spin" />Consultando Stripe…</div> : stripeSubscriptions.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay suscripciones recurrentes activas en Stripe.</div> : stripeSubscriptions.map(plan => <article key={plan.id} className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] p-4 transition hover:border-violet-300/30"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-violet-300/20 bg-violet-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-violet-200">Suscripción</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 truncate text-[10px] text-slate-500">{plan.customerEmail || 'Cliente Stripe'}</p></div><strong className="shrink-0 text-right font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}<small className="block text-[8px] font-normal text-violet-300">/ {formatStripeInterval(plan.interval, plan.intervalCount)}</small></strong></div><div className="mt-4 flex items-center justify-between border-t border-violet-300/10 pt-3 text-[9px]"><span className="text-slate-400">{plan.paymentCount} cobro{plan.paymentCount === 1 ? '' : 's'} · último {plan.lastPaidAt ? new Date(plan.lastPaidAt).toLocaleDateString('es-ES') : 'sin pagos'}</span><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="font-black text-violet-300 hover:text-violet-100">Ver Stripe →</a></div></article>)}
+      {stripeFinanceLoading && !stripeFinanceOverview ? <div className="col-span-full py-10 text-center text-xs text-slate-500"><RefreshCw className="mx-auto mb-2 h-4 w-4 animate-spin" />Consultando Stripe…</div> : stripeSubscriptions.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay suscripciones recurrentes activas en Stripe.</div> : stripeSubscriptions.map(plan => <article key={plan.id} className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] p-4 transition hover:border-violet-300/30"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-violet-300/20 bg-violet-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-violet-200">{plan.paymentLimit ? `${plan.paymentLimit} cobros · temporal` : 'Suscripción'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 truncate text-[10px] text-slate-500">{plan.customerEmail || 'Cliente Stripe'}</p></div><strong className="shrink-0 text-right font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}<small className="block text-[8px] font-normal text-violet-300">/ {formatStripeInterval(plan.interval, plan.intervalCount)}</small></strong></div><div className="mt-4 flex items-center justify-between border-t border-violet-300/10 pt-3 text-[9px]"><span className="text-slate-400">{plan.paymentCount}/{plan.paymentLimit || '∞'} cobrados · {plan.paymentLimit ? `último pago ${plan.endsAt ? new Date(plan.endsAt).toLocaleDateString('es-ES') : 'programado'}` : `último ${plan.lastPaidAt ? new Date(plan.lastPaidAt).toLocaleDateString('es-ES') : 'sin pagos'}`}</span><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="font-black text-violet-300 hover:text-violet-100">Ver Stripe →</a></div></article>)}
      </div>
     </section>
 
-    <section className="rounded-3xl border border-amber-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4"><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Stripe · financiación</span><h4 className="mt-1 text-sm font-bold text-white">Pagos split / fraccionados</h4><p className="mt-1 text-[10px] text-slate-500">Planes con un número limitado de cuotas; no se tratan como una suscripción abierta.</p></div><div className="grid gap-3 lg:grid-cols-2">{stripeInstallments.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay pagos fraccionados activos.</div> : stripeInstallments.map(plan => <article key={plan.id} className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.045] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-amber-300/20 bg-amber-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-amber-200">{plan.installmentCount || '?'} cuotas</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 text-[10px] text-amber-200">{plan.paymentCount}/{plan.installmentCount || '?'} cobradas · quedan {formatStripeCurrency(plan.openAmount, plan.currency)}</p></div><strong className="shrink-0 font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}</strong></div><div className="mt-4 flex justify-end border-t border-amber-300/10 pt-3"><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="text-[9px] font-black text-amber-300 hover:text-amber-100">Abrir plan en Stripe →</a></div></article>)}</div></section>
+    <section className="rounded-3xl border border-amber-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4"><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Stripe · financiación</span><h4 className="mt-1 text-sm font-bold text-white">Pagos split / fraccionados</h4><p className="mt-1 text-[10px] text-slate-500">Planes con un número limitado de cuotas; no se tratan como una suscripción abierta.</p></div><div className="grid gap-3 lg:grid-cols-2">{stripeInstallments.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay pagos fraccionados activos.</div> : stripeInstallments.map(plan => <article key={plan.id} className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.045] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-amber-300/20 bg-amber-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-amber-200">{plan.installmentCount || '?'} cuotas</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 text-[10px] text-amber-200">{plan.paymentCount}/{plan.paymentLimit || plan.installmentCount || '?'} cobradas · quedan {formatStripeCurrency(plan.openAmount, plan.currency)}</p>{plan.endsAt && <p className="mt-1 text-[9px] text-slate-500">Última cuota: {new Date(plan.endsAt).toLocaleDateString('es-ES')}</p>}</div><strong className="shrink-0 font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}</strong></div><div className="mt-4 flex justify-end border-t border-amber-300/10 pt-3"><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="text-[9px] font-black text-amber-300 hover:text-amber-100">Abrir plan en Stripe →</a></div></article>)}</div></section>
 
-    <section className="rounded-3xl border border-cyan-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Fuera de Stripe</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias manuales</h4><p className="mt-1 text-[10px] text-slate-500">Movimientos periódicos pagados por transferencia o efectivo.</p></div><button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setIsTxModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-[10px] font-black text-slate-950"><Plus className="h-4 w-4" /> Nueva recurrencia</button></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{manualRecurring.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Añade una recurrencia manual para controlar los cobros y pagos no procesados por Stripe.</div> : manualRecurring.map(item => <article key={item.id} className="rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.04] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wider ${item.paymentMethod === 'cash' ? 'border-emerald-300/20 bg-emerald-300/[0.1] text-emerald-200' : 'border-cyan-300/20 bg-cyan-300/[0.1] text-cyan-200'}`}>{item.paymentMethod === 'cash' ? <Banknote className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}{item.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{getTransactionDisplayConcept(item.description)}</h5><p className="mt-1 text-[10px] text-slate-500">{item.type === 'income' ? 'Cobro' : 'Pago'} · {item.recurrencePeriod === 'weekly' ? 'semanal' : item.recurrencePeriod === 'yearly' ? 'anual' : 'mensual'}</p></div><strong className={item.type === 'income' ? 'font-mono text-sm text-emerald-300' : 'font-mono text-sm text-rose-300'}>{item.type === 'income' ? '+' : '-'}{(item.nextAmount ?? item.amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><div className="mt-4 flex items-center justify-between border-t border-cyan-300/10 pt-3"><span className="text-[9px] text-slate-400">Próxima: {getNextPaymentDate(item.date, item.recurrencePeriod)}</span><div className="flex gap-2"><button type="button" onClick={() => handleEditTx(item)} className="text-[9px] font-black text-cyan-300">Editar</button><button type="button" onClick={() => handleProcessRecurring(item)} className="text-[9px] font-black text-white">Registrar hoy</button></div></div></article>)}</div></section>
+    <section className="rounded-3xl border border-cyan-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Fuera de Stripe</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias manuales</h4><p className="mt-1 text-[10px] text-slate-500">Movimientos periódicos pagados por transferencia o efectivo.</p></div><button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setIsTxModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-[10px] font-black text-slate-950"><Plus className="h-4 w-4" /> Nueva recurrencia</button></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{manualRecurring.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Añade una recurrencia manual para controlar los cobros y pagos no procesados por Stripe.</div> : manualRecurring.map(item => <article key={item.id} className="rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.04] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wider ${item.paymentMethod === 'cash' ? 'border-emerald-300/20 bg-emerald-300/[0.1] text-emerald-200' : 'border-cyan-300/20 bg-cyan-300/[0.1] text-cyan-200'}`}>{item.paymentMethod === 'cash' ? <Banknote className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}{item.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{getTransactionDisplayConcept(item.description)}</h5><p className="mt-1 text-[10px] text-slate-500">{item.type === 'income' ? 'Cobro' : 'Pago'} · {item.recurrencePeriod === 'weekly' ? 'semanal' : item.recurrencePeriod === 'yearly' ? 'anual' : 'mensual'}</p></div><strong className={item.type === 'income' ? 'font-mono text-sm text-emerald-300' : 'font-mono text-sm text-rose-300'}>{item.type === 'income' ? '+' : '-'}{(item.nextAmount ?? item.amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><div className="mt-4 flex items-center justify-between border-t border-cyan-300/10 pt-3"><span className="text-[9px] text-slate-400">{getRecurringLastPaymentDate(item) ? `Último pago: ${getRecurringLastPaymentDate(item)}` : `Próxima: ${getNextPaymentDate(item.date, item.recurrencePeriod)}`}</span><div className="flex gap-2"><button type="button" onClick={() => handleEditTx(item)} className="text-[9px] font-black text-cyan-300">Editar</button><button type="button" onClick={() => handleProcessRecurring(item)} className="text-[9px] font-black text-white">Registrar hoy</button></div></div></article>)}</div></section>
    </div>
   )}
 
@@ -5162,6 +5204,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <option value="Software Herramientas">Software Herramientas</option>
      <option value="Dominios">Dominios</option>
      <option value="Marketing">Marketing</option>
+     <option value="Salarios">Salarios</option>
      <option value="Oficina">Oficina</option>
      <option value="Facturado">Facturado</option>
      </select>
@@ -5260,6 +5303,16 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
     </div>
 
+    {txType === 'expense' && (
+    <div className="space-y-1 rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.035] p-3">
+     <label className="text-[9px] uppercase font-mono text-cyan-300 font-bold block">¿Con qué cuenta se pagó?</label>
+     <select value={txPaymentAccount || ''} onChange={event => setTxPaymentAccount((event.target.value || undefined) as FinanceTransaction['paymentAccount'])} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none">
+      <option value="">Sin asignar</option><option value="revolut_pro">Revolut Pro · Empresa</option><option value="carlos_personal">Tarjeta personal · Carlos</option><option value="nacho_personal">Tarjeta personal · Nacho</option>
+     </select>
+     <p className="mt-1 text-[9px] text-slate-500">Sólo los pagos con Revolut Pro reducen el saldo empresarial.</p>
+    </div>
+    )}
+
     {/* Vincular a Factura */}
     <div className="space-y-1">
     <label className="text-[10px] uppercase font-mono text-slate-400 font-semibold block">Vincular a Factura (Opcional)</label>
@@ -5317,7 +5370,15 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       <option value="weekly">Semanal</option>
       <option value="monthly">Mensual</option>
       <option value="yearly">Anual</option>
-      </select>
+     </select>
+     </div>
+
+     <div className="rounded-2xl border border-violet-400/15 bg-violet-400/[0.04] p-3">
+      <div className="mb-2"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Duración del plan</span><p className="mt-0.5 text-[9px] text-slate-500">Déjalo vacío si continúa indefinidamente. Puedes fijar cuotas, fecha final o ambas.</p></div>
+      <div className="grid grid-cols-2 gap-2">
+       <label className="block"><span className="mb-1 block text-[8px] font-mono font-bold uppercase text-slate-500">Nº de cuotas</span><input type="number" min="1" step="1" value={txRecurrenceCount} onChange={event => setTxRecurrenceCount(event.target.value)} placeholder="Sin límite" className="w-full rounded-xl border border-violet-500/20 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-600 outline-none focus:border-violet-400" /></label>
+       <label className="block"><span className="mb-1 block text-[8px] font-mono font-bold uppercase text-slate-500">Último pago</span><input type="date" value={txRecurrenceEndDate} onChange={event => setTxRecurrenceEndDate(event.target.value)} className="w-full rounded-xl border border-violet-500/20 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none focus:border-violet-400" /></label>
+      </div>
      </div>
 
      <div className="grid grid-cols-2 gap-2">

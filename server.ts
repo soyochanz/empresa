@@ -1034,6 +1034,15 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
       const lastPaidInvoice = [...subscriptionPaidInvoices].sort(
         (a, b) => Number(b.status_transitions?.paid_at || b.created) - Number(a.status_transitions?.paid_at || a.created),
       )[0];
+      const installmentCount = Number.parseInt(subscription.metadata?.althera_cancel_after_installments || subscription.metadata?.installments || "0", 10) || null;
+      const recurrenceCount = Number.parseInt(subscription.metadata?.althera_recurrence_count || "0", 10) || null;
+      const isInstallmentPlan = isFiniteInstallmentSubscription(subscription);
+      // A finite recurring subscription is still a subscription (not a split
+      // payment), but it must stop appearing in forecasts after its last cycle.
+      const paymentLimit = isInstallmentPlan ? installmentCount : recurrenceCount;
+      const scheduledOutstanding = paymentLimit
+        ? Math.max(0, paymentLimit - subscriptionPaidInvoices.length) * amount
+        : subscriptionOpenInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_remaining || 0), 0) / 100;
 
       return {
         id: subscription.id,
@@ -1045,11 +1054,19 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         currency: firstItem?.price.currency || "eur",
         interval: firstItem?.price.recurring?.interval || "month",
         intervalCount: firstItem?.price.recurring?.interval_count || 1,
-        billingType: isFiniteInstallmentSubscription(subscription) ? "installment" : "subscription",
-        installmentCount: Number.parseInt(subscription.metadata?.althera_cancel_after_installments || subscription.metadata?.installments || "0", 10) || null,
+        billingType: isInstallmentPlan ? "installment" : "subscription",
+        installmentCount,
+        paymentLimit,
+        endsAt: paymentLimit
+          ? new Date(addStripeBillingIntervalsKeepingDay(
+              (subscription.trial_end || subscription.start_date || Math.floor(Date.now() / 1000)) * 1000,
+              Math.max(0, paymentLimit - 1),
+              firstItem?.price.recurring?.interval || "month",
+            )).toISOString()
+          : subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
         paymentCount: subscriptionPaidInvoices.length,
         paidAmount: subscriptionPaidInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_paid || 0), 0) / 100,
-        openAmount: subscriptionOpenInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_remaining || 0), 0) / 100,
+        openAmount: scheduledOutstanding,
         lastPaidAt: lastPaidInvoice
           ? new Date(Number(lastPaidInvoice.status_transitions?.paid_at || lastPaidInvoice.created) * 1000).toISOString()
           : null,

@@ -170,6 +170,7 @@ export interface FinanceTransaction {
  invoiceId?: string; // Optional reference to a generated invoice
  status: 'paid' | 'pending';
  paymentMethod?: 'cash' | 'transfer' | 'stripe'; // New: payment method 'cash', 'transfer' or 'stripe'
+ paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
  firstAmount?: number; // Cost of the first occurrence
  nextAmount?: number; // Cost of the subsequent occurrences
  clientId?: string;
