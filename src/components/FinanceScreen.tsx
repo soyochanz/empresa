@@ -5226,6 +5226,18 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <option value="Dominios">Dominios</option>
      <option value="Marketing">Marketing</option>
      <option value="Salarios">Salarios</option>
+     <option value="Gasolina y combustible">Gasolina y combustible</option>
+     <option value="Restaurantes y comidas">Restaurantes y comidas</option>
+     <option value="Viajes y transporte">Viajes y transporte</option>
+     <option value="Alojamiento">Alojamiento</option>
+     <option value="Alquiler de vehículo">Alquiler de vehículo</option>
+     <option value="Formación">Formación</option>
+     <option value="Servicios profesionales">Servicios profesionales</option>
+     <option value="Suscripciones">Suscripciones</option>
+     <option value="Comisiones bancarias">Comisiones bancarias</option>
+     <option value="Impuestos">Impuestos</option>
+     <option value="Material y suministros">Material y suministros</option>
+     <option value="Otros gastos">Otros gastos</option>
      <option value="Oficina">Oficina</option>
      <option value="Facturado">Facturado</option>
      </select>
