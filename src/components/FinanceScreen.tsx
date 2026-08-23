@@ -2818,7 +2818,9 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
   const monthDate = new Date();
   monthDate.setDate(1);
   monthDate.setHours(12, 0, 0, 0);
-  monthDate.setMonth(monthDate.getMonth() + index + 1);
+  // Start with the current month so the forecast answers "what is still due
+  // this month" before showing the following months.
+  monthDate.setMonth(monthDate.getMonth() + index);
   const key = getMonthKey(monthDate);
   const pendingItems = transactions.filter(transaction =>
    transaction.type === 'income'
@@ -3358,7 +3360,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
      {forecastMonths.map((month, index) => (
       <button key={month.key} type="button" onClick={() => setForecastMonth(month.key)} className={`rounded-2xl border p-3 text-left transition ${forecastMonth === month.key ? 'border-cyan-300/35 bg-cyan-300/10 shadow-lg shadow-cyan-400/5' : 'border-white/[0.06] bg-black/20 hover:border-white/15 hover:bg-white/[0.025]'}`}>
-       <span className={`block text-[8px] font-black uppercase tracking-wider ${forecastMonth === month.key ? 'text-cyan-300' : 'text-slate-500'}`}>{index === 0 ? 'Próximo mes' : month.shortLabel}</span>
+       <span className={`block text-[8px] font-black uppercase tracking-wider ${forecastMonth === month.key ? 'text-cyan-300' : 'text-slate-500'}`}>{index === 0 ? 'Este mes' : month.shortLabel}</span>
        <strong className="mt-2 block text-sm text-white">{month.total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} €</strong>
        <span className="mt-1 block text-[8px] text-slate-600">{month.pendingItems.length + month.recurringItems.length} movimientos</span>
       </button>
