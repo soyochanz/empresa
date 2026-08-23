@@ -831,8 +831,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   return stored === null || Number(stored) === 0 ? 1345.66 : Number(stored);
  });
  const [financeGoals, setFinanceGoals] = useState(() => {
-  try { return JSON.parse(localStorage.getItem('althera-finance-goals') || '{"weekRevenue":0,"monthRevenue":0,"monthWebsites":0,"reward":""}'); }
-  catch { return { weekRevenue: 0, monthRevenue: 0, monthWebsites: 0, reward: '' }; }
+  try { return JSON.parse(localStorage.getItem('althera-finance-goals') || '{"weekRevenue":0,"monthRevenue":0,"monthWebsites":5,"reward":"3 Bites Menus + 5 webs · 1.300 € para Carlos y Nacho"}'); }
+  catch { return { weekRevenue: 0, monthRevenue: 0, monthWebsites: 5, reward: '3 Bites Menus + 5 webs · 1.300 € para Carlos y Nacho' }; }
  });
  useEffect(() => { localStorage.setItem('althera-revolut-opening', String(revolutOpeningBalance)); }, [revolutOpeningBalance]);
  useEffect(() => { localStorage.setItem('althera-finance-goals', JSON.stringify(financeGoals)); }, [financeGoals]);
