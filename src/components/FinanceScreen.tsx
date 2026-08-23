@@ -1248,11 +1248,15 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  .reduce((sum, t) => sum + t.amount, 0);
 
  const consolidatedBalance = consolidatedIncomes;
- const netCashBalance = consolidatedIncomes - consolidatedExpenses - commercialSalaries;
  const revolutExpenses = transactions.filter(transaction => transaction.type === 'expense' && transaction.status === 'paid' && transaction.paymentAccount === 'revolut_pro').reduce((sum, transaction) => sum + transaction.amount, 0);
  // This is the reconciled balance shown by Revolut. Existing ledger expenses
  // are already reflected in it; only update the value on the next bank sync.
  const revolutBalance = revolutOpeningBalance;
+ const stripeAvailableBalance = (stripeFunds?.available || []).reduce((sum, fund) => sum + Number(fund.amount || 0), 0);
+ const cashIncome = transactions.filter(transaction => transaction.type === 'income' && transaction.status === 'paid' && transaction.paymentMethod === 'cash').reduce((sum, transaction) => sum + transaction.amount, 0);
+ const cashExpenses = transactions.filter(transaction => transaction.type === 'expense' && transaction.status === 'paid' && transaction.paymentMethod === 'cash').reduce((sum, transaction) => sum + transaction.amount, 0);
+ const cashBalance = cashIncome - cashExpenses;
+ const netCashBalance = revolutBalance + stripeAvailableBalance + cashBalance;
 
  const pendingIncomes = analyticsTransactions
  .filter(t => t.type === 'income' && t.status === 'pending')
@@ -3271,10 +3275,17 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans select-all">
    {netCashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-cyan-400 text-lg ml-1 font-sans">€</span>
    </h3>
-   <p className="text-[10px] text-cyan-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
+  <p className="text-[10px] text-cyan-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
    <DollarSign className="w-3.5 h-3.5" />
-   <span>Ingresos - gastos - sueldos</span>
+   <span>Revolut + Stripe + efectivo neto</span>
    </p>
+  </div>
+
+  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-emerald-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md">
+   <div className="absolute top-4 right-4 bg-emerald-500/10 rounded-xl p-2 border border-emerald-500/10"><Banknote className="w-4 h-4 text-emerald-300" /></div>
+   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Efectivo disponible</span>
+   <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans">{cashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-emerald-300 text-lg ml-1 font-sans">€</span></h3>
+   <p className="text-[10px] text-emerald-300/80 font-mono mt-3 flex items-center gap-1.5 font-medium"><Banknote className="w-3.5 h-3.5" /><span>Cobros cash menos pagos cash</span></p>
   </div>
 
   </div>
