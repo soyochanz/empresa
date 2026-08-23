@@ -782,6 +782,18 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   }
  };
 
+ const handleSetStripeFinalChargeDate = async (subscription: StripeAccountSubscription) => {
+  const finalChargeDate = window.prompt('Último cobro de esta suscripción (AAAA-MM-DD):', subscription.endsAt ? subscription.endsAt.slice(0, 10) : '2026-09-14');
+  if (!finalChargeDate) return;
+  try {
+   const response = await authenticatedFetch(`/api/stripe/subscriptions/${subscription.id}/final-charge-date`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ finalChargeDate }) });
+   const data = await readStripeJson(response);
+   if (!response.ok) throw new Error(data.error || 'No se pudo actualizar la suscripción.');
+   showToast(`Último cobro programado para el ${new Date(`${finalChargeDate}T12:00:00`).toLocaleDateString('es-ES')}.`);
+   await refreshStripeFinanceOverview();
+  } catch (error: any) { showToast(error?.message || 'No se pudo actualizar la suscripción.', true); }
+ };
+
  useEffect(() => {
   void refreshStripeFunds();
   const stripeFundsTimer = window.setInterval(refreshStripeFunds, 60000);

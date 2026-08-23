@@ -694,6 +694,25 @@ app.post("/api/stripe/reconcile-finance", requireAdminAuth, async (_req, res) =>
   }
 });
 
+app.post("/api/stripe/subscriptions/:subscriptionId/final-charge-date", requireAdminAuth, async (req, res) => {
+  try {
+    const finalChargeDate = String(req.body?.finalChargeDate || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(finalChargeDate)) return res.status(400).json({ error: "Fecha final inválida." });
+    const stripe = getStripe();
+    const subscription = await stripe.subscriptions.retrieve(req.params.subscriptionId);
+    const interval = subscription.items.data[0]?.price.recurring?.interval || "month";
+    const finalAt = new Date(`${finalChargeDate}T12:00:00Z`).getTime();
+    const cancelAt = Math.floor(addStripeBillingIntervalsKeepingDay(finalAt, 1, interval) / 1000);
+    await stripe.subscriptions.update(subscription.id, {
+      cancel_at: cancelAt,
+      metadata: { ...(subscription.metadata || {}), althera_finite_subscription: "true", althera_final_charge_date: finalChargeDate },
+    });
+    res.json({ finalChargeDate, cancelAt: new Date(cancelAt * 1000).toISOString() });
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "No se pudo programar el fin de la suscripción." });
+  }
+});
+
 // API Routes
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", message: "Stripe CRM API is active!" });
