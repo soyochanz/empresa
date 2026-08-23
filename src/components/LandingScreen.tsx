@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowDownRight, ArrowRight, BarChart3, Blocks, Check, ExternalLink, Facebook, Gem, Globe2, Instagram, Layers3, Megaphone, Menu, MessageCircle, Send, Share2, Sparkles, Target, Video, X, Zap } from 'lucide-react';
 import { InquiryMessage, PartnerCompany, Screen } from '../types';
@@ -6,6 +6,7 @@ import { db } from '../supabaseClient';
 import ModernBackgroundPaths from '../../components/ui/modern-background-paths';
 import LogoLoop, { LogoLoopItem } from './LogoLoop';
 import BorderGlow from './BorderGlow';
+import { trackWebsiteEvent } from '../utils/webAnalytics';
 
 interface LandingScreenProps {
   onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
@@ -66,6 +67,7 @@ const getProjectHost = (value?: string) => {
 };
 
 export default function LandingScreen({ onNavigate, projects, partners = [] }: LandingScreenProps) {
+ useEffect(() => { trackWebsiteEvent('page_view'); }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

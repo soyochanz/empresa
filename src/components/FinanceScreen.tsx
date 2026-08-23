@@ -3179,7 +3179,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   </div>
 
   {/* Financial Bento Scoreboard Metrics */}
-  <div className="finance-metric-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-5">
+  <div className="finance-metric-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
   
   {/* Metric 1: Saldo Consolidado */}
   <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-emerald-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-emerald-500/[0.02]">

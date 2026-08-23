@@ -674,6 +674,32 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
 app.use(express.json());
 
+app.post('/api/analytics/track', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!['page_view', 'contact_intent', 'portal_open'].includes(body.eventName)) return res.status(400).json({ error: 'Invalid event' });
+    const clean = (value: unknown, max = 120) => String(value || '').slice(0, max);
+    const { error } = await supabaseAdmin.from('website_analytics_events').insert({
+      visitor_id: clean(body.visitorId, 36), session_id: clean(body.sessionId, 36), event_name: body.eventName,
+      path: clean(body.path, 240) || '/', referrer_host: clean(body.referrerHost), utm_source: clean(body.utmSource),
+      utm_medium: clean(body.utmMedium), utm_campaign: clean(body.utmCampaign), device_type: clean(body.deviceType, 20) || 'desktop',
+    });
+    if (error) throw error;
+    res.status(204).end();
+  } catch (error: any) { res.status(202).end(); }
+});
+
+app.get('/api/analytics/summary', requireAdminAuth, async (_req, res) => {
+  try {
+    const since = new Date(); since.setDate(since.getDate() - 30);
+    const { data, error } = await supabaseAdmin.from('website_analytics_events').select('visitor_id,session_id,event_name,referrer_host,utm_source,device_type,created_at').gte('created_at', since.toISOString()).limit(50_000);
+    if (error) throw error;
+    const events = data || [];
+    const group = (values: string[]) => Object.entries(values.reduce<Record<string, number>>((acc, value) => ({ ...acc, [value || 'Directo']: (acc[value || 'Directo'] || 0) + 1 }), {})).sort(([, a], [, b]) => b - a).slice(0, 6).map(([label, value]) => ({ label, value }));
+    res.json({ days: 30, visitors: new Set(events.map(event => event.visitor_id)).size, sessions: new Set(events.map(event => event.session_id)).size, pageViews: events.filter(event => event.event_name === 'page_view').length, conversions: events.filter(event => event.event_name !== 'page_view').length, sources: group(events.map(event => event.utm_source || event.referrer_host || 'Directo')), devices: group(events.map(event => event.device_type)) });
+  } catch (error: any) { res.status(500).json({ error: error?.message || 'Analytics unavailable' }); }
+});
+
 // Repairs ledger state when a webhook was delayed or unavailable. Stripe is
 // the source of truth: only invoices Stripe reports as paid are marked paid.
 app.post("/api/stripe/reconcile-finance", requireAdminAuth, async (_req, res) => {
