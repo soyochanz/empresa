@@ -768,7 +768,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }, []);
 
  useEffect(() => {
-  if (activeTab !== 'stripe') return;
+  if (activeTab !== 'stripe' && activeTab !== 'recurring') return;
   void refreshStripeFinanceOverview();
   const stripeOverviewTimer = window.setInterval(refreshStripeFinanceOverview, 60_000);
   return () => window.clearInterval(stripeOverviewTimer);
@@ -1374,6 +1374,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setTxFirstAmount(tx.firstAmount ? tx.firstAmount.toString() : '');
  setTxNextAmount(tx.nextAmount ? tx.nextAmount.toString() : '');
  setIsTxModalOpen(true);
+ };
+
+ const handleMakeTransactionRecurring = (tx: FinanceTransaction) => {
+  handleEditTx(tx);
+  setTxIsRecurring(true);
+  setTxFirstAmount(tx.firstAmount ? tx.firstAmount.toString() : tx.amount.toString());
+  setTxNextAmount(tx.nextAmount ? tx.nextAmount.toString() : tx.amount.toString());
  };
 
  const handleDeleteTx = async (id: string) => {
@@ -2766,6 +2773,10 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
  });
 
  const recurringExpenses = transactions.filter(t => !!t.isRecurring);
+ const manualRecurring = recurringExpenses.filter(transaction => transaction.paymentMethod !== 'stripe');
+ const stripePlans = stripeFinanceOverview?.activeSubscriptions ?? [];
+ const stripeSubscriptions = stripePlans.filter(plan => plan.billingType === 'subscription');
+ const stripeInstallments = stripePlans.filter(plan => plan.billingType === 'installment');
  const forecastMonths = Array.from({ length: 12 }, (_, index) => {
   const monthDate = new Date();
   monthDate.setDate(1);
@@ -3209,9 +3220,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
    }`}
    >
-   <span>Recurrentes</span>
+   <span>Planes y recurrencias</span>
    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold ${activeTab === 'recurring' ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-400'}`}>
-    {recurringExpenses.length}
+    {stripePlans.length + manualRecurring.length}
    </span>
    </button>
    <button
@@ -3270,7 +3281,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    : activeTab === 'forecast' ?
     `${selectedForecast?.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0,00'} € previstos`
    : activeTab === 'recurring'  ?
-    `${recurringExpenses.length} suscripciones operativas` 
+    `${stripePlans.length} planes Stripe · ${manualRecurring.length} manuales` 
     : activeTab === 'stripe' ?
     `Pasarela Stripe Integrada & Activa`
     : `${comercialesList.length} representantes comerciales`}
@@ -3619,10 +3630,10 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         <button
          onClick={() => handleToggleTransactionStatus(t)}
          className="inline-flex h-7 items-center gap-1 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 text-[8px] font-black uppercase tracking-wide text-emerald-300 transition hover:bg-emerald-400/[0.15]"
-         title="Marcar como Liquidado y sincronizar facturas/conceptos"
+         title={t.type === 'income' ? 'Marcar como cobrado y sincronizar facturas/conceptos' : 'Marcar como pagado'}
         >
          <Check className="h-3 w-3" />
-         <span>Cobrar</span>
+         <span>{t.type === 'income' ? 'Cobrar' : 'Pagar'}</span>
         </button>
         </div>
        )}
@@ -3655,6 +3666,15 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         >
         <Edit className="h-3.5 w-3.5" />
         </button>
+        {!t.isRecurring && (
+        <button
+         onClick={() => handleMakeTransactionRecurring(t)}
+         className="grid h-7 w-7 place-items-center rounded-lg border border-violet-400/15 bg-violet-400/[0.06] text-violet-300 transition hover:border-violet-400/30 hover:bg-violet-400/[0.13]"
+         title={`Convertir este ${t.type === 'income' ? 'cobro' : 'pago'} en recurrencia`}
+        >
+         <Repeat className="h-3.5 w-3.5" />
+        </button>
+        )}
         <button
         onClick={() => handleDeleteTx(t.id)}
         className="grid h-7 w-7 place-items-center rounded-lg border border-rose-400/10 bg-rose-400/[0.035] text-slate-500 transition hover:border-rose-400/20 hover:bg-rose-400/[0.09] hover:text-rose-300"
@@ -3722,8 +3742,45 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   </div>
   )}
 
-  {/* Tab Content 2: Recurring Expenses/Incomes List */}
+  {/* Tab Content 2: plans and non-Stripe recurrences */}
   {activeTab === 'recurring' && (
+   <div className="space-y-5">
+    <section className="relative overflow-hidden rounded-3xl border border-violet-300/15 bg-gradient-to-br from-violet-400/[0.1] via-[#0b1329]/75 to-cyan-400/[0.04] p-5 sm:p-6">
+     <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-violet-400/10 blur-3xl" />
+     <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+       <span className="text-[9px] font-black uppercase tracking-[.22em] text-violet-300">Cobros programados</span>
+       <h3 className="mt-1 text-xl font-black text-white">Planes y recurrencias</h3>
+       <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-400">Stripe se lee automáticamente y separa las suscripciones de los pagos fraccionados. Las recurrencias manuales se registran por efectivo o transferencia, sin mezclarlas con la pasarela.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+       <button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setTxPaymentMethod('transfer'); setIsTxModalOpen(true); }} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/[0.1] px-3.5 py-2.5 text-[10px] font-black text-cyan-200 transition hover:bg-cyan-300/[0.17]"><Landmark className="h-4 w-4" /> Añadir transferencia</button>
+       <button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setTxPaymentMethod('cash'); setIsTxModalOpen(true); }} className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/[0.1] px-3.5 py-2.5 text-[10px] font-black text-emerald-200 transition hover:bg-emerald-300/[0.17]"><Banknote className="h-4 w-4" /> Añadir efectivo</button>
+      </div>
+     </div>
+     <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Suscripciones Stripe</span><strong className="mt-1 block text-2xl text-white">{stripeSubscriptions.length}</strong><span className="text-[9px] text-slate-500">cobro automático recurrente</span></div>
+      <div className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pagos fraccionados</span><strong className="mt-1 block text-2xl text-white">{stripeInstallments.length}</strong><span className="text-[9px] text-slate-500">planes con cuotas pendientes</span></div>
+      <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300">Recurrencias manuales</span><strong className="mt-1 block text-2xl text-white">{manualRecurring.length}</strong><span className="text-[9px] text-slate-500">efectivo o transferencia</span></div>
+     </div>
+    </section>
+
+    <section className="rounded-3xl border border-white/[0.06] bg-[#0b1329]/25 p-4 sm:p-5">
+     <div className="mb-4 flex items-center justify-between gap-3"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-violet-300">Stripe · sincronizado</span><h4 className="mt-1 text-sm font-bold text-white">Suscripciones recurrentes</h4></div><button type="button" onClick={() => void refreshStripeFinanceOverview()} disabled={stripeFinanceLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 hover:text-white"><RefreshCw className={`h-4 w-4 ${stripeFinanceLoading ? 'animate-spin' : ''}`} /></button></div>
+     {stripeFinanceError ? <p className="mb-3 text-[10px] text-rose-300">{stripeFinanceError}</p> : null}
+     <div className="grid gap-3 lg:grid-cols-2">
+      {stripeFinanceLoading && !stripeFinanceOverview ? <div className="col-span-full py-10 text-center text-xs text-slate-500"><RefreshCw className="mx-auto mb-2 h-4 w-4 animate-spin" />Consultando Stripe…</div> : stripeSubscriptions.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay suscripciones recurrentes activas en Stripe.</div> : stripeSubscriptions.map(plan => <article key={plan.id} className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] p-4 transition hover:border-violet-300/30"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-violet-300/20 bg-violet-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-violet-200">Suscripción</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 truncate text-[10px] text-slate-500">{plan.customerEmail || 'Cliente Stripe'}</p></div><strong className="shrink-0 text-right font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}<small className="block text-[8px] font-normal text-violet-300">/ {formatStripeInterval(plan.interval, plan.intervalCount)}</small></strong></div><div className="mt-4 flex items-center justify-between border-t border-violet-300/10 pt-3 text-[9px]"><span className="text-slate-400">{plan.paymentCount} cobro{plan.paymentCount === 1 ? '' : 's'} · último {plan.lastPaidAt ? new Date(plan.lastPaidAt).toLocaleDateString('es-ES') : 'sin pagos'}</span><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="font-black text-violet-300 hover:text-violet-100">Ver Stripe →</a></div></article>)}
+     </div>
+    </section>
+
+    <section className="rounded-3xl border border-amber-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4"><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Stripe · financiación</span><h4 className="mt-1 text-sm font-bold text-white">Pagos split / fraccionados</h4><p className="mt-1 text-[10px] text-slate-500">Planes con un número limitado de cuotas; no se tratan como una suscripción abierta.</p></div><div className="grid gap-3 lg:grid-cols-2">{stripeInstallments.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay pagos fraccionados activos.</div> : stripeInstallments.map(plan => <article key={plan.id} className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.045] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-amber-300/20 bg-amber-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-amber-200">{plan.installmentCount || '?'} cuotas</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 text-[10px] text-amber-200">{plan.paymentCount}/{plan.installmentCount || '?'} cobradas · quedan {formatStripeCurrency(plan.openAmount, plan.currency)}</p></div><strong className="shrink-0 font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}</strong></div><div className="mt-4 flex justify-end border-t border-amber-300/10 pt-3"><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="text-[9px] font-black text-amber-300 hover:text-amber-100">Abrir plan en Stripe →</a></div></article>)}</div></section>
+
+    <section className="rounded-3xl border border-cyan-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Fuera de Stripe</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias manuales</h4><p className="mt-1 text-[10px] text-slate-500">Movimientos periódicos pagados por transferencia o efectivo.</p></div><button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setIsTxModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-[10px] font-black text-slate-950"><Plus className="h-4 w-4" /> Nueva recurrencia</button></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{manualRecurring.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Añade una recurrencia manual para controlar los cobros y pagos no procesados por Stripe.</div> : manualRecurring.map(item => <article key={item.id} className="rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.04] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wider ${item.paymentMethod === 'cash' ? 'border-emerald-300/20 bg-emerald-300/[0.1] text-emerald-200' : 'border-cyan-300/20 bg-cyan-300/[0.1] text-cyan-200'}`}>{item.paymentMethod === 'cash' ? <Banknote className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}{item.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{getTransactionDisplayConcept(item.description)}</h5><p className="mt-1 text-[10px] text-slate-500">{item.type === 'income' ? 'Cobro' : 'Pago'} · {item.recurrencePeriod === 'weekly' ? 'semanal' : item.recurrencePeriod === 'yearly' ? 'anual' : 'mensual'}</p></div><strong className={item.type === 'income' ? 'font-mono text-sm text-emerald-300' : 'font-mono text-sm text-rose-300'}>{item.type === 'income' ? '+' : '-'}{(item.nextAmount ?? item.amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><div className="mt-4 flex items-center justify-between border-t border-cyan-300/10 pt-3"><span className="text-[9px] text-slate-400">Próxima: {getNextPaymentDate(item.date, item.recurrencePeriod)}</span><div className="flex gap-2"><button type="button" onClick={() => handleEditTx(item)} className="text-[9px] font-black text-cyan-300">Editar</button><button type="button" onClick={() => handleProcessRecurring(item)} className="text-[9px] font-black text-white">Registrar hoy</button></div></div></article>)}</div></section>
+   </div>
+  )}
+
+  {/* Legacy recurrent-card implementation retained temporarily but no longer rendered. */}
+  {false && activeTab === 'recurring' && (
   <div className="space-y-5">
    <div className="bg-[#120e25]/30 backdrop-blur-md border border-purple-500/10 p-5 rounded-3xl text-left relative overflow-hidden group">
    <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl -translate-y-12 translate-x-12 pointer-events-none group-hover:bg-purple-500/10 transition-colors duration-500" />
@@ -5225,10 +5282,10 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="flex items-center justify-between">
      <div className="text-left">
      <span className="text-[10px] font-mono text-slate-300 font-bold block uppercase">
-      {txType === 'income' ? 'Establecer Ingreso Recurrente' : 'Establecer Gasto Recurrente'}
+      Crear recurrencia manual
      </span>
      <span className="text-[9px] text-slate-500 block">
-      {txType === 'income' ? 'Ingreso recurrente estructurado' : 'Suscripción fija recurrente'}
+      Para efectivo o transferencia. Los planes Stripe se sincronizan automáticamente.
      </span>
      </div>
      <button
@@ -5250,7 +5307,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <div className="pt-2 animate-fade-in space-y-3 block">
      <div className="block">
       <label className="text-[8px] uppercase font-mono text-purple-400 font-bold block mb-1">
-      {txType === 'income' ? 'Periodo de ingreso' : 'Periodo de cobro/pago'}
+      Frecuencia
       </label>
       <select
       value={txPeriod}

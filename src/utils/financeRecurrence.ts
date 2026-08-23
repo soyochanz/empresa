@@ -98,7 +98,10 @@ export const buildDueRecurringTransactions = (
   const sourceDate = parseDateKey(source.date);
   if (!sourceDate) continue;
 
-  for (let index = 0; index < MAX_OCCURRENCES_PER_CONCEPT; index += 1) {
+  // The source transaction is the first real charge/payment. This matters when
+  // an existing ledger entry is converted into a recurrence: only later due
+  // dates should create new ledger rows, never a duplicate for its start date.
+  for (let index = 1; index < MAX_OCCURRENCES_PER_CONCEPT; index += 1) {
    const occurrenceDate = getFinanceRecurrenceDate(sourceDate, source.recurrencePeriod, index);
    if (!isFinanceRecurrenceOccurrenceAllowed(source, index, occurrenceDate)) break;
    const scheduledDate = toFinanceDateKey(occurrenceDate);
