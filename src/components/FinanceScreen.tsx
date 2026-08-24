@@ -148,6 +148,17 @@ interface FinanceScreenProps {
 }
 
 const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
+const CASH_OPENING_BALANCE = 820;
+const CASH_OPENING_AT = Date.parse('2026-08-24T08:20:21.810Z');
+
+const wasCreatedAfterCashOpening = (transaction: FinanceTransaction): boolean => {
+ const createdAt = transaction.createdAt ? Date.parse(transaction.createdAt) : Number.NaN;
+ if (Number.isFinite(createdAt)) return createdAt >= CASH_OPENING_AT;
+
+ // Newly-created optimistic rows contain their creation timestamp in the id.
+ const idTimestamp = transaction.id.match(/(?:^|_)(1\d{12})(?:_|$)/)?.[1];
+ return idTimestamp ? Number(idTimestamp) >= CASH_OPENING_AT : true;
+};
 
 const getFinanceBusinessName = (contact?: ClientContact): string => {
  if (!contact) return '';
@@ -1253,9 +1264,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  // are already reflected in it; only update the value on the next bank sync.
  const revolutBalance = revolutOpeningBalance;
  const stripeAvailableBalance = (stripeFunds?.available || []).reduce((sum, fund) => sum + Number(fund.amount || 0), 0);
- const cashIncome = transactions.filter(transaction => transaction.type === 'income' && transaction.status === 'paid' && transaction.paymentMethod === 'cash').reduce((sum, transaction) => sum + transaction.amount, 0);
- const cashExpenses = transactions.filter(transaction => transaction.type === 'expense' && transaction.status === 'paid' && transaction.paymentMethod === 'cash').reduce((sum, transaction) => sum + transaction.amount, 0);
- const cashBalance = cashIncome - cashExpenses;
+ const cashMovementsSinceOpening = ledgerTransactions.filter(transaction =>
+  transaction.status === 'paid' &&
+  transaction.paymentMethod === 'cash' &&
+  wasCreatedAfterCashOpening(transaction)
+ );
+ const cashIncome = cashMovementsSinceOpening.filter(transaction => transaction.type === 'income').reduce((sum, transaction) => sum + transaction.amount, 0);
+ const cashExpenses = cashMovementsSinceOpening.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + transaction.amount, 0);
+ const cashBalance = CASH_OPENING_BALANCE + cashIncome - cashExpenses;
  const netCashBalance = revolutBalance + stripeAvailableBalance + cashBalance;
 
  const pendingIncomes = analyticsTransactions
@@ -1369,6 +1385,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const payload: FinanceTransaction = {
   ...existingTransaction,
   id: isEditingTx && editingTxId ? editingTxId : 'tx_' + Date.now(),
+  createdAt: existingTransaction?.createdAt || new Date().toISOString(),
   type: txType,
   category: txCategory.trim() || 'General',
   amount: txIsRecurring && txFirstAmount ? Math.abs(Number(txFirstAmount)) : Math.abs(Number(txAmount)),
@@ -3285,7 +3302,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    <div className="absolute top-4 right-4 bg-emerald-500/10 rounded-xl p-2 border border-emerald-500/10"><Banknote className="w-4 h-4 text-emerald-300" /></div>
    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Efectivo disponible</span>
    <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans">{cashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-emerald-300 text-lg ml-1 font-sans">€</span></h3>
-   <p className="text-[10px] text-emerald-300/80 font-mono mt-3 flex items-center gap-1.5 font-medium"><Banknote className="w-3.5 h-3.5" /><span>Cobros cash menos pagos cash</span></p>
+   <p className="text-[10px] text-emerald-300/80 font-mono mt-3 flex items-center gap-1.5 font-medium"><Banknote className="w-3.5 h-3.5" /><span>Base 820,00 € + cobros − pagos desde hoy</span></p>
   </div>
 
   </div>

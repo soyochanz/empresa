@@ -1739,6 +1739,7 @@ const dbImplementation = {
   const decoded = this._decodeDescription(tx.description || '');
   return {
   id: tx.id,
+  createdAt: tx.created_at || undefined,
   type: tx.type,
   category: tx.category,
   amount: Number(tx.amount),
