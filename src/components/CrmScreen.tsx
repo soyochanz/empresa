@@ -358,6 +358,8 @@ export default function CrmScreen({
  const [stripeOverview, setStripeOverview] = useState<any>(null);
  const [stripeOverviewLoading, setStripeOverviewLoading] = useState(false);
  const [stripeOverviewError, setStripeOverviewError] = useState('');
+ const [stripeCancelLoading, setStripeCancelLoading] = useState<string | null>(null);
+ const [stripeCancelSuccess, setStripeCancelSuccess] = useState('');
  const [latestClientCheckout, setLatestClientCheckout] = useState<any>(null);
  const stripeInterval: 'month' | 'year' | 'once' = chargePlan === 'month' || chargePlan === 'year' ? chargePlan : 'once';
  const setStripeInterval = (interval: 'month' | 'year' | 'once') => setChargePlan(interval);
@@ -384,6 +386,8 @@ export default function CrmScreen({
  setInvoiceDeleteError('');
  setStripeOverview(null);
  setStripeOverviewError('');
+ setStripeCancelLoading(null);
+ setStripeCancelSuccess('');
  setLatestClientCheckout(null);
  setStripeEmailInput(selectedContact?.email || '');
 
@@ -441,7 +445,52 @@ export default function CrmScreen({
  } catch (err: any) {
   setStripeOverviewError(err?.message || 'No se pudo cargar la informacion de Stripe.');
  } finally {
-  setStripeOverviewLoading(false);
+ setStripeOverviewLoading(false);
+ }
+ };
+
+ const handleCancelClientStripeSubscription = async (subscriptionId: string) => {
+ if (!selectedContact || stripeCancelLoading) return;
+ const confirmed = safeConfirm(
+  `¿Cancelar ahora la suscripción Stripe de ${selectedContact.name}? Se detendrán los próximos cobros. Esta acción no reembolsa pagos anteriores.`
+ );
+ if (!confirmed) return;
+
+ setStripeCancelLoading(subscriptionId);
+ setStripeOverviewError('');
+ setStripeCancelSuccess('');
+ try {
+  const response = await authenticatedFetch('/api/stripe/cancel-subscription', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ subscriptionId }),
+  });
+  const data = await readStripeJson(response);
+  if (!response.ok) throw new Error(data.error || 'No se pudo cancelar la suscripción.');
+
+  const nextSubscriptions = (stripeOverview?.subscriptions || []).map((subscription: any) =>
+   subscription.id === subscriptionId
+    ? { ...subscription, status: data.status || 'canceled', canceledAt: data.canceledAt, cancelAtPeriodEnd: false }
+    : subscription
+  );
+  const remainingActiveSubscription = nextSubscriptions.find((subscription: any) =>
+   ['active', 'trialing', 'past_due'].includes(subscription.status)
+  );
+
+  setStripeOverview((current: any) => current ? { ...current, subscriptions: nextSubscriptions } : current);
+  const updatedContact: ClientContact = {
+   ...selectedContact,
+   stripeSubscriptionId: remainingActiveSubscription?.id || subscriptionId,
+   stripeSubscriptionStatus: remainingActiveSubscription ? 'active' : 'canceled',
+  };
+  if (onUpdateContact) await onUpdateContact(updatedContact);
+  else await db.updateContact(updatedContact);
+  onRefreshFinance?.();
+  setStripeCancelSuccess('Suscripción cancelada correctamente. Stripe no realizará más cobros de este plan.');
+ } catch (error: any) {
+  setStripeOverviewError(error?.message || 'No se pudo cancelar la suscripción.');
+ } finally {
+  setStripeCancelLoading(null);
  }
  };
 
@@ -3442,6 +3491,11 @@ React.useEffect(() => {
        || visibleCheckoutTransaction?.status === 'paid';
      const stripeDashboardUrl = latestClientCheckout?.dashboardUrl
       || getStripeDashboardUrl(selectedPaymentSummary.checkoutSessionId, selectedPaymentSummary.stripeInvoiceId);
+     const activeStripeSubscription = (stripeOverview?.subscriptions || []).find((subscription: any) =>
+      ['active', 'trialing', 'past_due'].includes(subscription.status)
+     );
+     const cancelableSubscriptionId = activeStripeSubscription?.id
+      || (selectedContact.stripeSubscriptionStatus !== 'canceled' ? selectedContact.stripeSubscriptionId : '');
      const hasPaymentInfo = selectedPaymentSummary.totalCount > 0;
      const isSubscribedOrLinked = selectedContact.stripeSubscriptionStatus === 'active' || !!visibleCheckoutUrl || selectedPaymentSummary.paidCount > 0;
      const isPartiallyPaid = selectedPaymentSummary.paidCount > 0 && selectedPaymentSummary.pendingCount > 0;
@@ -3645,9 +3699,27 @@ React.useEffect(() => {
        </button>
       </div>
 
+      {cancelableSubscriptionId && (
+       <button
+        type="button"
+        disabled={stripeCancelLoading === cancelableSubscriptionId}
+        onClick={() => void handleCancelClientStripeSubscription(cancelableSubscriptionId)}
+        className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-rose-400/20 bg-rose-400/[0.08] px-3 text-[8.5px] font-bold text-rose-300 transition hover:bg-rose-400/[0.15] hover:text-rose-200 disabled:cursor-wait disabled:opacity-60"
+       >
+        {stripeCancelLoading === cancelableSubscriptionId ? <RefreshCw className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+        <span>{stripeCancelLoading === cancelableSubscriptionId ? 'Cancelando en Stripe…' : 'Cancelar suscripción'}</span>
+       </button>
+      )}
+
       {stripeOverviewError && (
       <div className="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-[9px] text-rose-400 leading-normal">
        {stripeOverviewError}
+      </div>
+      )}
+
+      {stripeCancelSuccess && (
+      <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-[9px] leading-normal text-emerald-300">
+       {stripeCancelSuccess}
       </div>
       )}
 
@@ -3691,13 +3763,26 @@ React.useEffect(() => {
          {sub.cancelAtPeriodEnd ? 'Cancela al final' : sub.status}
         </span>
         </div>
-        <div className="flex justify-between text-[9px] text-slate-500">
+        <div className="flex items-center justify-between gap-2 text-[9px] text-slate-500">
          <span>{sub.amount !== null ? `${sub.amount.toFixed(2)} € / ${sub.interval || 'periodo'}` : 'Importe no disponible'}</span>
-        {sub.dashboardUrl && (
-         <a href={sub.dashboardUrl} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
-         Ver
-         </a>
-        )}
+         <span className="flex shrink-0 items-center gap-2">
+          {sub.dashboardUrl && (
+           <a href={sub.dashboardUrl} target="_blank" rel="noreferrer" className="text-indigo-300 hover:text-indigo-200">
+            Ver
+           </a>
+          )}
+          {sub.status !== 'canceled' && sub.status !== 'incomplete_expired' && (
+           <button
+            type="button"
+            disabled={stripeCancelLoading === sub.id}
+            onClick={() => void handleCancelClientStripeSubscription(sub.id)}
+            className="inline-flex items-center gap-1 rounded-md border border-rose-400/20 bg-rose-400/[0.08] px-2 py-1 font-bold text-rose-300 transition hover:bg-rose-400/[0.15] hover:text-rose-200 disabled:cursor-wait disabled:opacity-60"
+           >
+            {stripeCancelLoading === sub.id ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <X className="h-2.5 w-2.5" />}
+            {sub.cancelAtPeriodEnd ? 'Cancelar ahora' : 'Cancelar suscripción'}
+           </button>
+          )}
+         </span>
         </div>
        </div>
        ))}
