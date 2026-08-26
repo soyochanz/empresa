@@ -303,8 +303,70 @@ function getStripeInvoiceSubscriptionId(invoice: Stripe.Invoice): string | undef
 }
 
 function getStripePaidDate(invoice: Stripe.Invoice): string {
-  const paidAt = (invoice.status_transitions?.paid_at || Math.floor(Date.now() / 1000)) * 1000;
-  return new Date(paidAt).toISOString().split("T")[0];
+  const paidAt = (invoice.status_transitions?.paid_at || invoice.created || Math.floor(Date.now() / 1000)) * 1000;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Madrid",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(paidAt));
+  const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+function writeContactMetadataValues(rawValue: string, values: Record<string, string>): string {
+  const marker = "\n\n---METADATA---";
+  const markerIndex = rawValue.indexOf(marker);
+  const credentials = markerIndex >= 0 ? rawValue.slice(0, markerIndex) : rawValue;
+  const metadataText = markerIndex >= 0 ? rawValue.slice(markerIndex + marker.length) : "";
+  const keys = new Set(Object.keys(values));
+  const lines = metadataText
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line && !keys.has(line.slice(0, line.indexOf(":"))));
+  Object.entries(values).forEach(([key, value]) => {
+    if (value) lines.push(`${key}: ${value}`);
+  });
+  return `${credentials}${marker}\n${lines.join("\n")}`;
+}
+
+async function syncStripeSubscriptionToContact(subscription: Stripe.Subscription): Promise<{ updated: boolean; reason?: string }> {
+  const clientId = subscription.metadata?.clientId || "";
+  if (!clientId) return { updated: false, reason: "missing_client_id" };
+
+  const { data: contact, error: contactReadError } = await supabaseAdmin
+    .from("contacts")
+    .select("id,hostingCredentials")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (contactReadError) throw contactReadError;
+  if (!contact) return { updated: false, reason: "contact_not_found" };
+
+  const status = ["active", "trialing", "canceled", "past_due"].includes(subscription.status)
+    ? subscription.status
+    : subscription.status === "unpaid"
+      ? "past_due"
+      : "none";
+  const firstItem = subscription.items.data[0];
+  const amount = subscription.items.data.reduce(
+    (sum, item) => sum + Number(item.price.unit_amount || 0) * Number(item.quantity || 1),
+    0,
+  ) / 100;
+  const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+  const hostingCredentials = writeContactMetadataValues(String(contact.hostingCredentials || ""), {
+    stripeCustomerId: customerId,
+    stripeSubscriptionId: subscription.id,
+    stripeSubscriptionStatus: status,
+    stripeSubscriptionPrice: String(amount),
+    stripeSubscriptionInterval: firstItem?.price.recurring?.interval || "month",
+  });
+
+  const { error: contactUpdateError } = await supabaseAdmin
+    .from("contacts")
+    .update({ hostingCredentials })
+    .eq("id", clientId);
+  if (contactUpdateError) throw contactUpdateError;
+  return { updated: true };
 }
 
 function addStripeBillingIntervalsKeepingDay(startAt: number, count: number, interval: string): number {
@@ -345,6 +407,9 @@ async function ensureFiniteSubscriptionSchedule(
 
   const stripe = getStripe();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  if (subscription.status === "canceled" || subscription.status === "incomplete_expired") {
+    return { updated: false, reason: `subscription_${subscription.status}` };
+  }
   const existingCount = Number.parseInt(
     billingType === "subscription"
       ? subscription.metadata?.althera_recurrence_count || ""
@@ -459,6 +524,9 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
       .trim();
     recurringDescription = `${recurringDescription} (Ingreso recurrente Stripe)`;
     recurringDescription = writeTag(recurringDescription, "STRIPEINVOICE", invoiceId);
+    recurringDescription = writeTag(recurringDescription, "RECUR_SOURCE", sourceTx.id);
+    recurringDescription = writeTag(recurringDescription, "RECUR_DATE", getStripePaidDate(invoice));
+    recurringDescription = writeTag(recurringDescription, "ISINITIAL", "false");
 
     const recurringTxId = `tx_stripe_invoice_${invoiceId}`;
     const { error: recurringInsertError } = await supabaseAdmin
@@ -490,7 +558,7 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
       const updatedDescription = writeTag(description, "STRIPEINVOICE", invoiceId);
       const { error: tagError } = await supabaseAdmin
         .from("finance_transactions")
-        .update({ description: updatedDescription })
+        .update({ description: updatedDescription, date: getStripePaidDate(invoice) })
         .eq("id", targetTx.id);
       if (tagError) throw tagError;
       return { updated: false, reason: "already_paid_invoice_tag_saved", txId: targetTx.id };
@@ -630,8 +698,16 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       }
       event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
     } else {
-      event = JSON.parse(req.body.toString("utf8")) as Stripe.Event;
-      console.warn("STRIPE_WEBHOOK_SECRET is not set. Webhook signature verification is disabled.");
+      const unverifiedEvent = JSON.parse(req.body.toString("utf8")) as Stripe.Event;
+      if (!unverifiedEvent?.id || !String(unverifiedEvent.id).startsWith("evt_")) {
+        return res.status(400).json({ error: "Invalid Stripe event" });
+      }
+      // Some deployments don't expose the endpoint signing secret. In that
+      // case, verify the event against Stripe's API instead of trusting the
+      // submitted payload. Replays remain safe because invoice processing is
+      // idempotent by Stripe invoice id.
+      event = await stripe.events.retrieve(unverifiedEvent.id);
+      console.warn("STRIPE_WEBHOOK_SECRET is not set. Event verified through the Stripe Events API.");
     }
 
     if (event.type === "invoice.paid" || event.type === "invoice.payment_succeeded") {
@@ -652,6 +728,15 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
         markStripeCheckoutSessionAsPaid(session),
       ]);
       console.log("Processed Stripe checkout.session.completed webhook:", { subscriptionResult, paymentResult });
+    }
+
+    if (
+      event.type === "customer.subscription.created" ||
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      const result = await syncStripeSubscriptionToContact(event.data.object as Stripe.Subscription);
+      console.log(`Processed Stripe ${event.type} webhook:`, result);
     }
 
     if (event.type === "invoice.payment_failed") {
@@ -700,20 +785,41 @@ app.get('/api/analytics/summary', requireAdminAuth, async (_req, res) => {
   } catch (error: any) { res.status(500).json({ error: error?.message || 'Analytics unavailable' }); }
 });
 
+let stripeFinanceReconciliationRunning = false;
+
+async function reconcileRecentStripeFinance(): Promise<{ checked: number; updated: number; skipped: number; failed: number }> {
+  if (stripeFinanceReconciliationRunning) return { checked: 0, updated: 0, skipped: 0, failed: 0 };
+  stripeFinanceReconciliationRunning = true;
+  try {
+    const stripe = getStripe();
+    const createdAfter = Math.floor((Date.now() - 180 * 24 * 60 * 60 * 1000) / 1000);
+    const paidInvoices = await stripe.invoices
+      .list({ status: "paid", created: { gte: createdAfter }, limit: 100 })
+      .autoPagingToArray({ limit: 500 });
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+    for (const invoice of paidInvoices) {
+      try {
+        const result = await markStripeInvoiceAsPaid(invoice);
+        if (result.updated) updated += 1;
+        else skipped += 1;
+      } catch (error: any) {
+        failed += 1;
+        console.error(`Could not reconcile Stripe invoice ${invoice.id}:`, error?.message || error);
+      }
+    }
+    return { checked: paidInvoices.length, updated, skipped, failed };
+  } finally {
+    stripeFinanceReconciliationRunning = false;
+  }
+}
+
 // Repairs ledger state when a webhook was delayed or unavailable. Stripe is
 // the source of truth: only invoices Stripe reports as paid are marked paid.
 app.post("/api/stripe/reconcile-finance", requireAdminAuth, async (_req, res) => {
   try {
-    const stripe = getStripe();
-    const paidInvoices = await stripe.invoices
-      .list({ status: "paid", limit: 100 })
-      .autoPagingToArray({ limit: 500 });
-    let updated = 0;
-    for (const invoice of paidInvoices) {
-      const result = await markStripeInvoiceAsPaid(invoice);
-      if (result.updated) updated += 1;
-    }
-    res.json({ checked: paidInvoices.length, updated });
+    res.json(await reconcileRecentStripeFinance());
   } catch (error: any) {
     console.error("Error reconciling Stripe finance:", error);
     res.status(500).json({ error: error?.message || "No se pudo reconciliar Stripe." });
@@ -1721,6 +1827,23 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server listening on port ${PORT}`);
+
+    // Webhooks are the primary path. This periodic reconciliation is a safety
+    // net for transient delivery failures and keeps paid recurring invoices in
+    // the finance ledger even when no administrator has the dashboard open.
+    const firstReconciliation = setTimeout(() => {
+      void reconcileRecentStripeFinance().then(result => {
+        if (result.updated > 0) console.log("Stripe finance startup reconciliation:", result);
+      }).catch(error => console.error("Stripe finance startup reconciliation failed:", error));
+    }, 20_000);
+    firstReconciliation.unref();
+
+    const reconciliationTimer = setInterval(() => {
+      void reconcileRecentStripeFinance().then(result => {
+        if (result.updated > 0) console.log("Stripe finance scheduled reconciliation:", result);
+      }).catch(error => console.error("Stripe finance scheduled reconciliation failed:", error));
+    }, 5 * 60_000);
+    reconciliationTimer.unref();
   });
 }
 
