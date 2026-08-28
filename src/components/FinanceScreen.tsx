@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
 import { db, invalidateSharedPipelineCache, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, getRankableCommercials, getUniqueInitialSales } from '../utils/salesRewards';
@@ -1375,6 +1376,26 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   .filter(transaction => transaction.type === 'expense')
   .reduce<Record<string, number>>((groups, transaction) => ({ ...groups, [transaction.category]: (groups[transaction.category] || 0) + transaction.amount }), {});
  const topExpenseCategories = (Object.entries(expenseCategoryBreakdown) as Array<[string, number]>).sort(([, a], [, b]) => b - a).slice(0, 6);
+ const financeTrendData = Array.from({ length: 6 }, (_, index) => {
+  const month = new Date();
+  month.setDate(1);
+  month.setMonth(month.getMonth() - (5 - index));
+  const monthKey = getMonthKey(month);
+  const monthTransactions = ledgerTransactions.filter(transaction => getFinanceDateKey(transaction.date).startsWith(monthKey));
+  const income = monthTransactions.filter(transaction => transaction.type === 'income').reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+  const expense = monthTransactions.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+  return {
+   month: month.toLocaleDateString('es-ES', { month: 'short' }).replace('.', ''),
+   income,
+   expense,
+   net: income - expense,
+  };
+ });
+ const expenseChartColors = ['#fb7185', '#f59e0b', '#a78bfa', '#38bdf8', '#34d399', '#64748b'];
+ const expenseChartData = topExpenseCategories.map(([name, value], index) => ({ name, value, color: expenseChartColors[index % expenseChartColors.length] }));
+ const recentAnalyticsTransactions = [...analyticsTransactions]
+  .sort((a, b) => getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date)))
+  .slice(0, 5);
  const pendingIncomeItems = analyticsTransactions.filter(t => t.type === 'income' && t.status === 'pending');
  const pendingExpenseItems = analyticsTransactions.filter(t => t.type === 'expense' && t.status === 'pending');
  const todayFinanceKey = getFinanceDateKey(new Date().toISOString());
@@ -3111,20 +3132,26 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
     </div>
 
     <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
-     <button type="button" onClick={() => { setActiveTab('transactions'); setTxTypeFilter('income'); setTxDateRangeFilter('all'); setTxCurrentPage(1); }} className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.07] p-4 text-left transition hover:-translate-y-0.5 hover:border-amber-300/30">
-      <div className="flex items-center justify-between"><Clock className="h-4 w-4 text-amber-300" /><span className="rounded-full bg-amber-300/10 px-2 py-0.5 text-[8px] font-black text-amber-200">ACCIÓN</span></div>
-      <strong className="mt-4 block text-2xl font-black text-white">{pendingIncomes.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong>
-      <span className="mt-1 block text-[10px] font-bold text-amber-200">por cobrar · {pendingIncomeItems.length} operaciones</span>
+     <button type="button" onClick={() => { setActiveTab('transactions'); setTxTypeFilter('income'); setTxDateRangeFilter('all'); setTxCurrentPage(1); }} className="group relative min-h-[154px] overflow-hidden rounded-[24px] border border-amber-300/20 bg-gradient-to-br from-amber-300/[0.13] via-[#13161a] to-[#0b0e13] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,.22)] transition duration-300 hover:-translate-y-1 hover:border-amber-300/40 hover:shadow-amber-950/25">
+      <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-amber-300/10 blur-2xl transition group-hover:bg-amber-300/20" />
+      <div className="relative flex items-center justify-between"><span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-amber-300/20 bg-amber-300/10"><Clock className="h-4 w-4 text-amber-300" /></span><span className="rounded-full border border-amber-300/15 bg-amber-300/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[.16em] text-amber-200">Requiere acción</span></div>
+      <strong className="relative mt-4 block text-2xl font-black tracking-tight text-white">{pendingIncomes.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong>
+      <div className="relative mt-1 flex items-center justify-between gap-2"><span className="text-[9px] font-bold uppercase tracking-wider text-amber-200/80">Pendiente de cobro</span><span className="text-[9px] text-slate-500">{pendingIncomeItems.length} operaciones</span></div>
+      <div className="relative mt-3 h-1 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full w-2/3 rounded-full bg-gradient-to-r from-amber-400 to-yellow-200" /></div>
      </button>
-     <button type="button" onClick={() => { setActiveTab('transactions'); setTxTypeFilter('expense'); setTxDateRangeFilter('all'); setTxCurrentPage(1); }} className="rounded-2xl border border-rose-300/15 bg-rose-300/[0.06] p-4 text-left transition hover:-translate-y-0.5 hover:border-rose-300/30">
-      <div className="flex items-center justify-between"><WalletCards className="h-4 w-4 text-rose-300" /><span className="text-[8px] font-black uppercase tracking-wider text-rose-200">salidas</span></div>
-      <strong className="mt-4 block text-2xl font-black text-white">{pendingExpenses.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong>
-      <span className="mt-1 block text-[10px] font-bold text-rose-200">por pagar · {pendingExpenseItems.length} operaciones</span>
+     <button type="button" onClick={() => { setActiveTab('transactions'); setTxTypeFilter('expense'); setTxDateRangeFilter('all'); setTxCurrentPage(1); }} className="group relative min-h-[154px] overflow-hidden rounded-[24px] border border-rose-300/20 bg-gradient-to-br from-rose-400/[0.15] via-[#161116] to-[#0b0e13] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,.22)] transition duration-300 hover:-translate-y-1 hover:border-rose-300/40 hover:shadow-rose-950/25">
+      <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-rose-400/10 blur-2xl transition group-hover:bg-rose-400/20" />
+      <div className="relative flex items-center justify-between"><span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-rose-300/20 bg-rose-300/10"><WalletCards className="h-4 w-4 text-rose-300" /></span><span className="rounded-full border border-rose-300/15 bg-rose-300/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[.16em] text-rose-200">Salidas</span></div>
+      <strong className="relative mt-4 block text-2xl font-black tracking-tight text-white">{pendingExpenses.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong>
+      <div className="relative mt-1 flex items-center justify-between gap-2"><span className="text-[9px] font-bold uppercase tracking-wider text-rose-200/80">Pendiente de pago</span><span className="text-[9px] text-slate-500">{pendingExpenseItems.length} operaciones</span></div>
+      <div className="relative mt-3 h-1 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-rose-400 to-pink-300" style={{ width: pendingExpenses > 0 ? '58%' : '0%' }} /></div>
      </button>
-     <button type="button" onClick={() => setActiveTab('forecast')} className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.06] p-4 text-left transition hover:-translate-y-0.5 hover:border-violet-300/30">
-      <div className="flex items-center justify-between"><ReceiptText className="h-4 w-4 text-violet-300" /><span className="text-[8px] font-black uppercase tracking-wider text-violet-200">próximo</span></div>
-      <strong className="mt-4 block truncate text-sm font-black text-white">{nextCollection ? getTransactionDisplayConcept(nextCollection.description) : 'Sin cobros próximos'}</strong>
-      <span className="mt-1 block text-[10px] font-bold text-violet-200">{nextCollection ? `${nextCollection.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € · ${parseFinanceDate(nextCollection.date)?.toLocaleDateString('es-ES')}` : 'Crea una previsión para empezar'}</span>
+     <button type="button" onClick={() => setActiveTab('forecast')} className="group relative min-h-[154px] overflow-hidden rounded-[24px] border border-cyan-300/20 bg-gradient-to-br from-violet-400/[0.15] via-[#111523] to-cyan-400/[0.08] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,.22)] transition duration-300 hover:-translate-y-1 hover:border-cyan-300/40 hover:shadow-cyan-950/25">
+      <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-cyan-300/10 blur-2xl transition group-hover:bg-cyan-300/20" />
+      <div className="relative flex items-center justify-between"><span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10"><ReceiptText className="h-4 w-4 text-cyan-200" /></span><span className="rounded-full border border-cyan-300/15 bg-cyan-300/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[.16em] text-cyan-100">Próximo cobro</span></div>
+      <strong className="relative mt-4 block truncate text-sm font-black text-white">{nextCollection ? getTransactionDisplayConcept(nextCollection.description) : 'Sin cobros próximos'}</strong>
+      <span className="relative mt-1.5 block text-[10px] font-bold text-cyan-100/80">{nextCollection ? `${nextCollection.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € · ${parseFinanceDate(nextCollection.date)?.toLocaleDateString('es-ES')}` : 'La previsión está al día'}</span>
+      <div className="relative mt-3 flex items-center gap-2 text-[8px] uppercase tracking-wider text-slate-500"><CalendarDays className="h-3 w-3 text-violet-300" /> Abrir previsión financiera</div>
      </button>
     </div>
 
@@ -3233,7 +3260,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <div>
       <span className="text-[9px] font-black uppercase tracking-[.2em] text-slate-500">Periodo de analíticas</span>
       <h3 className="mt-1 text-sm font-bold text-white">Vista financiera superior</h3>
-      <p className="mt-1 text-[10px] text-slate-500">Los seis indicadores se recalculan con el periodo elegido.</p>
+      <p className="mt-1 text-[10px] text-slate-500">Todos los indicadores se recalculan con el periodo elegido.</p>
      </div>
      <div className="flex rounded-2xl border border-white/10 bg-black/25 p-1">
       <button
@@ -3324,117 +3351,58 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </section>
   </div>
 
-  {/* Financial Bento Scoreboard Metrics */}
-  <div className="finance-metric-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
-  
-  {/* Metric 1: Saldo Consolidado */}
-  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-emerald-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-emerald-500/[0.02]">
-   <div className="absolute top-4 right-4 bg-emerald-500/10 rounded-xl p-2 border border-emerald-500/10 group-hover:scale-105 transition-transform duration-300">
-   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+  <section className="relative overflow-hidden rounded-[30px] border border-white/[0.07] bg-[#090d14]/92 p-4 shadow-[0_28px_90px_rgba(0,0,0,.28)] sm:p-6">
+   <div className="pointer-events-none absolute -left-20 -top-24 h-72 w-72 rounded-full bg-fuchsia-500/[0.07] blur-3xl" />
+   <div className="pointer-events-none absolute -right-20 top-16 h-72 w-72 rounded-full bg-cyan-400/[0.06] blur-3xl" />
+   <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div><span className="text-[9px] font-black uppercase tracking-[.24em] text-fuchsia-300">Analíticas financieras</span><h3 className="mt-1 text-xl font-black tracking-tight text-white">Rendimiento y flujo de caja</h3><p className="mt-1 text-[10px] text-slate-500">Visión oscura, compacta y conectada a los movimientos reales.</p></div>
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-2 text-right"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Resultado operativo</span><strong className={`mt-0.5 block text-lg font-black ${netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{netProfit.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
    </div>
-   <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-all duration-500" />
-   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Cobrado en caja</span>
-   <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans select-all">
-   {consolidatedBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-emerald-400 text-lg ml-1 font-sans">€</span>
-   </h3>
-   <p className="text-[10px] text-emerald-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
-   <TrendingUp className="w-3.5 h-3.5" />
-   <span>Ingresos ya liquidados</span>
-   </p>
-  </div>
 
-  {/* Metric 2: Saldo Pendiente */}
-  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-amber-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-amber-500/[0.02]">
-   <div className="absolute top-4 right-4 bg-amber-500/10 rounded-xl p-2 border border-amber-500/10 group-hover:scale-105 transition-transform duration-300">
-   <Clock className="w-4 h-4 text-amber-400" />
+   <div className="relative mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    {([
+     { label: 'Cobrado', value: consolidatedBalance, note: 'Ingresos liquidados', icon: CheckCircle2, accent: 'text-emerald-300', glow: 'from-emerald-400/[0.18]' },
+     { label: 'Pendiente neto', value: pendingBalance, note: 'Cobros menos pagos', icon: Clock, accent: 'text-amber-300', glow: 'from-amber-400/[0.18]' },
+     { label: 'Ingresos', value: totalIncomes, note: 'Registrados en el periodo', icon: ArrowUpRight, accent: 'text-cyan-300', glow: 'from-cyan-400/[0.18]' },
+     { label: 'Gastos', value: totalExpenses, note: 'Liquidados y pendientes', icon: ArrowDownLeft, accent: 'text-rose-300', glow: 'from-rose-400/[0.18]' },
+     { label: 'Comisiones', value: commercialSalaries, note: 'Sueldos comerciales', icon: Briefcase, accent: 'text-violet-300', glow: 'from-violet-400/[0.18]' },
+     { label: 'Caja real', value: netCashBalance, note: 'Revolut + Stripe + efectivo', icon: ShieldCheck, accent: 'text-sky-300', glow: 'from-sky-400/[0.18]' },
+     { label: 'Efectivo', value: cashBalance, note: 'Base 820 € + movimientos', icon: Banknote, accent: 'text-lime-300', glow: 'from-lime-400/[0.18]' },
+     { label: 'Gastos cobrados', value: consolidatedExpenses, note: 'Pagos ya liquidados', icon: CreditCard, accent: 'text-pink-300', glow: 'from-pink-400/[0.18]' },
+    ]).map(metric => {
+     const Icon = metric.icon;
+     return <article key={metric.label} className={`group relative overflow-hidden rounded-2xl border border-white/[0.065] bg-gradient-to-br ${metric.glow} via-white/[0.025] to-transparent p-4 transition hover:-translate-y-0.5 hover:border-white/[0.13]`}><div className="flex items-start justify-between gap-3"><div><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">{metric.label}</span><strong className="mt-2 block text-xl font-black tracking-tight text-white">{metric.value.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><span className="rounded-xl border border-white/[0.08] bg-black/20 p-2"><Icon className={`h-4 w-4 ${metric.accent}`} /></span></div><p className={`mt-3 text-[9px] font-semibold ${metric.accent}`}>{metric.note}</p></article>;
+    })}
    </div>
-   <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl group-hover:bg-amber-500/10 transition-all duration-500" />
-   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Pendiente neto</span>
-   <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans select-all">
-   {pendingBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-amber-400 text-lg ml-1 font-sans">€</span>
-   </h3>
-   <p className="text-[10px] text-amber-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
-   <Repeat className="w-3.5 h-3.5 animate-pulse" />
-   <span>Cobros menos pagos pendientes</span>
-   </p>
-  </div>
 
-  {/* Metric 3: Ingresos Totales */}
-  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-blue-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-blue-500/[0.02]">
-   <div className="absolute top-4 right-4 bg-blue-500/10 rounded-xl p-2 border border-blue-500/10 group-hover:scale-105 transition-transform duration-300">
-   <ArrowUpRight className="w-4 h-4 text-blue-400" />
+   <div className="relative mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,.75fr)]">
+    <article className="min-h-[330px] rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
+     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><span className="text-[8px] font-black uppercase tracking-[.2em] text-cyan-300">Evolución · 6 meses</span><h4 className="mt-1 text-sm font-bold text-white">Ingresos frente a gastos</h4></div><div className="flex gap-3 text-[8px] font-bold uppercase tracking-wider"><span className="flex items-center gap-1.5 text-cyan-200"><i className="h-2 w-2 rounded-full bg-cyan-300" />Ingresos</span><span className="flex items-center gap-1.5 text-rose-200"><i className="h-2 w-2 rounded-full bg-rose-300" />Gastos</span></div></div>
+     <div className="mt-4 h-[245px]">
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+       <AreaChart data={financeTrendData} margin={{ left: 0, right: 10, top: 8, bottom: 0 }}>
+        <defs><linearGradient id="financeIncomeGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#67e8f9" stopOpacity={0.38} /><stop offset="100%" stopColor="#67e8f9" stopOpacity={0} /></linearGradient><linearGradient id="financeExpenseGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fda4af" stopOpacity={0.24} /><stop offset="100%" stopColor="#fda4af" stopOpacity={0} /></linearGradient></defs>
+        <CartesianGrid stroke="rgba(255,255,255,.045)" vertical={false} />
+        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 9 }} />
+        <YAxis axisLine={false} tickLine={false} width={52} tick={{ fill: '#64748b', fontSize: 8 }} tickFormatter={(value: number) => `${Math.round(value)} €`} />
+        <Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 11 }} formatter={(value: number, name: string) => [`${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`, name === 'income' ? 'Ingresos' : 'Gastos']} />
+        <Area type="monotone" dataKey="income" stroke="#67e8f9" strokeWidth={2.5} fill="url(#financeIncomeGradient)" activeDot={{ r: 4, fill: '#cffafe', stroke: '#22d3ee' }} />
+        <Area type="monotone" dataKey="expense" stroke="#fda4af" strokeWidth={2} fill="url(#financeExpenseGradient)" activeDot={{ r: 4, fill: '#ffe4e6', stroke: '#fb7185' }} />
+       </AreaChart>
+      </ResponsiveContainer>
+     </div>
+    </article>
+
+    <article className="rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
+     <span className="text-[8px] font-black uppercase tracking-[.2em] text-fuchsia-300">Distribución</span><h4 className="mt-1 text-sm font-bold text-white">Gastos por categoría</h4>
+     {expenseChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay gastos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}><PieChart><Pie data={expenseChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{expenseChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-lg font-black text-white">{totalExpenses.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">gasto total</span></div></div><div className="space-y-2">{expenseChartData.slice(0, 4).map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="text-white">{item.value.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong></div>)}</div></>}
+    </article>
    </div>
-   <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/10 transition-all duration-500" />
-   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Ingresos registrados</span>
-   <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans select-all">
-   {totalIncomes.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-blue-450 text-lg ml-1 font-sans">€</span>
-   </h3>
-   <p className="text-[10px] text-blue-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
-   <DollarSign className="w-3.5 h-3.5" />
-   <span>Cobrados y por cobrar</span>
-   </p>
-  </div>
 
-  {/* Metric 4: Gastos Totales */}
-  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-rose-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-rose-500/[0.02]">
-   <div className="absolute top-4 right-4 bg-rose-500/10 rounded-xl p-2 border border-rose-500/10 group-hover:scale-105 transition-transform duration-300">
-   <ArrowDownLeft className="w-4 h-4 text-rose-400" />
-   </div>
-   <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl group-hover:bg-rose-500/10 transition-all duration-500" />
-   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Pagos registrados</span>
-   <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans select-all">
-   {totalExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-rose-400 text-lg ml-1 font-sans">€</span>
-   </h3>
-   <p className="text-[10px] text-rose-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
-   <TrendingDown className="w-3.5 h-3.5" />
-   <span>Liquidados y pendientes</span>
-   </p>
-  </div>
-
-  {/* Metric 5: Sueldos Comerciales */}
-  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-violet-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-violet-500/[0.02]">
-   <div className="absolute top-4 right-4 bg-violet-500/10 rounded-xl p-2 border border-violet-500/10 group-hover:scale-105 transition-transform duration-300">
-   <Briefcase className="w-4 h-4 text-violet-400" />
-   </div>
-   <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-violet-500/5 rounded-full blur-2xl group-hover:bg-violet-500/10 transition-all duration-500" />
-   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Sueldos Comerciales</span>
-   <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans select-all">
-   {commercialSalaries.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-violet-400 text-lg ml-1 font-sans">€</span>
-   </h3>
-   <p className="text-[10px] text-violet-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
-   <CreditCard className="w-3.5 h-3.5" />
-   <span>Comisiones liquidadas</span>
-   </p>
-  </div>
-
-  {/* Metric 6: Saldo Neto */}
-  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-cyan-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md hover:shadow-cyan-500/[0.02]">
-   <div className="absolute top-4 right-4 bg-cyan-500/10 rounded-xl p-2 border border-cyan-500/10 group-hover:scale-105 transition-transform duration-300">
-   <ShieldCheck className="w-4 h-4 text-cyan-400" />
-   </div>
-   <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-cyan-500/5 rounded-full blur-2xl group-hover:bg-cyan-500/10 transition-all duration-500" />
-   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Caja neta</span>
-   <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans select-all">
-   {netCashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-cyan-400 text-lg ml-1 font-sans">€</span>
-   </h3>
-  <p className="text-[10px] text-cyan-400/80 font-mono mt-3 flex items-center gap-1.5 font-medium">
-   <DollarSign className="w-3.5 h-3.5" />
-   <span>Revolut + Stripe + efectivo neto</span>
-   </p>
-  </div>
-
-  <div className="bg-[#0b1329]/30 backdrop-blur-md border border-white/5 p-5 rounded-3xl relative overflow-hidden text-left hover:border-emerald-500/20 hover:-translate-y-1 transition-all duration-300 group shadow-md">
-   <div className="absolute top-4 right-4 bg-emerald-500/10 rounded-xl p-2 border border-emerald-500/10"><Banknote className="w-4 h-4 text-emerald-300" /></div>
-   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Efectivo disponible</span>
-   <h3 className="text-3xl font-black text-white mt-2 tracking-normal font-sans">{cashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-emerald-300 text-lg ml-1 font-sans">€</span></h3>
-   <p className="text-[10px] text-emerald-300/80 font-mono mt-3 flex items-center gap-1.5 font-medium"><Banknote className="w-3.5 h-3.5" /><span>Base 820,00 € + cobros − pagos desde hoy</span></p>
-  </div>
-
-  </div>
-
-  <section className="rounded-3xl border border-rose-300/12 bg-[#0b1329]/25 p-4 sm:p-5">
-   <div className="flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-rose-300">Analítica de gastos</span><h3 className="mt-1 text-sm font-bold text-white">En qué se está invirtiendo</h3></div><TrendingDown className="h-5 w-5 text-rose-300" /></div>
-   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{topExpenseCategories.length === 0 ? <p className="text-xs text-slate-500">Aún no hay gastos en el periodo seleccionado.</p> : topExpenseCategories.map(([category, amount]) => <div key={category} className="rounded-2xl border border-white/[0.06] bg-black/15 p-3"><div className="flex items-center justify-between gap-3"><span className="text-[10px] font-bold text-slate-200">{category}</span><strong className="font-mono text-sm text-rose-300">{amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-rose-400 to-amber-300" style={{ width: `${totalExpenses ? Math.min(100, amount / totalExpenses * 100) : 0}%` }} /></div><span className="mt-1.5 block text-[8px] text-slate-500">{totalExpenses ? Math.round(amount / totalExpenses * 100) : 0}% del gasto</span></div>)}</div>
+   <article className="relative mt-4 overflow-hidden rounded-3xl border border-white/[0.065] bg-black/20">
+    <div className="flex items-center justify-between border-b border-white/[0.055] px-4 py-3 sm:px-5"><div><span className="text-[8px] font-black uppercase tracking-[.2em] text-slate-500">Actividad reciente</span><h4 className="mt-0.5 text-sm font-bold text-white">Últimos movimientos del periodo</h4></div><Activity className="h-4 w-4 text-cyan-300" /></div>
+    {recentAnalyticsTransactions.length === 0 ? <p className="p-8 text-center text-[10px] text-slate-500">No hay movimientos en el periodo seleccionado.</p> : <div className="divide-y divide-white/[0.045]">{recentAnalyticsTransactions.map(transaction => <div key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:px-5"><div className="min-w-0"><p className="truncate text-[10px] font-bold text-white">{getTransactionDisplayConcept(transaction.description)}</p><p className="mt-0.5 text-[8px] text-slate-500">{transaction.category} · {parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')}</p></div><span className={`hidden text-center text-[8px] font-black uppercase tracking-wider sm:block ${transaction.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>{transaction.status === 'paid' ? 'Liquidado' : 'Pendiente'}</span><strong className={`text-right text-xs font-black ${transaction.type === 'income' ? 'text-cyan-200' : 'text-rose-300'}`}>{transaction.type === 'income' ? '+' : '−'}{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+   </article>
   </section>
 
   {/* Navigation Inside Finance Module - Modern Pillow Tab Controls */}

@@ -339,6 +339,7 @@ export default function App() {
 
  // Notifications states
  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+ const [isGlobalToastVisible, setIsGlobalToastVisible] = useState(false);
  const [notifyHotLeads, setNotifyHotLeads] = useState<boolean>(() => {
  const saved = localStorage.getItem('agency_notify_hot_leads');
  return saved ? saved === 'true' : true;
@@ -349,6 +350,20 @@ export default function App() {
  useEffect(() => {
  localStorage.setItem('agency_notify_hot_leads', String(notifyHotLeads));
  }, [notifyHotLeads]);
+
+ useEffect(() => {
+  if (!currentUser) {
+   setReadNotificationIds([]);
+   return;
+  }
+  const identity = (currentUser.id || currentUser.email).toLocaleLowerCase('es-ES');
+  try {
+   const stored = JSON.parse(localStorage.getItem(`althera_read_notifications:${identity}`) || '[]');
+   setReadNotificationIds(Array.isArray(stored) ? stored.filter(id => typeof id === 'string') : []);
+  } catch {
+   setReadNotificationIds([]);
+  }
+ }, [currentUser?.id, currentUser?.email]);
 
  const mergeUsers = (dbProfiles: any[], activeUser: any) => {
  const list: PanelUser[] = [];
@@ -962,14 +977,29 @@ export default function App() {
  }, [userNotifications, readNotificationIds]);
 
  const unreadCount = unreadNotifications.length;
+ const visibleUnreadNotifications = unreadNotifications.slice(0, 10);
+
+ const persistReadNotificationIds = (ids: string[]) => {
+  if (!currentUser) return;
+  const identity = (currentUser.id || currentUser.email).toLocaleLowerCase('es-ES');
+  localStorage.setItem(`althera_read_notifications:${identity}`, JSON.stringify(ids.slice(-500)));
+ };
 
  const handleMarkAsRead = (id: string) => {
- setReadNotificationIds(prev => prev.includes(id) ? prev : [...prev, id]);
+ setReadNotificationIds(prev => {
+  const next = prev.includes(id) ? prev : [...prev, id];
+  persistReadNotificationIds(next);
+  return next;
+ });
  };
 
  const handleMarkAllAsRead = () => {
  const allIds = userNotifications.map(e => e.id);
- setReadNotificationIds(prev => Array.from(new Set([...prev, ...allIds])));
+ setReadNotificationIds(prev => {
+  const next = Array.from(new Set([...prev, ...allIds]));
+  persistReadNotificationIds(next);
+  return next;
+ });
  };
 
  const syncInFlightRef = useRef<Promise<void> | null>(null);
@@ -1203,33 +1233,29 @@ export default function App() {
  };
  }, []);
 
- // Synchronize toast showing mechanisms (classList hidden vs opacity-0 / class toggle)
+ // Synchronize legacy toast callers and expose a reliable dismiss control.
  useEffect(() => {
  const toastElem = document.getElementById('toast-msg');
  if (!toastElem) return;
 
- const observer = new MutationObserver((mutations) => {
-  mutations.forEach((mutation) => {
-  if (mutation.attributeName === 'class') {
-   const classes = toastElem.className;
-   const hasHidden = classes.includes('hidden');
-   const hasOpacity100 = classes.includes('opacity-100');
-   const hasOpacity0 = classes.includes('opacity-0');
-   
-   if (!hasHidden && !hasOpacity100 && hasOpacity0) {
-   // hidden was removed by code, but opacity-0 is still there. Convert to opacity-100
-   toastElem.classList.remove('opacity-0', 'pointer-events-none');
-   toastElem.classList.add('opacity-100');
-   } else if (hasHidden && hasOpacity100) {
-   // hidden was added, convert opacity back to 0
+ const syncToastVisibility = () => {
+  const hasOpacity0 = toastElem.classList.contains('opacity-0');
+  const hasHidden = toastElem.classList.contains('hidden');
+  if (hasOpacity0) {
    toastElem.classList.remove('opacity-100');
-   toastElem.classList.add('opacity-0', 'pointer-events-none');
-   }
+   toastElem.classList.add('pointer-events-none');
+   setIsGlobalToastVisible(false);
+   return;
   }
-  });
- });
+  if (hasHidden) toastElem.classList.remove('hidden');
+  toastElem.classList.remove('pointer-events-none');
+  toastElem.classList.add('opacity-100');
+  setIsGlobalToastVisible(true);
+ };
+ const observer = new MutationObserver(syncToastVisibility);
 
  observer.observe(toastElem, { attributes: true, attributeFilter: ['class'] });
+ syncToastVisibility();
  return () => observer.disconnect();
  }, [currentScreen]);
 
@@ -2290,7 +2316,7 @@ export default function App() {
       </p>
      </div>
      ) : (
-     unreadNotifications.map(ev => {
+     visibleUnreadNotifications.map(ev => {
       const isUnread = true;
       return (
       <div 
@@ -2367,6 +2393,7 @@ export default function App() {
      })
      )}
     </div>
+    {unreadCount > 10 && <p className="mt-3 flex-shrink-0 text-center text-[9px] font-mono text-slate-500">Mostrando las 10 más recientes de {unreadCount} pendientes</p>}
     </div>
 
     {/* Technical footnote */}
@@ -2505,11 +2532,24 @@ export default function App() {
   {/* Global Toast Alert System */}
   <div 
   id="toast-msg" 
-  className="fixed bottom-6 right-6 z-50 bg-[#09090f]/90 border border-violet-500/30 text-white font-sans text-xs px-5 py-3 rounded-2xl shadow-2xl backdrop-blur flex items-center gap-2 max-w-sm opacity-0 pointer-events-none transition-all duration-300 hidden"
+  className="fixed bottom-6 right-6 z-50 bg-[#09090f]/95 border border-violet-500/30 text-white font-sans text-xs pl-5 pr-12 py-3 rounded-2xl shadow-2xl backdrop-blur flex items-center gap-2 max-w-sm opacity-0 pointer-events-none transition-all duration-300 hidden"
   >
   <Check className="w-4 h-4 text-violet-400" />
   <span />
   </div>
+  <button
+   type="button"
+   aria-label="Cerrar aviso"
+   onClick={() => {
+    const toast = document.getElementById('toast-msg');
+    toast?.classList.add('opacity-0', 'pointer-events-none');
+    toast?.classList.remove('opacity-100');
+    setIsGlobalToastVisible(false);
+   }}
+   className={`fixed bottom-[2.15rem] right-[2.15rem] z-[51] rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white ${isGlobalToastVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+  >
+   <X className="h-3.5 w-3.5" />
+  </button>
 
  </div>
  );
