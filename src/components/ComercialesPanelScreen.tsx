@@ -930,6 +930,11 @@ export default function ComercialesPanelScreen({
  
  const matchesFilter = statusFilter === 'todos' || lead.status === statusFilter;
  return matchesSearch && matchesFilter;
+ }).sort((a, b) => {
+  const priority = (status: ComercialLead['status']) => status === 'Pendiente' ? 0 : status === 'Contactado' || status === 'Negociación' ? 1 : status === 'Ganado' ? 2 : 3;
+  const statusPriority = priority(a.status) - priority(b.status);
+  if (statusPriority !== 0) return statusPriority;
+  return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
  });
 
  return (
@@ -1427,7 +1432,7 @@ export default function ComercialesPanelScreen({
      </div>
 
      <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/5 md:pl-6 bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
-     <span className="text-[9px] font-mono text-amber-400 uppercase tracking-widest block font-bold">Pendiente de Liquidar</span>
+     <span className="text-[9px] font-mono text-amber-400 uppercase tracking-widest block font-bold">Listo para liquidar</span>
      <span className="text-xl font-mono font-black text-white block">
       {myBenefitsReadyToPayout.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
      </span>
@@ -1435,7 +1440,7 @@ export default function ComercialesPanelScreen({
      </div>
 
      <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/5 md:pl-6 bg-blue-500/5 p-3 rounded-xl border border-blue-500/10">
-     <span className="text-[9px] font-mono text-blue-300 uppercase tracking-widest block font-bold">Pendiente al Cobrar</span>
+     <span className="text-[9px] font-mono text-blue-300 uppercase tracking-widest block font-bold">Pendiente de cobro del cliente</span>
      <span className="text-xl font-mono font-black text-blue-300 block">
       {myBenefitsPendingOnClientPayment.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
      </span>
@@ -1594,12 +1599,12 @@ export default function ComercialesPanelScreen({
    <div className="bg-amber-500/[0.02] border border-amber-500/10 p-5.5 rounded-2.5xl flex items-center justify-between hover:border-amber-500/30 transition duration-200 shadow-lg shadow-amber-500/5 relative overflow-hidden group">
    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none translate-x-12 -translate-y-12" />
    <div className="relative z-10 text-left">
-    <p className="text-amber-500/70 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Mis Comisiónes Listas para Cobrar</p>
+    <p className="text-amber-500/70 text-[10px] uppercase font-mono font-bold tracking-wider mb-1">Mis comisiones listas para liquidar</p>
     <h3 className="text-2xl font-bold text-amber-400 font-mono">
     {myBenefitsReadyToPayout.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 })}
     </h3>
     <p className="text-[10px] text-slate-400 mt-1">
-    Comisión fijada: <strong className="text-amber-400">{myCommissionPercentage}%</strong> | <span className="text-blue-300">{myBenefitsPendingOnClientPayment.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} pendiente al cobrar</span>
+    Comisión fijada: <strong className="text-amber-400">{myCommissionPercentage}%</strong> | <span className="text-blue-300">{myBenefitsPendingOnClientPayment.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} pendiente de cobro del cliente</span>
     </p>
    </div>
    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 relative z-10">

@@ -846,7 +846,7 @@ React.useEffect(() => {
      category: 'Ventas',
      amount: installmentAmount,
      date: toLocalDateKey(installmentDate),
-     description: `${convConcept} - ${installmentCount > 1 ? `Cuota ${index} de ${installmentCount}` : 'Pago inicial'} (Pendiente)`,
+     description: `${convConcept} - ${installmentCount > 1 ? `Cuota ${index} de ${installmentCount}` : 'Pago inicial'}`,
      status: 'pending',
      paymentMethod: convPaymentMethod,
      clientId: contact.id,

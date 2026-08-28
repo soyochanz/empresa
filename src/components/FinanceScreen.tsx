@@ -1210,7 +1210,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     return [
      transaction.id,
      transaction.type === 'income' ? 'Ingreso' : 'Gasto',
-     transaction.status === 'paid' ? 'Liquidado' : 'Pendiente',
+     transaction.status === 'paid'
+      ? (transaction.type === 'income' ? 'Cobrado' : 'Pagado')
+      : (transaction.type === 'income' ? 'Por cobrar' : 'Por pagar'),
      parsedDate || transaction.date,
      getCleanBillingConcept(transaction.description),
      transaction.category,
@@ -2906,6 +2908,10 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
  const matchesCategory = txCategoryFilter === 'All' || t.category === txCategoryFilter;
  const matchesDateRange = matchesTxDateRange(t, txDateRangeFilter);
  return matchesSearch && matchesType && matchesCategory && matchesDateRange;
+ }).sort((a, b) => {
+  const statusPriority = Number(a.status !== 'pending') - Number(b.status !== 'pending');
+  if (statusPriority !== 0) return statusPriority;
+  return `${getTxDateKey(b)}_${b.id}`.localeCompare(`${getTxDateKey(a)}_${a.id}`);
  });
 
  // Pagination for transactions
@@ -3401,7 +3407,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
    <article className="relative mt-4 overflow-hidden rounded-3xl border border-white/[0.065] bg-black/20">
     <div className="flex items-center justify-between border-b border-white/[0.055] px-4 py-3 sm:px-5"><div><span className="text-[8px] font-black uppercase tracking-[.2em] text-slate-500">Actividad reciente</span><h4 className="mt-0.5 text-sm font-bold text-white">Últimos movimientos del periodo</h4></div><Activity className="h-4 w-4 text-cyan-300" /></div>
-    {recentAnalyticsTransactions.length === 0 ? <p className="p-8 text-center text-[10px] text-slate-500">No hay movimientos en el periodo seleccionado.</p> : <div className="divide-y divide-white/[0.045]">{recentAnalyticsTransactions.map(transaction => <div key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:px-5"><div className="min-w-0"><p className="truncate text-[10px] font-bold text-white">{getTransactionDisplayConcept(transaction.description)}</p><p className="mt-0.5 text-[8px] text-slate-500">{transaction.category} · {parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')}</p></div><span className={`hidden text-center text-[8px] font-black uppercase tracking-wider sm:block ${transaction.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>{transaction.status === 'paid' ? 'Liquidado' : 'Pendiente'}</span><strong className={`text-right text-xs font-black ${transaction.type === 'income' ? 'text-cyan-200' : 'text-rose-300'}`}>{transaction.type === 'income' ? '+' : '−'}{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+    {recentAnalyticsTransactions.length === 0 ? <p className="p-8 text-center text-[10px] text-slate-500">No hay movimientos en el periodo seleccionado.</p> : <div className="divide-y divide-white/[0.045]">{recentAnalyticsTransactions.map(transaction => <div key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:px-5"><div className="min-w-0"><p className="truncate text-[10px] font-bold text-white">{getTransactionDisplayConcept(transaction.description)}</p><p className="mt-0.5 text-[8px] text-slate-500">{transaction.category} · {parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')}</p></div><span className={`hidden text-center text-[8px] font-black uppercase tracking-wider sm:block ${transaction.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>{transaction.status === 'paid' ? (transaction.type === 'income' ? 'Cobrado' : 'Pagado') : (transaction.type === 'income' ? 'Por cobrar' : 'Por pagar')}</span><strong className={`text-right text-xs font-black ${transaction.type === 'income' ? 'text-cyan-200' : 'text-rose-300'}`}>{transaction.type === 'income' ? '+' : '−'}{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
    </article>
   </section>
 
@@ -3831,13 +3837,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         title="Haga clic para revertir / desmarcar de Bitácora (cambiará a Pendiente)"
         >
         <CheckCircle2 className="h-3 w-3" />
-        <span>Liquidado</span>
+        <span>{t.type === 'income' ? 'Cobrado' : 'Pagado'}</span>
         </button>
        ) : (
         <div className="flex items-center gap-1.5">
         <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-amber-400/20 bg-amber-400/[0.07] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-amber-300">
          <Clock className="h-3 w-3" />
-         Pendiente
+         {t.type === 'income' ? 'Por cobrar' : 'Por pagar'}
         </span>
         <button
          onClick={() => handleToggleTransactionStatus(t)}
@@ -3845,7 +3851,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
          title={t.type === 'income' ? 'Marcar como cobrado y sincronizar facturas/conceptos' : 'Marcar como pagado'}
         >
          <Check className="h-3 w-3" />
-         <span>{t.type === 'income' ? 'Cobrar' : 'Pagar'}</span>
+         <span>{t.type === 'income' ? 'Marcar cobrado' : 'Marcar pagado'}</span>
         </button>
         </div>
        )}
@@ -5131,7 +5137,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </thead>
     <tbody className="divide-y divide-white/5">
      {(() => {
-     const initialTxs = getUniqueInitialSales(ledgerTransactions);
+     const initialTxs = getUniqueInitialSales(ledgerTransactions).sort((a, b) => {
+      const statusPriority = Number(a.status !== 'pending') - Number(b.status !== 'pending');
+      if (statusPriority !== 0) return statusPriority;
+      return `${b.date}_${b.id}`.localeCompare(`${a.date}_${a.id}`);
+     });
      if (initialTxs.length === 0) {
       return (
       <tr>
@@ -5181,7 +5191,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        <span className={`text-[8px] font-mono font-bold px-1 py-0.2 rounded mt-0.5 inline-block uppercase tracking-wider ${
         isPaid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
        }`}>
-        {isPaid ? 'Cobrado' : 'Pendiente'}
+        {isPaid ? 'Cobrado' : 'Por cobrar'}
        </span>
        </td>
        <td className="p-3 text-right font-mono">
@@ -5193,7 +5203,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        ) : (
         <>
         <span className="text-slate-500 font-bold block">{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
-        <span className="text-[9px] text-amber-500/70 block">Pendiente ({potentialComm.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} al cobrar)</span>
+        <span className="text-[9px] text-amber-500/70 block">{potentialComm.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} pendiente de cobro</span>
         </>
        )}
        </td>

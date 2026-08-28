@@ -641,9 +641,16 @@ export default function ComercialesAdminScreen({
   scope
  });
  
- const individualLeads = currentComercial  ?
- mappedLeadsList.filter(l => l.comercialId === currentComercial.id) 
- : [];
+ const individualLeads = currentComercial
+  ? mappedLeadsList
+    .filter(l => l.comercialId === currentComercial.id)
+    .sort((a, b) => {
+     const priority = (status: ComercialLead['status']) => status === 'Pendiente' ? 0 : status === 'Contactado' || status === 'Negociación' ? 1 : status === 'Ganado' ? 2 : 3;
+     const statusPriority = priority(a.status) - priority(b.status);
+     if (statusPriority !== 0) return statusPriority;
+     return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    })
+  : [];
  
  const indWon = individualLeads.filter(l => l.status === 'Ganado');
  const indLost = individualLeads.filter(l => l.status === 'Perdido');
@@ -659,9 +666,17 @@ export default function ComercialesAdminScreen({
  ) : [];
  const indInitialTxsPaid = indInitialTxs.filter(tx => tx.status === 'paid');
  const indInitialSalesVolume = indInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+ const indPendingInitialSalesVolume = indInitialTxs
+  .filter(tx => tx.status === 'pending')
+  .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
  const indCommissionPercentage = currentComercial ? (currentComercial.commissionPercentage ?? getTieredCommission(Math.max(indWon.length, countUniqueInitialSales(indInitialTxs)))) : 10;
  const indExtraCommissions = currentComercial ? (currentComercial.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0) : 0;
  const indBenefitsEarned = (indInitialSalesVolume * (indCommissionPercentage / 100)) + indExtraCommissions;
+ const indBenefitsPendingOnClientPayment = indPendingInitialSalesVolume * (indCommissionPercentage / 100);
+ const indBenefitsPaidOut = currentComercial ? (currentComercial.payouts || [])
+  .filter(payout => payout.status === 'completed')
+  .reduce((sum, payout) => sum + Number(payout.amount || 0), 0) : 0;
+ const indBenefitsReadyToPayout = Math.max(0, indBenefitsEarned - indBenefitsPaidOut);
  
  const indConversionRate = individualLeads.length > 0  ?
  Math.round((indWon.length / individualLeads.length) * 100) 
@@ -1239,16 +1254,22 @@ export default function ComercialesAdminScreen({
       </span>
      </div>
 
-     <div className="bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10 flex justify-between items-center">
+     <div className="bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10 flex justify-between items-center gap-3">
       <div>
-      <span className="text-[8px] font-mono text-emerald-400/70 uppercase block">Beneficios Ganados (Comisión)</span>
+      <span className="text-[8px] font-mono text-emerald-400/70 uppercase block">Comisión lista para liquidar</span>
       <span className="text-base font-mono font-black text-emerald-400 mt-0.5 block">
-       {indBenefitsEarned.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+       {indBenefitsReadyToPayout.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+      </span>
+      <span className="mt-1 block text-[8px] font-mono text-slate-500">
+       Sobre {indInitialSalesVolume.toLocaleString('es-ES')} € cobrados
       </span>
       </div>
-      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">
-      De {indInitialSalesVolume.toLocaleString('es-ES')} € cobrados
-      </span>
+      <div className="text-right">
+       <span className="block rounded border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-mono font-bold text-amber-300">
+        {indBenefitsPendingOnClientPayment.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € por cobrar
+       </span>
+       <span className="mt-1 block text-[8px] font-mono text-slate-500">Comisión futura del cliente</span>
+      </div>
      </div>
      </div>
 
@@ -1303,25 +1324,27 @@ export default function ComercialesAdminScreen({
      </div>
 
      {(() => {
-     const indPaidCommissions = (currentComercial.payouts || [])
-      .filter(p => p.status === 'completed')
-      .reduce((sum, p) => sum + p.amount, 0);
-     const indPendingCommission = Math.max(0, indBenefitsEarned - indPaidCommissions);
+     const indPaidCommissions = indBenefitsPaidOut;
+     const indPendingCommission = indBenefitsReadyToPayout;
 
      return (
       <>
       <div className="space-y-2.5">
        <div className="flex justify-between items-center text-xs">
-       <span className="text-slate-400 font-sans">Comisiónes ganadas:</span>
-       <span className="font-mono text-slate-200 font-bold">{indBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+       <span className="text-slate-400 font-sans">Comisiones listas:</span>
+       <span className="font-mono text-slate-200 font-bold">{indBenefitsReadyToPayout.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
        </div>
        <div className="flex justify-between items-center text-xs">
        <span className="text-slate-400 font-sans">Ya liquidadas:</span>
        <span className="font-mono text-emerald-400 font-bold">{indPaidCommissions.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
        </div>
        <div className="flex justify-between items-center text-xs pt-2 border-t border-white/5">
-       <span className="text-white font-sans font-bold">Pendiente actual:</span>
+       <span className="text-white font-sans font-bold">A liquidar al comercial:</span>
        <span className="font-mono text-amber-400 text-sm font-black">{indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+       </div>
+       <div className="flex justify-between items-center text-xs">
+       <span className="text-slate-400 font-sans">Pendiente de cobro del cliente:</span>
+       <span className="font-mono text-blue-300 font-bold">{indBenefitsPendingOnClientPayment.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
        </div>
       </div>
 

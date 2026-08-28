@@ -107,6 +107,9 @@ const INVOICE_ALIAS_TAG = /\s*\[INVOICE_ALIAS:([^\]]*)\]/g;
 const INVOICE_COLOR_TAG = /\s*\[INVOICE_COLOR:([^\]]*)\]/g;
 const INVOICE_CURRENCY_TAG = /\s*\[INVOICE_CURRENCY:([^\]]*)\]/g;
 const INVOICE_LANGUAGE_TAG = /\s*\[INVOICE_LANGUAGE:([^\]]*)\]/g;
+const INVOICE_COMMERCIAL_ID_TAG = /\s*\[INVOICE_COMMERCIAL_ID:([^\]]*)\]/g;
+const INVOICE_COMMERCIAL_EMAIL_TAG = /\s*\[INVOICE_COMMERCIAL_EMAIL:([^\]]*)\]/g;
+const INVOICE_INITIAL_SALE_TAG = /\s*\[INVOICE_INITIAL_SALE:(true|false)\]/g;
 
 const decodeInvoiceMetadataValue = (value?: string): string => {
  try {
@@ -129,6 +132,9 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
   .replace(INVOICE_COLOR_TAG, '')
   .replace(INVOICE_CURRENCY_TAG, '')
   .replace(INVOICE_LANGUAGE_TAG, '')
+  .replace(INVOICE_COMMERCIAL_ID_TAG, '')
+  .replace(INVOICE_COMMERCIAL_EMAIL_TAG, '')
+  .replace(INVOICE_INITIAL_SALE_TAG, '')
   .trim();
  const metadata = [
   invoice.clientTaxId ? `[CLIENT_TAX_ID:${encodeURIComponent(invoice.clientTaxId)}]` : '',
@@ -141,7 +147,10 @@ const serializeInvoiceNotes = (invoice: Invoice): string | null => {
   invoice.alias ? `[INVOICE_ALIAS:${encodeURIComponent(invoice.alias)}]` : '',
   invoice.color ? `[INVOICE_COLOR:${encodeURIComponent(invoice.color)}]` : '',
   invoice.currency ? `[INVOICE_CURRENCY:${invoice.currency}]` : '',
-  invoice.language ? `[INVOICE_LANGUAGE:${invoice.language}]` : ''
+  invoice.language ? `[INVOICE_LANGUAGE:${invoice.language}]` : '',
+  invoice.comercialId ? `[INVOICE_COMMERCIAL_ID:${encodeURIComponent(invoice.comercialId)}]` : '',
+  invoice.comercialEmail ? `[INVOICE_COMMERCIAL_EMAIL:${encodeURIComponent(invoice.comercialEmail)}]` : '',
+  invoice.isInitialSale !== undefined ? `[INVOICE_INITIAL_SALE:${invoice.isInitialSale ? 'true' : 'false'}]` : ''
  ].filter(Boolean);
  return [cleanNotes, ...metadata].filter(Boolean).join('\n') || null;
 };
@@ -159,6 +168,9 @@ const deserializeInvoice = (row: any): Invoice => {
  const colorMatch = [...rawNotes.matchAll(INVOICE_COLOR_TAG)][0];
  const currencyMatch = [...rawNotes.matchAll(INVOICE_CURRENCY_TAG)][0];
  const languageMatch = [...rawNotes.matchAll(INVOICE_LANGUAGE_TAG)][0];
+ const commercialIdMatch = [...rawNotes.matchAll(INVOICE_COMMERCIAL_ID_TAG)][0];
+ const commercialEmailMatch = [...rawNotes.matchAll(INVOICE_COMMERCIAL_EMAIL_TAG)][0];
+ const initialSaleMatch = [...rawNotes.matchAll(INVOICE_INITIAL_SALE_TAG)][0];
  return {
   ...row,
   notes: rawNotes
@@ -173,6 +185,9 @@ const deserializeInvoice = (row: any): Invoice => {
    .replace(INVOICE_COLOR_TAG, '')
    .replace(INVOICE_CURRENCY_TAG, '')
    .replace(INVOICE_LANGUAGE_TAG, '')
+   .replace(INVOICE_COMMERCIAL_ID_TAG, '')
+   .replace(INVOICE_COMMERCIAL_EMAIL_TAG, '')
+   .replace(INVOICE_INITIAL_SALE_TAG, '')
    .trim() || undefined,
   clientTaxId: row?.clientTaxId || decodeInvoiceMetadataValue(taxMatch?.[1]),
   clientAddress: row?.clientAddress || decodeInvoiceMetadataValue(addressMatch?.[1]),
@@ -184,7 +199,12 @@ const deserializeInvoice = (row: any): Invoice => {
   alias: row?.alias || decodeInvoiceMetadataValue(aliasMatch?.[1]),
   color: row?.color || decodeInvoiceMetadataValue(colorMatch?.[1]),
   currency: (row?.currency || decodeInvoiceMetadataValue(currencyMatch?.[1]) || 'EUR') as Invoice['currency'],
-  language: (row?.language || decodeInvoiceMetadataValue(languageMatch?.[1]) || 'es') as Invoice['language']
+  language: (row?.language || decodeInvoiceMetadataValue(languageMatch?.[1]) || 'es') as Invoice['language'],
+  comercialId: row?.comercialId || decodeInvoiceMetadataValue(commercialIdMatch?.[1]) || undefined,
+  comercialEmail: row?.comercialEmail || decodeInvoiceMetadataValue(commercialEmailMatch?.[1]) || undefined,
+  isInitialSale: typeof row?.isInitialSale === 'boolean'
+   ? row.isInitialSale
+   : initialSaleMatch?.[1] === 'true' ? true : initialSaleMatch?.[1] === 'false' ? false : undefined
  };
 };
 
