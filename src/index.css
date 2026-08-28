@@ -627,3 +627,340 @@
   background: #c4cfdd;
   border-color: #aab7c8;
 }
+
+/* Admin day/night switch --------------------------------------------------- */
+.admin-theme-switch {
+  position: relative;
+  width: 68px;
+  height: 34px;
+  flex: 0 0 68px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 9999px;
+  isolation: isolate;
+  box-shadow: inset 0 2px 5px rgba(15, 23, 42, 0.32), 0 8px 20px rgba(0, 0, 0, 0.2);
+  transition: background 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
+}
+
+.admin-theme-switch[data-theme="dark"] {
+  background: linear-gradient(135deg, #07101f 0%, #18243b 52%, #46546b 100%) !important;
+}
+
+.admin-theme-switch[data-theme="light"] {
+  background: linear-gradient(145deg, #52aee9 0%, #91cdf3 58%, #e8f5fd 100%) !important;
+  border-color: rgba(37, 99, 235, 0.22);
+  box-shadow: inset 0 2px 5px rgba(30, 64, 175, 0.18), 0 8px 20px rgba(39, 96, 150, 0.16);
+}
+
+.admin-theme-switch-sky,
+.admin-theme-switch-stars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+.admin-theme-switch-sky {
+  opacity: 0;
+  background:
+    radial-gradient(circle at 72% 80%, rgba(255, 255, 255, 0.96) 0 7px, transparent 8px),
+    radial-gradient(circle at 85% 76%, rgba(255, 255, 255, 0.92) 0 9px, transparent 10px),
+    radial-gradient(circle at 98% 79%, rgba(255, 255, 255, 0.86) 0 8px, transparent 9px);
+}
+
+.admin-theme-switch[data-theme="light"] .admin-theme-switch-sky {
+  opacity: 1;
+}
+
+.admin-theme-switch-stars {
+  padding: 0 7px;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 17px;
+  line-height: 21px;
+  letter-spacing: 5px;
+  text-align: left;
+  opacity: 1;
+  transform: rotate(-12deg);
+}
+
+.admin-theme-switch[data-theme="light"] .admin-theme-switch-stars {
+  opacity: 0;
+}
+
+.admin-theme-switch-thumb {
+  position: absolute;
+  z-index: 2;
+  top: 3px;
+  left: 3px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 9999px;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), background 220ms ease, color 220ms ease;
+}
+
+.admin-theme-switch[data-theme="light"] .admin-theme-switch-thumb {
+  color: #8d6200;
+  background: #f8d74b;
+  box-shadow: 0 2px 8px rgba(121, 83, 0, 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.75);
+}
+
+.admin-theme-switch[data-theme="dark"] .admin-theme-switch-thumb {
+  color: #536174;
+  background: #d9e0e8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset -4px -3px 0 rgba(126, 139, 157, 0.22);
+  transform: translateX(34px);
+}
+
+.admin-theme-switch:hover {
+  transform: translateY(-1px);
+}
+
+.admin-theme-switch:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+}
+
+/* Admin light theme --------------------------------------------------------
+   Kept entirely behind .admin-theme-light so the established dark dashboard
+   remains pixel-identical when the preference is set to night. */
+.admin-shell.admin-theme-light {
+  color-scheme: light;
+  --admin-bg: #edf2f7;
+  --admin-bg-strong: rgba(255, 255, 255, 0.96);
+  --admin-surface: #ffffff;
+  --admin-surface-soft: rgba(255, 255, 255, 0.78);
+  --admin-surface-hover: #f5f8fc;
+  --admin-border: #dbe4ee;
+  --admin-border-strong: rgba(37, 99, 235, 0.22);
+  --admin-text: #172033;
+  --admin-muted: #64748b;
+  background: #edf2f7 !important;
+  color: var(--admin-text) !important;
+}
+
+.admin-shell.admin-theme-light > .absolute.inset-0 > div:first-child {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(59, 130, 246, 0.12), transparent 32%),
+    radial-gradient(circle at 92% 12%, rgba(34, 211, 238, 0.1), transparent 30%),
+    linear-gradient(145deg, #f8fafc 0%, #edf3f8 52%, #e9f0f6 100%) !important;
+}
+
+.admin-shell.admin-theme-light > .absolute.inset-0 > div:nth-child(2) {
+  opacity: 0.42 !important;
+  background-image:
+    linear-gradient(rgba(71, 85, 105, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(71, 85, 105, 0.045) 1px, transparent 1px) !important;
+}
+
+.admin-shell.admin-theme-light .admin-workspace {
+  color-scheme: light;
+  color: var(--admin-text);
+}
+
+.admin-theme-light #sidebar {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: var(--admin-border) !important;
+  color: #334155 !important;
+  box-shadow: 14px 0 42px rgba(15, 23, 42, 0.07);
+  backdrop-filter: blur(22px);
+}
+
+.admin-theme-light #sidebar > .pointer-events-none {
+  opacity: 0.35;
+}
+
+.admin-theme-light header {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-color: var(--admin-border) !important;
+  box-shadow: 0 10px 34px rgba(15, 23, 42, 0.045);
+  backdrop-filter: blur(20px);
+}
+
+.admin-theme-light [class*="bg-[#0"],
+.admin-theme-light [class*="bg-[#1"],
+.admin-theme-light [class*="bg-black/"],
+.admin-theme-light .bg-slate-950,
+.admin-theme-light .bg-slate-900,
+.admin-theme-light .bg-slate-800 {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.admin-theme-light [class*="from-[#0"],
+.admin-theme-light [class*="via-[#0"],
+.admin-theme-light [class*="to-[#0"],
+.admin-theme-light [class*="from-[#1"],
+.admin-theme-light [class*="via-[#1"],
+.admin-theme-light [class*="to-[#1"] {
+  background-image: none !important;
+  background-color: rgba(255, 255, 255, 0.93) !important;
+}
+
+.admin-theme-light [class*="bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.74) !important;
+}
+
+.admin-theme-light .admin-workspace section,
+.admin-theme-light .admin-workspace article,
+.admin-theme-light .admin-workspace aside[class*="rounded"],
+.admin-theme-light .admin-workspace div[class*="rounded-3xl"][class*="border"],
+.admin-theme-light .admin-workspace div[class*="rounded-2xl"][class*="border"] {
+  border-color: var(--admin-border) !important;
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.07);
+}
+
+.admin-theme-light .admin-workspace section::before,
+.admin-theme-light .admin-workspace article::before {
+  opacity: 0.38;
+}
+
+.admin-theme-light .text-white,
+.admin-theme-light .text-slate-100,
+.admin-theme-light .text-slate-200,
+.admin-theme-light .text-slate-300,
+.admin-theme-light [class*="text-white/"] {
+  color: var(--admin-text) !important;
+}
+
+.admin-theme-light .text-slate-400,
+.admin-theme-light .text-slate-500,
+.admin-theme-light .text-slate-600 {
+  color: var(--admin-muted) !important;
+}
+
+.admin-theme-light [class*="text-transparent"][class*="bg-clip-text"] {
+  color: var(--admin-text) !important;
+  background-image: none !important;
+  -webkit-text-fill-color: var(--admin-text) !important;
+}
+
+.admin-theme-light [class*="text-cyan-"] { color: #087f99 !important; }
+.admin-theme-light [class*="text-emerald-"] { color: #087b5b !important; }
+.admin-theme-light [class*="text-amber-"] { color: #946200 !important; }
+.admin-theme-light [class*="text-violet-"] { color: #6d4cc5 !important; }
+.admin-theme-light [class*="text-purple-"] { color: #7546b8 !important; }
+.admin-theme-light [class*="text-rose-"] { color: #be3c57 !important; }
+.admin-theme-light [class*="text-blue-"] { color: #2563eb !important; }
+
+.admin-theme-light [class*="border-white"],
+.admin-theme-light [class*="border-slate"],
+.admin-theme-light [class*="divide-white"] > :not([hidden]) ~ :not([hidden]),
+.admin-theme-light [class*="divide-slate"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--admin-border) !important;
+}
+
+.admin-theme-light input,
+.admin-theme-light textarea,
+.admin-theme-light select {
+  color: var(--admin-text) !important;
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color-scheme: light;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.035);
+}
+
+.admin-theme-light input:focus,
+.admin-theme-light textarea:focus,
+.admin-theme-light select:focus {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.13) !important;
+}
+
+.admin-theme-light input::placeholder,
+.admin-theme-light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.admin-theme-light option {
+  color: var(--admin-text);
+  background: #ffffff;
+}
+
+.admin-theme-light table {
+  color: var(--admin-text) !important;
+}
+
+.admin-theme-light table thead tr,
+.admin-theme-light .admin-workspace table thead tr {
+  background: #edf3f8 !important;
+}
+
+.admin-theme-light table th {
+  color: #475569 !important;
+  border-color: var(--admin-border) !important;
+}
+
+.admin-theme-light table td {
+  color: #334155;
+  border-color: #e4eaf1 !important;
+}
+
+.admin-theme-light table tbody tr {
+  background: rgba(255, 255, 255, 0.56) !important;
+}
+
+.admin-theme-light table tbody tr:hover {
+  background: #f5f8fc !important;
+}
+
+.admin-theme-light .fixed.inset-0[class*="bg-slate-950"],
+.admin-theme-light .fixed.inset-0[class*="bg-black"] {
+  background: rgba(30, 41, 59, 0.42) !important;
+  backdrop-filter: blur(6px);
+}
+
+.admin-theme-light .fixed.inset-0 > .relative,
+.admin-theme-light .fixed.inset-0 > div[class*="rounded"] {
+  color: var(--admin-text) !important;
+  background: linear-gradient(155deg, #ffffff 0%, #f7fafc 100%) !important;
+  border-color: #d7e1ec !important;
+  box-shadow: 0 30px 90px rgba(15, 23, 42, 0.22) !important;
+}
+
+.admin-theme-light .recharts-wrapper text,
+.admin-theme-light .recharts-cartesian-axis-tick-value,
+.admin-theme-light .dashboard-glass-chart text {
+  fill: #64748b !important;
+}
+
+.admin-theme-light .recharts-cartesian-grid line {
+  stroke: rgba(100, 116, 139, 0.17) !important;
+}
+
+.admin-theme-light .recharts-tooltip-wrapper > div {
+  color: var(--admin-text) !important;
+  background: #ffffff !important;
+  border-color: var(--admin-border) !important;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.13) !important;
+}
+
+.admin-theme-light button[class*="bg-blue-5"],
+.admin-theme-light button[class*="bg-blue-6"],
+.admin-theme-light button[class*="bg-cyan-5"],
+.admin-theme-light button[class*="bg-cyan-6"],
+.admin-theme-light button[class*="bg-emerald-5"],
+.admin-theme-light button[class*="bg-emerald-6"],
+.admin-theme-light button[class*="bg-rose-5"],
+.admin-theme-light button[class*="bg-rose-6"],
+.admin-theme-light button[class*="bg-violet-5"],
+.admin-theme-light button[class*="bg-violet-6"] {
+  color: #ffffff !important;
+}
+
+.admin-theme-light [class*="shadow-black"] {
+  --tw-shadow-color: rgba(15, 23, 42, 0.13) !important;
+}
+
+.admin-theme-light * {
+  scrollbar-color: #b8c4d3 #edf2f7;
+}
+
+.admin-theme-light ::-webkit-scrollbar-track {
+  background: #edf2f7;
+}
+
+.admin-theme-light ::-webkit-scrollbar-thumb {
+  background: #b8c4d3;
+  border-color: #a9b6c7;
+}

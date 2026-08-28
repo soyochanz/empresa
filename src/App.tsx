@@ -26,7 +26,7 @@ import DepartmentsScreen from './components/DepartmentsScreen';
 import BitesScreen from './components/BitesScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
-import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall } from 'lucide-react';
+import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall, Sun, Moon } from 'lucide-react';
 import { installAuditTracking, recordAuditEvent, setAuditContext } from './utils/auditLog';
 import { isAuthorizedAdminUser } from './utils/adminAuth';
 import { getNextFinanceRecurrenceDate } from './utils/financeRecurrence';
@@ -190,6 +190,10 @@ function getPathFromScreen(screen: Screen): string {
 
 export default function App() {
  const [septemberGoalDismissed, setSeptemberGoalDismissed] = useState(() => localStorage.getItem('althera-september-goal-dismissed') === 'true');
+ const [adminTheme, setAdminTheme] = useState<'dark' | 'light'>(() => {
+  try { return localStorage.getItem('althera_admin_theme') === 'light' ? 'light' : 'dark'; }
+  catch { return 'dark'; }
+ });
  // Screens state
  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
  const initialPath = window.location.pathname || '/';
@@ -207,6 +211,10 @@ export default function App() {
  useEffect(() => {
  sessionStorage.setItem('agency_current_screen', currentScreen);
  }, [currentScreen]);
+
+ useEffect(() => {
+  try { localStorage.setItem('althera_admin_theme', adminTheme); } catch {}
+ }, [adminTheme]);
 
  // Supabase connection and state synchronization status
  const [supabaseStatus, setSupabaseStatus] = useState<ConnectionStatus & { loading: boolean }>({
@@ -2149,7 +2157,7 @@ export default function App() {
  }
 
  return (
- <div className="admin-shell relative min-h-screen bg-[#050608] text-slate-100 flex font-sans overflow-hidden">
+ <div className={`admin-shell relative min-h-screen bg-[#050608] text-slate-100 flex font-sans overflow-hidden ${adminTheme === 'light' ? 'admin-theme-light' : ''}`}>
   
   {/* Professional app shell background */}
   <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
@@ -2178,10 +2186,13 @@ export default function App() {
    <Menu className="w-5 h-5" />
    </button>
    <span className="text-xs font-black uppercase tracking-[.2em]">Althera</span>
-   <button onClick={() => setIsNotificationsOpen(true)} className="relative w-11 h-11 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" aria-label="Notificaciones">
-   <Bell className="w-5 h-5" />
-   {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-400" />}
-   </button>
+   <div className="flex items-center gap-2">
+    <button type="button" onClick={() => setAdminTheme(theme => theme === 'dark' ? 'light' : 'dark')} className="admin-theme-switch" data-theme={adminTheme} aria-label={adminTheme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} title={adminTheme === 'dark' ? 'Modo claro' : 'Modo oscuro'}><span className="admin-theme-switch-sky" /><span className="admin-theme-switch-stars">· · ·</span><span className="admin-theme-switch-thumb">{adminTheme === 'light' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}</span></button>
+    <button onClick={() => setIsNotificationsOpen(true)} className="relative w-11 h-11 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" aria-label="Notificaciones">
+     <Bell className="w-5 h-5" />
+     {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-400" />}
+    </button>
+   </div>
   </div>
 
   <header className="hidden lg:flex h-[78px] shrink-0 items-center justify-between gap-6 border-b border-white/[0.07] bg-[#07080b]/75 px-7 backdrop-blur-xl">
@@ -2205,6 +2216,7 @@ export default function App() {
      <button onClick={() => navigateTo('developer_hub','none')} className="inline-flex h-8 items-center gap-2 rounded-xl px-2.5 text-[10px] font-semibold text-white/55 transition hover:bg-cyan-300/[0.08] hover:text-cyan-200"><Code2 className="h-3.5 w-3.5" />Dev</button>
     </div>
     <button onClick={() => navigateTo('citas', 'none')} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#d6b96f]/20 bg-[#d6b96f]/[0.08] px-3 text-xs font-bold text-[#ead49c] transition hover:bg-[#d6b96f]/[0.13]"><Plus className="h-4 w-4" />Cita</button>
+    <button type="button" onClick={() => setAdminTheme(theme => theme === 'dark' ? 'light' : 'dark')} className="admin-theme-switch" data-theme={adminTheme} aria-label={adminTheme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} title={adminTheme === 'dark' ? 'Modo claro' : 'Modo oscuro'}><span className="admin-theme-switch-sky" /><span className="admin-theme-switch-stars">· · ·</span><span className="admin-theme-switch-thumb">{adminTheme === 'light' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}</span></button>
     <button onClick={() => setIsNotificationsOpen(true)} className="relative inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.028] text-slate-400 transition hover:border-white/15 hover:text-white" aria-label="Notificaciones">
      <Bell className="h-4 w-4" />
      {unreadCount > 0 && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-cyan-300" />}
