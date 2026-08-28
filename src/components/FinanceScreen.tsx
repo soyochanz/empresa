@@ -334,6 +334,75 @@ const getFinanceDateKey = (value?: string): string => {
  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
 };
 
+type SeptemberServiceCategory = 'web' | 'bites' | 'rrss' | 'ia' | 'other';
+
+type SeptemberServiceEvent = {
+ clientKey: string;
+ date: string;
+ kind: 'new-client' | 'existing-client';
+ products: SeptemberServiceCategory[];
+};
+
+const SEPTEMBER_GOAL_MONTH = '2026-09';
+const SEPTEMBER_WEB_GOAL = 5;
+const SEPTEMBER_BITES_GOAL = 3;
+
+const normalizeServiceCategory = (product: string): SeptemberServiceCategory => {
+ const normalized = product.trim().toLocaleLowerCase('es-ES').replace(/[\s_-]+/g, '');
+ if (normalized === 'web' || normalized.includes('paginaweb') || normalized.includes('sitioweb')) return 'web';
+ if (normalized.includes('bitesmenu') || normalized === 'bites') return 'bites';
+ if (normalized === 'rrss' || normalized.includes('redessociales') || normalized.includes('socialmedia')) return 'rrss';
+ if (normalized === 'ia' || normalized.includes('inteligenciaartificial')) return 'ia';
+ return 'other';
+};
+
+const buildSeptemberServiceEvents = (invoices: Invoice[], transactions: FinanceTransaction[]): SeptemberServiceEvent[] => {
+ const events: SeptemberServiceEvent[] = [];
+ const invoiceRegistrationPattern = /(Venta inicial|Nuevo servicio) registrado desde CRM\. Productos:\s*([^.\n]+)\.(?:\s*Fecha:\s*(\d{4}-\d{2}-\d{2})\.)?/gi;
+
+ invoices.forEach(invoice => {
+  const notes = invoice.notes || '';
+  let match: RegExpExecArray | null;
+  while ((match = invoiceRegistrationPattern.exec(notes)) !== null) {
+   const date = match[3] || getFinanceDateKey(invoice.date);
+   if (!date.startsWith(SEPTEMBER_GOAL_MONTH)) continue;
+   const products = match[2]
+    .split(',')
+    .map(product => product.trim())
+    .filter(product => product && product.toLocaleLowerCase('es-ES') !== 'sin especificar')
+    .map(normalizeServiceCategory);
+   events.push({
+    clientKey: invoice.clientId || invoice.clientEmail || invoice.clientName,
+    date,
+    kind: match[1].toLocaleLowerCase('es-ES').startsWith('venta') ? 'new-client' : 'existing-client',
+    products,
+   });
+  }
+ });
+
+ transactions
+  .filter(transaction => transaction.isRecurring && transaction.type === 'income' && /^plan_recurring_(?:initial|additional)_/i.test(transaction.stripePlanId || '') && getFinanceDateKey(transaction.date).startsWith(SEPTEMBER_GOAL_MONTH))
+  .forEach(transaction => {
+   const productText = transaction.description.split('·').pop() || '';
+   const products = productText
+    .split('+')
+    .map(product => product.trim())
+    .filter(Boolean)
+    .map(normalizeServiceCategory);
+   const candidate: SeptemberServiceEvent = {
+    clientKey: transaction.clientId || transaction.id,
+    date: getFinanceDateKey(transaction.date),
+    kind: /^plan_recurring_initial_/i.test(transaction.stripePlanId || '') ? 'new-client' : 'existing-client',
+    products,
+   };
+   const candidateKey = `${candidate.clientKey}|${candidate.date}|${candidate.kind}|${[...candidate.products].sort().join(',')}`;
+   const alreadyTracked = events.some(event => `${event.clientKey}|${event.date}|${event.kind}|${[...event.products].sort().join(',')}` === candidateKey);
+   if (!alreadyTracked) events.push(candidate);
+  });
+
+ return events;
+};
+
 const formatStripeFundAmounts = (amounts: StripeFundAmount[] = []): string => {
  if (amounts.length === 0) return '0,00 €';
  return amounts.map(item => new Intl.NumberFormat('es-ES', {
@@ -841,12 +910,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const stored = localStorage.getItem('althera-revolut-opening');
   return stored === null || Number(stored) === 0 ? 1345.66 : Number(stored);
  });
- const [financeGoals, setFinanceGoals] = useState(() => {
-  try { return JSON.parse(localStorage.getItem('althera-finance-goals') || '{"weekRevenue":0,"monthRevenue":0,"monthWebsites":5,"reward":"3 Bites Menus + 5 webs · 1.300 € para Carlos y Nacho"}'); }
-  catch { return { weekRevenue: 0, monthRevenue: 0, monthWebsites: 5, reward: '3 Bites Menus + 5 webs · 1.300 € para Carlos y Nacho' }; }
- });
  useEffect(() => { localStorage.setItem('althera-revolut-opening', String(revolutOpeningBalance)); }, [revolutOpeningBalance]);
- useEffect(() => { localStorage.setItem('althera-finance-goals', JSON.stringify(financeGoals)); }, [financeGoals]);
 
  // Active list searches
  const [txSearch, setTxSearch] = useState('');
@@ -1263,6 +1327,30 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  // This is the reconciled balance shown by Revolut. Existing ledger expenses
  // are already reflected in it; only update the value on the next bank sync.
  const revolutBalance = revolutOpeningBalance;
+ const septemberServiceEvents = buildSeptemberServiceEvents(invoices, transactions);
+ const septemberNewClients = new Set(
+  septemberServiceEvents.filter(event => event.kind === 'new-client').map(event => event.clientKey)
+ ).size;
+ const septemberExistingClientServices = septemberServiceEvents
+  .filter(event => event.kind === 'existing-client')
+  .reduce((sum, event) => sum + event.products.length, 0);
+ const countSeptemberServices = (category: SeptemberServiceCategory, kind?: SeptemberServiceEvent['kind']) => septemberServiceEvents
+  .filter(event => !kind || event.kind === kind)
+  .reduce((sum, event) => sum + event.products.filter(product => product === category).length, 0);
+ const septemberServiceCounts = {
+  web: countSeptemberServices('web'),
+  bites: countSeptemberServices('bites'),
+  rrss: countSeptemberServices('rrss'),
+  ia: countSeptemberServices('ia'),
+  other: countSeptemberServices('other'),
+ };
+ const septemberTotalServices = Object.values(septemberServiceCounts).reduce((sum, count) => sum + count, 0);
+ const septemberGoalProgress = Math.round((
+  Math.min(septemberServiceCounts.web, SEPTEMBER_WEB_GOAL)
+  + Math.min(septemberServiceCounts.bites, SEPTEMBER_BITES_GOAL)
+ ) / (SEPTEMBER_WEB_GOAL + SEPTEMBER_BITES_GOAL) * 100);
+ const septemberWebProgress = Math.min(100, Math.round(septemberServiceCounts.web / SEPTEMBER_WEB_GOAL * 100));
+ const septemberBitesProgress = Math.min(100, Math.round(septemberServiceCounts.bites / SEPTEMBER_BITES_GOAL * 100));
  const stripeAvailableBalance = (stripeFunds?.available || []).reduce((sum, fund) => sum + Number(fund.amount || 0), 0);
  const cashMovementsSinceOpening = ledgerTransactions.filter(transaction =>
   transaction.status === 'paid' &&
@@ -3196,7 +3284,44 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
   <div className="grid gap-4 lg:grid-cols-2">
    <section className="rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.08] to-[#0b1329]/60 p-5"><div className="flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo de empresa</h3></div><Landmark className="h-5 w-5 text-cyan-300" /></div><strong className={`mt-4 block text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[10px] text-slate-500">Saldo conciliado actual. Incluye los gastos ya registrados ({revolutExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € con Revolut Pro).</p><label className="mt-4 block text-[8px] font-black uppercase tracking-wider text-slate-500">Saldo actual importado<input type="number" value={revolutOpeningBalance || ''} onChange={event => setRevolutOpeningBalance(Number(event.target.value) || 0)} placeholder="0,00" className="mt-1 block w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /></label></section>
-   <section className="rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.08] to-[#0b1329]/60 p-5"><div className="flex items-center gap-2"><Target className="h-5 w-5 text-amber-300" /><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Objetivos y recompensa</span><h3 className="mt-1 text-sm font-bold text-white">Incentivo de administración</h3></div></div><div className="mt-4 grid grid-cols-3 gap-2"><label className="text-[8px] text-slate-500">Semana €<input type="number" value={financeGoals.weekRevenue || ''} onChange={event => setFinanceGoals({ ...financeGoals, weekRevenue: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label><label className="text-[8px] text-slate-500">Mes €<input type="number" value={financeGoals.monthRevenue || ''} onChange={event => setFinanceGoals({ ...financeGoals, monthRevenue: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label><label className="text-[8px] text-slate-500">Webs/mes<input type="number" value={financeGoals.monthWebsites || ''} onChange={event => setFinanceGoals({ ...financeGoals, monthWebsites: Number(event.target.value) || 0 })} className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-xs text-white" /></label></div><label className="mt-2 block text-[8px] text-slate-500">Recompensa<input value={financeGoals.reward || ''} onChange={event => setFinanceGoals({ ...financeGoals, reward: event.target.value })} placeholder="Ej. sueldo fundadores: 500 € → 1.000 €" className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white" /></label></section>
+   <section className="relative overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-[#11131a]/80 to-[#0b1329]/70 p-5">
+    <div className="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-300/10 blur-3xl" />
+    <div className="relative flex items-start justify-between gap-4">
+     <div className="flex items-center gap-2.5">
+      <div className="rounded-xl border border-amber-300/15 bg-amber-300/10 p-2"><Target className="h-4 w-4 text-amber-300" /></div>
+      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Objetivo septiembre</span><h3 className="mt-0.5 text-sm font-bold text-white">Nuevos clientes y servicios</h3></div>
+     </div>
+     <div className="text-right"><strong className="text-xl font-black text-white">{septemberGoalProgress}%</strong><p className="text-[8px] uppercase tracking-wider text-slate-500">del objetivo</p></div>
+    </div>
+    <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-black/35"><div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-all duration-700" style={{ width: `${septemberGoalProgress}%` }} /></div>
+
+    <div className="relative mt-4 grid grid-cols-3 gap-2">
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Clientes nuevos</span><strong className="mt-1 block text-xl font-black text-white">{septemberNewClients}</strong></div>
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Servicios vendidos</span><strong className="mt-1 block text-xl font-black text-white">{septemberTotalServices}</strong></div>
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">A clientes existentes</span><strong className="mt-1 block text-xl font-black text-white">{septemberExistingClientServices}</strong></div>
+    </div>
+
+    <div className="relative mt-3 grid grid-cols-2 gap-2">
+     <div className="rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.05] p-3">
+      <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-wider text-cyan-300">Webs</span><strong className="text-sm text-white">{septemberServiceCounts.web}/{SEPTEMBER_WEB_GOAL}</strong></div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/35"><div className="h-full rounded-full bg-cyan-300 transition-all duration-700" style={{ width: `${septemberWebProgress}%` }} /></div>
+      <p className="mt-1.5 text-[8px] text-slate-500">{countSeptemberServices('web', 'new-client')} en altas · {countSeptemberServices('web', 'existing-client')} en clientes existentes</p>
+     </div>
+     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.05] p-3">
+      <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-wider text-amber-300">Bites</span><strong className="text-sm text-white">{septemberServiceCounts.bites}/{SEPTEMBER_BITES_GOAL}</strong></div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/35"><div className="h-full rounded-full bg-amber-300 transition-all duration-700" style={{ width: `${septemberBitesProgress}%` }} /></div>
+      <p className="mt-1.5 text-[8px] text-slate-500">{countSeptemberServices('bites', 'new-client')} en altas · {countSeptemberServices('bites', 'existing-client')} en clientes existentes</p>
+     </div>
+    </div>
+
+    <div className="relative mt-2 grid grid-cols-3 gap-2">
+     {([
+      { label: 'RRSS', category: 'rrss' as const, count: septemberServiceCounts.rrss },
+      { label: 'IA', category: 'ia' as const, count: septemberServiceCounts.ia },
+      { label: 'Otros', category: 'other' as const, count: septemberServiceCounts.other },
+     ]).map(item => <div key={item.category} className="rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2"><div className="flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-wider text-slate-400">{item.label}</span><strong className="text-sm text-white">{item.count}</strong></div><p className="mt-1 text-[7px] text-slate-600">{countSeptemberServices(item.category, 'new-client')} altas · {countSeptemberServices(item.category, 'existing-client')} existentes</p></div>)}
+    </div>
+   </section>
   </div>
 
   {/* Financial Bento Scoreboard Metrics */}

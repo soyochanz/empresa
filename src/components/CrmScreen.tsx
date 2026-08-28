@@ -884,7 +884,7 @@ React.useEffect(() => {
     taxPercentage,
     taxAmount: Number((grossTotal - subtotal).toFixed(2)),
     total: grossTotal,
-    notes: [targetInvoice?.notes, `${options.isInitialSale ? 'Venta inicial' : 'Nuevo servicio'} registrado desde CRM. Productos: ${convSelectedProducts.join(', ') || 'Sin especificar'}.`].filter(Boolean).join('\n'),
+    notes: [targetInvoice?.notes, `${options.isInitialSale ? 'Venta inicial' : 'Nuevo servicio'} registrado desde CRM. Productos: ${convSelectedProducts.join(', ') || 'Sin especificar'}. Fecha: ${todayKey}.`].filter(Boolean).join('\n'),
     comercialId: invoiceCommercialId,
     comercialEmail: invoiceCommercialEmail,
     isInitialSale: isCommissionableInitialInvoice,
@@ -923,7 +923,7 @@ React.useEffect(() => {
   }
 
   if (hasRecurringServicePayment && convRecurringPrice > 0) {
-   const recurringPlanId = `plan_recurring_${Math.random().toString(36).slice(2, 9)}`;
+   const recurringPlanId = `plan_recurring_${options.isInitialSale ? 'initial' : 'additional'}_${Math.random().toString(36).slice(2, 9)}`;
    const recurrenceCount = convRecurringLimited ? Math.max(1, Math.min(120, Math.trunc(convRecurringCount || 1))) : undefined;
    const recurrenceEndDate = recurrenceCount
     ? toLocalDateKey(addMonthsKeepingDay(now, (recurrenceCount - 1) * (convRecurringInterval === 'year' ? 12 : 1)))
