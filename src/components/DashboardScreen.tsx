@@ -444,7 +444,7 @@ export default function DashboardScreen({
   </div>
 
   <div className="h-72 min-h-[18rem] min-w-0 w-full rounded-2xl border border-white/8 bg-slate-950/20 p-4">
-   <ResponsiveContainer width="100%" height="100%">
+   <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 960, height: 288 }}>
    <BarChart
     data={chartData}
     margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
