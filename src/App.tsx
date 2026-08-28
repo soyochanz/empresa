@@ -982,7 +982,12 @@ export default function App() {
  const persistReadNotificationIds = (ids: string[]) => {
   if (!currentUser) return;
   const identity = (currentUser.id || currentUser.email).toLocaleLowerCase('es-ES');
-  localStorage.setItem(`althera_read_notifications:${identity}`, JSON.stringify(ids.slice(-500)));
+  try {
+   localStorage.setItem(`althera_read_notifications:${identity}`, JSON.stringify(ids.slice(-200)));
+  } catch (error) {
+   // Reading notifications must never block the app when browser storage is full.
+   console.warn('No se pudo persistir el estado de las notificaciones; se mantendrá durante esta sesión.');
+  }
  };
 
  const handleMarkAsRead = (id: string) => {
@@ -1177,8 +1182,12 @@ export default function App() {
  };
 
  const restoreAdminSession = async () => {
+  const withAuthTimeout = <T,>(operation: Promise<T>, timeoutMs = 10_000): Promise<T> => new Promise((resolve, reject) => {
+   const timer = window.setTimeout(() => reject(new Error('La validación de sesión excedió el tiempo permitido.')), timeoutMs);
+   operation.then(value => { window.clearTimeout(timer); resolve(value); }, error => { window.clearTimeout(timer); reject(error); });
+  });
   try {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  const { data: { session }, error: sessionError } = await withAuthTimeout(supabase.auth.getSession());
   if (sessionError || !session) {
    clearAdminSession();
    return;
@@ -1186,7 +1195,7 @@ export default function App() {
 
   // getUser validates the stored access token against Supabase Auth instead of
   // trusting browser storage as authorization.
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const { data: { user }, error: userError } = await withAuthTimeout(supabase.auth.getUser());
   if (userError || !user || !applyAdminSession(user)) {
    clearAdminSession();
    await supabase.auth.signOut({ scope: 'local' });
@@ -1233,24 +1242,13 @@ export default function App() {
  };
  }, []);
 
- // Synchronize legacy toast callers and expose a reliable dismiss control.
+ // Observe legacy toast callers without mutating the watched class attribute.
  useEffect(() => {
  const toastElem = document.getElementById('toast-msg');
  if (!toastElem) return;
 
  const syncToastVisibility = () => {
-  const hasOpacity0 = toastElem.classList.contains('opacity-0');
-  const hasHidden = toastElem.classList.contains('hidden');
-  if (hasOpacity0) {
-   toastElem.classList.remove('opacity-100');
-   toastElem.classList.add('pointer-events-none');
-   setIsGlobalToastVisible(false);
-   return;
-  }
-  if (hasHidden) toastElem.classList.remove('hidden');
-  toastElem.classList.remove('pointer-events-none');
-  toastElem.classList.add('opacity-100');
-  setIsGlobalToastVisible(true);
+  setIsGlobalToastVisible(!toastElem.classList.contains('opacity-0') && !toastElem.classList.contains('hidden'));
  };
  const observer = new MutationObserver(syncToastVisibility);
 
@@ -2532,7 +2530,7 @@ export default function App() {
   {/* Global Toast Alert System */}
   <div 
   id="toast-msg" 
-  className="fixed bottom-6 right-6 z-50 bg-[#09090f]/95 border border-violet-500/30 text-white font-sans text-xs pl-5 pr-12 py-3 rounded-2xl shadow-2xl backdrop-blur flex items-center gap-2 max-w-sm opacity-0 pointer-events-none transition-all duration-300 hidden"
+  className="fixed bottom-6 right-6 z-50 bg-[#09090f]/95 border border-violet-500/30 text-white font-sans text-xs pl-5 pr-12 py-3 rounded-2xl shadow-2xl backdrop-blur flex items-center gap-2 max-w-sm opacity-0 pointer-events-none transition-all duration-300"
   >
   <Check className="w-4 h-4 text-violet-400" />
   <span />
