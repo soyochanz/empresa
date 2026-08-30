@@ -594,7 +594,10 @@ React.useEffect(() => {
 
  const handleGenerateStripeForTx = async (tx: FinanceTransaction) => {
  const currentSession = checkoutSessionState[tx.id];
- if (tx.status !== 'pending') return;
+ if (tx.status !== 'pending' && tx.status !== 'failed') {
+  setTxStripeError(prev => ({ ...prev, [tx.id]: 'Este movimiento ya está cobrado y no necesita un enlace nuevo.' }));
+  return;
+ }
  if (tx.stripeCheckoutUrl && currentSession?.status !== 'expired') {
   setTxStripeError(prev => ({ ...prev, [tx.id]: 'El enlace actual sigue activo o todavía no se ha podido confirmar como caducado.' }));
   return;
@@ -637,6 +640,11 @@ React.useEffect(() => {
   );
   const renewedTransactions = relatedTransactions.map(item => ({
    ...item,
+   status: item.status === 'failed' ? 'pending' as const : item.status,
+   description: item.description
+    .replace(/\s*\(Enlace de pago caducado\)/gi, '')
+    .replace(/\s*\(Cobro denegado Stripe\)/gi, '')
+    .trim(),
    stripeCheckoutUrl: data.url,
    stripeCheckoutSessionId: data.sessionId,
   }));
