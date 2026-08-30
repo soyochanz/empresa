@@ -738,6 +738,32 @@ React.useEffect(() => {
  const convFinancedTotal = Math.max(0, Number(convSalePrice) || 0) +
   (convInstallments > 1 ? Math.max(0, Number(convFinancingExtra) || 0) : 0);
  const serviceFormContact = convertingLead || serviceRegistrationContact;
+
+ useEffect(() => {
+  const rawIntent = sessionStorage.getItem('althera:crm-quick-action');
+  if (!rawIntent) return;
+  try {
+   const intent = JSON.parse(rawIntent) as { type?: string; clientId?: string };
+   if (intent.type !== 'new-service' || !intent.clientId) {
+    sessionStorage.removeItem('althera:crm-quick-action');
+    return;
+   }
+   const client = contacts.find(contact => contact.id === intent.clientId && contact.status === 'Client');
+   if (!client) return;
+   sessionStorage.removeItem('althera:crm-quick-action');
+   setSelectedContactId(client.id);
+   setConvertingLead(null);
+   setServiceRegistrationContact(client);
+   setConvSalePrice(0);
+   setConvInstallments(1);
+   setConvFinancingExtra(0);
+   setConvPaymentMethod('transfer');
+   setConvConcept('Nuevo servicio Althera');
+   setConvSelectedProducts([]);
+  } catch {
+   sessionStorage.removeItem('althera:crm-quick-action');
+  }
+ }, [contacts]);
  const hasUpfrontServicePayment = convBillingStructure !== 'recurring';
  const hasRecurringServicePayment = convBillingStructure !== 'upfront';
 

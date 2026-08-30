@@ -549,6 +549,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const rankableComercialesList = getRankableCommercials(comercialesList);
  // Navigation tabs: 'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
  const [activeTab, setActiveTab] = useState<'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'>('transactions');
+ const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+ const [quickServiceClientId, setQuickServiceClientId] = useState('');
  const [forecastMonth, setForecastMonth] = useState(() => {
   const nextMonth = new Date();
   nextMonth.setDate(1);
@@ -1470,6 +1472,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   .filter(transaction => transaction.type === 'expense' && transaction.paymentAccount === 'revolut_pro')
   .reduce((sum, transaction) => sum + transaction.amount, 0);
  const revolutBalance = REVOLUT_OPENING_BALANCE + revolutIncome - revolutExpenses;
+ const revolutMovements = balanceMovements
+  .filter(transaction => transaction.paymentAccount === 'revolut_pro' || (
+   transaction.type === 'income' && (transaction.paymentMethod === 'transfer' || transaction.paymentMethod === 'card')
+  ))
+  .sort((a, b) => {
+   const createdDelta = Date.parse(b.createdAt || '') - Date.parse(a.createdAt || '');
+   return Number.isFinite(createdDelta) && createdDelta !== 0
+    ? createdDelta
+    : getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date));
+  })
+  .slice(0, 4);
  const septemberServiceEvents = buildSeptemberServiceEvents(invoices, transactions);
  const septemberNewClients = new Set(
   septemberServiceEvents.filter(event => event.kind === 'new-client').map(event => event.clientKey)
@@ -3259,6 +3272,16 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
   };
  });
  const selectedForecast = forecastMonths.find(month => month.key === forecastMonth) || forecastMonths[0];
+ const quickServiceClients = contacts
+  .filter(contact => contact.status === 'Client' && !contact.archived)
+  .sort((a, b) => getFinanceBusinessName(a).localeCompare(getFinanceBusinessName(b), 'es'));
+
+ const openQuickClientService = () => {
+  if (!quickServiceClientId || !onNavigate) return;
+  sessionStorage.setItem('althera:crm-quick-action', JSON.stringify({ type: 'new-service', clientId: quickServiceClientId }));
+  setQuickCreateOpen(false);
+  onNavigate('crm', 'push');
+ };
 
  return (
  <div className="w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin @container" id="finance-module-root">
@@ -3551,7 +3574,28 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   </div>
 
   <div className="grid gap-4 lg:grid-cols-2">
-   <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.1] via-[#0b1329]/70 to-blue-400/[0.05] p-5"><div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" /><div className="relative flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo actual</h3></div><span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.92] shadow-[0_10px_30px_rgba(56,189,248,.12)]"><img src="/revolut-pro-logo.png" alt="Revolut Pro" className="h-11 w-11 object-contain" /></span></div><strong className={`relative mt-6 block whitespace-nowrap text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></section>
+   <section className="finance-revolut-card relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.1] via-[#0b1329]/70 to-blue-400/[0.05] p-5">
+    <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" />
+    <div className="relative flex items-start justify-between gap-4">
+     <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo actual</h3></div>
+     <img src="/revolut-mark.png" alt="Revolut" className="revolut-brand-mark h-10 w-10 shrink-0 object-contain brightness-0 invert" />
+    </div>
+    <strong className={`relative mt-5 block whitespace-nowrap text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+    <div className="relative mt-5 border-t border-white/[0.08] pt-4">
+     <div className="mb-2.5 flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Últimos movimientos</span><span className="text-[8px] text-slate-600">Desde el saldo inicial</span></div>
+     {revolutMovements.length === 0 ? (
+      <div className="finance-revolut-empty rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-[9px] text-slate-500">Todavía no hay movimientos nuevos en Revolut Pro.</div>
+     ) : (
+      <div className="space-y-1.5">{revolutMovements.map(transaction => (
+       <div key={transaction.id} className="finance-revolut-movement flex items-center gap-3 rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2.5">
+        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${transaction.type === 'income' ? 'bg-emerald-300/10 text-emerald-300' : 'bg-rose-300/10 text-rose-300'}`}>{transaction.type === 'income' ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</span>
+        <div className="min-w-0 flex-1"><p className="truncate text-[10px] font-bold text-white">{getTransactionDisplayConcept(transaction.description)}</p><p className="mt-0.5 text-[8px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.paymentMethod === 'card' ? 'Tarjeta' : transaction.paymentMethod === 'transfer' ? 'Transferencia' : 'Revolut Pro'}</p></div>
+        <strong className={`shrink-0 whitespace-nowrap font-mono text-[10px] ${transaction.type === 'income' ? 'text-emerald-300' : 'text-rose-300'}`}>{transaction.type === 'income' ? '+' : '−'}{transaction.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+       </div>
+      ))}</div>
+     )}
+    </div>
+   </section>
    <section className="relative overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-[#11131a]/80 to-[#0b1329]/70 p-5">
     <div className="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-300/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-4">
@@ -4174,29 +4218,30 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
    {/* Pagination Controls */}
    {totalTxPages > 1 && (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 px-6 border-t border-white/5 bg-[#0b1329]/15 text-xs">
+    <div className="finance-pagination flex flex-col sm:flex-row items-center justify-between gap-4 py-4 px-6 border-t border-white/5 bg-[#0b1329]/15 text-xs">
     <span className="text-slate-400 font-sans">
      Mostrando registros <strong className="text-slate-200">{(safeCurrentPage - 1) * txItemsPerPage + 1}</strong> - <strong className="text-slate-200">{Math.min(safeCurrentPage * txItemsPerPage, filteredTxs.length)}</strong> de <strong className="text-slate-300 font-bold">{filteredTxs.length}</strong>
     </span>
-    <div className="flex items-center gap-1.5 font-mono">
+    <div className="flex items-center gap-1.5 font-mono" aria-label="Paginación de movimientos">
      <button
      onClick={() => {
       setTxCurrentPage(prev => Math.max(1, prev - 1));
       document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
      }}
      disabled={safeCurrentPage === 1}
-     className="px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
+     className="finance-pagination-button finance-pagination-button--edge px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
      >
      ← Anterior
      </button>
      {Array.from({ length: totalTxPages }, (_, i) => i + 1).map(pageNum => (
      <button
       key={pageNum}
-      onClick={() => {
+     onClick={() => {
       setTxCurrentPage(pageNum);
       document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
       }}
-      className={`w-7 h-7 flex items-center justify-center rounded-xl font-bold text-[11px] transition cursor-pointer border ${
+      aria-current={pageNum === safeCurrentPage ? 'page' : undefined}
+      className={`finance-pagination-button finance-pagination-button--page w-7 h-7 flex items-center justify-center rounded-xl font-bold text-[11px] transition cursor-pointer border ${
       pageNum === safeCurrentPage ?
        'bg-purple-600/10 text-purple-400 border-purple-500/30'
        : 'bg-transparent border-transparent hover:border-white/5 hover:bg-white/[0.02] text-slate-400 hover:text-slate-200'
@@ -4211,7 +4256,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
      }}
      disabled={safeCurrentPage === totalTxPages}
-     className="px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
+     className="finance-pagination-button finance-pagination-button--edge px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
      >
      Siguiente →
      </button>
@@ -5511,6 +5556,28 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
   </div>
   )}
+
+  <div className="finance-quick-create fixed bottom-6 right-6 z-[80] flex flex-col items-end gap-3 print:hidden">
+   {quickCreateOpen && (
+    <div className="finance-quick-create-menu w-[min(330px,calc(100vw-2rem))] rounded-3xl border border-white/10 bg-[#090d14]/95 p-3 shadow-[0_24px_70px_rgba(0,0,0,.42)] backdrop-blur-xl">
+     <div className="flex items-center justify-between px-2 pb-2"><div><span className="text-[8px] font-black uppercase tracking-[.18em] text-cyan-300">Creación rápida</span><h4 className="mt-0.5 text-sm font-black text-white">¿Qué quieres registrar?</h4></div><button type="button" onClick={() => setQuickCreateOpen(false)} className="grid h-8 w-8 place-items-center rounded-xl text-slate-500 transition hover:bg-white/5 hover:text-white" aria-label="Cerrar menú de creación"><X className="h-4 w-4" /></button></div>
+     <button type="button" onClick={() => { resetTxForm(); setIsTxModalOpen(true); setQuickCreateOpen(false); }} className="finance-quick-create-option flex w-full items-center gap-3 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] p-3 text-left transition hover:border-emerald-300/30 hover:bg-emerald-300/[0.1]">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-300/10 text-emerald-300"><ReceiptText className="h-4 w-4" /></span><span className="min-w-0 flex-1"><strong className="block text-[11px] text-white">Nueva transacción</strong><small className="mt-0.5 block text-[8px] text-slate-500">Ingreso, gasto, efectivo, transferencia o Stripe</small></span><ArrowUpRight className="h-4 w-4 text-slate-600" />
+     </button>
+     <div className="finance-quick-create-service mt-2 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.045] p-3">
+      <div className="flex items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cyan-300/10 text-cyan-300"><Briefcase className="h-4 w-4" /></span><div><strong className="block text-[11px] text-white">Nuevo servicio</strong><small className="mt-0.5 block text-[8px] text-slate-500">Para un cliente existente del CRM</small></div></div>
+      <select value={quickServiceClientId} onChange={event => setQuickServiceClientId(event.target.value)} className="mt-3 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-[10px] text-slate-200 outline-none focus:border-cyan-300/40" aria-label="Cliente para el nuevo servicio">
+       <option value="">Selecciona un cliente…</option>
+       {quickServiceClients.map(client => <option key={client.id} value={client.id}>{getFinanceBusinessName(client)}</option>)}
+      </select>
+      <button type="button" onClick={openQuickClientService} disabled={!quickServiceClientId || !onNavigate} className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-300 px-3 py-2.5 text-[10px] font-black text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"><Plus className="h-3.5 w-3.5" /> Continuar en CRM</button>
+     </div>
+    </div>
+   )}
+   <button type="button" onClick={() => setQuickCreateOpen(open => !open)} className={`finance-quick-create-trigger flex h-14 items-center gap-2 rounded-2xl border px-4 text-[11px] font-black shadow-[0_16px_45px_rgba(8,145,178,.3)] transition hover:-translate-y-0.5 ${quickCreateOpen ? 'border-white/15 bg-white text-slate-950' : 'border-cyan-200/25 bg-cyan-300 text-slate-950 hover:bg-cyan-200'}`} aria-expanded={quickCreateOpen} aria-label="Crear transacción o servicio">
+    <Plus className={`h-5 w-5 transition-transform ${quickCreateOpen ? 'rotate-45' : ''}`} /><span>Crear</span>
+   </button>
+  </div>
 
   {showMonthlyCloseReport && (() => {
   const now = new Date();
