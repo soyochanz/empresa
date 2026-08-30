@@ -3198,11 +3198,11 @@ React.useEffect(() => {
   {selectedContact && createPortal(
    <div className="fixed inset-0 z-[80] flex h-[100dvh] items-start justify-center overflow-hidden p-2 sm:p-4">
    <button type="button" aria-label="Cerrar detalles del cliente" className="absolute inset-0 cursor-default bg-black/75 backdrop-blur-md" onClick={() => setSelectedContactId('')} />
-   <aside role="dialog" aria-modal="true" aria-label={`Detalles de ${getContactBusinessName(selectedContact)}`} className="relative flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/[0.12] shadow-[0_32px_100px_rgba(0,0,0,.7)]">
-   <div className="bg-gradient-to-b from-[#111529] to-[#07090f] backdrop-blur-xl rounded-[28px] overflow-hidden flex flex-col h-full border border-white/[0.05] shadow-[0_28px_80px_rgba(0,0,0,.36)]">
+   <aside role="dialog" aria-modal="true" aria-label={`Detalles de ${getContactBusinessName(selectedContact)}`} className="admin-client-dialog relative flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-white/[0.12] shadow-[0_32px_100px_rgba(0,0,0,.7)]">
+   <div className="admin-client-dialog-surface bg-gradient-to-b from-[#111529] to-[#07090f] backdrop-blur-xl rounded-[28px] overflow-hidden flex flex-col h-full border border-white/[0.05] shadow-[0_28px_80px_rgba(0,0,0,.36)]">
    
    {/* Detail Banner cover */}
-   <div className={`relative h-36 border-b border-white/[0.06] transition-all duration-300 ${
+   <div className={`admin-client-banner relative h-36 border-b border-white/[0.06] transition-all duration-300 ${
     selectedContact.color === 'red' ? 'bg-gradient-to-tr from-red-600/30 via-red-950/20 to-slate-950/20' :
     selectedContact.color === 'green' ? 'bg-gradient-to-tr from-emerald-600/30 via-emerald-950/20 to-slate-950/20' :
     selectedContact.color === 'yellow' ? 'bg-gradient-to-tr from-amber-500/30 via-amber-950/20 to-slate-950/20' :
@@ -3276,7 +3276,7 @@ React.useEffect(() => {
     
     {/* Profile Card Center Headshot */}
     <div className="flex flex-col items-center text-center">
-    <div className="w-20 h-20 rounded-2xl overflow-hidden bg-slate-900 border-4 border-slate-950/80 shadow-xl flex items-center justify-center">
+    <div className="admin-client-avatar w-20 h-20 rounded-2xl overflow-hidden bg-slate-900 border-4 border-slate-950/80 shadow-xl flex items-center justify-center">
      {selectedContact.avatarUrl ? (
      <img 
       alt="Headshot" 
@@ -3441,7 +3441,7 @@ React.useEffect(() => {
     </div>
 
     {/* Stripe Recurring Payments Auto-billing Engine */}
-    <div className="w-full space-y-3 rounded-[22px] border border-[#635bff]/20 bg-[radial-gradient(circle_at_top_right,rgba(99,91,255,0.10),transparent_38%),linear-gradient(180deg,#070810_0%,#030407_100%)] p-3.5 text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
+    <div className="admin-client-stripe-card w-full space-y-3 rounded-[22px] border border-[#635bff]/20 bg-[radial-gradient(circle_at_top_right,rgba(99,91,255,0.10),transparent_38%),linear-gradient(180deg,#070810_0%,#030407_100%)] p-3.5 text-left shadow-[0_18px_55px_rgba(0,0,0,0.28)]">
     <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
      <div className="flex items-center gap-2.5">
       <span className="grid h-8 w-8 place-items-center rounded-xl border border-[#635bff]/25 bg-[#635bff]/10 shadow-[0_0_18px_rgba(99,91,255,0.12)]">
@@ -3632,7 +3632,7 @@ React.useEffect(() => {
         type="button"
         disabled={txStripeLoading[visibleCheckoutTransaction.id]}
         onClick={() => handleGenerateStripeForTx(visibleCheckoutTransaction)}
-        className={`py-1.5 px-2 text-[10px] rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${visibleCheckoutExpired ? 'w-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-amber-300' : 'flex-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 text-cyan-300'}`}
+        className={`admin-regenerate-link-button py-1.5 px-2 text-[10px] rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${visibleCheckoutExpired ? 'w-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-amber-300' : 'flex-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 text-cyan-300'}`}
        >
         <RefreshCw className={`w-3 h-3 ${txStripeLoading[visibleCheckoutTransaction.id] ? 'animate-spin' : ''}`} />
         <span>{visibleCheckoutExpired ? 'Regenerar este enlace' : 'Generar enlace nuevo'}</span>

@@ -216,6 +216,16 @@ export default function App() {
   try { localStorage.setItem('althera_admin_theme', adminTheme); } catch {}
  }, [adminTheme]);
 
+ useEffect(() => {
+  // Modals created with createPortal live under document.body instead of the
+  // admin shell. Mirror the light-theme marker there so dialogs, overlays and
+  // floating panels receive the same tokens as the screen behind them.
+  const outsideAdminShell = (['landing', 'portal', 'acceso', 'comerciales_acceso', 'comerciales_panel'] as Screen[]).includes(currentScreen);
+  const enablePortalLightTheme = adminTheme === 'light' && !outsideAdminShell;
+  document.body.classList.toggle('admin-theme-light', enablePortalLightTheme);
+  return () => document.body.classList.remove('admin-theme-light');
+ }, [adminTheme, currentScreen]);
+
  // Supabase connection and state synchronization status
  const [supabaseStatus, setSupabaseStatus] = useState<ConnectionStatus & { loading: boolean }>({
  connected: false,

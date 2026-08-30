@@ -1239,6 +1239,10 @@
   background-image: radial-gradient(circle at 12% 0%, rgba(14, 165, 233, 0.055), transparent 30%), radial-gradient(circle at 88% 20%, rgba(16, 185, 129, 0.045), transparent 28%) !important;
 }
 
+.admin-theme-light .admin-workspace section[class*="rgba(0,0,0"] {
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.055), rgba(124, 58, 237, 0.035), rgba(255, 255, 255, 0.96)) !important;
+}
+
 .admin-theme-light .bites-screen {
   background: #f3f6f9 !important;
   color: var(--admin-text) !important;
@@ -1285,6 +1289,116 @@
 .admin-theme-light .bites-screen [class*="bg-[#f5f7f1]"],
 .admin-theme-light .bites-screen [class*="bg-[#f8f9f6]"] {
   background: #f3f7ef !important;
+}
+
+/* Portal-mounted admin dialogs ------------------------------------------------
+   The theme marker is mirrored onto body by App so createPortal content uses
+   these rules even though it sits outside .admin-shell. */
+body.admin-theme-light {
+  --admin-bg: #f2f6fa;
+  --admin-surface: #ffffff;
+  --admin-surface-soft: #f8fafc;
+  --admin-surface-hover: #f1f5f9;
+  --admin-border: #d6e0eb;
+  --admin-text: #111c2f;
+  --admin-muted: #5f6f85;
+  --admin-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.035);
+  --admin-shadow-md: 0 1px 2px rgba(15, 23, 42, 0.06), 0 12px 30px rgba(15, 23, 42, 0.055);
+}
+
+body.admin-theme-light [role="dialog"] {
+  color-scheme: light;
+  color: var(--admin-text, #111c2f) !important;
+}
+
+body.admin-theme-light .fixed.inset-0 > button.absolute.inset-0,
+body.admin-theme-light .fixed.inset-0 > div.fixed.inset-0 {
+  background: rgba(15, 23, 42, 0.46) !important;
+  backdrop-filter: blur(7px);
+}
+
+body.admin-theme-light .admin-client-dialog {
+  background: #f7fafc !important;
+  border-color: #cbd7e5 !important;
+  box-shadow: 0 30px 90px rgba(15, 23, 42, 0.24) !important;
+}
+
+body.admin-theme-light .admin-client-dialog-surface {
+  background: linear-gradient(165deg, #ffffff 0%, #f6f9fc 58%, #eef3f8 100%) !important;
+  border-color: #d5dfeb !important;
+  box-shadow: inset 0 1px 0 #ffffff !important;
+}
+
+body.admin-theme-light .admin-client-banner {
+  background: linear-gradient(135deg, #eef2ff 0%, #e7f5fb 52%, #f7f3ff 100%) !important;
+  border-color: #d8e2ed !important;
+}
+
+body.admin-theme-light .admin-client-banner > .absolute.inset-0 {
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.76), transparent 72%) !important;
+}
+
+body.admin-theme-light .admin-client-avatar {
+  background: linear-gradient(145deg, #263449, #172033) !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18) !important;
+}
+
+body.admin-theme-light .admin-client-dialog [class*="bg-[radial-gradient"],
+body.admin-theme-light .admin-client-dialog [class*="linear-gradient(180deg,#0"] {
+  background-image: none !important;
+  background-color: #ffffff !important;
+}
+
+body.admin-theme-light .admin-client-stripe-card {
+  background: radial-gradient(circle at 100% 0%, rgba(99, 91, 255, 0.09), transparent 34%), linear-gradient(165deg, #ffffff, #f6f7ff) !important;
+  border-color: #c7d2fe !important;
+  box-shadow: 0 12px 32px rgba(76, 70, 160, 0.09) !important;
+}
+
+body.admin-theme-light .admin-client-dialog [class*="bg-black/"],
+body.admin-theme-light .admin-client-dialog [class*="bg-slate-950/"],
+body.admin-theme-light .admin-client-dialog [class*="bg-slate-900/"] {
+  background-color: #f5f8fc !important;
+}
+
+body.admin-theme-light .admin-client-dialog [class*="border-slate-950"] {
+  border-color: #d7e1ec !important;
+}
+
+body.admin-theme-light .admin-client-dialog [class*="shadow-black"] {
+  --tw-shadow-color: rgba(15, 23, 42, 0.11) !important;
+}
+
+body.admin-theme-light .admin-client-dialog > div > div:first-child {
+  border-color: #d8e2ed !important;
+}
+
+body.admin-theme-light .admin-client-dialog button[class*="bg-slate-950/"],
+body.admin-theme-light .admin-client-dialog button[class*="bg-slate-900"] {
+  background: #ffffff !important;
+  border-color: #d3deea !important;
+  color: #475569 !important;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.07) !important;
+}
+
+body.admin-theme-light .admin-client-dialog button[class*="bg-slate-950/"]:hover,
+body.admin-theme-light .admin-client-dialog button[class*="bg-slate-900"]:hover {
+  background: #eef4fa !important;
+  color: #172033 !important;
+}
+
+body.admin-theme-light .admin-client-dialog .admin-regenerate-link-button {
+  background: #ecfeff !important;
+  border-color: #a5f3fc !important;
+  color: #0e7490 !important;
+  box-shadow: 0 1px 3px rgba(8, 145, 178, 0.08) !important;
+}
+
+body.admin-theme-light .admin-client-dialog .admin-regenerate-link-button:hover {
+  background: #cffafe !important;
+  border-color: #67e8f9 !important;
+  color: #155e75 !important;
 }
 
 @media (max-width: 767px) {
