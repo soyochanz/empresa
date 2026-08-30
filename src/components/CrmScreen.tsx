@@ -137,6 +137,18 @@ const getEditableInvoiceConcept = (description: string): string =>
   .replace(/\s*\((?:Pendiente|Cobrado)\)\s*$/i, '')
   .trim();
 
+const getRecurringServiceLabel = (description: string): string =>
+ description
+  .replace(/\s*\[[A-Z_]+:[^\]]+\]/g, '')
+  .replace(/\s*\((?:Pendiente|Cobrado|Ingreso recurrente Stripe)\)\s*$/gi, '')
+  .trim() || 'Servicio recurrente';
+
+const formatCrmRecurrenceDate = (date?: string): string => {
+ if (!date) return 'Sin fecha límite';
+ const parsed = new Date(`${date}T12:00:00`);
+ return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString('es-ES');
+};
+
 const DEFAULT_INVOICE_ISSUER = {
  name: 'Carlos Ronco Meneses',
  taxId: '09104663K',
@@ -298,6 +310,13 @@ export default function CrmScreen({
  const selectedClientTransactions = React.useMemo(() => {
  if (!selectedContact) return [];
  return transactions.filter(t => t.type === 'income' && !t.isRecurring && transactionBelongsToContact(t, selectedContact, selectedClientInvoices));
+ }, [transactions, selectedContact, selectedClientInvoices]);
+
+ const selectedClientRecurringTransactions = React.useMemo(() => {
+ if (!selectedContact) return [];
+ return transactions
+  .filter(transaction => transaction.type === 'income' && transaction.isRecurring && transactionBelongsToContact(transaction, selectedContact, selectedClientInvoices))
+  .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
  }, [transactions, selectedContact, selectedClientInvoices]);
 
  const selectedPaymentSummary = React.useMemo(() => {
@@ -3821,33 +3840,60 @@ React.useEffect(() => {
      );
     })()}
 
-    {selectedContact.stripeSubscriptionStatus === 'active' && (() => {
+    {(selectedContact.stripeSubscriptionStatus === 'active' || selectedClientRecurringTransactions.length > 0) && (() => {
      const isFinancedStripePlan = selectedClientTransactions.some(transaction =>
       Number(transaction.stripeInstallmentCount || 0) > 1 || /cuota\s*\d+\s*de\s*\d+/i.test(transaction.description)
      );
+     const recurringServices = selectedClientRecurringTransactions.length > 0
+      ? selectedClientRecurringTransactions
+      : [{
+       id: `stripe-recurrence-${selectedContact.id}`,
+       amount: Number(selectedContact.stripeSubscriptionPrice || 0),
+       description: 'Servicio recurrente',
+       recurrencePeriod: selectedContact.stripeSubscriptionInterval === 'year' ? 'yearly' : 'monthly',
+       recurrenceEndDate: undefined,
+      } as FinanceTransaction];
      return (
-      <div className="flex flex-col gap-2 rounded-xl border border-white/[0.055] bg-white/[0.018] p-2.5 sm:flex-row sm:items-center">
-       <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
-        <div>
-         <span className="block text-[7px] font-bold uppercase tracking-[.14em] text-slate-600">{isFinancedStripePlan ? 'Cuota financiada' : 'Importe recurrente'}</span>
-         <span className="mt-0.5 block text-[11px] font-black text-slate-200">{selectedContact.stripeSubscriptionPrice || '0'} €</span>
-        </div>
-        <div>
-         <span className="block text-[7px] font-bold uppercase tracking-[.14em] text-slate-600">Modalidad</span>
-         <span className="mt-0.5 block text-[9px] font-bold text-slate-300">{isFinancedStripePlan ? 'Financiación limitada' : selectedContact.stripeSubscriptionInterval === 'year' ? 'Suscripción anual' : 'Suscripción mensual'}</span>
-        </div>
+      <div className="crm-recurrence-summary rounded-xl border border-white/[0.055] bg-white/[0.018] p-2.5">
+       <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-[7.5px] font-black uppercase tracking-[.16em] text-slate-500">Recurrencias del cliente</span>
+        {selectedContact.stripeCustomerId && (
+         <button
+          type="button"
+          disabled={stripeLoading}
+          onClick={() => handleOpenStripePortal(selectedContact.stripeCustomerId!)}
+          className="flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#635bff]/20 bg-[#635bff]/10 px-3 text-[8.5px] font-bold text-[#b8b4ff] transition hover:bg-[#635bff]/16 hover:text-white disabled:opacity-50"
+         >
+          {stripeLoading ? <span className="h-3 w-3 rounded-full border border-[#b8b4ff] border-t-transparent animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+          <span>Portal Stripe</span>
+         </button>
+        )}
        </div>
-       {selectedContact.stripeCustomerId && (
-        <button
-         type="button"
-         disabled={stripeLoading}
-         onClick={() => handleOpenStripePortal(selectedContact.stripeCustomerId!)}
-         className="flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#635bff]/20 bg-[#635bff]/10 px-3 text-[8.5px] font-bold text-[#b8b4ff] transition hover:bg-[#635bff]/16 hover:text-white disabled:opacity-50"
-        >
-         {stripeLoading ? <span className="h-3 w-3 rounded-full border border-[#b8b4ff] border-t-transparent animate-spin" /> : <ExternalLink className="h-3 w-3" />}
-         <span>Portal Stripe</span>
-        </button>
-       )}
+       <div className="space-y-1.5">
+        {recurringServices.map((recurrence, index) => {
+         const hasEnded = Boolean(recurrence.recurrenceEndDate && recurrence.recurrenceEndDate < toLocalDateKey(new Date()));
+         return (
+          <div key={recurrence.id} className="crm-recurrence-row grid min-w-0 gap-2 rounded-lg border border-white/[0.045] bg-black/10 p-2 sm:grid-cols-[86px_minmax(0,1.5fr)_110px_120px] sm:items-center">
+           <div>
+            <span className="block text-[6.5px] font-bold uppercase tracking-[.12em] text-slate-600">Importe</span>
+            <span className="mt-0.5 block text-[10px] font-black text-slate-200">{Number(recurrence.amount || selectedContact.stripeSubscriptionPrice || 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</span>
+           </div>
+           <div className="min-w-0">
+            <span className="block text-[6.5px] font-bold uppercase tracking-[.12em] text-slate-600">Tipo de servicio</span>
+            <span className="mt-0.5 block truncate text-[9px] font-bold text-slate-200" title={getRecurringServiceLabel(recurrence.description)}>{getRecurringServiceLabel(recurrence.description)}</span>
+           </div>
+           <div>
+            <span className="block text-[6.5px] font-bold uppercase tracking-[.12em] text-slate-600">Modalidad</span>
+            <span className="mt-0.5 block text-[8.5px] font-bold text-slate-300">{selectedClientRecurringTransactions.length === 0 && isFinancedStripePlan && index === 0 ? 'Financiación limitada' : recurrence.recurrencePeriod === 'yearly' ? 'Suscripción anual' : 'Suscripción mensual'}</span>
+           </div>
+           <div>
+            <span className="block text-[6.5px] font-bold uppercase tracking-[.12em] text-slate-600">Fecha límite</span>
+            <span className={`mt-0.5 block text-[8.5px] font-bold ${hasEnded ? 'text-rose-400' : recurrence.recurrenceEndDate ? 'text-amber-300' : 'text-emerald-300'}`}>{hasEnded ? `Finalizó · ${formatCrmRecurrenceDate(recurrence.recurrenceEndDate)}` : formatCrmRecurrenceDate(recurrence.recurrenceEndDate)}</span>
+           </div>
+          </div>
+         );
+        })}
+       </div>
       </div>
      );
     })()}

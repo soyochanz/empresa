@@ -3214,7 +3214,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
   <div className="flex flex-wrap items-center justify-start md:justify-end gap-1.5">
    <button
    onClick={() => showTransactionIncomeRange('today')}
-   className="h-8 bg-cyan-500/10 hover:bg-cyan-500/15 active:scale-95 text-[9px] text-cyan-200 font-bold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-cyan-400/20"
+   className="finance-toolbar-button finance-toolbar-button--today h-9 bg-cyan-500/10 hover:bg-cyan-500/15 active:scale-95 text-[9px] text-cyan-200 font-bold px-3 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-cyan-400/20"
    >
    <Calendar className="w-3.5 h-3.5" />
    <span>Hoy</span>
@@ -3222,7 +3222,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
    </button>
    <button
    onClick={() => showTransactionIncomeRange('week')}
-   className="h-8 bg-violet-500/10 hover:bg-violet-500/15 active:scale-95 text-[9px] text-violet-200 font-bold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-violet-400/20"
+   className="finance-toolbar-button finance-toolbar-button--week h-9 bg-violet-500/10 hover:bg-violet-500/15 active:scale-95 text-[9px] text-violet-200 font-bold px-3 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-violet-400/20"
    >
    <Clock className="w-3.5 h-3.5" />
    <span>Semana</span>
@@ -3230,7 +3230,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
    </button>
    <button
    onClick={() => setShowMonthlyCloseReport(true)}
-   className="h-8 bg-amber-400/90 hover:bg-amber-300 active:scale-95 text-[9px] text-slate-950 font-extrabold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-amber-300/20"
+   className="finance-toolbar-button finance-toolbar-button--close h-9 bg-amber-400/90 hover:bg-amber-300 active:scale-95 text-[9px] text-slate-950 font-extrabold px-3 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-amber-300/20"
    >
    <Activity className="w-3.5 h-3.5" />
    <span>Cierre</span>
@@ -3242,7 +3242,7 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
     setIsTxModalOpen(true);
     }}
     id="btn-new-tx"
-    className="h-8 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-[9px] text-slate-950 font-extrabold px-2.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-400/20"
+    className="finance-toolbar-button finance-toolbar-button--primary h-9 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-[9px] text-slate-950 font-extrabold px-3 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-400/20"
    >
     <Plus className="w-3.5 h-3.5 stroke-[3]" />
     <span>Registrar movimiento</span>
