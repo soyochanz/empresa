@@ -354,6 +354,8 @@ const getFinanceDateKey = (value?: string): string => {
 
 type SeptemberServiceCategory = 'web' | 'bites' | 'rrss' | 'ia' | 'other';
 
+type IncomeServiceCategory = 'Web' | 'RRSS' | 'Bites' | 'IA' | 'Otros';
+
 type SeptemberServiceEvent = {
  clientKey: string;
  date: string;
@@ -372,6 +374,21 @@ const normalizeServiceCategory = (product: string): SeptemberServiceCategory => 
  if (normalized === 'rrss' || normalized.includes('redessociales') || normalized.includes('socialmedia')) return 'rrss';
  if (normalized === 'ia' || normalized.includes('inteligenciaartificial')) return 'ia';
  return 'other';
+};
+
+const getIncomeServiceCategories = (value: string): IncomeServiceCategory[] => {
+ const normalized = value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase('es-ES');
+ const categories: IncomeServiceCategory[] = [];
+
+ if (/\b(web|landing|e-?commerce|tienda online|pagina web|sitio web)\b/.test(normalized)) categories.push('Web');
+ if (/\b(rrss|redes sociales|social media|community manager)\b/.test(normalized)) categories.push('RRSS');
+ if (/\b(bites|bitesmenus?|carta digital|menu digital)\b/.test(normalized)) categories.push('Bites');
+ if (/\b(ia|inteligencia artificial|automatizacion|chatbot|asistente inteligente|agente de ia)\b/.test(normalized)) categories.push('IA');
+
+ return categories.length > 0 ? categories : ['Otros'];
 };
 
 const buildSeptemberServiceEvents = (invoices: Invoice[], transactions: FinanceTransaction[]): SeptemberServiceEvent[] => {
@@ -1396,10 +1413,36 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  .filter(t => t.type === 'expense')
  .reduce((sum, t) => sum + t.amount, 0);
 
- const commercialSalaries = comercialesList
- .flatMap(com => com.payouts || [])
- .filter(p => p.status === 'completed' && (analyticsRange === 'all' || getFinanceDateKey(p.date).startsWith(analyticsMonthKey)))
- .reduce((sum, p) => sum + p.amount, 0);
+ // Commissions are earned when the linked initial sale is paid. Previously
+ // this metric only counted completed payouts, so it incorrectly showed zero
+ // while a commercial still had money ready to be liquidated.
+ const calculateAccruedCommercialCommissions = (
+  paidTransactions: FinanceTransaction[],
+  includeExtra: (date: string) => boolean,
+ ) => rankableComercialesList.reduce((sum, commercial) => {
+  const belongsToCommercial = (transaction: FinanceTransaction) =>
+   transaction.comercialId === commercial.id ||
+   Boolean(transaction.comercialEmail && transaction.comercialEmail.toLowerCase() === commercial.email.toLowerCase());
+  const allInitialSales = nonRecurringTransactions.filter(transaction => transaction.isInitialSale === true && belongsToCommercial(transaction));
+  const scopedPaidInitialSales = paidTransactions.filter(transaction =>
+   transaction.isInitialSale === true && transaction.status === 'paid' && belongsToCommercial(transaction)
+  );
+  const closures = countUniqueInitialSales(allInitialSales);
+  const commissionPercentage = commercial.commissionPercentage ?? getTieredCommission(closures);
+  const salesCommission = scopedPaidInitialSales.reduce((volume, transaction) => volume + Number(transaction.amount || 0), 0) * commissionPercentage / 100;
+  const extras = (commercial.extraCommissions || [])
+   .filter(extra => includeExtra(extra.date))
+   .reduce((extraSum, extra) => extraSum + Number(extra.amount || 0), 0);
+  return sum + salesCommission + extras;
+ }, 0);
+ const commercialSalaries = calculateAccruedCommercialCommissions(
+  valuedAnalyticsTransactions,
+  date => analyticsRange === 'all' || getFinanceDateKey(date).startsWith(analyticsMonthKey),
+ );
+ const allTimeCommercialCommissions = calculateAccruedCommercialCommissions(
+  nonRecurringTransactions.filter(transaction => transaction.status === 'paid'),
+  () => true,
+ );
  const extraCommissionsAccrued = comercialesList
  .flatMap(com => com.extraCommissions || [])
  .reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
@@ -1458,7 +1501,22 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const cashIncome = cashMovementsSinceOpening.filter(transaction => transaction.type === 'income').reduce((sum, transaction) => sum + transaction.amount, 0);
  const cashExpenses = cashMovementsSinceOpening.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + transaction.amount, 0);
  const cashBalance = CASH_OPENING_BALANCE + cashIncome - cashExpenses;
- const netCashBalance = revolutBalance + stripeAvailableBalance + cashBalance;
+ const grossCashBalance = revolutBalance + stripeAvailableBalance + cashBalance;
+ const completedStripeCommissionPayouts = rankableComercialesList
+  .flatMap(commercial => commercial.payouts || [])
+  .filter(payout => payout.status === 'completed' && payout.paymentMethod === 'stripe')
+  .reduce((sum, payout) => sum + Number(payout.amount || 0), 0);
+ const commissionExpenseAlreadyRecorded = balanceMovements
+  .filter(transaction => transaction.type === 'expense' && /(?:comisi[oó]n|liquidaci[oó]n.*comercial|sueldo.*comercial)/i.test(`${transaction.category} ${transaction.description}`))
+  .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+ // Stripe payouts have already left Stripe's live available balance. Manual
+ // payouts only count as reflected when an explicit finance expense exists.
+ const commissionAlreadyReflectedInAccounts = Math.min(
+  allTimeCommercialCommissions,
+  completedStripeCommissionPayouts + commissionExpenseAlreadyRecorded,
+ );
+ const commissionsStillToDeductFromCash = Math.max(0, allTimeCommercialCommissions - commissionAlreadyReflectedInAccounts);
+ const netCashBalance = grossCashBalance - commissionsStillToDeductFromCash;
 
  const pendingIncomes = analyticsTransactions
  .filter(t => t.type === 'income' && t.status === 'pending')
@@ -1473,6 +1531,20 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   .filter(transaction => transaction.type === 'expense')
   .reduce<Record<string, number>>((groups, transaction) => ({ ...groups, [transaction.category]: (groups[transaction.category] || 0) + transaction.amount }), {});
  const topExpenseCategories = (Object.entries(expenseCategoryBreakdown) as Array<[string, number]>).sort(([, a], [, b]) => b - a).slice(0, 6);
+ const incomeServiceBreakdown = valuedAnalyticsTransactions
+  .filter(transaction => transaction.type === 'income')
+  .reduce<Record<IncomeServiceCategory, number>>((groups, transaction) => {
+   const linkedInvoice = transaction.invoiceId ? invoices.find(invoice => invoice.id === transaction.invoiceId) : undefined;
+   const serviceContext = [
+    transaction.category,
+    transaction.description,
+    ...(linkedInvoice?.items || []).map(item => item.description),
+   ].join(' · ');
+   const services = getIncomeServiceCategories(serviceContext);
+   const amountPerService = Number(transaction.amount || 0) / services.length;
+   services.forEach(service => { groups[service] += amountPerService; });
+   return groups;
+  }, { Web: 0, RRSS: 0, Bites: 0, IA: 0, Otros: 0 });
  const financeTrendData = Array.from({ length: 6 }, (_, index) => {
   const month = new Date();
   month.setDate(1);
@@ -1490,6 +1562,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  });
  const expenseChartColors = ['#fb7185', '#f59e0b', '#a78bfa', '#38bdf8', '#34d399', '#64748b'];
  const expenseChartData = topExpenseCategories.map(([name, value], index) => ({ name, value, color: expenseChartColors[index % expenseChartColors.length] }));
+ const incomeServiceColors: Record<IncomeServiceCategory, string> = {
+  Web: '#38bdf8',
+  RRSS: '#f472b6',
+  Bites: '#fbbf24',
+  IA: '#a78bfa',
+  Otros: '#64748b',
+ };
+ const incomeServiceChartData = (Object.entries(incomeServiceBreakdown) as Array<[IncomeServiceCategory, number]>)
+  .filter(([, value]) => value > 0)
+  .sort(([, a], [, b]) => b - a)
+  .map(([name, value]) => ({ name, value, color: incomeServiceColors[name] }));
  const recentAnalyticsTransactions = [...analyticsTransactions]
   .sort((a, b) => getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date)))
   .slice(0, 5);
@@ -3467,7 +3550,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   </div>
 
   <div className="grid gap-4 lg:grid-cols-2">
-   <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.1] via-[#0b1329]/70 to-blue-400/[0.05] p-5"><div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" /><div className="relative flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo actual</h3></div><span className="grid h-10 w-10 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.08]"><Landmark className="h-5 w-5 text-cyan-300" /></span></div><strong className={`relative mt-6 block whitespace-nowrap text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></section>
+   <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.1] via-[#0b1329]/70 to-blue-400/[0.05] p-5"><div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" /><div className="relative flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo actual</h3></div><span className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.92] shadow-[0_10px_30px_rgba(56,189,248,.12)]"><img src="/revolut-pro-logo.png" alt="Revolut Pro" className="h-11 w-11 object-contain" /></span></div><strong className={`relative mt-6 block whitespace-nowrap text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></section>
    <section className="relative overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-[#11131a]/80 to-[#0b1329]/70 p-5">
     <div className="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-300/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-4">
@@ -3526,8 +3609,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      { label: 'Pendiente neto', value: pendingBalance, note: 'Cobros menos pagos', icon: Clock, accent: 'text-amber-300', glow: 'from-amber-400/[0.18]' },
      { label: 'Ingresos', value: totalIncomes, note: 'Registrados en el periodo', icon: ArrowUpRight, accent: 'text-cyan-300', glow: 'from-cyan-400/[0.18]' },
      { label: 'Gastos', value: totalExpenses, note: 'Liquidados y pendientes', icon: ArrowDownLeft, accent: 'text-rose-300', glow: 'from-rose-400/[0.18]' },
-     { label: 'Comisiones', value: commercialSalaries, note: 'Sueldos comerciales', icon: Briefcase, accent: 'text-violet-300', glow: 'from-violet-400/[0.18]' },
-     { label: 'Caja real', value: netCashBalance, note: 'Revolut + Stripe + efectivo', icon: ShieldCheck, accent: 'text-sky-300', glow: 'from-sky-400/[0.18]' },
+     { label: 'Comisiones', value: commercialSalaries, note: 'Devengadas · liquidadas y pendientes', icon: Briefcase, accent: 'text-violet-300', glow: 'from-violet-400/[0.18]' },
+     { label: 'Caja real', value: netCashBalance, note: 'Cuentas y efectivo − comisiones', icon: ShieldCheck, accent: 'text-sky-300', glow: 'from-sky-400/[0.18]' },
      { label: 'Efectivo', value: cashBalance, note: '', icon: Banknote, accent: 'text-lime-300', glow: 'from-lime-400/[0.18]' },
      { label: 'Gastos cobrados', value: consolidatedExpenses, note: 'Pagos ya liquidados', icon: CreditCard, accent: 'text-pink-300', glow: 'from-pink-400/[0.18]' },
     ]).map(metric => {
@@ -3549,7 +3632,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </div>
     </section>
 
-    <div className="relative mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,.75fr)]">
+    <div className="relative mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(260px,.62fr)_minmax(260px,.62fr)]">
     <article className="min-h-[330px] rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><span className="text-[8px] font-black uppercase tracking-[.2em] text-cyan-300">Evolución · 6 meses</span><h4 className="mt-1 text-sm font-bold text-white">Ingresos frente a gastos</h4></div><div className="flex gap-3 text-[8px] font-bold uppercase tracking-wider"><span className="flex items-center gap-1.5 text-cyan-200"><i className="h-2 w-2 rounded-full bg-cyan-300" />Ingresos</span><span className="flex items-center gap-1.5 text-rose-200"><i className="h-2 w-2 rounded-full bg-rose-300" />Gastos</span></div></div>
      <div className="mt-4 h-[245px]">
@@ -3570,6 +3653,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <article className="rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
      <span className="text-[8px] font-black uppercase tracking-[.2em] text-fuchsia-300">Distribución</span><h4 className="mt-1 text-sm font-bold text-white">Gastos por categoría</h4>
      {expenseChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay gastos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}><PieChart><Pie data={expenseChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{expenseChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-lg font-black text-white">{totalExpenses.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">gasto total</span></div></div><div className="space-y-2">{expenseChartData.slice(0, 4).map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="text-white">{item.value.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong></div>)}</div></>}
+    </article>
+
+    <article className="rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
+     <span className="text-[8px] font-black uppercase tracking-[.2em] text-cyan-300">Origen de ingresos</span><h4 className="mt-1 text-sm font-bold text-white">Ingresos por servicio</h4>
+     {incomeServiceChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay ingresos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}><PieChart><Pie data={incomeServiceChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{incomeServiceChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-lg font-black text-white">{totalIncomes.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">ingreso total</span></div></div><div className="space-y-2">{incomeServiceChartData.map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="whitespace-nowrap text-white">{item.value.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong></div>)}</div></>}
     </article>
    </div>
 
@@ -5451,7 +5539,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      ['Ingresos', monthIncome.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }), 'text-emerald-300'],
      ['Gastos', monthExpenses.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }), 'text-rose-300'],
      ['Neto', (monthIncome - monthExpenses - commercialSalaries).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }), 'text-cyan-300'],
-     ['Comisiones', (commercialSalaries + extraCommissionsAccrued).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }), 'text-amber-300'],
+     ['Comisiones', commercialSalaries.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }), 'text-amber-300'],
      ['Crecimiento', `${growth >= 0 ? '+' : ''}${growth}%`, growth >= 0 ? 'text-emerald-300' : 'text-rose-300']
      ].map(([label, value, color]) => (
      <div key={String(label)} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
