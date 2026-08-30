@@ -1522,7 +1522,7 @@ React.useEffect(() => {
 
  useEffect(() => {
   fetchFinancials();
-  const refreshTimer = window.setInterval(fetchFinancials, 15000);
+  const refreshTimer = window.setInterval(fetchFinancials, 5 * 60_000);
   const refreshWhenVisible = () => {
    if (document.visibilityState === 'visible') fetchFinancials();
   };

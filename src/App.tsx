@@ -248,6 +248,15 @@ export default function App() {
  // Global projects state
  const [projects, setProjects] = useState<any[]>([]);
 
+ useEffect(() => {
+  if (currentScreen !== 'projects') return;
+  let active = true;
+  db.getProjects(undefined, true)
+   .then(items => { if (active) setProjects(items); })
+   .catch(error => console.warn('No se pudieron cargar las imágenes de proyectos:', error));
+  return () => { active = false; };
+ }, [currentScreen]);
+
  const [partners, setPartners] = useState<PartnerCompany[]>([]);
 
  useEffect(() => {
@@ -735,10 +744,10 @@ export default function App() {
   handleRefreshFinance();
  // Keep checking every 60 seconds for updates, only when tab is visible
  const interval = setInterval(() => {
-  if (document.visibilityState === 'visible') {
-  handleRefreshFinance();
-  }
- }, 60000);
+   if (document.visibilityState === 'visible') {
+   handleRefreshFinance();
+   }
+  }, 5 * 60_000);
   return () => clearInterval(interval);
   }, [handleRefreshFinance]);
 
@@ -1061,7 +1070,12 @@ export default function App() {
      ? fetched.find(account => account.id === current.id) || current
      : current);
    }),
-   load('proyectos', () => db.getProjects(), setProjects),
+    // Project images are multi-megabyte base64 values. Background hydration only
+    // needs metadata; the full image payload is loaded on demand in Proyectos.
+    load('proyectos', () => db.getProjects(undefined, false), fetched => setProjects(current => fetched.map(project => {
+     const loadedImage = current.find(existing => existing.id === project.id)?.image;
+     return loadedImage ? { ...project, image: loadedImage } : project;
+    }))),
    load('contactos', () => db.getContacts(), setContacts),
    load('eventos', () => db.getEvents(), setEvents),
    ...(activeUid ? [
@@ -1109,7 +1123,7 @@ export default function App() {
  };
  const interval = setInterval(() => {
   refreshVisibleData();
- }, 60000);
+  }, 5 * 60_000);
  window.addEventListener('focus', refreshVisibleData);
  document.addEventListener('visibilitychange', refreshVisibleData);
  return () => {

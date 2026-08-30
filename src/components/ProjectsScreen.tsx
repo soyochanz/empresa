@@ -45,6 +45,35 @@ export interface AgencyProject {
  showOnLanding?: boolean;
 }
 
+const optimizeProjectImage = (file: File): Promise<string> => new Promise((resolve, reject) => {
+ const reader = new FileReader();
+ reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+ reader.onload = () => {
+  const source = typeof reader.result === 'string' ? reader.result : '';
+  if (!source || file.type === 'image/svg+xml') {
+   resolve(source);
+   return;
+  }
+  const image = new Image();
+  image.onerror = () => reject(new Error('El archivo no contiene una imagen válida.'));
+  image.onload = () => {
+   const scale = Math.min(1, 1440 / image.naturalWidth, 900 / image.naturalHeight);
+   const canvas = document.createElement('canvas');
+   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+   canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+   const context = canvas.getContext('2d');
+   if (!context) {
+    resolve(source);
+    return;
+   }
+   context.drawImage(image, 0, 0, canvas.width, canvas.height);
+   resolve(canvas.toDataURL('image/webp', 0.78));
+  };
+  image.src = source;
+ };
+ reader.readAsDataURL(file);
+});
+
 interface ProjectsScreenProps {
  contacts: ClientContact[];
  onNavigate: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
@@ -961,23 +990,21 @@ export default function ProjectsScreen({
        type="file"
        accept="image/*"
        className="hidden"
-       onChange={(e) => {
-       const file = e.target.files?.[0];
-       if (file) {
+        onChange={async (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
         // Let's validate maximum sizing for performance (e.g. 5MB)
         if (file.size > 5 * 1024 * 1024) {
         alert("La imagen es demasiado grande. Por favor selecciona una de menos de 5MB.");
         return;
         }
-        const reader = new FileReader();
-        reader.onloadend = () => {
-        if (reader.result && typeof reader.result === 'string') {
-         setFormImage(reader.result);
+        try {
+         setFormImage(await optimizeProjectImage(file));
+        } catch (error: any) {
+         alert(error?.message || 'No se pudo optimizar la imagen.');
         }
-        };
-        reader.readAsDataURL(file);
-       }
-       }}
+        }
+        }}
       />
       </label>
      </div>

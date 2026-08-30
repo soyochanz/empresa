@@ -842,7 +842,7 @@ export async function seedSupabaseDatabase(
 // ==========================================
 // DB Caching Layer to minimize Supabase Egress
 // ==========================================
-const CACHE_TTL_MS = 60_000; // Realtime invalidation keeps shared records fresh without polling every table repeatedly.
+const CACHE_TTL_MS = 5 * 60_000; // Realtime invalidation keeps shared records fresh; polling is only a safety net.
 const _queryCache: Record<string, { data: any; timestamp: number }> = {};
 
 function getCached<T>(key: string): T | null {
@@ -2475,12 +2475,15 @@ const dbImplementation = {
  },
 
  // --- PROJECTS ---
- async getProjects(userId?: string): Promise<any[]> {
- const cacheKey = 'projects';
- const cached = getCached<any[]>(cacheKey);
- if (cached) return cached;
+ async getProjects(userId?: string, includeImages = true): Promise<any[]> {
+  const cacheKey = includeImages ? 'projects_full' : 'projects_summary';
+  const cached = getCached<any[]>(cacheKey);
+  if (cached) return cached;
 
- const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+  const projectColumns = includeImages
+   ? '*'
+   : 'id,title,category,clientName,clientContactId,description,detailText,performanceScore,seoScore,url,tools,addons,status,showOnLanding,user_id,created_at';
+  const { data, error } = await supabase.from('projects').select(projectColumns).order('created_at', { ascending: false });
  if (error) {
   console.warn('projects table read error:', error.message);
   throw error;

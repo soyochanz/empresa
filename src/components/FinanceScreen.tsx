@@ -900,7 +900,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
      setSyncError('La sincronización en directo no está disponible; se mantiene la actualización automática.');
     }
    });
-  const refreshTimer = window.setInterval(fetchDatabaseFinanceData, 15000);
+  // Realtime is the primary sync path. A five-minute poll only recovers from a
+  // dropped websocket without repeatedly downloading both finance tables.
+  const refreshTimer = window.setInterval(fetchDatabaseFinanceData, 5 * 60_000);
   const refreshWhenVisible = () => {
    if (document.visibilityState === 'visible') fetchDatabaseFinanceData();
   };
@@ -1491,6 +1493,57 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const recentAnalyticsTransactions = [...analyticsTransactions]
   .sort((a, b) => getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date)))
   .slice(0, 5);
+ const vatNow = new Date();
+ const vatQuarterStartMonth = Math.floor(vatNow.getMonth() / 3) * 3;
+ const vatQuarterStart = `${vatNow.getFullYear()}-${String(vatQuarterStartMonth + 1).padStart(2, '0')}-01`;
+ const vatQuarterEndDate = new Date(vatNow.getFullYear(), vatQuarterStartMonth + 3, 0);
+ const vatQuarterEnd = `${vatQuarterEndDate.getFullYear()}-${String(vatQuarterEndDate.getMonth() + 1).padStart(2, '0')}-${String(vatQuarterEndDate.getDate()).padStart(2, '0')}`;
+ const vatQuarterLabel = `T${Math.floor(vatQuarterStartMonth / 3) + 1} ${vatNow.getFullYear()}`;
+ const vatQuarterSummary = invoices.reduce((summary, invoice) => {
+  const invoiceTotal = Math.max(0, Number(invoice.total || 0));
+  const invoiceVat = Math.max(0, Number(invoice.taxAmount || 0));
+  if (invoiceTotal <= 0 || invoiceVat <= 0 || Number(invoice.taxPercentage || 0) <= 0) return summary;
+
+  const pendingTransactionIds = new Set((invoice.items || []).map(item => item.pendingTxId).filter(Boolean));
+  const linkedPayments = transactions
+   .filter(transaction => transaction.type === 'income' && transaction.status === 'paid' && (
+    transaction.invoiceId === invoice.id || pendingTransactionIds.has(transaction.id)
+   ))
+   .sort((a, b) => getFinanceDateKey(a.date).localeCompare(getFinanceDateKey(b.date)));
+  const collections = linkedPayments.map(transaction => ({ amount: Number(transaction.amount || 0), date: getFinanceDateKey(transaction.date) }));
+  const explicitlyCollected = collections.reduce((sum, collection) => sum + Math.max(0, collection.amount), 0);
+  if (invoice.status === 'paid' && explicitlyCollected < invoiceTotal) {
+   collections.push({ amount: invoiceTotal - explicitlyCollected, date: linkedPayments.at(-1)?.date || getFinanceDateKey(invoice.date) });
+  }
+
+  let remainingGross = invoiceTotal;
+  let collectedGrossInQuarter = 0;
+  collections.forEach(collection => {
+   const recognizedGross = Math.min(remainingGross, Math.max(0, collection.amount));
+   remainingGross = Math.max(0, remainingGross - recognizedGross);
+   if (collection.date >= vatQuarterStart && collection.date <= vatQuarterEnd) collectedGrossInQuarter += recognizedGross;
+  });
+
+  const vatRateWithinGross = invoiceVat / invoiceTotal;
+  if (collectedGrossInQuarter > 0) {
+   summary.collectedGross += collectedGrossInQuarter;
+   summary.collectedVat += collectedGrossInQuarter * vatRateWithinGross;
+   summary.collectedInvoiceIds.add(invoice.id);
+  }
+  const invoiceDate = getFinanceDateKey(invoice.date);
+  if (invoiceDate >= vatQuarterStart && invoiceDate <= vatQuarterEnd && remainingGross > 0) {
+   summary.pendingVat += remainingGross * vatRateWithinGross;
+  }
+  return summary;
+ }, {
+  collectedGross: 0,
+  collectedVat: 0,
+  pendingVat: 0,
+  collectedInvoiceIds: new Set<string>(),
+ });
+ const collectedVatThisQuarter = Math.round(vatQuarterSummary.collectedVat * 100) / 100;
+ const pendingVatThisQuarter = Math.round(vatQuarterSummary.pendingVat * 100) / 100;
+ const taxableNetCollectedThisQuarter = Math.round((vatQuarterSummary.collectedGross - vatQuarterSummary.collectedVat) * 100) / 100;
  const pendingIncomeItems = analyticsTransactions.filter(t => t.type === 'income' && t.status === 'pending');
  const pendingExpenseItems = analyticsTransactions.filter(t => t.type === 'expense' && t.status === 'pending');
  const todayFinanceKey = getFinanceDateKey(new Date().toISOString());
@@ -3481,9 +3534,22 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      const Icon = metric.icon;
      return <article key={metric.label} className={`group relative overflow-hidden rounded-2xl border border-white/[0.065] bg-gradient-to-br ${metric.glow} via-white/[0.025] to-transparent p-4 transition hover:-translate-y-0.5 hover:border-white/[0.13]`}><div className="flex items-start justify-between gap-3"><div><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">{metric.label}</span><strong className="mt-2 block whitespace-nowrap text-xl font-black tracking-tight text-white">{metric.value.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><span className="rounded-xl border border-white/[0.08] bg-black/20 p-2"><Icon className={`h-4 w-4 ${metric.accent}`} /></span></div>{metric.note && <p className={`mt-3 text-[9px] font-semibold ${metric.accent}`}>{metric.note}</p>}</article>;
     })}
-   </div>
+    </div>
 
-   <div className="relative mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,.75fr)]">
+    <section className="relative mt-4 overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-black/20 to-emerald-300/[0.035] p-4 sm:p-5">
+     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div><span className="text-[8px] font-black uppercase tracking-[.2em] text-amber-300">Estimación fiscal · {vatQuarterLabel}</span><h4 className="mt-1 flex items-center gap-2 text-sm font-bold text-white"><ReceiptText className="h-4 w-4 text-amber-300" />IVA repercutido sobre cobros</h4><p className="mt-1 max-w-2xl text-[9px] leading-4 text-slate-500">Solo usa facturas con IVA y reconoce proporcionalmente los cobros parciales. El efectivo sin factura sujeta a IVA queda excluido automáticamente.</p></div>
+      <span className="shrink-0 rounded-xl border border-amber-300/20 bg-amber-300/[0.09] px-3 py-2 text-[8px] font-black uppercase tracking-wider text-amber-200">Antes de IVA deducible</span>
+     </div>
+     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="rounded-2xl border border-amber-300/12 bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">IVA cobrado estimado</span><strong className="mt-1 block whitespace-nowrap text-xl font-black text-white">{collectedVatThisQuarter.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[8px] text-slate-500">A ingresar antes de deducciones</p></div>
+      <div className="rounded-2xl border border-cyan-300/12 bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300">Base neta cobrada</span><strong className="mt-1 block whitespace-nowrap text-xl font-black text-white">{taxableNetCollectedThisQuarter.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[8px] text-slate-500">Importe sin IVA</p></div>
+      <div className="rounded-2xl border border-rose-300/12 bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-rose-300">IVA pendiente</span><strong className="mt-1 block whitespace-nowrap text-xl font-black text-white">{pendingVatThisQuarter.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[8px] text-slate-500">Facturado en el trimestre, aún no cobrado</p></div>
+      <div className="rounded-2xl border border-emerald-300/12 bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Facturas computadas</span><strong className="mt-1 block text-xl font-black text-white">{vatQuarterSummary.collectedInvoiceIds.size}</strong><p className="mt-1 text-[8px] text-slate-500">Con cobros sujetos a IVA</p></div>
+     </div>
+    </section>
+
+    <div className="relative mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,.75fr)]">
     <article className="min-h-[330px] rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><span className="text-[8px] font-black uppercase tracking-[.2em] text-cyan-300">Evolución · 6 meses</span><h4 className="mt-1 text-sm font-bold text-white">Ingresos frente a gastos</h4></div><div className="flex gap-3 text-[8px] font-bold uppercase tracking-wider"><span className="flex items-center gap-1.5 text-cyan-200"><i className="h-2 w-2 rounded-full bg-cyan-300" />Ingresos</span><span className="flex items-center gap-1.5 text-rose-200"><i className="h-2 w-2 rounded-full bg-rose-300" />Gastos</span></div></div>
      <div className="mt-4 h-[245px]">

@@ -134,7 +134,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   if (document.visibilityState === 'visible') void refreshInvoices();
  };
  const handleInvoiceUpdate = () => void refreshInvoices();
- const intervalId = window.setInterval(refreshInvoices, 15000);
+ const intervalId = window.setInterval(refreshInvoices, 5 * 60_000);
  document.addEventListener('visibilitychange', handleVisibility);
  window.addEventListener('finance-invoices-updated', handleInvoiceUpdate);
  return () => {
