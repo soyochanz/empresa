@@ -314,6 +314,154 @@ function getStripePaidDate(invoice: Stripe.Invoice): string {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
+function getContactMetadataValue(rawValue: unknown, key: string): string {
+  const marker = "\n\n---METADATA---";
+  const metadataText = String(rawValue || "").split(marker)[1] || "";
+  const line = metadataText.split("\n").find(candidate => candidate.slice(0, candidate.indexOf(":")) === key);
+  if (!line) return "";
+  const value = line.slice(line.indexOf(":") + 1).trim();
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function cleanFinanceDescription(description: string): string {
+  return String(description || "")
+    .replace(/\s*\[[A-Z_]+:[^\]]+\]/g, "")
+    .replace(/\s*\((?:Pendiente|Ingreso recurrente Stripe|Cobro denegado Stripe|Enlace de pago caducado)\)/gi, "")
+    .trim();
+}
+
+async function ensureInternalInvoiceForPaidStripeRecurrence(
+  invoice: Stripe.Invoice,
+  transactionId?: string,
+): Promise<{ created: boolean; invoiceId?: string; reason?: string }> {
+  const stripeInvoiceId = invoice.id;
+  const subscriptionId = getStripeInvoiceSubscriptionId(invoice);
+  if (!stripeInvoiceId || !subscriptionId) return { created: false, reason: "not_subscription_invoice" };
+
+  const grossTotal = Number(invoice.amount_paid || 0) / 100;
+  if (invoice.status !== "paid" || grossTotal <= 0) return { created: false, reason: "invoice_not_paid" };
+
+  const stripe = getStripe();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const invoiceMetadata = (invoice as any).subscription_details?.metadata || {};
+  const clientId = subscription.metadata?.clientId || invoiceMetadata.clientId || invoice.metadata?.clientId || "";
+
+  const [{ data: contact, error: contactError }, customerResult] = await Promise.all([
+    clientId
+      ? supabaseAdmin.from("contacts").select("*").eq("id", clientId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    typeof subscription.customer === "string"
+      ? stripe.customers.retrieve(subscription.customer).catch(() => null)
+      : Promise.resolve(subscription.customer || null),
+  ]);
+  if (contactError) throw contactError;
+
+  const customer = customerResult && !(customerResult as any).deleted ? customerResult as Stripe.Customer : null;
+  const fiscalName = getContactMetadataValue(contact?.hostingCredentials, "fiscalName");
+  const clientTaxId = getContactMetadataValue(contact?.hostingCredentials, "taxId");
+  const clientAddress = getContactMetadataValue(contact?.hostingCredentials, "fiscalAddress") || contact?.location || "";
+  const configuredTaxValue = getContactMetadataValue(contact?.hostingCredentials, "taxPercentage");
+  const configuredTax = configuredTaxValue === "" ? Number.NaN : Number(configuredTaxValue);
+  const taxPercentage = Number.isFinite(configuredTax) && configuredTax >= 0 ? configuredTax : 21;
+  const subtotal = Number((grossTotal / (1 + taxPercentage / 100)).toFixed(2));
+  const taxAmount = Number((grossTotal - subtotal).toFixed(2));
+  const paidDate = getStripePaidDate(invoice);
+  const year = Number(paidDate.slice(0, 4)) || new Date().getFullYear();
+  const currencyCode = String(invoice.currency || "eur").toUpperCase();
+  const supportedCurrency = ["EUR", "USD", "GBP", "MXN", "CHF"].includes(currencyCode) ? currencyCode : "EUR";
+
+  const sourceTransaction = transactionId
+    ? (await supabaseAdmin.from("finance_transactions").select("*").eq("id", transactionId).maybeSingle()).data
+    : null;
+  const lineDescription = (invoice.lines?.data || []).map((line: any) => line.description).find(Boolean);
+  const concept =
+    subscription.metadata?.concept ||
+    invoiceMetadata.concept ||
+    invoice.metadata?.concept ||
+    cleanFinanceDescription(sourceTransaction?.description || "") ||
+    lineDescription ||
+    "Servicio recurrente Althera";
+
+  const notes = [
+    "Factura generada automáticamente tras la confirmación del cobro recurrente por Stripe.",
+    clientTaxId ? `[CLIENT_TAX_ID:${encodeURIComponent(clientTaxId)}]` : "",
+    clientAddress ? `[CLIENT_ADDRESS:${encodeURIComponent(clientAddress)}]` : "",
+    `[ISSUER_NAME:${encodeURIComponent("Carlos Ronco Meneses")}]`,
+    `[ISSUER_TAX_ID:${encodeURIComponent("09104663K")}]`,
+    `[ISSUER_ADDRESS:${encodeURIComponent("Carrer dels Tamarells 1, 07800 - Ibiza, España")}]`,
+    `[ISSUER_BRAND:${encodeURIComponent("Althera Solutions")}]`,
+    `[ISSUER_EMAIL:${encodeURIComponent("contacto@altherasolutions.com")}]`,
+    `[INVOICE_CURRENCY:${supportedCurrency}]`,
+    `[INVOICE_LANGUAGE:${getContactMetadataValue(contact?.hostingCredentials, "language") || "es"}]`,
+  ].filter(Boolean).join("\n");
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { data: currentInvoices, error: invoiceReadError } = await supabaseAdmin
+      .from("finance_invoices")
+      .select("id,items");
+    if (invoiceReadError) throw invoiceReadError;
+
+    const alreadyCreated = (currentInvoices || []).find((row: any) =>
+      Array.isArray(row.items) && row.items.some((item: any) => item.stripeInvoiceId === stripeInvoiceId),
+    );
+    if (alreadyCreated) return { created: false, invoiceId: alreadyCreated.id, reason: "already_created" };
+
+    const pattern = new RegExp(`^(?:AL|FAC)-${year}-(\\d+)$`, "i");
+    const highest = (currentInvoices || []).reduce((max: number, row: any) => {
+      const match = String(row.id || "").match(pattern);
+      return match ? Math.max(max, Number(match[1]) || 0) : max;
+    }, 0);
+    const internalInvoiceId = `AL-${year}-${String(highest + 1).padStart(3, "0")}`;
+    const item = {
+      id: `item_stripe_${stripeInvoiceId}`,
+      description: concept,
+      quantity: 1,
+      unitPrice: subtotal,
+      total: subtotal,
+      grossAmount: grossTotal,
+      isPending: false,
+      paymentMethod: "stripe",
+      ...(transactionId ? { pendingTxId: transactionId } : {}),
+      stripeInvoiceId,
+    };
+    const { error: insertError } = await supabaseAdmin.from("finance_invoices").insert({
+      id: internalInvoiceId,
+      user_id: sourceTransaction?.user_id || null,
+      clientId: clientId || null,
+      clientName: fiscalName || contact?.name || customer?.name || subscription.metadata?.clientName || "Cliente Stripe",
+      clientEmail: contact?.email || customer?.email || subscription.metadata?.clientEmail || "",
+      date: paidDate,
+      dueDate: paidDate,
+      status: "paid",
+      items: [item],
+      subtotal,
+      taxPercentage,
+      taxAmount,
+      total: grossTotal,
+      notes,
+    });
+
+    if (!insertError) {
+      if (transactionId && sourceTransaction) {
+        const linkedDescription = writeTag(sourceTransaction.description || "", "INV", internalInvoiceId);
+        const { error: linkError } = await supabaseAdmin
+          .from("finance_transactions")
+          .update({ description: linkedDescription })
+          .eq("id", transactionId);
+        if (linkError) console.warn("Invoice created but transaction link could not be saved:", linkError.message);
+      }
+      return { created: true, invoiceId: internalInvoiceId };
+    }
+    if (insertError.code !== "23505") throw insertError;
+  }
+
+  throw new Error(`No se pudo reservar una numeración para la factura Stripe ${stripeInvoiceId}.`);
+}
+
 function writeContactMetadataValues(rawValue: string, values: Record<string, string>): string {
   const marker = "\n\n---METADATA---";
   const markerIndex = rawValue.indexOf(marker);
@@ -853,8 +1001,10 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     }
 
     if (event.type === "invoice.paid" || event.type === "invoice.payment_succeeded") {
-      const result = await markStripeInvoiceAsPaid(event.data.object as Stripe.Invoice);
-      console.log(`Processed Stripe ${event.type} webhook:`, result);
+      const paidInvoice = event.data.object as Stripe.Invoice;
+      const ledgerResult = await markStripeInvoiceAsPaid(paidInvoice);
+      const invoiceResult = await ensureInternalInvoiceForPaidStripeRecurrence(paidInvoice, ledgerResult.txId);
+      console.log(`Processed Stripe ${event.type} webhook:`, { ledgerResult, invoiceResult });
     }
 
     if (event.type === "checkout.session.completed") {
@@ -950,8 +1100,9 @@ async function reconcileRecentStripeFinance(): Promise<{ checked: number; update
     let failed = 0;
     for (const invoice of paidInvoices) {
       try {
-        const result = await markStripeInvoiceAsPaid(invoice);
-        if (result.updated) updated += 1;
+        const ledgerResult = await markStripeInvoiceAsPaid(invoice);
+        const invoiceResult = await ensureInternalInvoiceForPaidStripeRecurrence(invoice, ledgerResult.txId);
+        if (ledgerResult.updated || invoiceResult.created) updated += 1;
         else skipped += 1;
       } catch (error: any) {
         failed += 1;
@@ -1585,7 +1736,7 @@ app.post(
       line_items: [lineItem],
       mode: isSubscription ? "subscription" : "payment",
       customer_email: clientEmail,
-      success_url: `${appUrl}?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${effectiveAmountNumber}&interval=${effectiveInterval}&installments=${effectiveInstallments}&concept=${encodeURIComponent(effectiveConcept)}&pending_tx_id=${effectivePendingTxId}&stripe_plan_id=${effectiveStripePlanId}&installment_index=${effectiveInstallmentIndex}`,
+      success_url: `${appUrl}/pago-confirmado?stripe_session_id={CHECKOUT_SESSION_ID}&stripe_status=success&client_id=${clientId}&amount=${effectiveAmountNumber}&interval=${effectiveInterval}&installments=${effectiveInstallments}&concept=${encodeURIComponent(effectiveConcept)}&pending_tx_id=${effectivePendingTxId}&stripe_plan_id=${effectiveStripePlanId}&installment_index=${effectiveInstallmentIndex}`,
       cancel_url: `${appUrl}?stripe_status=cancel&client_id=${clientId}`,
       client_reference_id: effectivePendingTxId || clientId,
       metadata: {
@@ -1608,12 +1759,15 @@ app.post(
       sessionConfig.subscription_data = {
         metadata: {
           clientId,
+          clientName: clientName || "",
+          clientEmail,
           pendingTxId: effectivePendingTxId,
           stripePlanId: effectiveStripePlanId,
           installments: effectiveInstallments,
           recurrenceCount: effectiveRecurrenceCount,
           billingType: effectiveBillingType,
           interval: effectiveInterval,
+          concept: effectiveConcept,
           firstPaymentDate: effectiveFirstPaymentDate,
         },
         ...(scheduledFirstPaymentAt ? { trial_end: scheduledFirstPaymentAt } : {}),
@@ -2036,6 +2190,15 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
       }),
       markStripeCheckoutSessionAsPaid(session),
     ]);
+    const expandedInvoice = typeof session.invoice === "string" || !session.invoice ? null : session.invoice as Stripe.Invoice;
+    let generatedInvoice = null;
+    if (expandedInvoice?.status === "paid" && getStripeInvoiceSubscriptionId(expandedInvoice)) {
+      const ledgerResult = await markStripeInvoiceAsPaid(expandedInvoice);
+      generatedInvoice = await ensureInternalInvoiceForPaidStripeRecurrence(
+        expandedInvoice,
+        ledgerResult.txId || paymentResult.txId,
+      );
+    }
     
     res.json({
       customerId: session.customer,
@@ -2047,6 +2210,7 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
       url: shareableUrl,
       transactionUpdated: paymentResult.updated,
       transactionId: paymentResult.txId,
+      invoiceGenerated: generatedInvoice,
       firstPaymentDate: session.metadata?.firstPaymentDate || "",
     });
   } catch (error: any) {

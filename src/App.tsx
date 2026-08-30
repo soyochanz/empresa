@@ -24,6 +24,7 @@ import ActivityLogScreen from './components/ActivityLogScreen';
 import MarketingScreen from './components/MarketingScreen';
 import DepartmentsScreen from './components/DepartmentsScreen';
 import BitesScreen from './components/BitesScreen';
+import PaymentConfirmationScreen from './components/PaymentConfirmationScreen';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, supabase, checkSupabaseConnection, ConnectionStatus, invalidateSharedPipelineCache } from './supabaseClient';
 import { Bell, X, Calendar as CalendarAtom, Check, Menu, Search, Plus, AlertTriangle, Briefcase, BriefcaseBusiness, Code2, PhoneCall, Sun, Moon } from 'lucide-react';
@@ -2055,6 +2056,10 @@ export default function App() {
  };
 
  // Render Landing and Login screens separately to exclude sidebar and header layout boundaries
+ if (window.location.pathname === '/pago-confirmado') {
+ return <PaymentConfirmationScreen />;
+ }
+
  if (!authReady && window.location.pathname.startsWith('/admin')) {
  return (
   <div className="min-h-screen w-full bg-[#020204] flex items-center justify-center text-slate-300">
