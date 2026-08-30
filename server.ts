@@ -493,7 +493,8 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
   if (txError) throw txError;
 
   const rows = transactions || [];
-  if (rows.some((tx: any) => (tx.description || "").includes(`[STRIPEINVOICE:${invoiceId}]`))) {
+  const existingInvoiceRow = rows.find((tx: any) => (tx.description || "").includes(`[STRIPEINVOICE:${invoiceId}]`));
+  if (existingInvoiceRow?.status === "paid") {
     return { updated: false, reason: "already_processed" };
   }
 
@@ -527,6 +528,20 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
     recurringDescription = writeTag(recurringDescription, "RECUR_SOURCE", sourceTx.id);
     recurringDescription = writeTag(recurringDescription, "RECUR_DATE", getStripePaidDate(invoice));
     recurringDescription = writeTag(recurringDescription, "ISINITIAL", "false");
+
+    if (existingInvoiceRow?.status === "failed") {
+      const { error: recoveryError } = await supabaseAdmin
+        .from("finance_transactions")
+        .update({
+          status: "paid",
+          amount: Number(invoice.amount_paid || invoice.amount_due || 0) / 100 || Number(existingInvoiceRow.amount || sourceTx.amount || 0),
+          date: getStripePaidDate(invoice),
+          description: recurringDescription,
+        })
+        .eq("id", existingInvoiceRow.id);
+      if (recoveryError) throw recoveryError;
+      return { updated: true, reason: "recovered_failed_payment", txId: existingInvoiceRow.id };
+    }
 
     const recurringTxId = `tx_stripe_invoice_${invoiceId}`;
     const { error: recurringInsertError } = await supabaseAdmin
@@ -581,7 +596,11 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
     return { updated: false, reason: "no_pending_transaction" };
   }
 
-  let updatedDescription = (targetTx.description || "").replace(/\s*\(Pendiente\)/g, "").trim();
+  let updatedDescription = (targetTx.description || "")
+    .replace(/\s*\(Pendiente\)/gi, "")
+    .replace(/\s*\(Cobro denegado Stripe\)/gi, "")
+    .replace(/\s*\(Enlace de pago caducado\)/gi, "")
+    .trim();
   updatedDescription = writeTag(updatedDescription, "STRIPEINVOICE", invoiceId);
 
   const { error: updateTxError } = await supabaseAdmin
@@ -624,6 +643,79 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
   return { updated: true, txId: targetTx.id };
 }
 
+async function markStripeInvoiceAsFailed(invoice: Stripe.Invoice): Promise<{ updated: boolean; reason?: string; txId?: string }> {
+  const stripe = getStripe();
+  const invoiceId = invoice.id;
+  const subscriptionId = getStripeInvoiceSubscriptionId(invoice);
+  if (!invoiceId) return { updated: false, reason: "missing_invoice_id" };
+  if (!subscriptionId) return { updated: false, reason: "not_subscription_invoice" };
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const invoiceMetadata = (invoice as any).subscription_details?.metadata || {};
+  const stripePlanId = subscription.metadata?.stripePlanId || invoiceMetadata.stripePlanId || invoice.metadata?.stripePlanId || "";
+  const firstPendingTxId = subscription.metadata?.pendingTxId || invoiceMetadata.pendingTxId || invoice.metadata?.pendingTxId || "";
+  const billingType = subscription.metadata?.althera_billing_type || invoiceMetadata.billingType || invoice.metadata?.billingType || "";
+  const installments = subscription.metadata?.installments || invoiceMetadata.installments || invoice.metadata?.installments || "";
+
+  const { data: transactions, error } = await supabaseAdmin.from("finance_transactions").select("*");
+  if (error) throw error;
+  const rows = transactions || [];
+  const existingInvoiceRow = rows.find((tx: any) => (tx.description || "").includes(`[STRIPEINVOICE:${invoiceId}]`));
+  if (existingInvoiceRow?.status === "paid") return { updated: false, reason: "invoice_already_paid", txId: existingInvoiceRow.id };
+  if (existingInvoiceRow?.status === "failed") return { updated: false, reason: "already_marked_failed", txId: existingInvoiceRow.id };
+
+  const matchingRows = rows.filter((tx: any) => {
+    const description = tx.description || "";
+    return (stripePlanId && description.includes(`[STRIPEPLAN:${stripePlanId}]`)) || (firstPendingTxId && tx.id === firstPendingTxId);
+  });
+  const sourceTx = matchingRows.find((tx: any) => tx.id === firstPendingTxId) || matchingRows[0];
+  if (!sourceTx) return { updated: false, reason: "no_matching_transaction" };
+
+  const isFirstInvoice = (invoice as any).billing_reason === "subscription_create";
+  const installmentCount = Number.parseInt(String(installments || ""), 10);
+  const isInstallment = billingType === "installment" || (!billingType && Number.isFinite(installmentCount) && installmentCount > 1);
+  const failedDate = new Date((invoice.created || Math.floor(Date.now() / 1000)) * 1000).toISOString().slice(0, 10);
+  let failedDescription = (sourceTx.description || "")
+    .replace(/\s*\(Pendiente\)/gi, "")
+    .replace(/\s*\(Cobro denegado Stripe\)/gi, "")
+    .trim();
+  failedDescription = `${failedDescription} (Cobro denegado Stripe)`;
+  failedDescription = writeTag(failedDescription, "STRIPEINVOICE", invoiceId);
+
+  if (isFirstInvoice || isInstallment) {
+    let targetTx = isFirstInvoice && firstPendingTxId
+      ? matchingRows.find((tx: any) => tx.id === firstPendingTxId)
+      : matchingRows.filter((tx: any) => tx.status === "pending").sort((a: any, b: any) => String(a.date || "").localeCompare(String(b.date || "")))[0];
+    if (!targetTx) targetTx = sourceTx;
+    const { error: updateError } = await supabaseAdmin.from("finance_transactions").update({
+      status: "failed",
+      date: failedDate,
+      description: failedDescription,
+    }).eq("id", targetTx.id);
+    if (updateError) throw updateError;
+    return { updated: true, txId: targetTx.id };
+  }
+
+  failedDescription = writeTag(failedDescription, "RECUR_SOURCE", sourceTx.id);
+  failedDescription = writeTag(failedDescription, "RECUR_DATE", failedDate);
+  failedDescription = writeTag(failedDescription, "ISINITIAL", "false");
+  const failedTxId = `tx_stripe_failed_${invoiceId}`;
+  const { error: insertError } = await supabaseAdmin.from("finance_transactions").insert({
+    id: failedTxId,
+    user_id: sourceTx.user_id || null,
+    type: "income",
+    category: sourceTx.category || "Mensualidad",
+    amount: Number(invoice.amount_due || 0) / 100 || Number(sourceTx.amount || 0),
+    date: failedDate,
+    description: failedDescription,
+    "isRecurring": false,
+    "recurrencePeriod": null,
+    status: "failed",
+  });
+  if (insertError && insertError.code !== "23505") throw insertError;
+  return { updated: !insertError, reason: insertError ? "already_marked_failed" : undefined, txId: failedTxId };
+}
+
 async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session): Promise<{ updated: boolean; reason?: string; txId?: string }> {
   const isPaid = session.payment_status === "paid";
   if (!isPaid) return { updated: false, reason: "payment_not_confirmed" };
@@ -640,7 +732,11 @@ async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session)
   if (txReadError) throw txReadError;
   if (!targetTx) return { updated: false, reason: "transaction_not_found" };
 
-  let updatedDescription = (targetTx.description || "").replace(/\s*\(Pendiente\)/gi, "").trim();
+  let updatedDescription = (targetTx.description || "")
+    .replace(/\s*\(Pendiente\)/gi, "")
+    .replace(/\s*\(Cobro denegado Stripe\)/gi, "")
+    .replace(/\s*\(Enlace de pago caducado\)/gi, "")
+    .trim();
   updatedDescription = writeTag(updatedDescription, "STRIPESESSION", session.id);
   const stripeInvoiceId = typeof session.invoice === "string" ? session.invoice : session.invoice?.id;
   if (stripeInvoiceId) updatedDescription = writeTag(updatedDescription, "STRIPEINVOICE", stripeInvoiceId);
@@ -683,6 +779,30 @@ async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session)
   );
 
   return { updated: targetTx.status !== "paid", txId: pendingTxId };
+}
+
+async function markStripeCheckoutSessionAsExpired(session: Stripe.Checkout.Session): Promise<{ updated: boolean; reason?: string; txId?: string }> {
+  if (session.status !== "expired") return { updated: false, reason: "session_not_expired" };
+  if (session.metadata?.althera_deleted === "true") return { updated: false, reason: "intentionally_deleted" };
+  const pendingTxId = session.metadata?.pendingTxId || "";
+  if (!pendingTxId) return { updated: false, reason: "missing_pending_transaction" };
+  const { data: targetTx, error } = await supabaseAdmin.from("finance_transactions").select("*").eq("id", pendingTxId).maybeSingle();
+  if (error) throw error;
+  if (!targetTx) return { updated: false, reason: "transaction_not_found" };
+  if (targetTx.status === "paid") return { updated: false, reason: "transaction_already_paid", txId: pendingTxId };
+  const recordedSessionId = readTag(targetTx.description || "", "STRIPESESSION");
+  if (recordedSessionId && recordedSessionId !== session.id) {
+    return { updated: false, reason: "session_superseded", txId: pendingTxId };
+  }
+  let description = (targetTx.description || "")
+    .replace(/\s*\(Pendiente\)/gi, "")
+    .replace(/\s*\(Enlace de pago caducado\)/gi, "")
+    .trim();
+  description = `${description} (Enlace de pago caducado)`;
+  description = writeTag(description, "STRIPESESSION", session.id);
+  const { error: updateError } = await supabaseAdmin.from("finance_transactions").update({ status: "failed", description }).eq("id", pendingTxId);
+  if (updateError) throw updateError;
+  return { updated: targetTx.status !== "failed", txId: pendingTxId };
 }
 
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
@@ -741,13 +861,13 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
     if (event.type === "invoice.payment_failed") {
       const invoice = event.data.object as Stripe.Invoice;
-      console.warn("Stripe invoice.payment_failed webhook:", {
-        invoiceId: invoice.id,
-        customer: invoice.customer,
-        subscription: (invoice as any).subscription,
-        amountDue: invoice.amount_due,
-        hostedInvoiceUrl: invoice.hosted_invoice_url,
-      });
+      const result = await markStripeInvoiceAsFailed(invoice);
+      console.warn("Processed Stripe invoice.payment_failed webhook:", result);
+    }
+
+    if (event.type === "checkout.session.expired") {
+      const result = await markStripeCheckoutSessionAsExpired(event.data.object as Stripe.Checkout.Session);
+      console.warn("Processed Stripe checkout.session.expired webhook:", result);
     }
 
     res.json({ received: true });
@@ -796,6 +916,13 @@ async function reconcileRecentStripeFinance(): Promise<{ checked: number; update
     const paidInvoices = await stripe.invoices
       .list({ status: "paid", created: { gte: createdAfter }, limit: 100 })
       .autoPagingToArray({ limit: 500 });
+    const failedInvoices = (await stripe.invoices
+      .list({ status: "open", created: { gte: createdAfter }, limit: 100 })
+      .autoPagingToArray({ limit: 500 }))
+      .filter(invoice => Number(invoice.attempt_count || 0) > 0 && Boolean(getStripeInvoiceSubscriptionId(invoice)));
+    const expiredSessions = await stripe.checkout.sessions
+      .list({ status: "expired", created: { gte: createdAfter }, limit: 100 })
+      .autoPagingToArray({ limit: 500 });
     let updated = 0;
     let skipped = 0;
     let failed = 0;
@@ -809,14 +936,34 @@ async function reconcileRecentStripeFinance(): Promise<{ checked: number; update
         console.error(`Could not reconcile Stripe invoice ${invoice.id}:`, error?.message || error);
       }
     }
-    return { checked: paidInvoices.length, updated, skipped, failed };
+    for (const invoice of failedInvoices) {
+      try {
+        const result = await markStripeInvoiceAsFailed(invoice);
+        if (result.updated) updated += 1;
+        else skipped += 1;
+      } catch (error: any) {
+        failed += 1;
+        console.error(`Could not reconcile failed Stripe invoice ${invoice.id}:`, error?.message || error);
+      }
+    }
+    for (const session of expiredSessions) {
+      try {
+        const result = await markStripeCheckoutSessionAsExpired(session);
+        if (result.updated) updated += 1;
+        else skipped += 1;
+      } catch (error: any) {
+        failed += 1;
+        console.error(`Could not reconcile expired Stripe session ${session.id}:`, error?.message || error);
+      }
+    }
+    return { checked: paidInvoices.length + failedInvoices.length + expiredSessions.length, updated, skipped, failed };
   } finally {
     stripeFinanceReconciliationRunning = false;
   }
 }
 
 // Repairs ledger state when a webhook was delayed or unavailable. Stripe is
-// the source of truth: only invoices Stripe reports as paid are marked paid.
+// the source of truth for paid invoices, rejected renewals and expired links.
 app.post("/api/stripe/reconcile-finance", requireAdminAuth, async (_req, res) => {
   try {
     res.json(await reconcileRecentStripeFinance());
@@ -1451,6 +1598,9 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       // Avoid leaving a usable Stripe session whose shareable short URL was
       // not persisted successfully.
       try {
+        await stripe.checkout.sessions.update(session.id, {
+          metadata: { ...(session.metadata || {}), althera_deleted: "true" },
+        });
         await stripe.checkout.sessions.expire(session.id);
       } catch (expireError: any) {
         console.warn("Could not expire orphaned Stripe Checkout Session:", expireError?.message || expireError);
@@ -1458,6 +1608,28 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       throw shortLinkError;
     }
     const compactUrl = `${appUrl}/p/${compactCode}`;
+
+    if (previousSessionId && effectivePendingTxId) {
+      const { data: retryTx, error: retryReadError } = await supabaseAdmin
+        .from("finance_transactions")
+        .select("description")
+        .eq("id", effectivePendingTxId)
+        .maybeSingle();
+      if (retryReadError) throw retryReadError;
+      if (retryTx) {
+        let retryDescription = String(retryTx.description || "")
+          .replace(/\s*\(Enlace de pago caducado\)/gi, "")
+          .replace(/\s*\(Cobro denegado Stripe\)/gi, "")
+          .trim();
+        retryDescription = `${retryDescription} (Pendiente)`;
+        retryDescription = writeTag(retryDescription, "STRIPESESSION", session.id);
+        const { error: retryUpdateError } = await supabaseAdmin
+          .from("finance_transactions")
+          .update({ status: "pending", description: retryDescription })
+          .eq("id", effectivePendingTxId);
+        if (retryUpdateError) throw retryUpdateError;
+      }
+    }
 
     res.json({
       url: compactUrl,
@@ -1829,8 +2001,8 @@ async function startServer() {
     console.log(`Server listening on port ${PORT}`);
 
     // Webhooks are the primary path. This periodic reconciliation is a safety
-    // net for transient delivery failures and keeps paid recurring invoices in
-    // the finance ledger even when no administrator has the dashboard open.
+    // net for transient delivery failures and keeps paid or failed recurring
+    // charges in the ledger even when no administrator has the dashboard open.
     const firstReconciliation = setTimeout(() => {
       void reconcileRecentStripeFinance().then(result => {
         if (result.updated > 0) console.log("Stripe finance startup reconciliation:", result);

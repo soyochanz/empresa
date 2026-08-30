@@ -51,7 +51,8 @@ import {
  ReceiptText,
  Sparkles,
  Target,
- Trophy
+ Trophy,
+ XCircle
 } from 'lucide-react';
 
 type StripeFundAmount = {
@@ -345,8 +346,8 @@ type SeptemberServiceEvent = {
 };
 
 const SEPTEMBER_GOAL_MONTH = '2026-09';
-const SEPTEMBER_WEB_GOAL = 5;
-const SEPTEMBER_BITES_GOAL = 3;
+const SEPTEMBER_REVENUE_GOAL = 12_705;
+const SEPTEMBER_SALARY_REWARD = 1_500;
 
 const normalizeServiceCategory = (product: string): SeptemberServiceCategory => {
  const normalized = product.trim().toLocaleLowerCase('es-ES').replace(/[\s_-]+/g, '');
@@ -1173,10 +1174,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
    const lastTransactionRow = exportTransactions.length + 1;
    const exportedIncomeTotal = exportTransactions
-    .filter(transaction => transaction.type === 'income')
+    .filter(transaction => transaction.type === 'income' && transaction.status !== 'failed')
     .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
    const exportedExpenseTotal = exportTransactions
-    .filter(transaction => transaction.type === 'expense')
+    .filter(transaction => transaction.type === 'expense' && transaction.status !== 'failed')
     .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
    summarySheet.getCell('A9').value = 'MOVIMIENTOS';
    summarySheet.getCell('B9').value = 'INGRESOS';
@@ -1212,7 +1213,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
      transaction.type === 'income' ? 'Ingreso' : 'Gasto',
      transaction.status === 'paid'
       ? (transaction.type === 'income' ? 'Cobrado' : 'Pagado')
-      : (transaction.type === 'income' ? 'Por cobrar' : 'Por pagar'),
+      : transaction.status === 'failed'
+       ? 'Denegado'
+       : (transaction.type === 'income' ? 'Por cobrar' : 'Por pagar'),
      parsedDate || transaction.date,
      getCleanBillingConcept(transaction.description),
      transaction.category,
@@ -1291,18 +1294,24 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Calculations for transactions
- const ledgerTransactions = transactions.filter(transaction => !transaction.isRecurring);
+ const nonRecurringTransactions = transactions.filter(transaction => !transaction.isRecurring);
+ // La bitácora solo anticipa cuotas divididas. Los cobros recurrentes viven
+ // en Recurrencias/Previsión hasta que Stripe confirma el cobro o el fallo.
+ const ledgerTransactions = nonRecurringTransactions.filter(transaction =>
+  transaction.status !== 'pending' || Boolean(getTransactionInstallment(transaction))
+ );
 
  const analyticsMonthKey = getMonthKey(new Date());
  const analyticsTransactions = analyticsRange === 'month'
   ? ledgerTransactions.filter(transaction => getFinanceDateKey(transaction.date).startsWith(analyticsMonthKey))
   : ledgerTransactions;
+ const valuedAnalyticsTransactions = analyticsTransactions.filter(transaction => transaction.status !== 'failed');
 
- const totalIncomes = analyticsTransactions
+ const totalIncomes = valuedAnalyticsTransactions
  .filter(t => t.type === 'income')
  .reduce((sum, t) => sum + t.amount, 0);
 
- const totalExpenses = analyticsTransactions
+ const totalExpenses = valuedAnalyticsTransactions
  .filter(t => t.type === 'expense')
  .reduce((sum, t) => sum + t.amount, 0);
 
@@ -1348,12 +1357,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   other: countSeptemberServices('other'),
  };
  const septemberTotalServices = Object.values(septemberServiceCounts).reduce((sum, count) => sum + count, 0);
- const septemberGoalProgress = Math.round((
-  Math.min(septemberServiceCounts.web, SEPTEMBER_WEB_GOAL)
-  + Math.min(septemberServiceCounts.bites, SEPTEMBER_BITES_GOAL)
- ) / (SEPTEMBER_WEB_GOAL + SEPTEMBER_BITES_GOAL) * 100);
- const septemberWebProgress = Math.min(100, Math.round(septemberServiceCounts.web / SEPTEMBER_WEB_GOAL * 100));
- const septemberBitesProgress = Math.min(100, Math.round(septemberServiceCounts.bites / SEPTEMBER_BITES_GOAL * 100));
+ const septemberRevenue = nonRecurringTransactions
+  .filter(transaction => transaction.type === 'income' && transaction.status === 'paid' && getFinanceDateKey(transaction.date).startsWith(SEPTEMBER_GOAL_MONTH))
+  .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+ const septemberGoalProgress = Math.min(100, Math.round(septemberRevenue / SEPTEMBER_REVENUE_GOAL * 100));
+ const septemberGoalRemaining = Math.max(0, SEPTEMBER_REVENUE_GOAL - septemberRevenue);
+ const septemberGoalAchieved = septemberRevenue >= SEPTEMBER_REVENUE_GOAL;
  const stripeAvailableBalance = (stripeFunds?.available || []).reduce((sum, fund) => sum + Number(fund.amount || 0), 0);
  const cashMovementsSinceOpening = ledgerTransactions.filter(transaction =>
   transaction.status === 'paid' &&
@@ -1374,7 +1383,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  .reduce((sum, t) => sum + t.amount, 0);
 
  const pendingBalance = pendingIncomes - pendingExpenses;
- const expenseCategoryBreakdown = analyticsTransactions
+ const expenseCategoryBreakdown = valuedAnalyticsTransactions
   .filter(transaction => transaction.type === 'expense')
   .reduce<Record<string, number>>((groups, transaction) => ({ ...groups, [transaction.category]: (groups[transaction.category] || 0) + transaction.amount }), {});
  const topExpenseCategories = (Object.entries(expenseCategoryBreakdown) as Array<[string, number]>).sort(([, a], [, b]) => b - a).slice(0, 6);
@@ -1383,7 +1392,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   month.setDate(1);
   month.setMonth(month.getMonth() - (5 - index));
   const monthKey = getMonthKey(month);
-  const monthTransactions = ledgerTransactions.filter(transaction => getFinanceDateKey(transaction.date).startsWith(monthKey));
+  const monthTransactions = ledgerTransactions.filter(transaction => transaction.status !== 'failed' && getFinanceDateKey(transaction.date).startsWith(monthKey));
   const income = monthTransactions.filter(transaction => transaction.type === 'income').reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
   const expense = monthTransactions.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
   return {
@@ -3322,13 +3331,19 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="relative flex items-start justify-between gap-4">
      <div className="flex items-center gap-2.5">
       <div className="rounded-xl border border-amber-300/15 bg-amber-300/10 p-2"><Target className="h-4 w-4 text-amber-300" /></div>
-      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Objetivo septiembre</span><h3 className="mt-0.5 text-sm font-bold text-white">Nuevos clientes y servicios</h3></div>
+      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Objetivo septiembre</span><h3 className="mt-0.5 text-sm font-bold text-white">12.705 € cobrados · cualquier combinación</h3></div>
      </div>
      <div className="text-right"><strong className="text-xl font-black text-white">{septemberGoalProgress}%</strong><p className="text-[8px] uppercase tracking-wider text-slate-500">del objetivo</p></div>
     </div>
     <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-black/35"><div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-all duration-700" style={{ width: `${septemberGoalProgress}%` }} /></div>
 
     <div className="relative mt-4 grid grid-cols-3 gap-2">
+     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Cobrado</span><strong className="mt-1 block text-lg font-black text-white">{septemberRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">{septemberGoalAchieved ? 'Objetivo logrado' : 'Falta'}</span><strong className="mt-1 block text-lg font-black text-white">{septemberGoalRemaining.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Premio al lograrlo</span><strong className="mt-1 block text-sm font-black text-white">{SEPTEMBER_SALARY_REWARD.toLocaleString('es-ES')} € cada uno</strong></div>
+    </div>
+
+    <div className="relative mt-3 grid grid-cols-3 gap-2">
      <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Clientes nuevos</span><strong className="mt-1 block text-xl font-black text-white">{septemberNewClients}</strong></div>
      <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Servicios vendidos</span><strong className="mt-1 block text-xl font-black text-white">{septemberTotalServices}</strong></div>
      <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">A clientes existentes</span><strong className="mt-1 block text-xl font-black text-white">{septemberExistingClientServices}</strong></div>
@@ -3336,13 +3351,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
     <div className="relative mt-3 grid grid-cols-2 gap-2">
      <div className="rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.05] p-3">
-      <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-wider text-cyan-300">Webs</span><strong className="text-sm text-white">{septemberServiceCounts.web}/{SEPTEMBER_WEB_GOAL}</strong></div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/35"><div className="h-full rounded-full bg-cyan-300 transition-all duration-700" style={{ width: `${septemberWebProgress}%` }} /></div>
+      <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-wider text-cyan-300">Webs</span><strong className="text-sm text-white">{septemberServiceCounts.web}</strong></div>
       <p className="mt-1.5 text-[8px] text-slate-500">{countSeptemberServices('web', 'new-client')} en altas · {countSeptemberServices('web', 'existing-client')} en clientes existentes</p>
      </div>
      <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.05] p-3">
-      <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-wider text-amber-300">Bites</span><strong className="text-sm text-white">{septemberServiceCounts.bites}/{SEPTEMBER_BITES_GOAL}</strong></div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/35"><div className="h-full rounded-full bg-amber-300 transition-all duration-700" style={{ width: `${septemberBitesProgress}%` }} /></div>
+      <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-wider text-amber-300">Bites</span><strong className="text-sm text-white">{septemberServiceCounts.bites}</strong></div>
       <p className="mt-1.5 text-[8px] text-slate-500">{countSeptemberServices('bites', 'new-client')} en altas · {countSeptemberServices('bites', 'existing-client')} en clientes existentes</p>
      </div>
     </div>
@@ -3407,7 +3420,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
    <article className="relative mt-4 overflow-hidden rounded-3xl border border-white/[0.065] bg-black/20">
     <div className="flex items-center justify-between border-b border-white/[0.055] px-4 py-3 sm:px-5"><div><span className="text-[8px] font-black uppercase tracking-[.2em] text-slate-500">Actividad reciente</span><h4 className="mt-0.5 text-sm font-bold text-white">Últimos movimientos del periodo</h4></div><Activity className="h-4 w-4 text-cyan-300" /></div>
-    {recentAnalyticsTransactions.length === 0 ? <p className="p-8 text-center text-[10px] text-slate-500">No hay movimientos en el periodo seleccionado.</p> : <div className="divide-y divide-white/[0.045]">{recentAnalyticsTransactions.map(transaction => <div key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:px-5"><div className="min-w-0"><p className="truncate text-[10px] font-bold text-white">{getTransactionDisplayConcept(transaction.description)}</p><p className="mt-0.5 text-[8px] text-slate-500">{transaction.category} · {parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')}</p></div><span className={`hidden text-center text-[8px] font-black uppercase tracking-wider sm:block ${transaction.status === 'paid' ? 'text-emerald-300' : 'text-amber-300'}`}>{transaction.status === 'paid' ? (transaction.type === 'income' ? 'Cobrado' : 'Pagado') : (transaction.type === 'income' ? 'Por cobrar' : 'Por pagar')}</span><strong className={`text-right text-xs font-black ${transaction.type === 'income' ? 'text-cyan-200' : 'text-rose-300'}`}>{transaction.type === 'income' ? '+' : '−'}{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+    {recentAnalyticsTransactions.length === 0 ? <p className="p-8 text-center text-[10px] text-slate-500">No hay movimientos en el periodo seleccionado.</p> : <div className="divide-y divide-white/[0.045]">{recentAnalyticsTransactions.map(transaction => <div key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_120px_110px] sm:px-5"><div className="min-w-0"><p className="truncate text-[10px] font-bold text-white">{getTransactionDisplayConcept(transaction.description)}</p><p className="mt-0.5 text-[8px] text-slate-500">{transaction.category} · {parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')}</p></div><span className={`hidden text-center text-[8px] font-black uppercase tracking-wider sm:block ${transaction.status === 'paid' ? 'text-emerald-300' : transaction.status === 'failed' ? 'text-rose-300' : 'text-amber-300'}`}>{transaction.status === 'paid' ? (transaction.type === 'income' ? 'Cobrado' : 'Pagado') : transaction.status === 'failed' ? 'Denegado' : (transaction.type === 'income' ? 'Por cobrar' : 'Por pagar')}</span><strong className={`text-right text-xs font-black ${transaction.type === 'income' ? 'text-cyan-200' : 'text-rose-300'}`}>{transaction.type === 'income' ? '+' : '−'}{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
    </article>
   </section>
 
@@ -3839,6 +3852,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         <CheckCircle2 className="h-3 w-3" />
         <span>{t.type === 'income' ? 'Cobrado' : 'Pagado'}</span>
         </button>
+       ) : t.status === 'failed' ? (
+        <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-rose-400/20 bg-rose-400/[0.08] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-rose-300" title="Stripe ha rechazado el cobro o el enlace de pago ha caducado">
+         <XCircle className="h-3 w-3" />
+         Denegado
+        </span>
        ) : (
         <div className="flex items-center gap-1.5">
         <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-amber-400/20 bg-amber-400/[0.07] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-amber-300">
@@ -4287,7 +4305,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        const date = new Date(today);
        date.setDate(today.getDate() - (11 - index));
        const key = getFinanceDateKey(date.toISOString());
-       const dayTransactions = transactions.filter(transaction => !transaction.isRecurring && getFinanceDateKey(transaction.date) === key);
+       const dayTransactions = transactions.filter(transaction => !transaction.isRecurring && transaction.status !== 'failed' && getFinanceDateKey(transaction.date) === key);
        return {
         key,
         date,
@@ -6323,8 +6341,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        <div className="flex items-center gap-1.5">
         <span className={`w-1.5 h-1.5 rounded-full ${tx.type === 'income' ? 'bg-emerald-500' : 'bg-red-500'}`} />
         <span className="text-slate-300 font-bold">{tx.description}</span>
-        <span className={`text-[8px] uppercase px-1 rounded font-bold ${tx.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>
-        {tx.status === 'paid' ? 'Realizado' : 'Pendiente'}
+        <span className={`text-[8px] uppercase px-1 rounded font-bold ${tx.status === 'paid' ? 'bg-emerald-500/10 text-emerald-400' : tx.status === 'failed' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'}`}>
+        {tx.status === 'paid' ? 'Realizado' : tx.status === 'failed' ? 'Denegado' : 'Pendiente'}
         </span>
        </div>
        <div className="text-[9px] text-slate-500 flex gap-2">

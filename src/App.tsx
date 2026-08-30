@@ -189,7 +189,7 @@ function getPathFromScreen(screen: Screen): string {
 }
 
 export default function App() {
- const [septemberGoalDismissed, setSeptemberGoalDismissed] = useState(() => localStorage.getItem('althera-september-goal-dismissed') === 'true');
+ const [septemberGoalDismissed, setSeptemberGoalDismissed] = useState(() => localStorage.getItem('althera-september-revenue-goal-dismissed') === 'true');
  const [adminTheme, setAdminTheme] = useState<'dark' | 'light'>(() => {
   try { return localStorage.getItem('althera_admin_theme') === 'light' ? 'light' : 'dark'; }
   catch { return 'dark'; }
@@ -2226,8 +2226,8 @@ export default function App() {
 
   {!septemberGoalDismissed && (
    <div className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-2xl border border-amber-300/20 bg-gradient-to-r from-amber-300/[0.13] to-violet-300/[0.07] px-4 py-2.5 text-xs shadow-lg shadow-amber-950/20 lg:mx-7">
-    <div><span className="font-black text-amber-200">Objetivo septiembre · Carlos y Nacho</span><span className="ml-2 text-slate-300">3 Bites Menus + 5 webs = sueldo de 1.300 € cada uno.</span></div>
-    <button type="button" onClick={() => { localStorage.setItem('althera-september-goal-dismissed', 'true'); setSeptemberGoalDismissed(true); }} className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Cerrar objetivo"><X className="h-4 w-4" /></button>
+    <div><span className="font-black text-amber-200">Objetivo septiembre · 12.705 €</span><span className="ml-2 text-slate-300">Cualquier combinación de ventas. Al alcanzarlo: 1.500 € para Carlos y 1.500 € para Nacho.</span></div>
+    <button type="button" onClick={() => { localStorage.setItem('althera-september-revenue-goal-dismissed', 'true'); setSeptemberGoalDismissed(true); }} className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white" aria-label="Cerrar objetivo"><X className="h-4 w-4" /></button>
    </div>
   )}
 

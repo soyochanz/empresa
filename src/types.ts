@@ -169,7 +169,7 @@ export interface FinanceTransaction {
  recurrenceEndDate?: string; // Inclusive last scheduled charge date (YYYY-MM-DD)
  recurrenceOccurrenceCount?: number; // Maximum number of charges, including the first one
  invoiceId?: string; // Optional reference to a generated invoice
- status: 'paid' | 'pending';
+ status: 'paid' | 'pending' | 'failed';
  paymentMethod?: 'cash' | 'transfer' | 'stripe' | 'card'; // Cash, transfer, Stripe or card
  paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
  firstAmount?: number; // Cost of the first occurrence

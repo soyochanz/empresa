@@ -39,7 +39,8 @@ import {
  BriefcaseBusiness,
  Receipt,
  RefreshCw,
- Clock3
+ Clock3,
+ XCircle
 } from 'lucide-react';
 
 export const safeConfirm = (msg: string): boolean => {
@@ -4444,7 +4445,12 @@ React.useEffect(() => {
     {/* Módulo de Contabilidad y Facturas de Cliente */}
     {(() => {
     const clientInvoices = invoices.filter(inv => invoiceBelongsToContact(inv, selectedContact));
-    const clientTransactions = transactions.filter(t => t.type === 'income' && !t.isRecurring && transactionBelongsToContact(t, selectedContact, clientInvoices));
+    const clientTransactions = transactions.filter(t =>
+     t.type === 'income'
+     && !t.isRecurring
+     && transactionBelongsToContact(t, selectedContact, clientInvoices)
+     && (t.status !== 'pending' || Number(t.stripeInstallmentCount || 0) > 1)
+    );
 
     const getInvoicePaymentSummary = (invoice: Invoice) => {
      const invoiceTotal = Number(invoice.total || 0);
@@ -4662,6 +4668,7 @@ React.useEffect(() => {
       <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
        {clientTransactions.map(tx => {
        const isPending = tx.status === 'pending';
+       const isFailed = tx.status === 'failed';
        const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId, tx.stripeInvoiceId);
 
        return (
@@ -4672,6 +4679,9 @@ React.useEffect(() => {
           {tx.description}
           {isPending && (
           <span className="shrink-0 rounded border border-amber-500/15 bg-amber-500/[0.08] px-1 py-0.5 font-mono text-[6.5px] font-bold uppercase text-amber-400">Pendiente</span>
+          )}
+          {isFailed && (
+          <span className="shrink-0 rounded border border-rose-500/15 bg-rose-500/[0.08] px-1 py-0.5 font-mono text-[6.5px] font-bold uppercase text-rose-400">Denegado</span>
           )}
          </p>
          <div className="flex items-center gap-1.5 truncate font-mono text-[7.5px] text-slate-600">
@@ -4686,18 +4696,20 @@ React.useEffect(() => {
 
          <div className="flex shrink-0 items-center gap-1">
          {/* Amount */}
-         <span className={`mr-1 text-[10px] font-mono font-black ${isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
-          {isPending ? '' : '+'}{tx.amount.toFixed(2)} €
+         <span className={`mr-1 text-[10px] font-mono font-black ${isFailed ? 'text-rose-400' : isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
+          {isPending || isFailed ? '' : '+'}{tx.amount.toFixed(2)} €
          </span>
 
-         <button
+         {isFailed ? (
+          <span className="grid h-6 w-6 place-items-center rounded-md border border-rose-500/15 bg-rose-500/[0.07] text-rose-400" title="Cobro rechazado por Stripe o enlace caducado"><XCircle className="h-3 w-3" /></span>
+         ) : <button
           type="button"
           onClick={() => handleToggleClientTransactionPaid(tx)}
           className={`grid h-6 w-6 place-items-center rounded-md border transition-all cursor-pointer ${isPending ? 'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/15' : 'border-amber-500/15 bg-amber-500/[0.05] text-amber-400 hover:bg-amber-500/10'}`}
           title={isPending ? 'Marcar cuota como pagada' : 'Volver a marcar como pendiente'}
          >
           <Check className="h-3 w-3" />
-         </button>
+         </button>}
 
          <button
           type="button"
