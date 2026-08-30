@@ -598,16 +598,12 @@ React.useEffect(() => {
   setTxStripeError(prev => ({ ...prev, [tx.id]: 'Este movimiento ya está cobrado y no necesita un enlace nuevo.' }));
   return;
  }
- if (tx.stripeCheckoutUrl && currentSession?.status !== 'expired') {
-  setTxStripeError(prev => ({ ...prev, [tx.id]: 'El enlace actual sigue activo o todavía no se ha podido confirmar como caducado.' }));
-  return;
- }
 
  setTxStripeLoading(prev => ({ ...prev, [tx.id]: true }));
  setTxStripeError(prev => ({ ...prev, [tx.id]: '' }));
  try {
   const targetEmail = selectedContact?.email || 'cliente@email.com';
-  const response = await fetch('/api/stripe/create-checkout-session', {
+  const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
   method: 'POST',
   headers: {
    'Content-Type': 'application/json',
@@ -624,6 +620,7 @@ React.useEffect(() => {
    installments: tx.stripeInstallmentCount?.toString() || '',
    concept: tx.description,
    previousSessionId: tx.stripeCheckoutSessionId || undefined,
+   replaceExisting: Boolean(tx.stripeCheckoutSessionId),
   }),
   });
 
@@ -3599,9 +3596,11 @@ React.useEffect(() => {
        {visibleCheckoutExpired ? <Clock3 className="w-3 h-3" /> : <Check className="w-3 h-3" />}
        {visibleCheckoutExpired ? 'Link de pago caducado' : isPartiallyPaid ? 'Enlace activo · primera cuota confirmada' : visibleCheckoutPaid ? 'Pago confirmado por Stripe' : 'Link de pago operativo'}
        </span>
-       {visibleCheckoutExpired && (
+       {visibleCheckoutExpired ? (
        <p className="text-[9px] text-slate-400 leading-snug">Stripe ha confirmado que no fue pagado. Puedes renovarlo sin crear otro concepto ni otro movimiento.</p>
-       )}
+       ) : !visibleCheckoutPaid && visibleCheckoutTransaction ? (
+       <p className="text-[9px] text-slate-400 leading-snug">Puedes generar un enlace nuevo en cualquier momento. El enlace actual quedará desactivado automáticamente.</p>
+       ) : null}
        <div className="flex gap-1.5">
        {visibleCheckoutUrl && !visibleCheckoutExpired && (
        <>
@@ -3628,15 +3627,15 @@ React.useEffect(() => {
        </a>
        </>
        )}
-       {visibleCheckoutExpired && visibleCheckoutTransaction && (
+       {!visibleCheckoutPaid && visibleCheckoutTransaction && (
        <button
         type="button"
         disabled={txStripeLoading[visibleCheckoutTransaction.id]}
         onClick={() => handleGenerateStripeForTx(visibleCheckoutTransaction)}
-        className="w-full py-1.5 px-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-[10px] rounded-lg text-amber-300 font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+        className={`py-1.5 px-2 text-[10px] rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${visibleCheckoutExpired ? 'w-full bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-amber-300' : 'flex-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 text-cyan-300'}`}
        >
         <RefreshCw className={`w-3 h-3 ${txStripeLoading[visibleCheckoutTransaction.id] ? 'animate-spin' : ''}`} />
-        <span>Regenerar este enlace</span>
+        <span>{visibleCheckoutExpired ? 'Regenerar este enlace' : 'Generar enlace nuevo'}</span>
        </button>
        )}
        </div>

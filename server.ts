@@ -1466,10 +1466,18 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
   }
 });
 
-// Create subscription or single payment checkout session
-app.post("/api/stripe/create-checkout-session", async (req, res) => {
+// Create subscription or single payment checkout session. Creating a first
+// link remains available to the existing public flows; replacing an existing
+// Stripe session is an administrative mutation and therefore requires auth.
+app.post(
+  "/api/stripe/create-checkout-session",
+  async (req, res, next) => {
+    if (req.body?.replaceExisting !== true) return next();
+    return requireAdminAuth(req, res, next);
+  },
+  async (req, res) => {
   try {
-    const { clientId, clientName, clientEmail, amount, interval, installments, recurrenceCount, billingType, concept, pendingTxId, stripePlanId, installmentIndex, previousSessionId, firstPaymentDate } = req.body;
+    const { clientId, clientName, clientEmail, amount, interval, installments, recurrenceCount, billingType, concept, pendingTxId, stripePlanId, installmentIndex, previousSessionId, firstPaymentDate, replaceExisting } = req.body;
 
     if (!clientId || !clientEmail || !amount) {
       return res.status(400).json({ error: "clientId, clientEmail, and amount are required" });
@@ -1496,6 +1504,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     let effectiveStripePlanId = stripePlanId || "";
     let effectiveInstallmentIndex = installmentIndex || "";
     let effectiveFirstPaymentDate = typeof firstPaymentDate === "string" ? firstPaymentDate.trim() : "";
+    let previousSessionToReplace: Stripe.Checkout.Session | null = null;
 
     if (previousSessionId) {
       const previousSession = await stripe.checkout.sessions.retrieve(previousSessionId);
@@ -1507,9 +1516,16 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       if (!belongsToSameClient || (!belongsToSameTransaction && !belongsToSamePlan)) {
         return res.status(409).json({ error: "El enlace anterior no pertenece a este cobro." });
       }
-      if (previousSession.payment_status === "paid" || previousSession.status !== "expired") {
+      if (previousSession.payment_status === "paid") {
+        return res.status(409).json({ error: "El cobro ya está pagado y no se puede generar otro enlace." });
+      }
+      if (previousSession.status === "open" && replaceExisting !== true) {
         return res.status(409).json({ error: "El enlace solo se puede renovar cuando Stripe confirma que ha caducado y sigue sin pagar." });
       }
+      if (previousSession.status !== "open" && previousSession.status !== "expired") {
+        return res.status(409).json({ error: "Stripe todavía está procesando este enlace y no permite sustituirlo." });
+      }
+      if (previousSession.status === "open") previousSessionToReplace = previousSession;
 
       effectiveAmountNumber = previousSession.amount_total
         ? previousSession.amount_total / 100
@@ -1635,6 +1651,40 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     }
     const compactUrl = `${appUrl}/p/${compactCode}`;
 
+    // When an operator explicitly replaces a still-open link, retire the old
+    // Checkout Session only after the new session and short URL both exist.
+    // If Stripe cannot retire it (for example because payment completed in the
+    // meantime), remove the replacement so two usable links never coexist.
+    if (previousSessionToReplace) {
+      try {
+        await stripe.checkout.sessions.update(previousSessionToReplace.id, {
+          metadata: {
+            ...(previousSessionToReplace.metadata || {}),
+            althera_replaced: "true",
+            replaced_by_session_id: session.id,
+          },
+        });
+        await stripe.checkout.sessions.expire(previousSessionToReplace.id);
+      } catch (replaceError: any) {
+        try {
+          await stripe.checkout.sessions.update(session.id, {
+            metadata: { ...(session.metadata || {}), althera_deleted: "true" },
+          });
+          await stripe.checkout.sessions.expire(session.id);
+        } catch (cleanupError: any) {
+          console.warn("Could not expire failed replacement Checkout Session:", cleanupError?.message || cleanupError);
+        }
+        const { error: shortLinkCleanupError } = await supabaseAdmin
+          .from("stripe_short_links")
+          .delete()
+          .eq("stripe_checkout_session_id", session.id);
+        if (shortLinkCleanupError) {
+          console.warn("Could not remove failed replacement short link:", shortLinkCleanupError.message);
+        }
+        throw new Error(`No se pudo desactivar el enlace anterior: ${replaceError?.message || "Stripe rechazó la sustitución"}`);
+      }
+    }
+
     if (previousSessionId && effectivePendingTxId) {
       const { data: retryTx, error: retryReadError } = await supabaseAdmin
         .from("finance_transactions")
@@ -1669,7 +1719,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     console.error("Error creating stripe checkout session:", error);
     res.status(500).json({ error: error?.message || "Internal Server Error" });
   }
-});
+  },
+);
 
 // Create billing customer portal session
 app.post("/api/stripe/create-portal-session", requireAdminAuth, async (req, res) => {
