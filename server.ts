@@ -386,6 +386,28 @@ function addStripeBillingIntervalsKeepingDay(startAt: number, count: number, int
   );
 }
 
+function getCancelAtAfterFinalChargeDate(subscription: Stripe.Subscription, finalChargeDate: string): number {
+  const recurringInterval = subscription.items.data[0]?.price.recurring?.interval || "month";
+  const billingAnchor = subscription.trial_end || subscription.billing_cycle_anchor || subscription.start_date;
+  if (!billingAnchor) throw new Error("Stripe no devolvió el inicio del ciclo de facturación.");
+
+  // The requested date represents a real renewal date, not an arbitrary day.
+  // Resolve it from Stripe's original billing anchor so end-of-month plans keep
+  // their natural sequence (31 Jan -> 28 Feb -> 31 Mar, for example).
+  const targetDate = finalChargeDate;
+  const maxOccurrences = recurringInterval === "year" ? 100 : 1200;
+  for (let occurrence = 0; occurrence <= maxOccurrences; occurrence += 1) {
+    const chargeAt = addStripeBillingIntervalsKeepingDay(billingAnchor * 1000, occurrence, recurringInterval);
+    const chargeDate = new Date(chargeAt).toISOString().slice(0, 10);
+    if (chargeDate === targetDate) {
+      return Math.floor(addStripeBillingIntervalsKeepingDay(billingAnchor * 1000, occurrence + 1, recurringInterval) / 1000);
+    }
+    if (chargeDate > targetDate) break;
+  }
+
+  throw new Error("La fecha final debe coincidir con una fecha real de cobro de esta suscripción.");
+}
+
 async function ensureFiniteSubscriptionSchedule(
   subscriptionId: string | undefined,
   options: {
@@ -979,11 +1001,15 @@ app.post("/api/stripe/subscriptions/:subscriptionId/final-charge-date", requireA
     if (!/^\d{4}-\d{2}-\d{2}$/.test(finalChargeDate)) return res.status(400).json({ error: "Fecha final inválida." });
     const stripe = getStripe();
     const subscription = await stripe.subscriptions.retrieve(req.params.subscriptionId);
-    const interval = subscription.items.data[0]?.price.recurring?.interval || "month";
-    const finalAt = new Date(`${finalChargeDate}T12:00:00Z`).getTime();
-    const cancelAt = Math.floor(addStripeBillingIntervalsKeepingDay(finalAt, 1, interval) / 1000);
+    let cancelAt: number;
+    try {
+      cancelAt = getCancelAtAfterFinalChargeDate(subscription, finalChargeDate);
+    } catch (error: any) {
+      return res.status(400).json({ error: error?.message || "La fecha final no coincide con el ciclo de cobro." });
+    }
     await stripe.subscriptions.update(subscription.id, {
       cancel_at: cancelAt,
+      proration_behavior: "none",
       metadata: { ...(subscription.metadata || {}), althera_finite_subscription: "true", althera_final_charge_date: finalChargeDate },
     });
     res.json({ finalChargeDate, cancelAt: new Date(cancelAt * 1000).toISOString() });
