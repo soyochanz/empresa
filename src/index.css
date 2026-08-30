@@ -783,9 +783,20 @@
 .admin-theme-light [class*="bg-[#0"],
 .admin-theme-light [class*="bg-[#1"],
 .admin-theme-light [class*="bg-black/"],
+.admin-theme-light [class*="bg-slate-950/"],
+.admin-theme-light [class*="bg-slate-900/"],
+.admin-theme-light [class*="bg-slate-800/"],
+.admin-theme-light [class*="bg-neutral-950/"],
+.admin-theme-light [class*="bg-neutral-900/"],
+.admin-theme-light [class*="bg-zinc-950/"],
+.admin-theme-light [class*="bg-zinc-900/"],
 .admin-theme-light .bg-slate-950,
 .admin-theme-light .bg-slate-900,
-.admin-theme-light .bg-slate-800 {
+.admin-theme-light .bg-slate-800,
+.admin-theme-light .bg-neutral-950,
+.admin-theme-light .bg-neutral-900,
+.admin-theme-light .bg-zinc-950,
+.admin-theme-light .bg-zinc-900 {
   background-color: rgba(255, 255, 255, 0.92) !important;
 }
 
@@ -1209,6 +1220,71 @@
 
 .admin-theme-light svg {
   shape-rendering: geometricPrecision;
+}
+
+/* Components with custom dark artwork need explicit light surfaces because
+   their arbitrary Tailwind gradients do not expose a normal background token. */
+.admin-theme-light .dashboard-glass > .pointer-events-none.absolute {
+  background: linear-gradient(110deg, rgba(14, 165, 233, 0.08), rgba(99, 102, 241, 0.045) 45%, rgba(16, 185, 129, 0.06)) !important;
+  opacity: 0.5 !important;
+}
+
+.admin-theme-light .dashboard-glass .dashboard-chart-surface {
+  background: linear-gradient(145deg, #ffffff, #f5f8fc) !important;
+  border-color: #d6e0eb !important;
+  box-shadow: inset 0 1px 0 #ffffff, 0 8px 22px rgba(15, 23, 42, 0.05) !important;
+}
+
+.admin-theme-light .dashboard-glass div[class*="bg-[radial-gradient"] {
+  background-image: radial-gradient(circle at 12% 0%, rgba(14, 165, 233, 0.055), transparent 30%), radial-gradient(circle at 88% 20%, rgba(16, 185, 129, 0.045), transparent 28%) !important;
+}
+
+.admin-theme-light .bites-screen {
+  background: #f3f6f9 !important;
+  color: var(--admin-text) !important;
+}
+
+.admin-theme-light .bites-screen > .pointer-events-none.absolute {
+  background: radial-gradient(circle at 88% 4%, rgba(214, 185, 111, 0.12), transparent 32%), radial-gradient(circle at 8% 10%, rgba(14, 165, 233, 0.06), transparent 28%), linear-gradient(180deg, #eef3f7 0%, transparent 100%) !important;
+  opacity: 0.72;
+}
+
+.admin-theme-light .bites-screen .bites-screen-header-flat {
+  color: var(--admin-text) !important;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.68)) !important;
+  border: 1px solid var(--admin-border);
+  border-radius: 28px;
+  box-shadow: var(--admin-shadow-md);
+}
+
+.admin-theme-light .bites-screen .bites-screen-header-flat img {
+  filter: none !important;
+}
+
+.admin-theme-light .bites-screen article,
+.admin-theme-light .bites-screen article[class*="bg-white"],
+.admin-theme-light .bites-screen > div > div[class*="bg-white"] {
+  background: #ffffff !important;
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+  box-shadow: var(--admin-shadow-sm) !important;
+}
+
+.admin-theme-light .bites-screen article [class*="bg-[#182116]"] {
+  background: #edf7df !important;
+  color: #527c1d !important;
+}
+
+.admin-theme-light .bites-screen .bites-metric-value {
+  color: #11180f !important;
+  opacity: 1 !important;
+  -webkit-text-fill-color: #11180f !important;
+}
+
+.admin-theme-light .bites-screen [class*="bg-[#eef1e9]"],
+.admin-theme-light .bites-screen [class*="bg-[#f5f7f1]"],
+.admin-theme-light .bites-screen [class*="bg-[#f8f9f6]"] {
+  background: #f3f7ef !important;
 }
 
 @media (max-width: 767px) {

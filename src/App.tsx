@@ -249,7 +249,11 @@ export default function App() {
  const [projects, setProjects] = useState<any[]>([]);
 
  useEffect(() => {
-  if (currentScreen !== 'projects') return;
+  // Keep the lightweight project query for the admin bootstrap, but hydrate
+  // screenshots wherever they are actually rendered: the public landing and
+  // the project manager. Without this, LandingScreen receives empty `image`
+  // fields and falls back to the Althera logo for every project.
+  if (currentScreen !== 'projects' && currentScreen !== 'landing') return;
   let active = true;
   db.getProjects(undefined, true)
    .then(items => { if (active) setProjects(items); })
