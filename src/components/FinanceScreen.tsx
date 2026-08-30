@@ -200,6 +200,21 @@ const getTransactionInstallment = (transaction: FinanceTransaction): { index: nu
  return index > 0 && total > 1 ? { index, total } : null;
 };
 
+const isUnpaidStripeCheckoutBase = (transaction: FinanceTransaction): boolean => (
+ !transaction.isRecurring
+ && transaction.type === 'income'
+ && transaction.paymentMethod === 'stripe'
+ && (transaction.status === 'pending' || transaction.status === 'failed')
+ && !transaction.recurrenceSourceId
+ && !getTransactionInstallment(transaction)
+);
+
+const hasStripeRecurringIdentity = (transaction: FinanceTransaction): boolean => (
+ transaction.id.startsWith('tx_recurring_')
+ || /^plan_recurring_/i.test(transaction.stripePlanId || '')
+ || /recurrente|mensualidad|suscripci[oó]n/i.test(transaction.description || '')
+);
+
 type TransactionOriginSignalsProps = {
  transaction: FinanceTransaction;
  stripeDashboardUrl: string | null;
@@ -760,9 +775,78 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [stripeFinanceOverview, setStripeFinanceOverview] = useState<StripeFinanceOverview | null>(null);
  const [stripeFinanceLoading, setStripeFinanceLoading] = useState(false);
  const [stripeFinanceError, setStripeFinanceError] = useState('');
+ const [recurringLinkStates, setRecurringLinkStates] = useState<Record<string, {
+  status: 'open' | 'complete' | 'expired' | 'unknown';
+  paymentStatus: 'paid' | 'unpaid' | 'no_payment_required' | 'unknown';
+  mode?: 'payment' | 'subscription' | 'setup';
+  url?: string;
+  expiresAt?: number;
+  loading?: boolean;
+  error?: string;
+ }>>({});
 
  // Transactions local state
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
+
+ const recurringLinkInspectionKey = transactions
+  .filter(transaction => isUnpaidStripeCheckoutBase(transaction) && (
+   hasStripeRecurringIdentity(transaction) || Boolean(transaction.stripeCheckoutSessionId)
+  ))
+  .map(transaction => `${transaction.id}:${transaction.stripeCheckoutSessionId || 'no-session'}`)
+  .sort()
+  .join('|');
+
+ useEffect(() => {
+  if (activeTab !== 'recurring') return;
+  let active = true;
+  const inspectPendingLinks = async () => {
+   const pendingRecurrences = transactions.filter(transaction => isUnpaidStripeCheckoutBase(transaction) && (
+    hasStripeRecurringIdentity(transaction) || Boolean(transaction.stripeCheckoutSessionId)
+   ));
+   await Promise.all(pendingRecurrences.map(async transaction => {
+    if (!transaction.stripeCheckoutSessionId || transaction.stripeCheckoutSessionId.startsWith('cs_test_mock_')) {
+     if (active) setRecurringLinkStates(current => ({ ...current, [transaction.id]: { status: 'unknown', paymentStatus: 'unknown', error: 'Sin sesión verificable' } }));
+     return;
+    }
+    if (active) setRecurringLinkStates(current => ({
+     ...current,
+     [transaction.id]: { ...(current[transaction.id] || { status: 'unknown', paymentStatus: 'unknown' }), loading: true, error: undefined },
+    }));
+    try {
+     const response = await authenticatedFetch(`/api/stripe/retrieve-session?sessionId=${encodeURIComponent(transaction.stripeCheckoutSessionId)}`, { cache: 'no-store' });
+     const data = await readStripeJson(response);
+     if (!response.ok) throw new Error(data.error || 'No se pudo comprobar el enlace.');
+     if (!active) return;
+     setRecurringLinkStates(current => ({
+      ...current,
+      [transaction.id]: {
+       status: data.status || 'unknown',
+       paymentStatus: data.paymentStatus || 'unknown',
+       mode: data.mode,
+       url: data.url || transaction.stripeCheckoutUrl,
+       expiresAt: data.expiresAt,
+      },
+     }));
+     if (data.transactionUpdated && data.paymentStatus === 'paid') {
+      invalidateSharedPipelineCache(['finance_transactions']);
+      setTransactions(await db.getFinanceTransactions());
+     }
+    } catch (error: any) {
+     if (active) setRecurringLinkStates(current => ({
+      ...current,
+      [transaction.id]: {
+       ...(current[transaction.id] || { status: 'unknown', paymentStatus: 'unknown' }),
+       loading: false,
+       error: error?.message || 'No se pudo comprobar el enlace.',
+      },
+     }));
+    }
+   }));
+  };
+  void inspectPendingLinks();
+  const timer = window.setInterval(inspectPendingLinks, 60_000);
+  return () => { active = false; window.clearInterval(timer); };
+ }, [activeTab, recurringLinkInspectionKey]);
 
  // Invoices local state
  const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -2990,6 +3074,11 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
 
  const recurringExpenses = transactions.filter(t => !!t.isRecurring);
  const manualRecurring = recurringExpenses.filter(transaction => transaction.paymentMethod !== 'stripe');
+ const unpaidStripeRecurrences = transactions
+  .filter(transaction => isUnpaidStripeCheckoutBase(transaction) && (
+   hasStripeRecurringIdentity(transaction) || recurringLinkStates[transaction.id]?.mode === 'subscription'
+  ))
+  .sort((a, b) => `${getFinanceDateKey(b.date)}_${b.id}`.localeCompare(`${getFinanceDateKey(a.date)}_${a.id}`));
  const stripePlans = stripeFinanceOverview?.activeSubscriptions ?? [];
  const stripeSubscriptions = stripePlans.filter(plan => plan.billingType === 'subscription');
  const stripeInstallments = stripePlans.filter(plan => plan.billingType === 'installment');
@@ -3447,7 +3536,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    >
    <span>Planes y recurrencias</span>
    <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold ${activeTab === 'recurring' ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-400'}`}>
-    {stripePlans.length + manualRecurring.length}
+    {stripePlans.length + manualRecurring.length + unpaidStripeRecurrences.length}
    </span>
    </button>
    <button
@@ -3506,7 +3595,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    : activeTab === 'forecast' ?
     `${selectedForecast?.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0,00'} € previstos`
    : activeTab === 'recurring'  ?
-    `${stripePlans.length} planes Stripe · ${manualRecurring.length} manuales` 
+    `${stripePlans.length} planes Stripe · ${unpaidStripeRecurrences.length} pendientes sin contabilizar · ${manualRecurring.length} manuales`
     : activeTab === 'stripe' ?
     `Pasarela Stripe Integrada & Activa`
     : `${comercialesList.length} representantes comerciales`}
@@ -3994,10 +4083,41 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        <button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setTxPaymentMethod('cash'); setIsTxModalOpen(true); }} className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/[0.1] px-3.5 py-2.5 text-[10px] font-black text-emerald-200 transition hover:bg-emerald-300/[0.17]"><Banknote className="h-4 w-4" /> Añadir efectivo</button>
       </div>
      </div>
-     <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
+     <div className="relative mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <div className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Suscripciones Stripe</span><strong className="mt-1 block text-2xl text-white">{stripeSubscriptions.length}</strong><span className="text-[9px] text-slate-500">cobro automático recurrente</span></div>
+      <div className="rounded-2xl border border-rose-300/15 bg-rose-300/[0.06] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-rose-300">Pendientes de pago</span><strong className="mt-1 block text-2xl text-white">{unpaidStripeRecurrences.length}</strong><span className="text-[9px] text-slate-500">visibles, sin sumar a finanzas</span></div>
       <div className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pagos fraccionados</span><strong className="mt-1 block text-2xl text-white">{stripeInstallments.length}</strong><span className="text-[9px] text-slate-500">planes con cuotas pendientes</span></div>
       <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300">Recurrencias manuales</span><strong className="mt-1 block text-2xl text-white">{manualRecurring.length}</strong><span className="text-[9px] text-slate-500">efectivo o transferencia</span></div>
+     </div>
+    </section>
+
+    <section className="rounded-3xl border border-rose-300/12 bg-[#0b1329]/25 p-4 sm:p-5">
+     <div className="mb-4 flex items-start justify-between gap-3">
+      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-rose-300">Pendientes · no contabilizadas</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias esperando el primer pago</h4><p className="mt-1 text-[10px] text-slate-500">Se muestran para seguimiento, pero no suman en ingresos, caja, analíticas ni objetivo hasta que Stripe confirme el cobro.</p></div>
+      <span className="shrink-0 rounded-xl border border-rose-300/15 bg-rose-300/[0.07] px-3 py-2 font-mono text-sm font-black text-rose-200">{unpaidStripeRecurrences.length}</span>
+     </div>
+     <div className="grid gap-3 lg:grid-cols-2">
+      {unpaidStripeRecurrences.length === 0 ? (
+       <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay recurrencias pendientes de activación.</div>
+      ) : unpaidStripeRecurrences.map(transaction => {
+       const linkState = recurringLinkStates[transaction.id];
+       const isExpired = transaction.status === 'failed' || linkState?.status === 'expired';
+       const isActive = linkState?.status === 'open' && linkState.paymentStatus !== 'paid';
+       const isChecking = Boolean(linkState?.loading);
+       const statusLabel = isChecking ? 'Comprobando' : isExpired ? 'Link caducado' : isActive ? 'Link activo' : transaction.stripeCheckoutSessionId ? 'Sin verificar' : 'Sin enlace';
+       const statusClass = isExpired
+        ? 'border-rose-300/20 bg-rose-300/[0.09] text-rose-200'
+        : isActive
+         ? 'border-emerald-300/20 bg-emerald-300/[0.09] text-emerald-200'
+         : 'border-amber-300/20 bg-amber-300/[0.08] text-amber-200';
+       const client = contacts.find(contact => contact.id === transaction.clientId);
+       const checkoutUrl = linkState?.url || transaction.stripeCheckoutUrl;
+       const dashboardUrl = getStripeDashboardUrl(transaction.stripeCheckoutSessionId, transaction.stripeInvoiceId);
+       return <article key={transaction.id} className="rounded-2xl border border-white/[0.07] bg-black/20 p-4">
+        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wider ${statusClass}`}>{isChecking ? <RefreshCw className="h-3 w-3 animate-spin" /> : isExpired ? <XCircle className="h-3 w-3" /> : isActive ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}{statusLabel}</span><h5 className="mt-3 truncate text-sm font-black text-white">{getTransactionDisplayConcept(transaction.description)}</h5><p className="mt-1 truncate text-[10px] text-slate-500">{getFinanceBusinessName(client) || client?.name || 'Cliente Stripe'} · pendiente de activación</p></div><strong className="shrink-0 whitespace-nowrap font-mono text-sm text-slate-200">{transaction.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €<small className="block text-right text-[8px] font-normal text-slate-500">no contabilizado</small></strong></div>
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/[0.06] pt-3"><span className="text-[8px] text-slate-500">{linkState?.expiresAt ? `Caduca: ${new Date(linkState.expiresAt * 1000).toLocaleString('es-ES')}` : linkState?.error || 'Estado consultado directamente en Stripe'}</span><div className="flex shrink-0 gap-3">{isActive && checkoutUrl ? <a href={checkoutUrl} target="_blank" rel="noreferrer" className="text-[9px] font-black text-emerald-300 hover:text-emerald-100">Abrir link →</a> : null}{dashboardUrl ? <a href={dashboardUrl} target="_blank" rel="noreferrer" className="text-[9px] font-black text-violet-300 hover:text-violet-100">Ver Stripe →</a> : null}</div></div>
+       </article>;
+      })}
      </div>
     </section>
 
