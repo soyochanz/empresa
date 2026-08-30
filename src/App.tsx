@@ -195,6 +195,10 @@ export default function App() {
   try { return localStorage.getItem('althera_admin_theme') === 'light' ? 'light' : 'dark'; }
   catch { return 'dark'; }
  });
+ const [adminSidebarCollapsed, setAdminSidebarCollapsed] = useState(() => {
+  try { return localStorage.getItem('althera_admin_sidebar_collapsed') === 'true'; }
+  catch { return false; }
+ });
  // Screens state
  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
  const initialPath = window.location.pathname || '/';
@@ -216,6 +220,10 @@ export default function App() {
  useEffect(() => {
   try { localStorage.setItem('althera_admin_theme', adminTheme); } catch {}
  }, [adminTheme]);
+
+ useEffect(() => {
+  try { localStorage.setItem('althera_admin_sidebar_collapsed', String(adminSidebarCollapsed)); } catch {}
+ }, [adminSidebarCollapsed]);
 
  useEffect(() => {
   // Modals created with createPortal live under document.body instead of the
@@ -2209,11 +2217,13 @@ export default function App() {
   unreadCount={unreadCount}
   mobileOpen={mobileSidebarOpen}
   onMobileClose={() => setMobileSidebarOpen(false)}
+  collapsed={adminSidebarCollapsed}
+  onToggleCollapsed={() => setAdminSidebarCollapsed(value => !value)}
   />
   {mobileSidebarOpen && <button aria-label="Cerrar menú" onClick={() => setMobileSidebarOpen(false)} className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm lg:hidden" />}
 
   {/* Main Content Pane wrapper */}
-  <div className="flex-1 ml-0 lg:ml-[288px] flex flex-col h-screen min-w-0 overflow-hidden">
+  <div className={`flex-1 ml-0 flex flex-col h-screen min-w-0 overflow-hidden transition-[margin] duration-300 ${adminSidebarCollapsed ? 'lg:ml-[84px]' : 'lg:ml-[288px]'}`}>
   <div className="lg:hidden h-16 shrink-0 px-4 flex items-center justify-between border-b border-white/[0.07] bg-[#07080b]/95 backdrop-blur-xl z-30">
    <button onClick={() => setMobileSidebarOpen(true)} className="w-11 h-11 rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" aria-label="Abrir menú">
    <Menu className="w-5 h-5" />

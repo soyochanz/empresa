@@ -773,6 +773,13 @@
   opacity: 0.35;
 }
 
+.admin-theme-light #sidebar .sidebar-collapse-toggle {
+  color: #475569 !important;
+  background: #ffffff !important;
+  border-color: #d6e0eb !important;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14) !important;
+}
+
 .admin-theme-light header {
   background: rgba(255, 255, 255, 0.82) !important;
   border-color: var(--admin-border) !important;
@@ -1221,6 +1228,26 @@
   background: #f8fafc !important;
   border-color: #e2e8f0 !important;
 }
+
+.admin-theme-light .finance-vat-panel {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(245, 158, 11, 0.08), transparent 26rem),
+    radial-gradient(circle at 94% 100%, rgba(16, 185, 129, 0.055), transparent 24rem),
+    linear-gradient(145deg, #ffffff, #f8fafc) !important;
+  border-color: #e5e7eb !important;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.065) !important;
+}
+
+.admin-theme-light .finance-vat-card {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.055) !important;
+}
+
+.admin-theme-light .finance-vat-card--amber { background: linear-gradient(145deg, #ffffff, #fffbeb) !important; border-color: #fde7a8 !important; }
+.admin-theme-light .finance-vat-card--cyan { background: linear-gradient(145deg, #ffffff, #ecfeff) !important; border-color: #c5f1f5 !important; }
+.admin-theme-light .finance-vat-card--rose { background: linear-gradient(145deg, #ffffff, #fff1f2) !important; border-color: #fed7dc !important; }
+.admin-theme-light .finance-vat-card--emerald { background: linear-gradient(145deg, #ffffff, #ecfdf5) !important; border-color: #c7f3de !important; }
 
 /* Tabs, pagination and neutral controls need separation from white cards. */
 .admin-theme-light .admin-workspace button[class*="bg-white/"],
