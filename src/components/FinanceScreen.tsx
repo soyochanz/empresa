@@ -241,12 +241,13 @@ const TransactionOriginSignals = React.memo(function TransactionOriginSignals({
  const isCash = transaction.paymentMethod === 'cash';
  const isTransfer = transaction.paymentMethod === 'transfer';
  const isCard = transaction.paymentMethod === 'card';
- const baseClass = 'grid h-7 w-7 place-items-center rounded-lg border transition-colors';
+ const baseClass = 'transaction-origin-signal grid h-7 w-7 place-items-center rounded-lg border transition-colors';
  const inactiveClass = 'border-white/[0.05] bg-white/[0.025] text-slate-700';
 
  const stripeMark = (
   <span
-   className={`${baseClass} ${isStripe ? 'border-[#635bff]/35 bg-[#635bff]/15' : inactiveClass}`}
+   className={`${baseClass} transaction-origin-signal--stripe ${isStripe ? 'border-[#635bff]/35 bg-[#635bff]/15' : inactiveClass}`}
+   data-active={isStripe}
    title={isStripe ? 'Movimiento procesado por Stripe' : 'Sin origen Stripe'}
    aria-label={isStripe ? 'Stripe activo' : 'Stripe inactivo'}
   >
@@ -259,11 +260,11 @@ const TransactionOriginSignals = React.memo(function TransactionOriginSignals({
  );
 
  return (
-  <div className="inline-grid grid-cols-6 gap-1 rounded-xl border border-white/[0.05] bg-black/20 p-1" aria-label="Origen del movimiento">
-   <span className={`${baseClass} ${hasCommercial ? 'border-amber-400/25 bg-amber-400/10 text-amber-300' : inactiveClass}`} title={hasCommercial ? 'Procede de un comercial' : 'Sin comercial'} aria-label={hasCommercial ? 'Comercial activo' : 'Comercial inactivo'}>
+  <div className="transaction-origin-signals inline-grid grid-cols-6 gap-1 rounded-xl border border-white/[0.05] bg-black/20 p-1" aria-label="Origen del movimiento">
+   <span className={`${baseClass} transaction-origin-signal--commercial ${hasCommercial ? 'border-amber-400/25 bg-amber-400/10 text-amber-300' : inactiveClass}`} data-active={hasCommercial} title={hasCommercial ? 'Procede de un comercial' : 'Sin comercial'} aria-label={hasCommercial ? 'Comercial activo' : 'Comercial inactivo'}>
     <Briefcase className="h-3.5 w-3.5" />
    </span>
-   <span className={`${baseClass} ${isRecurring ? 'border-violet-400/25 bg-violet-400/10 text-violet-300' : inactiveClass}`} title={isRecurring ? 'Movimiento recurrente' : 'No recurrente'} aria-label={isRecurring ? 'Recurrente activo' : 'Recurrente inactivo'}>
+   <span className={`${baseClass} transaction-origin-signal--recurring ${isRecurring ? 'border-violet-400/25 bg-violet-400/10 text-violet-300' : inactiveClass}`} data-active={isRecurring} title={isRecurring ? 'Movimiento recurrente' : 'No recurrente'} aria-label={isRecurring ? 'Recurrente activo' : 'Recurrente inactivo'}>
     <Repeat className="h-3.5 w-3.5" />
    </span>
    {isStripe && stripeDashboardUrl ? (
@@ -271,13 +272,13 @@ const TransactionOriginSignals = React.memo(function TransactionOriginSignals({
      {stripeMark}
     </a>
    ) : stripeMark}
-   <span className={`${baseClass} ${isCard ? 'border-blue-400/25 bg-blue-400/10 text-blue-300' : inactiveClass}`} title={isCard ? 'Pago con tarjeta' : 'Sin pago con tarjeta'} aria-label={isCard ? 'Tarjeta activa' : 'Tarjeta inactiva'}>
+   <span className={`${baseClass} transaction-origin-signal--card ${isCard ? 'border-blue-400/25 bg-blue-400/10 text-blue-300' : inactiveClass}`} data-active={isCard} title={isCard ? 'Pago con tarjeta' : 'Sin pago con tarjeta'} aria-label={isCard ? 'Tarjeta activa' : 'Tarjeta inactiva'}>
     <CreditCard className="h-3.5 w-3.5" />
    </span>
-   <span className={`${baseClass} ${isCash ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300' : inactiveClass}`} title={isCash ? 'Pago en efectivo' : 'No pagado en efectivo'} aria-label={isCash ? 'Efectivo activo' : 'Efectivo inactivo'}>
+   <span className={`${baseClass} transaction-origin-signal--cash ${isCash ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300' : inactiveClass}`} data-active={isCash} title={isCash ? 'Pago en efectivo' : 'No pagado en efectivo'} aria-label={isCash ? 'Efectivo activo' : 'Efectivo inactivo'}>
     <Banknote className="h-3.5 w-3.5" />
    </span>
-   <span className={`${baseClass} ${isTransfer ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-300' : inactiveClass}`} title={isTransfer ? 'Pago por transferencia' : 'Sin transferencia'} aria-label={isTransfer ? 'Transferencia activa' : 'Transferencia inactiva'}>
+   <span className={`${baseClass} transaction-origin-signal--transfer ${isTransfer ? 'border-cyan-400/25 bg-cyan-400/10 text-cyan-300' : inactiveClass}`} data-active={isTransfer} title={isTransfer ? 'Pago por transferencia' : 'Sin transferencia'} aria-label={isTransfer ? 'Transferencia activa' : 'Transferencia inactiva'}>
     <Landmark className="h-3.5 w-3.5" />
    </span>
   </div>
@@ -4118,11 +4119,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        )}
        </td>
        <td className="p-3 text-right align-middle">
-       <div className="inline-flex items-center justify-end gap-1.5 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.055] to-black/25 p-1.5 shadow-[inset_0_1px_rgba(255,255,255,.04),0_8px_24px_rgba(0,0,0,.18)]">
+       <div className="finance-action-cluster inline-flex items-center justify-end gap-1.5 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.055] to-black/25 p-1.5 shadow-[inset_0_1px_rgba(255,255,255,.04),0_8px_24px_rgba(0,0,0,.18)]">
         {linkedInv ? (
         <button
          onClick={() => setPreviewInvoice(linkedInv)}
-         className="grid h-8 w-8 place-items-center rounded-xl border border-blue-300/20 bg-gradient-to-br from-blue-300/[0.18] to-cyan-400/[0.07] text-blue-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-300/40 hover:brightness-125"
+         className="finance-action-button finance-action-button--invoice grid h-8 w-8 place-items-center rounded-xl border border-blue-300/20 bg-gradient-to-br from-blue-300/[0.18] to-cyan-400/[0.07] text-blue-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-300/40 hover:brightness-125"
          title={`Ver Factura Vinculada (${linkedInv.id})`}
         >
          <FileText className="h-3.5 w-3.5 stroke-[2.5]" />
@@ -4131,7 +4132,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         t.type === 'income' && (
          <button
          onClick={() => handleCreateInvoiceFromTransaction(t)}
-         className="grid h-8 w-8 place-items-center rounded-xl border border-amber-300/20 bg-gradient-to-br from-amber-200/[0.2] to-amber-500/[0.07] text-amber-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-amber-300/40 hover:brightness-125"
+         className="finance-action-button finance-action-button--invoice grid h-8 w-8 place-items-center rounded-xl border border-amber-300/20 bg-gradient-to-br from-amber-200/[0.2] to-amber-500/[0.07] text-amber-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-amber-300/40 hover:brightness-125"
          title="Facturar este cobro (Generar y editar factura)"
          >
          <FileText className="h-3.5 w-3.5" />
@@ -4140,7 +4141,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         )}
         <button
         onClick={() => handleEditTx(t)}
-        className="grid h-8 w-8 place-items-center rounded-xl border border-sky-300/15 bg-gradient-to-br from-sky-300/[0.12] to-blue-500/[0.04] text-sky-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-sky-300/35 hover:brightness-125"
+        className="finance-action-button finance-action-button--edit grid h-8 w-8 place-items-center rounded-xl border border-sky-300/15 bg-gradient-to-br from-sky-300/[0.12] to-blue-500/[0.04] text-sky-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-sky-300/35 hover:brightness-125"
         title="Editar transacción"
         >
         <Edit className="h-3.5 w-3.5" />
@@ -4148,7 +4149,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         {!t.isRecurring && (
         <button
          onClick={() => handleMakeTransactionRecurring(t)}
-         className="grid h-8 w-8 place-items-center rounded-xl border border-teal-300/20 bg-gradient-to-br from-teal-200/[0.18] to-emerald-500/[0.06] text-teal-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-300/40 hover:brightness-125"
+         className="finance-action-button finance-action-button--recurring grid h-8 w-8 place-items-center rounded-xl border border-teal-300/20 bg-gradient-to-br from-teal-200/[0.18] to-emerald-500/[0.06] text-teal-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-300/40 hover:brightness-125"
          title={`Convertir este ${t.type === 'income' ? 'cobro' : 'pago'} en recurrencia`}
         >
          <Repeat className="h-3.5 w-3.5" />
@@ -4156,7 +4157,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         )}
         <button
         onClick={() => handleDeleteTx(t.id)}
-        className="grid h-8 w-8 place-items-center rounded-xl border border-rose-300/20 bg-gradient-to-br from-rose-300/[0.17] to-red-600/[0.07] text-rose-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-rose-300/45 hover:brightness-125"
+        className="finance-action-button finance-action-button--delete grid h-8 w-8 place-items-center rounded-xl border border-rose-300/20 bg-gradient-to-br from-rose-300/[0.17] to-red-600/[0.07] text-rose-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-rose-300/45 hover:brightness-125"
         title="Eliminar registro"
         >
         <Trash2 className="h-3.5 w-3.5" />
