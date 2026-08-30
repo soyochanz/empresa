@@ -151,15 +151,16 @@ interface FinanceScreenProps {
 
 const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
 const CASH_OPENING_BALANCE = 820;
-const CASH_OPENING_AT = Date.parse('2026-08-24T08:20:21.810Z');
+const REVOLUT_OPENING_BALANCE = 1_762.64;
+const BALANCE_OPENING_AT = Date.parse('2026-08-30T13:05:07.971Z');
 
-const wasCreatedAfterCashOpening = (transaction: FinanceTransaction): boolean => {
+const wasCreatedAfterBalanceOpening = (transaction: FinanceTransaction): boolean => {
  const createdAt = transaction.createdAt ? Date.parse(transaction.createdAt) : Number.NaN;
- if (Number.isFinite(createdAt)) return createdAt >= CASH_OPENING_AT;
+ if (Number.isFinite(createdAt)) return createdAt >= BALANCE_OPENING_AT;
 
  // Newly-created optimistic rows contain their creation timestamp in the id.
  const idTimestamp = transaction.id.match(/(?:^|_)(1\d{12})(?:_|$)/)?.[1];
- return idTimestamp ? Number(idTimestamp) >= CASH_OPENING_AT : true;
+ return idTimestamp ? Number(idTimestamp) >= BALANCE_OPENING_AT : false;
 };
 
 const getFinanceBusinessName = (contact?: ClientContact): string => {
@@ -908,12 +909,6 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invoiceDueFilter, setInvoiceDueFilter] = useState<'all' | 'today' | 'week'>('all');
  const [adminMessage, setAdminMessage] = useState('');
  const [adminMessages, setAdminMessages] = useState<{ id: string; text: string; time: string }[]>([]);
- const [revolutOpeningBalance, setRevolutOpeningBalance] = useState(() => {
-  const stored = localStorage.getItem('althera-revolut-opening');
-  return stored === null || Number(stored) === 0 ? 1345.66 : Number(stored);
- });
- useEffect(() => { localStorage.setItem('althera-revolut-opening', String(revolutOpeningBalance)); }, [revolutOpeningBalance]);
-
  // Active list searches
  const [txSearch, setTxSearch] = useState('');
  const [txCurrentPage, setTxCurrentPage] = useState(1);
@@ -1335,10 +1330,16 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  .reduce((sum, t) => sum + t.amount, 0);
 
  const consolidatedBalance = consolidatedIncomes;
- const revolutExpenses = transactions.filter(transaction => transaction.type === 'expense' && transaction.status === 'paid' && transaction.paymentAccount === 'revolut_pro').reduce((sum, transaction) => sum + transaction.amount, 0);
- // This is the reconciled balance shown by Revolut. Existing ledger expenses
- // are already reflected in it; only update the value on the next bank sync.
- const revolutBalance = revolutOpeningBalance;
+ const balanceMovements = nonRecurringTransactions.filter(transaction =>
+  transaction.status === 'paid' && wasCreatedAfterBalanceOpening(transaction)
+ );
+ const revolutIncome = balanceMovements
+  .filter(transaction => transaction.type === 'income' && (transaction.paymentMethod === 'transfer' || transaction.paymentMethod === 'card'))
+  .reduce((sum, transaction) => sum + transaction.amount, 0);
+ const revolutExpenses = balanceMovements
+  .filter(transaction => transaction.type === 'expense' && transaction.paymentAccount === 'revolut_pro')
+  .reduce((sum, transaction) => sum + transaction.amount, 0);
+ const revolutBalance = REVOLUT_OPENING_BALANCE + revolutIncome - revolutExpenses;
  const septemberServiceEvents = buildSeptemberServiceEvents(invoices, transactions);
  const septemberNewClients = new Set(
   septemberServiceEvents.filter(event => event.kind === 'new-client').map(event => event.clientKey)
@@ -1364,10 +1365,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const septemberGoalRemaining = Math.max(0, SEPTEMBER_REVENUE_GOAL - septemberRevenue);
  const septemberGoalAchieved = septemberRevenue >= SEPTEMBER_REVENUE_GOAL;
  const stripeAvailableBalance = (stripeFunds?.available || []).reduce((sum, fund) => sum + Number(fund.amount || 0), 0);
- const cashMovementsSinceOpening = ledgerTransactions.filter(transaction =>
+ const cashMovementsSinceOpening = balanceMovements.filter(transaction =>
   transaction.status === 'paid' &&
-  transaction.paymentMethod === 'cash' &&
-  wasCreatedAfterCashOpening(transaction)
+  transaction.paymentMethod === 'cash'
  );
  const cashIncome = cashMovementsSinceOpening.filter(transaction => transaction.type === 'income').reduce((sum, transaction) => sum + transaction.amount, 0);
  const cashExpenses = cashMovementsSinceOpening.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + transaction.amount, 0);
@@ -3325,7 +3325,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   </div>
 
   <div className="grid gap-4 lg:grid-cols-2">
-   <section className="rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.08] to-[#0b1329]/60 p-5"><div className="flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo de empresa</h3></div><Landmark className="h-5 w-5 text-cyan-300" /></div><strong className={`mt-4 block text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[10px] text-slate-500">Saldo conciliado actual. Incluye los gastos ya registrados ({revolutExpenses.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € con Revolut Pro).</p><label className="mt-4 block text-[8px] font-black uppercase tracking-wider text-slate-500">Saldo actual importado<input type="number" value={revolutOpeningBalance || ''} onChange={event => setRevolutOpeningBalance(Number(event.target.value) || 0)} placeholder="0,00" className="mt-1 block w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white outline-none" /></label></section>
+   <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.1] via-[#0b1329]/70 to-blue-400/[0.05] p-5"><div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" /><div className="relative flex items-center justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo actual</h3></div><span className="grid h-10 w-10 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.08]"><Landmark className="h-5 w-5 text-cyan-300" /></span></div><strong className={`relative mt-6 block whitespace-nowrap text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></section>
    <section className="relative overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-[#11131a]/80 to-[#0b1329]/70 p-5">
     <div className="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-300/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-4">
@@ -3386,11 +3386,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      { label: 'Gastos', value: totalExpenses, note: 'Liquidados y pendientes', icon: ArrowDownLeft, accent: 'text-rose-300', glow: 'from-rose-400/[0.18]' },
      { label: 'Comisiones', value: commercialSalaries, note: 'Sueldos comerciales', icon: Briefcase, accent: 'text-violet-300', glow: 'from-violet-400/[0.18]' },
      { label: 'Caja real', value: netCashBalance, note: 'Revolut + Stripe + efectivo', icon: ShieldCheck, accent: 'text-sky-300', glow: 'from-sky-400/[0.18]' },
-     { label: 'Efectivo', value: cashBalance, note: 'Base 820 € + movimientos', icon: Banknote, accent: 'text-lime-300', glow: 'from-lime-400/[0.18]' },
+     { label: 'Efectivo', value: cashBalance, note: '', icon: Banknote, accent: 'text-lime-300', glow: 'from-lime-400/[0.18]' },
      { label: 'Gastos cobrados', value: consolidatedExpenses, note: 'Pagos ya liquidados', icon: CreditCard, accent: 'text-pink-300', glow: 'from-pink-400/[0.18]' },
     ]).map(metric => {
      const Icon = metric.icon;
-     return <article key={metric.label} className={`group relative overflow-hidden rounded-2xl border border-white/[0.065] bg-gradient-to-br ${metric.glow} via-white/[0.025] to-transparent p-4 transition hover:-translate-y-0.5 hover:border-white/[0.13]`}><div className="flex items-start justify-between gap-3"><div><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">{metric.label}</span><strong className="mt-2 block text-xl font-black tracking-tight text-white">{metric.value.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><span className="rounded-xl border border-white/[0.08] bg-black/20 p-2"><Icon className={`h-4 w-4 ${metric.accent}`} /></span></div><p className={`mt-3 text-[9px] font-semibold ${metric.accent}`}>{metric.note}</p></article>;
+     return <article key={metric.label} className={`group relative overflow-hidden rounded-2xl border border-white/[0.065] bg-gradient-to-br ${metric.glow} via-white/[0.025] to-transparent p-4 transition hover:-translate-y-0.5 hover:border-white/[0.13]`}><div className="flex items-start justify-between gap-3"><div><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">{metric.label}</span><strong className="mt-2 block whitespace-nowrap text-xl font-black tracking-tight text-white">{metric.value.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><span className="rounded-xl border border-white/[0.08] bg-black/20 p-2"><Icon className={`h-4 w-4 ${metric.accent}`} /></span></div>{metric.note && <p className={`mt-3 text-[9px] font-semibold ${metric.accent}`}>{metric.note}</p>}</article>;
     })}
    </div>
 
@@ -3748,8 +3748,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <th className="p-3 font-bold">Operación</th>
      <th className="p-3 font-bold">Señales</th>
      <th className="p-3 font-bold">Categoría</th>
-     <th className="p-3 font-bold">Fecha</th>
-     <th className="p-3 font-bold">Importe</th>
+     <th className="min-w-[96px] whitespace-nowrap p-3 font-bold">Fecha</th>
+     <th className="min-w-[112px] whitespace-nowrap p-3 font-bold">Importe</th>
      <th className="p-3 font-bold">Estado</th>
      <th className="p-3 font-bold text-right">Acciones</th>
      </tr>
@@ -3834,11 +3834,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         {t.category}
        </span>
        </td>
-       <td className="p-3 text-left align-middle font-mono text-[9px] text-slate-400">
+       <td className="min-w-[96px] whitespace-nowrap p-3 text-left align-middle font-mono text-[9px] text-slate-400">
        {t.date}
        </td>
-       <td className="p-3 text-left align-middle">
-       <span className={`font-mono text-[11px] font-black tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
+       <td className="min-w-[112px] whitespace-nowrap p-3 text-left align-middle">
+       <span className={`whitespace-nowrap font-mono text-[11px] font-black tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
         {t.type === 'income' ? '+' : '-'}{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
        </span>
        </td>
@@ -3875,11 +3875,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        )}
        </td>
        <td className="p-3 text-right align-middle">
-       <div className="inline-flex items-center justify-end gap-1 rounded-xl border border-white/[0.05] bg-black/20 p-1">
+       <div className="inline-flex items-center justify-end gap-1.5 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.055] to-black/25 p-1.5 shadow-[inset_0_1px_rgba(255,255,255,.04),0_8px_24px_rgba(0,0,0,.18)]">
         {linkedInv ? (
         <button
          onClick={() => setPreviewInvoice(linkedInv)}
-         className="grid h-7 w-7 place-items-center rounded-lg border border-blue-400/10 bg-blue-400/[0.06] text-blue-300 transition hover:border-blue-400/20 hover:bg-blue-400/[0.12]"
+         className="grid h-8 w-8 place-items-center rounded-xl border border-blue-300/20 bg-gradient-to-br from-blue-300/[0.18] to-cyan-400/[0.07] text-blue-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-300/40 hover:brightness-125"
          title={`Ver Factura Vinculada (${linkedInv.id})`}
         >
          <FileText className="h-3.5 w-3.5 stroke-[2.5]" />
@@ -3888,7 +3888,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         t.type === 'income' && (
          <button
          onClick={() => handleCreateInvoiceFromTransaction(t)}
-         className="grid h-7 w-7 place-items-center rounded-lg border border-amber-400/10 bg-amber-400/[0.05] text-amber-300 transition hover:border-amber-400/20 hover:bg-amber-400/[0.11]"
+         className="grid h-8 w-8 place-items-center rounded-xl border border-amber-300/20 bg-gradient-to-br from-amber-200/[0.2] to-amber-500/[0.07] text-amber-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-amber-300/40 hover:brightness-125"
          title="Facturar este cobro (Generar y editar factura)"
          >
          <FileText className="h-3.5 w-3.5" />
@@ -3897,7 +3897,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         )}
         <button
         onClick={() => handleEditTx(t)}
-        className="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.06] bg-white/[0.025] text-slate-400 transition hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
+        className="grid h-8 w-8 place-items-center rounded-xl border border-sky-300/15 bg-gradient-to-br from-sky-300/[0.12] to-blue-500/[0.04] text-sky-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-sky-300/35 hover:brightness-125"
         title="Editar transacción"
         >
         <Edit className="h-3.5 w-3.5" />
@@ -3905,7 +3905,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         {!t.isRecurring && (
         <button
          onClick={() => handleMakeTransactionRecurring(t)}
-         className="grid h-7 w-7 place-items-center rounded-lg border border-violet-400/15 bg-violet-400/[0.06] text-violet-300 transition hover:border-violet-400/30 hover:bg-violet-400/[0.13]"
+         className="grid h-8 w-8 place-items-center rounded-xl border border-teal-300/20 bg-gradient-to-br from-teal-200/[0.18] to-emerald-500/[0.06] text-teal-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-300/40 hover:brightness-125"
          title={`Convertir este ${t.type === 'income' ? 'cobro' : 'pago'} en recurrencia`}
         >
          <Repeat className="h-3.5 w-3.5" />
@@ -3913,7 +3913,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         )}
         <button
         onClick={() => handleDeleteTx(t.id)}
-        className="grid h-7 w-7 place-items-center rounded-lg border border-rose-400/10 bg-rose-400/[0.035] text-slate-500 transition hover:border-rose-400/20 hover:bg-rose-400/[0.09] hover:text-rose-300"
+        className="grid h-8 w-8 place-items-center rounded-xl border border-rose-300/20 bg-gradient-to-br from-rose-300/[0.17] to-red-600/[0.07] text-rose-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-rose-300/45 hover:brightness-125"
         title="Eliminar registro"
         >
         <Trash2 className="h-3.5 w-3.5" />
