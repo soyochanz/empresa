@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ComercialAccount } from '../types';
+import { flushAuditLogs, recordAuditEvent } from '../utils/auditLog';
 
 interface ComercialesAccesoScreenProps {
  comercialesList: ComercialAccount[];
@@ -67,6 +68,15 @@ export default function ComercialesAccesoScreen({
   const passwordConfigured = typeof accountByEmail?.password === 'string' && accountByEmail.password.length > 0;
   const passwordMatches = Boolean(accountByEmail && accountByEmail.password === password);
   const found = passwordMatches ? accountByEmail : undefined;
+  const diagnosticReason = found
+   ? 'authenticated'
+   : comercialesList.length === 0
+    ? 'commercial_accounts_not_loaded_or_empty'
+    : !accountByEmail
+     ? 'email_not_found'
+     : !passwordConfigured
+      ? 'password_not_configured'
+      : 'password_mismatch';
 
   // Safe diagnostic: never log the submitted or stored password.
   console.groupCollapsed(`[Commercial Login] ${found ? 'success' : 'failed'}: ${normalizedEmail}`);
@@ -76,17 +86,34 @@ export default function ComercialesAccesoScreen({
    emailFound: Boolean(accountByEmail),
    passwordConfigured,
    passwordMatches,
-   reason: found
-    ? 'authenticated'
-    : comercialesList.length === 0
-     ? 'commercial_accounts_not_loaded_or_empty'
-     : !accountByEmail
-      ? 'email_not_found'
-      : !passwordConfigured
-       ? 'password_not_configured'
-       : 'password_mismatch'
+   reason: diagnosticReason
   });
   console.groupEnd();
+
+  recordAuditEvent({
+   actorType: 'user',
+   actorId: accountByEmail?.id,
+   actorName: accountByEmail?.name || 'Intento de acceso comercial',
+   actorEmail: normalizedEmail,
+   source: 'auth',
+   action: found ? 'commercial_login_success' : 'commercial_login_failed',
+   description: found
+    ? `Inicio de sesión comercial correcto: ${normalizedEmail}`
+    : `Inicio de sesión comercial rechazado: ${diagnosticReason}`,
+   entityType: 'comercial_account',
+   entityId: accountByEmail?.id,
+   screen: 'comerciales_acceso',
+   severity: found ? 'info' : 'warning',
+   metadata: {
+    reason: diagnosticReason,
+    commercialAccountsLoaded: comercialesList.length,
+    emailFound: Boolean(accountByEmail),
+    passwordConfigured,
+    passwordMatches
+   },
+   dedupe: false
+  });
+  void flushAuditLogs();
 
   if (found) {
   clearLoginGuard();

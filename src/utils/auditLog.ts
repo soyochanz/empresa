@@ -128,7 +128,11 @@ export const setAuditContext = (next: Partial<AuditContext>) => {
 };
 
 export const recordAuditEvent = (input: AuditInput) => {
- if (!context.enabled) return;
+ // The public login screens have no active session context yet. Allow only
+ // explicitly identified authentication events so remote login attempts can
+ // still be reviewed by an authenticated administrator.
+ const isIdentifiedPublicAuthEvent = input.source === 'auth' && Boolean(input.actorEmail?.trim());
+ if (!context.enabled && !isIdentifiedPublicAuthEvent) return;
 
  const actorType = input.actorType || context.actorType;
  const actorName = input.actorName || (actorType === 'system' ? 'Sistema Althera' : context.actorName);
