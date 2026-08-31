@@ -953,16 +953,19 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   }
  };
 
- const refreshStripeFinanceOverview = async () => {
+ const refreshStripeFinanceOverview = async (options: { reconcile?: boolean } = {}) => {
  setStripeFinanceLoading(true);
  setStripeFinanceError('');
  try {
-  // Reconcile delayed webhooks first. This prevents a successful Stripe charge
-  // from remaining visually pending in the local ledger.
-  const reconciliation = await authenticatedFetch('/api/stripe/reconcile-finance', { method: 'POST' });
-  if (reconciliation.ok) {
-   invalidateSharedPipelineCache(['finance_transactions']);
-   setTransactions(await db.getFinanceTransactions());
+  // Webhooks and the server-side five-minute safety net own automatic
+  // reconciliation. Only an explicit administrator refresh requests an extra
+  // reconciliation run.
+  if (options.reconcile) {
+   const reconciliation = await authenticatedFetch('/api/stripe/reconcile-finance', { method: 'POST' });
+   if (reconciliation.ok) {
+    invalidateSharedPipelineCache(['finance_transactions']);
+    setTransactions(await db.getFinanceTransactions());
+   }
   }
   const response = await authenticatedFetch('/api/stripe/finance-overview', { cache: 'no-store' });
    const data = await readStripeJson(response);
@@ -996,7 +999,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  useEffect(() => {
   if (activeTab !== 'stripe' && activeTab !== 'recurring' && activeTab !== 'transactions') return;
   void refreshStripeFinanceOverview();
-  const stripeOverviewTimer = window.setInterval(refreshStripeFinanceOverview, 60_000);
+  const stripeOverviewTimer = window.setInterval(() => void refreshStripeFinanceOverview(), 5 * 60_000);
   return () => window.clearInterval(stripeOverviewTimer);
  }, [activeTab]);
 
@@ -4322,7 +4325,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </section>
 
     <section className="rounded-3xl border border-white/[0.06] bg-[#0b1329]/25 p-4 sm:p-5">
-     <div className="mb-4 flex items-center justify-between gap-3"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-violet-300">Stripe · sincronizado</span><h4 className="mt-1 text-sm font-bold text-white">Suscripciones recurrentes</h4></div><button type="button" onClick={() => void refreshStripeFinanceOverview()} disabled={stripeFinanceLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 hover:text-white"><RefreshCw className={`h-4 w-4 ${stripeFinanceLoading ? 'animate-spin' : ''}`} /></button></div>
+     <div className="mb-4 flex items-center justify-between gap-3"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-violet-300">Stripe · sincronizado</span><h4 className="mt-1 text-sm font-bold text-white">Suscripciones recurrentes</h4></div><button type="button" onClick={() => void refreshStripeFinanceOverview({ reconcile: true })} disabled={stripeFinanceLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 hover:text-white"><RefreshCw className={`h-4 w-4 ${stripeFinanceLoading ? 'animate-spin' : ''}`} /></button></div>
      {stripeFinanceError ? <p className="mb-3 text-[10px] text-rose-300">{stripeFinanceError}</p> : null}
      <div className="grid gap-3 lg:grid-cols-2">
       {stripeFinanceLoading && !stripeFinanceOverview ? <div className="col-span-full py-10 text-center text-xs text-slate-500"><RefreshCw className="mx-auto mb-2 h-4 w-4 animate-spin" />Consultando Stripe…</div> : stripeSubscriptions.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay suscripciones recurrentes activas en Stripe.</div> : stripeSubscriptions.map(plan => <article key={plan.id} className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] p-4 transition hover:border-violet-300/30"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-violet-300/20 bg-violet-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-violet-200">{plan.paymentLimit ? `${plan.paymentLimit} cobros · temporal` : 'Suscripción'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 truncate text-[10px] text-slate-500">{plan.customerEmail || 'Cliente Stripe'}</p></div><strong className="shrink-0 text-right font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}<small className="block text-[8px] font-normal text-violet-300">/ {formatStripeInterval(plan.interval, plan.intervalCount)}</small></strong></div><div className="mt-4 flex items-center justify-between border-t border-violet-300/10 pt-3 text-[9px]"><span className="text-slate-400">{plan.paymentCount}/{plan.paymentLimit || '∞'} cobrados · {plan.paymentLimit ? `último pago ${plan.endsAt ? new Date(plan.endsAt).toLocaleDateString('es-ES') : 'programado'}` : `último ${plan.lastPaidAt ? new Date(plan.lastPaidAt).toLocaleDateString('es-ES') : 'sin pagos'}`}</span><span className="flex items-center gap-3"><button type="button" onClick={() => void handleSetStripeFinalChargeDate(plan)} className="font-black text-amber-300 hover:text-amber-100">Definir último cobro</button><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="font-black text-violet-300 hover:text-violet-100">Ver Stripe →</a></span></div></article>)}
@@ -4930,7 +4933,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       <p className="text-[9px] text-slate-400">Suscripciones y cobros consultados directamente en Stripe · pagos contabilizados desde el 31/07/2026.</p>
      </div>
     </div>
-    <button type="button" onClick={() => void Promise.all([refreshStripeFinanceOverview(), refreshStripeFunds()])} disabled={stripeFinanceLoading || stripeFundsLoading} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-[9px] font-bold text-slate-300 transition hover:border-[#635bff]/30 hover:text-white disabled:opacity-50">
+    <button type="button" onClick={() => void Promise.all([refreshStripeFinanceOverview({ reconcile: true }), refreshStripeFunds()])} disabled={stripeFinanceLoading || stripeFundsLoading} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 text-[9px] font-bold text-slate-300 transition hover:border-[#635bff]/30 hover:text-white disabled:opacity-50">
      <RefreshCw className={`h-3.5 w-3.5 ${stripeFinanceLoading || stripeFundsLoading ? 'animate-spin' : ''}`} />
      Actualizar desde Stripe
     </button>

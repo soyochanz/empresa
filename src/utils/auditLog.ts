@@ -208,7 +208,7 @@ const localPage = (filters: AuditLogFilters) => {
 };
 
 export const getAuditLogs = async (filters: AuditLogFilters): Promise<{ logs: AuditLog[]; total: number; localOnly: boolean }> => {
- let query = supabase.from('audit_logs').select('*', { count: 'estimated' });
+ let query = supabase.from('audit_logs').select('id,actor_type,actor_id,actor_name,actor_email,source,action,description,entity_type,entity_id,screen,severity,metadata,created_at', { count: 'estimated' });
  if (filters.search?.trim()) query = query.textSearch('search_document', filters.search.trim(), { type: 'websearch', config: 'simple' });
  if (filters.actorType && filters.actorType !== 'all') query = query.eq('actor_type', filters.actorType);
  if (filters.actorEmail) query = query.eq('actor_email', filters.actorEmail);

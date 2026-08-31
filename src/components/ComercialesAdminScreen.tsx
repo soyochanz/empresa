@@ -140,33 +140,42 @@ export default function ComercialesAdminScreen({
  const [commercialPresence, setCommercialPresence] = useState<CommercialPresence[]>([]);
  const [workSessions, setWorkSessions] = useState<CommercialWorkSession[]>([]);
  const [activityLogs, setActivityLogs] = useState<CommercialActivityLog[]>([]);
+ const [activityTotal, setActivityTotal] = useState(0);
  const [activityCommercialFilter, setActivityCommercialFilter] = useState('all');
  const [activityPage, setActivityPage] = useState(1);
+ const [activityRefreshVersion, setActivityRefreshVersion] = useState(0);
  const [presenceNow, setPresenceNow] = useState(() => Date.now());
+ const activityPageSize = 12;
 
  useEffect(() => {
   let mounted = true;
-  const loadOperationalData = async () => {
+  const loadPresence = async () => {
    try {
-     const [presenceRows, sessionRows, logRows] = await Promise.all([
-     db.getCommercialPresence(),
-     db.getCommercialWorkSessions(),
-     db.getCommercialActivityLogs({ limit: 1000 })
-    ]);
+    const presenceRows = await db.getCommercialPresence();
     if (!mounted) return;
     setCommercialPresence(presenceRows);
-    setWorkSessions(sessionRows);
-    setActivityLogs(logRows);
    } catch (error) {
-    console.error('Could not load commercial operations data:', error);
+    console.error('Could not load commercial presence:', error);
    }
   };
-  void loadOperationalData();
+  const loadSessions = async () => {
+   try {
+    const sessionHistoryStart = new Date();
+    sessionHistoryStart.setMonth(sessionHistoryStart.getMonth() - 13, 1);
+    sessionHistoryStart.setHours(0, 0, 0, 0);
+    const sessionRows = await db.getCommercialWorkSessions(sessionHistoryStart.toISOString());
+    if (!mounted) return;
+    setWorkSessions(sessionRows);
+   } catch (error) {
+    console.error('Could not load commercial work sessions:', error);
+   }
+  };
+  void Promise.all([loadPresence(), loadSessions()]);
   const channel = supabase.channel('admin-commercial-operations')
-   .on('postgres_changes', { event: '*', schema: 'public', table: 'commercial_presence' }, () => void loadOperationalData())
-   .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'commercial_activity_logs' }, () => void loadOperationalData())
+   .on('postgres_changes', { event: '*', schema: 'public', table: 'commercial_presence' }, () => void loadPresence())
+   .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'commercial_activity_logs' }, () => setActivityRefreshVersion(version => version + 1))
    .subscribe();
-  const poll = window.setInterval(loadOperationalData, 30_000);
+  const poll = window.setInterval(() => void Promise.all([loadPresence(), loadSessions()]), 5 * 60_000);
   const clock = window.setInterval(() => setPresenceNow(Date.now()), 1_000);
   return () => {
    mounted = false;
@@ -175,6 +184,30 @@ export default function ComercialesAdminScreen({
    void supabase.removeChannel(channel);
   };
  }, []);
+
+ useEffect(() => {
+  let mounted = true;
+  const loadActivityPage = async () => {
+   try {
+    const result = await db.getCommercialActivityLogPage({
+     commercialId: activityCommercialFilter === 'all' ? undefined : activityCommercialFilter,
+     page: activityPage,
+     pageSize: activityPageSize
+    });
+    if (!mounted) return;
+    setActivityLogs(result.logs);
+    setActivityTotal(result.total);
+   } catch (error) {
+    console.error('Could not load paginated commercial activity:', error);
+   }
+  };
+  void loadActivityPage();
+  const poll = activeTab === 'activity' ? window.setInterval(loadActivityPage, 2 * 60_000) : undefined;
+  return () => {
+   mounted = false;
+   if (poll) window.clearInterval(poll);
+  };
+ }, [activeTab, activityCommercialFilter, activityPage, activityRefreshVersion]);
 
  // Dialog modal custom implementation to avoid sandboxed iframe native blockings
  const [customDialog, setCustomDialog] = useState<{
@@ -753,15 +786,10 @@ export default function ComercialesAdminScreen({
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
  };
  const selectedWorkedSeconds = currentComercial ? getWorkedSecondsToday(currentComercial.id) : 0;
- const activityPageSize = 12;
- const filteredActivityLogs = useMemo(
-  () => activityLogs.filter(log => activityCommercialFilter === 'all' || log.commercialId === activityCommercialFilter),
-  [activityLogs, activityCommercialFilter]
- );
- const activityPageCount = Math.max(1, Math.ceil(filteredActivityLogs.length / activityPageSize));
+ const activityPageCount = Math.max(1, Math.ceil(activityTotal / activityPageSize));
  const safeActivityPage = Math.min(activityPage, activityPageCount);
  const activityPageStart = (safeActivityPage - 1) * activityPageSize;
- const visibleActivityLogs = filteredActivityLogs.slice(activityPageStart, activityPageStart + activityPageSize);
+ const visibleActivityLogs = activityLogs;
 
  useEffect(() => {
   setActivityPage(current => Math.min(current, activityPageCount));
@@ -1681,14 +1709,14 @@ export default function ComercialesAdminScreen({
     <div className="grid gap-4 md:grid-cols-3">
      <div className="rounded-2xl border border-lime-300/15 bg-lime-300/[0.06] p-5"><span className="text-[9px] font-black uppercase tracking-wider text-lime-300">Available ahora</span><p className="mt-2 text-3xl font-black text-white">{availableCommercials.length}</p></div>
      <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.05] p-5"><span className="text-[9px] font-black uppercase tracking-wider text-cyan-300">Horas equipo hoy</span><p className="mt-2 font-mono text-3xl font-black text-white">{formatDuration(comercialesList.reduce((total, comercial) => total + getWorkedSecondsToday(comercial.id), 0))}</p></div>
-     <div className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.05] p-5"><span className="text-[9px] font-black uppercase tracking-wider text-violet-300">Acciones registradas</span><p className="mt-2 text-3xl font-black text-white">{activityLogs.length}</p></div>
+     <div className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.05] p-5"><span className="text-[9px] font-black uppercase tracking-wider text-violet-300">Acciones registradas</span><p className="mt-2 text-3xl font-black text-white">{activityTotal}</p></div>
     </div>
     <section className="rounded-3xl border border-white/[0.07] bg-slate-950/45 p-5 sm:p-6">
      <div className="flex flex-col gap-4 border-b border-white/[0.06] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[9px] font-black uppercase tracking-[.24em] text-violet-300">Auditoría Call Calling</p><h3 className="mt-1 text-xl font-black text-white">Registro operativo</h3><p className="mt-1 text-[10px] text-slate-500">Aperturas de fichas, cambios, llamadas, callbacks y estados con fecha y hora reales.</p></div><select value={activityCommercialFilter} onChange={event => { setActivityCommercialFilter(event.target.value); setActivityPage(1); }} className="rounded-xl border border-white/10 bg-[#070b11] px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-violet-400"><option value="all">Todo el equipo</option>{comercialesList.map(comercial => <option key={comercial.id} value={comercial.id}>{comercial.name}</option>)}</select></div>
      <div className="mt-5 space-y-2">
-      {filteredActivityLogs.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 py-12 text-center text-xs text-slate-500">Todavía no hay actividad registrada para este filtro.</div> : visibleActivityLogs.map(log => <div key={log.id} className="group grid gap-3 rounded-2xl border border-white/[0.06] bg-black/20 p-4 transition hover:border-violet-300/15 sm:grid-cols-[auto_1fr_auto]"><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${log.action.includes('available') || log.action.includes('accepted') ? 'bg-lime-300/10 text-lime-300' : log.action.includes('rejected') || log.action.includes('deleted') ? 'bg-rose-400/10 text-rose-300' : 'bg-violet-400/10 text-violet-300'}`}>{log.action.includes('presence') ? <Radio className="h-4 w-4"/> : <History className="h-4 w-4"/>}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-xs text-white">{log.commercialName}</strong><span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-slate-400">{actionLabel[log.action] || log.action}</span></div><p className="mt-1 text-[11px] leading-5 text-slate-400">{log.description}</p></div><time className="whitespace-nowrap font-mono text-[9px] text-slate-500">{new Date(log.createdAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time></div>)}
+      {activityTotal === 0 ? <div className="rounded-2xl border border-dashed border-white/10 py-12 text-center text-xs text-slate-500">Todavía no hay actividad registrada para este filtro.</div> : visibleActivityLogs.map(log => <div key={log.id} className="group grid gap-3 rounded-2xl border border-white/[0.06] bg-black/20 p-4 transition hover:border-violet-300/15 sm:grid-cols-[auto_1fr_auto]"><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${log.action.includes('available') || log.action.includes('accepted') ? 'bg-lime-300/10 text-lime-300' : log.action.includes('rejected') || log.action.includes('deleted') ? 'bg-rose-400/10 text-rose-300' : 'bg-violet-400/10 text-violet-300'}`}>{log.action.includes('presence') ? <Radio className="h-4 w-4"/> : <History className="h-4 w-4"/>}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-xs text-white">{log.commercialName}</strong><span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-slate-400">{actionLabel[log.action] || log.action}</span></div><p className="mt-1 text-[11px] leading-5 text-slate-400">{log.description}</p></div><time className="whitespace-nowrap font-mono text-[9px] text-slate-500">{new Date(log.createdAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time></div>)}
      </div>
-     {filteredActivityLogs.length > 0 && <div className="mt-5 flex flex-col gap-3 border-t border-white/[0.06] pt-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-[10px] font-medium text-slate-500">Mostrando {activityPageStart + 1}–{Math.min(activityPageStart + activityPageSize, filteredActivityLogs.length)} de {filteredActivityLogs.length} registros</p><div className="flex items-center gap-2"><button type="button" onClick={() => setActivityPage(page => Math.max(1, page - 1))} disabled={safeActivityPage === 1} className="flex h-9 items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-[10px] font-bold text-slate-300 transition hover:border-violet-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"><ChevronLeft className="h-3.5 w-3.5"/>Anterior</button><span className="min-w-[92px] text-center font-mono text-[10px] text-slate-400">Página {safeActivityPage} de {activityPageCount}</span><button type="button" onClick={() => setActivityPage(page => Math.min(activityPageCount, page + 1))} disabled={safeActivityPage === activityPageCount} className="flex h-9 items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-[10px] font-bold text-slate-300 transition hover:border-violet-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-35">Siguiente<ChevronRight className="h-3.5 w-3.5"/></button></div></div>}
+     {activityTotal > 0 && <div className="mt-5 flex flex-col gap-3 border-t border-white/[0.06] pt-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-[10px] font-medium text-slate-500">Mostrando {activityPageStart + 1}–{Math.min(activityPageStart + visibleActivityLogs.length, activityTotal)} de {activityTotal} registros</p><div className="flex items-center gap-2"><button type="button" onClick={() => setActivityPage(page => Math.max(1, page - 1))} disabled={safeActivityPage === 1} className="flex h-9 items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-[10px] font-bold text-slate-300 transition hover:border-violet-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"><ChevronLeft className="h-3.5 w-3.5"/>Anterior</button><span className="min-w-[92px] text-center font-mono text-[10px] text-slate-400">Página {safeActivityPage} de {activityPageCount}</span><button type="button" onClick={() => setActivityPage(page => Math.min(activityPageCount, page + 1))} disabled={safeActivityPage === activityPageCount} className="flex h-9 items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-[10px] font-bold text-slate-300 transition hover:border-violet-300/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-35">Siguiente<ChevronRight className="h-3.5 w-3.5"/></button></div></div>}
     </section>
    </div>
   )}

@@ -352,7 +352,7 @@ async function ensureInternalInvoiceForPaidStripeRecurrence(
 
   const [{ data: contact, error: contactError }, customerResult] = await Promise.all([
     clientId
-      ? supabaseAdmin.from("contacts").select("*").eq("id", clientId).maybeSingle()
+      ? supabaseAdmin.from("contacts").select("id,name,email,location,hostingCredentials").eq("id", clientId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     typeof subscription.customer === "string"
       ? stripe.customers.retrieve(subscription.customer).catch(() => null)
@@ -375,7 +375,7 @@ async function ensureInternalInvoiceForPaidStripeRecurrence(
   const supportedCurrency = ["EUR", "USD", "GBP", "MXN", "CHF"].includes(currencyCode) ? currencyCode : "EUR";
 
   const sourceTransaction = transactionId
-    ? (await supabaseAdmin.from("finance_transactions").select("*").eq("id", transactionId).maybeSingle()).data
+    ? (await supabaseAdmin.from("finance_transactions").select("id,user_id,description").eq("id", transactionId).maybeSingle()).data
     : null;
   const lineDescription = (invoice.lines?.data || []).map((line: any) => line.description).find(Boolean);
   const concept =
@@ -400,14 +400,21 @@ async function ensureInternalInvoiceForPaidStripeRecurrence(
   ].filter(Boolean).join("\n");
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const { data: currentInvoices, error: invoiceReadError } = await supabaseAdmin
+    const [{ data: existingInvoices, error: existingInvoiceError }, { data: currentInvoices, error: invoiceReadError }] = await Promise.all([
+      supabaseAdmin
+        .from("finance_invoices")
+        .select("id")
+        .contains("items", [{ stripeInvoiceId }])
+        .limit(1),
+      supabaseAdmin
       .from("finance_invoices")
-      .select("id,items");
+      .select("id")
+      .or(`id.ilike.AL-${year}-%,id.ilike.FAC-${year}-%`),
+    ]);
+    if (existingInvoiceError) throw existingInvoiceError;
     if (invoiceReadError) throw invoiceReadError;
 
-    const alreadyCreated = (currentInvoices || []).find((row: any) =>
-      Array.isArray(row.items) && row.items.some((item: any) => item.stripeInvoiceId === stripeInvoiceId),
-    );
+    const alreadyCreated = existingInvoices?.[0];
     if (alreadyCreated) return { created: false, invoiceId: alreadyCreated.id, reason: "already_created" };
 
     const pattern = new RegExp(`^(?:AL|FAC)-${year}-(\\d+)$`, "i");
@@ -460,6 +467,45 @@ async function ensureInternalInvoiceForPaidStripeRecurrence(
   }
 
   throw new Error(`No se pudo reservar una numeración para la factura Stripe ${stripeInvoiceId}.`);
+}
+
+const stripeTransactionColumns = "id,user_id,category,amount,date,description,status";
+
+async function getStripeTransactionCandidates(options: {
+  invoiceId: string;
+  stripePlanId?: string;
+  pendingTxId?: string;
+}): Promise<any[]> {
+  const queries = [
+    supabaseAdmin
+      .from("finance_transactions")
+      .select(stripeTransactionColumns)
+      .ilike("description", `%[STRIPEINVOICE:${options.invoiceId}]%`),
+  ];
+  if (options.stripePlanId) {
+    queries.push(
+      supabaseAdmin
+        .from("finance_transactions")
+        .select(stripeTransactionColumns)
+        .ilike("description", `%[STRIPEPLAN:${options.stripePlanId}]%`),
+    );
+  }
+  if (options.pendingTxId) {
+    queries.push(
+      supabaseAdmin
+        .from("finance_transactions")
+        .select(stripeTransactionColumns)
+        .eq("id", options.pendingTxId),
+    );
+  }
+
+  const results = await Promise.all(queries);
+  const rows = new Map<string, any>();
+  results.forEach(result => {
+    if (result.error) throw result.error;
+    (result.data || []).forEach(row => rows.set(row.id, row));
+  });
+  return [...rows.values()];
 }
 
 function writeContactMetadataValues(rawValue: string, values: Record<string, string>): string {
@@ -656,13 +702,7 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
     interval: recurrenceInterval,
   });
 
-  const { data: transactions, error: txError } = await supabaseAdmin
-    .from("finance_transactions")
-    .select("*");
-
-  if (txError) throw txError;
-
-  const rows = transactions || [];
+  const rows = await getStripeTransactionCandidates({ invoiceId, stripePlanId, pendingTxId: firstPendingTxId });
   const existingInvoiceRow = rows.find((tx: any) => (tx.description || "").includes(`[STRIPEINVOICE:${invoiceId}]`));
   if (existingInvoiceRow?.status === "paid") {
     return { updated: false, reason: "already_processed" };
@@ -786,7 +826,8 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
 
   const { data: invoices, error: invError } = await supabaseAdmin
     .from("finance_invoices")
-    .select("*");
+    .select("id,items")
+    .contains("items", [{ pendingTxId: targetTx.id }]);
 
   if (invError) throw invError;
 
@@ -827,9 +868,7 @@ async function markStripeInvoiceAsFailed(invoice: Stripe.Invoice): Promise<{ upd
   const billingType = subscription.metadata?.althera_billing_type || invoiceMetadata.billingType || invoice.metadata?.billingType || "";
   const installments = subscription.metadata?.installments || invoiceMetadata.installments || invoice.metadata?.installments || "";
 
-  const { data: transactions, error } = await supabaseAdmin.from("finance_transactions").select("*");
-  if (error) throw error;
-  const rows = transactions || [];
+  const rows = await getStripeTransactionCandidates({ invoiceId, stripePlanId, pendingTxId: firstPendingTxId });
   const existingInvoiceRow = rows.find((tx: any) => (tx.description || "").includes(`[STRIPEINVOICE:${invoiceId}]`));
   if (existingInvoiceRow?.status === "paid") return { updated: false, reason: "invoice_already_paid", txId: existingInvoiceRow.id };
   if (existingInvoiceRow?.status === "failed") return { updated: false, reason: "already_marked_failed", txId: existingInvoiceRow.id };
@@ -895,7 +934,7 @@ async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session)
 
   const { data: targetTx, error: txReadError } = await supabaseAdmin
     .from("finance_transactions")
-    .select("*")
+    .select("id,description,status")
     .eq("id", pendingTxId)
     .maybeSingle();
 
@@ -924,7 +963,8 @@ async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session)
 
   const { data: invoices, error: invoiceReadError } = await supabaseAdmin
     .from("finance_invoices")
-    .select("*");
+    .select("id,items")
+    .contains("items", [{ pendingTxId }]);
 
   if (invoiceReadError) throw invoiceReadError;
 
@@ -956,7 +996,11 @@ async function markStripeCheckoutSessionAsExpired(session: Stripe.Checkout.Sessi
   if (session.metadata?.althera_deleted === "true") return { updated: false, reason: "intentionally_deleted" };
   const pendingTxId = session.metadata?.pendingTxId || "";
   if (!pendingTxId) return { updated: false, reason: "missing_pending_transaction" };
-  const { data: targetTx, error } = await supabaseAdmin.from("finance_transactions").select("*").eq("id", pendingTxId).maybeSingle();
+  const { data: targetTx, error } = await supabaseAdmin
+    .from("finance_transactions")
+    .select("id,description,status")
+    .eq("id", pendingTxId)
+    .maybeSingle();
   if (error) throw error;
   if (!targetTx) return { updated: false, reason: "transaction_not_found" };
   if (targetTx.status === "paid") return { updated: false, reason: "transaction_already_paid", txId: pendingTxId };

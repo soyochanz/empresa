@@ -3,6 +3,7 @@ import { Mail, Lock, Eye, EyeOff, ArrowRight, ShieldCheck, Sparkles } from 'luci
 import { motion } from 'motion/react';
 import { ComercialAccount } from '../types';
 import { flushAuditLogs, recordAuditEvent } from '../utils/auditLog';
+import { db } from '../supabaseClient';
 
 interface ComercialesAccesoScreenProps {
  comercialesList: ComercialAccount[];
@@ -16,6 +17,9 @@ export default function ComercialesAccesoScreen({
  onBackToLanding 
 }: ComercialesAccesoScreenProps) {
  const LOCK_KEY = 'althera_comercial_login_guard';
+ // Temporary operational switch: keep the guard implementation available,
+ // but do not block representatives while login diagnostics are being reviewed.
+ const LOGIN_GUARD_ENABLED = false;
  const MAX_ATTEMPTS = 5;
  const LOCK_MS = 15 * 60 * 1000;
  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -41,28 +45,74 @@ export default function ComercialesAccesoScreen({
  const [loading, setLoading] = useState(false);
  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
- const handleSubmit = (e: React.FormEvent) => {
+ const saveLoginAttempt = async (options: {
+  normalizedEmail: string;
+  reason: string;
+  found?: ComercialAccount;
+  accountByEmail?: ComercialAccount;
+  accountsLoaded: number;
+ }) => {
+  const { normalizedEmail, reason, found, accountByEmail, accountsLoaded } = options;
+  recordAuditEvent({
+   actorType: 'user',
+   actorId: accountByEmail?.id,
+   actorName: accountByEmail?.name || 'Intento de acceso comercial',
+   actorEmail: normalizedEmail,
+   source: 'auth',
+   action: found ? 'commercial_login_success' : 'commercial_login_failed',
+   description: found
+    ? `Inicio de sesión comercial correcto: ${normalizedEmail}`
+    : `Inicio de sesión comercial rechazado: ${reason}`,
+   entityType: 'comercial_account',
+   entityId: accountByEmail?.id,
+   screen: 'comerciales_acceso',
+   severity: found ? 'info' : 'warning',
+   metadata: {
+    reason,
+    commercialAccountsLoaded: accountsLoaded,
+    emailFound: Boolean(accountByEmail),
+    passwordConfigured: typeof accountByEmail?.password === 'string' && accountByEmail.password.length > 0,
+    passwordMatches: Boolean(found)
+   },
+   dedupe: false
+  });
+  await flushAuditLogs();
+ };
+
+ const handleSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
  setErrorMsg(null);
  const normalizedEmail = email.trim().toLowerCase();
  if (!EMAIL_REGEX.test(normalizedEmail)) {
+  await saveLoginAttempt({ normalizedEmail, reason: 'invalid_email_format', accountsLoaded: comercialesList.length });
   setErrorMsg('Introduce un correo autorizado válido.');
   return;
  }
  if (password.length < 6) {
+  await saveLoginAttempt({ normalizedEmail, reason: 'password_too_short', accountsLoaded: comercialesList.length });
   setErrorMsg('La contraseña debe tener al menos 6 caracteres.');
   return;
  }
  const guard = getLoginGuard();
- if (guard.lockedUntil && guard.lockedUntil > Date.now()) {
+ if (LOGIN_GUARD_ENABLED && guard.lockedUntil && guard.lockedUntil > Date.now()) {
   const minutes = Math.ceil((guard.lockedUntil - Date.now()) / 60000);
+  await saveLoginAttempt({ normalizedEmail, reason: 'temporarily_locked', accountsLoaded: comercialesList.length });
   setErrorMsg(`Demasiados intentos fallidos. Vuelve a intentarlo en ${minutes} min.`);
   return;
  }
  setLoading(true);
 
- setTimeout(() => {
-  const accountByEmail = comercialesList.find(
+ await new Promise(resolve => window.setTimeout(resolve, 1_000));
+ try {
+  let availableAccounts = comercialesList;
+  if (availableAccounts.length === 0) {
+   try {
+    availableAccounts = await db.getComercialesAccounts();
+   } catch (loadError) {
+    console.error('[Commercial Login] Could not load commercial accounts:', loadError);
+   }
+  }
+  const accountByEmail = availableAccounts.find(
   (c) => c.email.toLowerCase().trim() === normalizedEmail
   );
   const passwordConfigured = typeof accountByEmail?.password === 'string' && accountByEmail.password.length > 0;
@@ -70,7 +120,7 @@ export default function ComercialesAccesoScreen({
   const found = passwordMatches ? accountByEmail : undefined;
   const diagnosticReason = found
    ? 'authenticated'
-   : comercialesList.length === 0
+   : availableAccounts.length === 0
     ? 'commercial_accounts_not_loaded_or_empty'
     : !accountByEmail
      ? 'email_not_found'
@@ -82,7 +132,7 @@ export default function ComercialesAccesoScreen({
   console.groupCollapsed(`[Commercial Login] ${found ? 'success' : 'failed'}: ${normalizedEmail}`);
   console.info('Diagnostic', {
    attemptedEmail: normalizedEmail,
-   commercialAccountsLoaded: comercialesList.length,
+   commercialAccountsLoaded: availableAccounts.length,
    emailFound: Boolean(accountByEmail),
    passwordConfigured,
    passwordMatches,
@@ -90,45 +140,37 @@ export default function ComercialesAccesoScreen({
   });
   console.groupEnd();
 
-  recordAuditEvent({
-   actorType: 'user',
-   actorId: accountByEmail?.id,
-   actorName: accountByEmail?.name || 'Intento de acceso comercial',
-   actorEmail: normalizedEmail,
-   source: 'auth',
-   action: found ? 'commercial_login_success' : 'commercial_login_failed',
-   description: found
-    ? `Inicio de sesión comercial correcto: ${normalizedEmail}`
-    : `Inicio de sesión comercial rechazado: ${diagnosticReason}`,
-   entityType: 'comercial_account',
-   entityId: accountByEmail?.id,
-   screen: 'comerciales_acceso',
-   severity: found ? 'info' : 'warning',
-   metadata: {
-    reason: diagnosticReason,
-    commercialAccountsLoaded: comercialesList.length,
-    emailFound: Boolean(accountByEmail),
-    passwordConfigured,
-    passwordMatches
-   },
-   dedupe: false
+  await saveLoginAttempt({
+   normalizedEmail,
+   reason: diagnosticReason,
+   found,
+   accountByEmail,
+   accountsLoaded: availableAccounts.length
   });
-  void flushAuditLogs();
 
   if (found) {
   clearLoginGuard();
   onSignInComercial(found);
   } else {
-  const failed = recordFailedAttempt();
-  const remaining = Math.max(0, MAX_ATTEMPTS - failed.attempts);
-  setErrorMsg(
-   failed.lockedUntil ?
-   'Demasiados intentos fallidos. Acceso bloqueado temporalmente durante 15 minutos.'
-   : `Credenciales incorrectas. Intentos restantes: ${remaining}.`
-  );
+  if (LOGIN_GUARD_ENABLED) {
+   const failed = recordFailedAttempt();
+   const remaining = Math.max(0, MAX_ATTEMPTS - failed.attempts);
+   setErrorMsg(
+    failed.lockedUntil
+     ? 'Demasiados intentos fallidos. Acceso bloqueado temporalmente durante 15 minutos.'
+     : `Credenciales incorrectas. Intentos restantes: ${remaining}.`
+   );
+  } else {
+   setErrorMsg('Credenciales incorrectas. El intento ha quedado registrado.');
+  }
   setLoading(false);
   }
- }, 1000);
+ } catch (loginError) {
+  console.error('[Commercial Login] Unexpected authentication error:', loginError);
+  await saveLoginAttempt({ normalizedEmail, reason: 'unexpected_login_error', accountsLoaded: comercialesList.length });
+  setErrorMsg('No se pudo comprobar el acceso. El intento ha quedado registrado.');
+  setLoading(false);
+ }
  };
 
  return (

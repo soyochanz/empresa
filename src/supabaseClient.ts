@@ -708,10 +708,10 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE audit_logs FROM anon, authenticated;
-GRANT INSERT ON TABLE audit_logs TO anon, authenticated;
-GRANT SELECT ON TABLE audit_logs TO authenticated;
+GRANT INSERT, SELECT ON TABLE audit_logs TO anon, authenticated;
+DROP POLICY IF EXISTS "Application clients can read audit logs" ON audit_logs;
 DROP POLICY IF EXISTS "Authenticated users can read audit logs" ON audit_logs;
-CREATE POLICY "Authenticated users can read audit logs" ON audit_logs FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Application clients can read audit logs" ON audit_logs FOR SELECT TO anon, authenticated USING (true);
 DROP POLICY IF EXISTS "Internal clients can append safe audit logs" ON audit_logs;
 CREATE POLICY "Internal clients can append safe audit logs" ON audit_logs FOR INSERT TO anon, authenticated WITH CHECK (
  actor_type IN ('user', 'system') AND source IN ('ui', 'navigation', 'auth', 'data', 'system') AND severity IN ('info', 'warning', 'error')
@@ -1749,7 +1749,10 @@ const dbImplementation = {
  const cached = getCached<FinanceTransaction[]>(cacheKey);
  if (cached) return cached;
 
- const { data, error } = await supabase.from('finance_transactions').select('*').order('date', { ascending: false });
+ const { data, error } = await supabase
+  .from('finance_transactions')
+  .select('id,user_id,type,category,amount,date,description,isRecurring,recurrencePeriod,status,created_at')
+  .order('date', { ascending: false });
  if (error) {
   console.error('finance_transactions table read error:', error);
   throw error;
@@ -1935,7 +1938,10 @@ const dbImplementation = {
  const cached = getCached<Invoice[]>(cacheKey);
  if (cached) return cached;
 
- const { data, error } = await supabase.from('finance_invoices').select('*').order('date', { ascending: false });
+ const { data, error } = await supabase
+  .from('finance_invoices')
+  .select('id,user_id,clientId,clientName,clientEmail,date,dueDate,status,items,subtotal,taxPercentage,taxAmount,total,notes,alias,color,created_at')
+  .order('date', { ascending: false });
  if (error) {
   console.error('finance_invoices table read error:', error);
   throw error;
@@ -3192,13 +3198,13 @@ const dbImplementation = {
 
  // --- COMMERCIAL PRESENCE, WORK SESSIONS & AUDIT ---
  async getCommercialPresence(): Promise<CommercialPresence[]> {
-  const { data, error } = await supabase.from('commercial_presence').select('*').order('commercial_name');
+  const { data, error } = await supabase.from('commercial_presence').select('commercial_id,commercial_email,commercial_name,status,session_id,session_started_at,status_changed_at,last_seen_at').order('commercial_name');
   if (error) throw error;
   return (data || []).map(mapCommercialPresence);
  },
 
  async getCommercialPresenceById(commercialId: string): Promise<CommercialPresence | null> {
-  const { data, error } = await supabase.from('commercial_presence').select('*').eq('commercial_id', commercialId).maybeSingle();
+  const { data, error } = await supabase.from('commercial_presence').select('commercial_id,commercial_email,commercial_name,status,session_id,session_started_at,status_changed_at,last_seen_at').eq('commercial_id', commercialId).maybeSingle();
   if (error) throw error;
   return data ? mapCommercialPresence(data) : null;
  },
@@ -3221,7 +3227,7 @@ const dbImplementation = {
  },
 
  async getCommercialWorkSessions(since?: string, commercialId?: string): Promise<CommercialWorkSession[]> {
-  let query = supabase.from('commercial_work_sessions').select('*').order('started_at', { ascending: false }).limit(3000);
+  let query = supabase.from('commercial_work_sessions').select('id,commercial_id,commercial_email,commercial_name,started_at,ended_at,duration_seconds,created_at').order('started_at', { ascending: false }).limit(1500);
   if (since) query = query.gte('started_at', since);
   if (commercialId) query = query.eq('commercial_id', commercialId);
   const { data, error } = await query;
@@ -3253,12 +3259,28 @@ const dbImplementation = {
  },
 
  async getCommercialActivityLogs(options: { commercialId?: string; limit?: number; entityType?: string } = {}): Promise<CommercialActivityLog[]> {
-  let query = supabase.from('commercial_activity_logs').select('*').order('created_at', { ascending: false }).limit(options.limit || 500);
+  let query = supabase.from('commercial_activity_logs').select('id,commercial_id,commercial_email,commercial_name,action,entity_type,entity_id,description,metadata,created_at').order('created_at', { ascending: false }).limit(options.limit || 500);
   if (options.commercialId) query = query.eq('commercial_id', options.commercialId);
   if (options.entityType) query = query.eq('entity_type', options.entityType);
   const { data, error } = await query;
   if (error) throw error;
   return (data || []).map(mapCommercialActivityLog);
+ },
+
+ async getCommercialActivityLogPage(options: { commercialId?: string; page?: number; pageSize?: number; entityType?: string } = {}): Promise<{ logs: CommercialActivityLog[]; total: number }> {
+  const page = Math.max(1, Math.floor(options.page || 1));
+  const pageSize = Math.max(1, Math.min(100, Math.floor(options.pageSize || 25)));
+  const from = (page - 1) * pageSize;
+  let query = supabase
+   .from('commercial_activity_logs')
+   .select('id,commercial_id,commercial_email,commercial_name,action,entity_type,entity_id,description,metadata,created_at', { count: 'exact' })
+   .order('created_at', { ascending: false })
+   .range(from, from + pageSize - 1);
+  if (options.commercialId) query = query.eq('commercial_id', options.commercialId);
+  if (options.entityType) query = query.eq('entity_type', options.entityType);
+  const { data, error, count } = await query;
+  if (error) throw error;
+  return { logs: (data || []).map(mapCommercialActivityLog), total: count || 0 };
  }
 } as const;
 
