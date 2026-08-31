@@ -61,10 +61,32 @@ export default function ComercialesAccesoScreen({
  setLoading(true);
 
  setTimeout(() => {
-  // Find matching commercial account
-  const found = comercialesList.find(
-  (c) => c.email.toLowerCase().trim() === normalizedEmail && c.password === password
+  const accountByEmail = comercialesList.find(
+  (c) => c.email.toLowerCase().trim() === normalizedEmail
   );
+  const passwordConfigured = typeof accountByEmail?.password === 'string' && accountByEmail.password.length > 0;
+  const passwordMatches = Boolean(accountByEmail && accountByEmail.password === password);
+  const found = passwordMatches ? accountByEmail : undefined;
+
+  // Safe diagnostic: never log the submitted or stored password.
+  console.groupCollapsed(`[Commercial Login] ${found ? 'success' : 'failed'}: ${normalizedEmail}`);
+  console.info('Diagnostic', {
+   attemptedEmail: normalizedEmail,
+   commercialAccountsLoaded: comercialesList.length,
+   emailFound: Boolean(accountByEmail),
+   passwordConfigured,
+   passwordMatches,
+   reason: found
+    ? 'authenticated'
+    : comercialesList.length === 0
+     ? 'commercial_accounts_not_loaded_or_empty'
+     : !accountByEmail
+      ? 'email_not_found'
+      : !passwordConfigured
+       ? 'password_not_configured'
+       : 'password_mismatch'
+  });
+  console.groupEnd();
 
   if (found) {
   clearLoginGuard();

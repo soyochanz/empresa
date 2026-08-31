@@ -1088,6 +1088,10 @@ export default function App() {
    load('cold calling', () => db.getColdLeads(), setColdLeads),
    load('leads comerciales', () => db.getComercialLeads(), setLeadsList),
    load('cuentas comerciales', () => db.getComercialesAccounts(), fetched => {
+    console.info('[Commercial Login] Commercial accounts loaded', {
+     count: fetched.length,
+     accountsWithPassword: fetched.filter(account => typeof account.password === 'string' && account.password.length > 0).length
+    });
     setComercialesList(fetched);
     setCurrentComercial(current => current
      ? fetched.find(account => account.id === current.id) || current
