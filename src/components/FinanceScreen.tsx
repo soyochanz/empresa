@@ -358,6 +358,7 @@ type IncomeServiceCategory = 'Web' | 'RRSS' | 'Bites' | 'IA' | 'Otros';
 const SEPTEMBER_GOAL_MONTH = '2026-09';
 const SEPTEMBER_REVENUE_GOAL = 12_705;
 const SEPTEMBER_SALARY_REWARD = 1_500;
+const VAT_ACCOUNTING_START_DATE = '2026-07-15';
 
 const getIncomeServiceCategories = (value: string): IncomeServiceCategory[] => {
  const normalized = value
@@ -1567,7 +1568,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   .sort((a, b) => getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date)))
   .slice(0, 5);
  const accumulatedVatPayable = Math.round(invoices
-  .filter(invoice => !['draft', 'cancelled', 'canceled'].includes((invoice.status || '').toLocaleLowerCase('en-US')))
+  .filter(invoice =>
+   getFinanceDateKey(invoice.date) >= VAT_ACCOUNTING_START_DATE &&
+   !['draft', 'cancelled', 'canceled'].includes((invoice.status || '').toLocaleLowerCase('en-US'))
+  )
   .reduce((sum, invoice) => sum + Math.max(0, Number(invoice.taxAmount || 0)), 0) * 100) / 100;
  const pendingIncomeItems = analyticsTransactions.filter(t => t.type === 'income' && t.status === 'pending');
  const pendingExpenseItems = analyticsTransactions.filter(t => t.type === 'expense' && t.status === 'pending');
@@ -3614,7 +3618,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
     <section className="finance-vat-panel relative mt-4 overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-black/20 to-emerald-300/[0.035] p-4 sm:p-5">
      <div className="flex items-center justify-between gap-4">
-      <div><span className="text-[8px] font-black uppercase tracking-[.2em] text-amber-300">Obligación fiscal acumulada</span><h4 className="mt-1 flex items-center gap-2 text-sm font-bold text-white"><ReceiptText className="h-4 w-4 text-amber-300" />IVA a pagar a Hacienda</h4></div>
+      <div><span className="text-[8px] font-black uppercase tracking-[.2em] text-amber-300">Desde el 15 de julio de 2026</span><h4 className="mt-1 flex items-center gap-2 text-sm font-bold text-white"><ReceiptText className="h-4 w-4 text-amber-300" />IVA a pagar a Hacienda</h4></div>
       <strong className="whitespace-nowrap text-2xl font-black text-white sm:text-3xl">{accumulatedVatPayable.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
      </div>
     </section>
