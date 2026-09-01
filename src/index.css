@@ -605,38 +605,6 @@
   --tw-shadow-color: rgba(15, 23, 42, 0.12) !important;
 }
 
-/* Rank artwork uses an explicitly downward shadow. Keeping it here avoids
-   each badge inheriting a different Tailwind drop-shadow direction. */
-.legacy-rank-badge {
-  filter: drop-shadow(0 10px 8px rgba(2, 6, 23, 0.34));
-}
-
-.legacy-rank-badge--hero {
-  filter: drop-shadow(0 22px 18px rgba(0, 0, 0, 0.58));
-}
-
-.legacy-rank-badge--diamond {
-  filter:
-    drop-shadow(0 7px 6px rgba(34, 211, 238, 0.34))
-    drop-shadow(0 15px 11px rgba(2, 6, 23, 0.32));
-}
-
-.legacy-rank-badge--hero.legacy-rank-badge--diamond {
-  filter:
-    drop-shadow(0 11px 10px rgba(34, 211, 238, 0.38))
-    drop-shadow(0 25px 20px rgba(0, 0, 0, 0.56));
-}
-
-.commercial-theme-light .legacy-rank-badge {
-  filter: drop-shadow(0 9px 7px rgba(15, 23, 42, 0.2));
-}
-
-.commercial-theme-light .legacy-rank-badge--diamond {
-  filter:
-    drop-shadow(0 7px 6px rgba(14, 165, 233, 0.28))
-    drop-shadow(0 14px 10px rgba(15, 23, 42, 0.2));
-}
-
 .commercial-theme-light .bg-violet-600,
 .commercial-theme-light .bg-cyan-600,
 .commercial-theme-light .bg-blue-600,
