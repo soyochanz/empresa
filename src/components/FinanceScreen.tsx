@@ -1464,6 +1464,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  .filter(t => t.type === 'expense' && t.status === 'paid')
  .reduce((sum, t) => sum + t.amount, 0);
 
+ const periodCashMovements = analyticsTransactions.filter(transaction =>
+  transaction.status === 'paid' && transaction.paymentMethod === 'cash'
+ );
+ const periodCashIncome = periodCashMovements
+  .filter(transaction => transaction.type === 'income')
+  .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+ const periodCashExpenses = periodCashMovements
+  .filter(transaction => transaction.type === 'expense')
+  .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+ const periodCashFlow = periodCashIncome - periodCashExpenses;
+
  const consolidatedBalance = consolidatedIncomes;
  const balanceMovements = nonRecurringTransactions.filter(transaction =>
   transaction.status === 'paid' && wasCreatedAfterBalanceOpening(transaction)
@@ -1518,6 +1529,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const cashIncome = cashMovementsSinceOpening.filter(transaction => transaction.type === 'income').reduce((sum, transaction) => sum + transaction.amount, 0);
  const cashExpenses = cashMovementsSinceOpening.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + transaction.amount, 0);
  const cashBalance = CASH_OPENING_BALANCE + cashIncome - cashExpenses;
+ const recentCashMovements = [...cashMovementsSinceOpening]
+  .sort((a, b) => {
+   const createdDelta = Date.parse(b.createdAt || '') - Date.parse(a.createdAt || '');
+   return Number.isFinite(createdDelta) && createdDelta !== 0
+    ? createdDelta
+    : getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date));
+  })
+  .slice(0, 4);
  const grossCashBalance = revolutBalance + stripeAvailableBalance + cashBalance;
  const completedStripeCommissionPayouts = rankableComercialesList
   .flatMap(commercial => commercial.payouts || [])
@@ -3599,6 +3618,31 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      )}
     </div>
    </section>
+
+   <section className="finance-cash-card relative overflow-hidden rounded-3xl border border-lime-300/15 bg-gradient-to-br from-lime-300/[0.09] via-[#0b1329]/70 to-emerald-400/[0.045] p-5">
+    <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-lime-300/10 blur-3xl" />
+    <div className="relative flex items-start justify-between gap-4">
+     <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-lime-300">Tesorería · Cash</span><h3 className="mt-1 text-sm font-bold text-white">Saldo total actual</h3></div>
+     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-lime-300/15 bg-lime-300/10"><Banknote className="h-5 w-5 text-lime-300" /></span>
+    </div>
+    <strong className={`relative mt-5 block whitespace-nowrap text-3xl font-black ${cashBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{cashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+    <div className="relative mt-5 border-t border-white/[0.08] pt-4">
+     <div className="mb-2.5 flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Últimos movimientos de Cash</span><span className="text-[8px] text-slate-600">Desde el saldo inicial</span></div>
+     {recentCashMovements.length === 0 ? (
+      <div className="finance-cash-empty rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-[9px] text-slate-500">Todavía no hay movimientos nuevos en Cash.</div>
+     ) : (
+      <div className="space-y-1.5">{recentCashMovements.map(transaction => (
+       <div key={transaction.id} className="finance-cash-movement flex items-center gap-3 rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2.5">
+        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${transaction.type === 'income' ? 'bg-emerald-300/10 text-emerald-300' : 'bg-rose-300/10 text-rose-300'}`}>{transaction.type === 'income' ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</span>
+        <div className="min-w-0 flex-1"><p className="truncate text-[10px] font-bold text-white">{getTransactionDisplayConcept(transaction.description)}</p><p className="mt-0.5 text-[8px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · Efectivo</p></div>
+        <strong className={`shrink-0 whitespace-nowrap font-mono text-[10px] ${transaction.type === 'income' ? 'text-emerald-300' : 'text-rose-300'}`}>{transaction.type === 'income' ? '+' : '−'}{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+       </div>
+      ))}</div>
+     )}
+    </div>
+   </section>
+  </div>
+
    <section className="relative overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-[#11131a]/80 to-[#0b1329]/70 p-5">
     <div className="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-300/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-4">
@@ -3641,7 +3685,6 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      ]).map(item => <div key={item.category} className="rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2"><div className="flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-wider text-slate-400">{item.label}</span><strong className="text-sm text-white">{item.count}</strong></div><p className="mt-1 text-[7px] text-slate-600">{countSeptemberServices(item.category, 'new-client')} altas · {countSeptemberServices(item.category, 'existing-client')} existentes</p></div>)}
     </div>
    </section>
-  </div>
 
   <section className="relative overflow-hidden rounded-[30px] border border-white/[0.07] bg-[#090d14]/92 p-4 shadow-[0_28px_90px_rgba(0,0,0,.28)] sm:p-6">
    <div className="pointer-events-none absolute -left-20 -top-24 h-72 w-72 rounded-full bg-fuchsia-500/[0.07] blur-3xl" />
@@ -3659,11 +3702,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      { label: 'Gastos', value: totalExpenses, note: 'Liquidados y pendientes', icon: ArrowDownLeft, accent: 'text-rose-300', glow: 'from-rose-400/[0.18]' },
      { label: 'Comisiones', value: commercialSalaries, note: 'Devengadas · liquidadas y pendientes', icon: Briefcase, accent: 'text-violet-300', glow: 'from-violet-400/[0.18]' },
      { label: 'Caja real', value: netCashBalance, note: 'Cuentas y efectivo − comisiones', icon: ShieldCheck, accent: 'text-sky-300', glow: 'from-sky-400/[0.18]' },
-     { label: 'Efectivo', value: cashBalance, note: '', icon: Banknote, accent: 'text-lime-300', glow: 'from-lime-400/[0.18]' },
+     { label: analyticsRange === 'month' ? 'Cash del mes' : 'Cash histórico', value: periodCashFlow, note: 'Ingresos − gastos en efectivo', icon: Banknote, accent: periodCashFlow >= 0 ? 'text-lime-300' : 'text-rose-300', glow: periodCashFlow >= 0 ? 'from-lime-400/[0.18]' : 'from-rose-400/[0.18]', isCashFlow: true },
      { label: 'Gastos cobrados', value: consolidatedExpenses, note: 'Pagos ya liquidados', icon: CreditCard, accent: 'text-pink-300', glow: 'from-pink-400/[0.18]' },
     ]).map(metric => {
      const Icon = metric.icon;
-     return <article key={metric.label} className={`group relative overflow-hidden rounded-2xl border border-white/[0.065] bg-gradient-to-br ${metric.glow} via-white/[0.025] to-transparent p-4 transition hover:-translate-y-0.5 hover:border-white/[0.13]`}><div className="flex items-start justify-between gap-3"><div><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">{metric.label}</span><strong className="mt-2 block whitespace-nowrap text-xl font-black tracking-tight text-white">{metric.value.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><span className="rounded-xl border border-white/[0.08] bg-black/20 p-2"><Icon className={`h-4 w-4 ${metric.accent}`} /></span></div>{metric.note && <p className={`mt-3 text-[9px] font-semibold ${metric.accent}`}>{metric.note}</p>}</article>;
+     return <article key={metric.label} className={`group relative overflow-hidden rounded-2xl border border-white/[0.065] bg-gradient-to-br ${metric.glow} via-white/[0.025] to-transparent p-4 transition hover:-translate-y-0.5 hover:border-white/[0.13]`}><div className="flex items-start justify-between gap-3"><div><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">{metric.label}</span><strong className={`mt-2 block whitespace-nowrap text-xl font-black tracking-tight ${metric.isCashFlow ? (metric.value >= 0 ? 'text-lime-300' : 'text-rose-300') : 'text-white'}`}>{metric.value.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><span className="rounded-xl border border-white/[0.08] bg-black/20 p-2"><Icon className={`h-4 w-4 ${metric.accent}`} /></span></div>{metric.note && <p className={`mt-3 text-[9px] font-semibold ${metric.accent}`}>{metric.note}</p>}</article>;
     })}
     </div>
 
