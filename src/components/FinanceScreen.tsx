@@ -950,6 +950,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [exportMonth, setExportMonth] = useState(() => getMonthKey(new Date()));
  const [exportDate, setExportDate] = useState(() => new Date().toISOString().slice(0, 10));
  const [exportLoading, setExportLoading] = useState(false);
+ const [vatExportLoading, setVatExportLoading] = useState(false);
  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'all' | 'draft' | 'sent' | 'paid' | 'overdue'>('all');
  const [invoiceDueFilter, setInvoiceDueFilter] = useState<'all' | 'today' | 'week'>('all');
  const [adminMessage, setAdminMessage] = useState('');
@@ -1330,6 +1331,135 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    showToast('No se pudo generar el archivo Excel.', true);
   } finally {
    setExportLoading(false);
+  }
+ };
+
+ const handleExportVatBreakdown = async () => {
+  const vatInvoices = invoices
+   .filter(invoice =>
+    getFinanceDateKey(invoice.date) >= VAT_ACCOUNTING_START_DATE &&
+    !['draft', 'cancelled', 'canceled'].includes((invoice.status || '').toLocaleLowerCase('en-US')) &&
+    Number(invoice.taxAmount || 0) > 0
+   )
+   .sort((a, b) => getFinanceDateKey(a.date).localeCompare(getFinanceDateKey(b.date)) || a.id.localeCompare(b.id));
+
+  if (vatInvoices.length === 0) {
+   showToast('No hay facturas con IVA desde el 15 de julio de 2026.', true);
+   return;
+  }
+
+  setVatExportLoading(true);
+  try {
+   const ExcelJS = await import('exceljs');
+   const workbook = new ExcelJS.Workbook();
+   workbook.creator = 'Althera Solutions';
+   workbook.company = 'Althera Solutions';
+   workbook.created = new Date();
+   workbook.modified = new Date();
+   workbook.calcProperties.fullCalcOnLoad = true;
+
+   const sheet = workbook.addWorksheet('Desglose IVA', {
+    views: [{ state: 'frozen', ySplit: 7, showGridLines: false }]
+   });
+   sheet.mergeCells('A1:J2');
+   sheet.getCell('A1').value = 'DESGLOSE DE IVA · ALTHERA SOLUTIONS';
+   sheet.getCell('A1').font = { name: 'Aptos Display', size: 18, bold: true, color: { argb: 'FFFFFFFF' } };
+   sheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
+   sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF071426' } };
+   sheet.getRow(1).height = 26;
+   sheet.getRow(2).height = 18;
+
+   sheet.getCell('A4').value = 'Periodo fiscal desde';
+   sheet.getCell('B4').value = new Date(2026, 6, 15, 12);
+   sheet.getCell('B4').numFmt = 'dd/mm/yyyy';
+   sheet.getCell('D4').value = 'Facturas incluidas';
+   sheet.getCell('E4').value = vatInvoices.length;
+   sheet.getCell('G4').value = 'IVA acumulado';
+   sheet.getCell('H4').value = { formula: `SUM(I8:I${vatInvoices.length + 7})`, result: vatInvoices.reduce((sum, invoice) => sum + Number(invoice.taxAmount || 0), 0) };
+   sheet.getCell('H4').numFmt = '#,##0.00 [$€-es-ES]';
+   ['A4', 'D4', 'G4'].forEach(address => {
+    sheet.getCell(address).font = { bold: true, color: { argb: 'FF475569' } };
+   });
+   sheet.getCell('H4').font = { bold: true, size: 16, color: { argb: 'FFB45309' } };
+   sheet.getCell('A5').value = 'Generado';
+   sheet.getCell('B5').value = new Date();
+   sheet.getCell('B5').numFmt = 'dd/mm/yyyy hh:mm';
+   sheet.getCell('A5').font = { bold: true, color: { argb: 'FF475569' } };
+
+   const headers = ['Factura', 'Fecha', 'Estado', 'Cliente', 'NIF / CIF', 'Concepto facturado', 'Base imponible (€)', 'IVA (%)', 'IVA (€)', 'Total factura (€)'];
+   sheet.addRow([]);
+   sheet.addRow(headers);
+   vatInvoices.forEach(invoice => {
+    const concepts = (invoice.items || []).map(item => item.description).filter(Boolean).join(' · ');
+    const subtotal = Number(invoice.subtotal || 0) || Math.max(0, Number(invoice.total || 0) - Number(invoice.taxAmount || 0));
+    sheet.addRow([
+     invoice.id,
+     parseFinanceDate(invoice.date) || invoice.date,
+     invoice.status === 'paid' ? 'Pagada' : invoice.status === 'sent' ? 'Emitida' : invoice.status === 'overdue' ? 'Vencida' : invoice.status,
+     invoice.clientName,
+     invoice.clientTaxId || '',
+     concepts,
+     subtotal,
+     Number(invoice.taxPercentage || 0) / 100,
+     Number(invoice.taxAmount || 0),
+     Number(invoice.total || 0),
+    ]);
+   });
+
+   const headerRow = sheet.getRow(7);
+   headerRow.height = 28;
+   headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+   headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB45309' } };
+   headerRow.alignment = { vertical: 'middle' };
+   sheet.autoFilter = { from: { row: 7, column: 1 }, to: { row: vatInvoices.length + 7, column: headers.length } };
+   sheet.columns = [
+    { width: 18 }, { width: 13 }, { width: 13 }, { width: 32 }, { width: 18 },
+    { width: 58 }, { width: 20 }, { width: 12 }, { width: 16 }, { width: 20 }
+   ];
+
+   for (let rowNumber = 8; rowNumber <= vatInvoices.length + 7; rowNumber += 1) {
+    const row = sheet.getRow(rowNumber);
+    row.height = 34;
+    if (rowNumber % 2 === 0) row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
+    row.eachCell({ includeEmpty: true }, cell => {
+     cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
+     cell.alignment = { ...cell.alignment, vertical: 'middle' };
+    });
+   }
+   sheet.getColumn(2).numFmt = 'dd/mm/yyyy';
+   sheet.getColumn(6).alignment = { wrapText: true, vertical: 'middle' };
+   sheet.getColumn(7).numFmt = '#,##0.00 [$€-es-ES]';
+   sheet.getColumn(8).numFmt = '0.00%';
+   sheet.getColumn(9).numFmt = '#,##0.00 [$€-es-ES]';
+   sheet.getColumn(10).numFmt = '#,##0.00 [$€-es-ES]';
+
+   const totalRowNumber = vatInvoices.length + 8;
+   const totalRow = sheet.getRow(totalRowNumber);
+   totalRow.getCell(6).value = 'TOTAL';
+   totalRow.getCell(7).value = { formula: `SUM(G8:G${totalRowNumber - 1})`, result: vatInvoices.reduce((sum, invoice) => sum + (Number(invoice.subtotal || 0) || Math.max(0, Number(invoice.total || 0) - Number(invoice.taxAmount || 0))), 0) };
+   totalRow.getCell(9).value = { formula: `SUM(I8:I${totalRowNumber - 1})`, result: vatInvoices.reduce((sum, invoice) => sum + Number(invoice.taxAmount || 0), 0) };
+   totalRow.getCell(10).value = { formula: `SUM(J8:J${totalRowNumber - 1})`, result: vatInvoices.reduce((sum, invoice) => sum + Number(invoice.total || 0), 0) };
+   totalRow.height = 28;
+   totalRow.font = { bold: true, color: { argb: 'FF0F172A' } };
+   totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE68A' } };
+   [7, 9, 10].forEach(column => { totalRow.getCell(column).numFmt = '#,##0.00 [$€-es-ES]'; });
+
+   const buffer = await workbook.xlsx.writeBuffer();
+   const blob = new Blob([buffer as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+   const downloadUrl = URL.createObjectURL(blob);
+   const link = document.createElement('a');
+   link.href = downloadUrl;
+   link.download = 'desglose_iva_althera_desde_2026-07-15.xlsx';
+   document.body.appendChild(link);
+   link.click();
+   link.remove();
+   URL.revokeObjectURL(downloadUrl);
+   showToast(`Excel de IVA exportado con ${vatInvoices.length} facturas.`);
+  } catch (error) {
+   console.error('VAT Excel export error:', error);
+   showToast('No se pudo generar el desglose de IVA.', true);
+  } finally {
+   setVatExportLoading(false);
   }
  };
 
@@ -3617,9 +3747,15 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
 
     <section className="finance-vat-panel relative mt-4 overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-black/20 to-emerald-300/[0.035] p-4 sm:p-5">
-     <div className="flex items-center justify-between gap-4">
+     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div><span className="text-[8px] font-black uppercase tracking-[.2em] text-amber-300">Desde el 15 de julio de 2026</span><h4 className="mt-1 flex items-center gap-2 text-sm font-bold text-white"><ReceiptText className="h-4 w-4 text-amber-300" />IVA a pagar a Hacienda</h4></div>
-      <strong className="whitespace-nowrap text-2xl font-black text-white sm:text-3xl">{accumulatedVatPayable.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+      <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+       <strong className="mr-1 whitespace-nowrap text-2xl font-black text-white sm:text-3xl">{accumulatedVatPayable.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+       <button type="button" onClick={() => void handleExportVatBreakdown()} disabled={vatExportLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-amber-300/20 bg-amber-300/[0.1] px-3.5 py-2 text-[9px] font-black uppercase tracking-wider text-amber-200 transition hover:bg-amber-300/[0.16] disabled:cursor-wait disabled:opacity-60">
+        {vatExportLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+        {vatExportLoading ? 'Generando...' : 'Exportar Excel'}
+       </button>
+      </div>
      </div>
     </section>
 
