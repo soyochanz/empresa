@@ -353,29 +353,11 @@ const getFinanceDateKey = (value?: string): string => {
  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
 };
 
-type SeptemberServiceCategory = 'web' | 'bites' | 'rrss' | 'ia' | 'other';
-
 type IncomeServiceCategory = 'Web' | 'RRSS' | 'Bites' | 'IA' | 'Otros';
-
-type SeptemberServiceEvent = {
- clientKey: string;
- date: string;
- kind: 'new-client' | 'existing-client';
- products: SeptemberServiceCategory[];
-};
 
 const SEPTEMBER_GOAL_MONTH = '2026-09';
 const SEPTEMBER_REVENUE_GOAL = 12_705;
 const SEPTEMBER_SALARY_REWARD = 1_500;
-
-const normalizeServiceCategory = (product: string): SeptemberServiceCategory => {
- const normalized = product.trim().toLocaleLowerCase('es-ES').replace(/[\s_-]+/g, '');
- if (normalized === 'web' || normalized.includes('paginaweb') || normalized.includes('sitioweb')) return 'web';
- if (normalized.includes('bitesmenu') || normalized === 'bites') return 'bites';
- if (normalized === 'rrss' || normalized.includes('redessociales') || normalized.includes('socialmedia')) return 'rrss';
- if (normalized === 'ia' || normalized.includes('inteligenciaartificial')) return 'ia';
- return 'other';
-};
 
 const getIncomeServiceCategories = (value: string): IncomeServiceCategory[] => {
  const normalized = value
@@ -385,58 +367,11 @@ const getIncomeServiceCategories = (value: string): IncomeServiceCategory[] => {
  const categories: IncomeServiceCategory[] = [];
 
  if (/\b(web|landing|e-?commerce|tienda online|pagina web|sitio web)\b/.test(normalized)) categories.push('Web');
- if (/\b(rrss|redes sociales|social media|community manager)\b/.test(normalized)) categories.push('RRSS');
+ if (/\b(rrss|redes sociales|social media|community manager|seo|posicionamiento)\b/.test(normalized)) categories.push('RRSS');
  if (/\b(bites|bitesmenus?|carta digital|menu digital)\b/.test(normalized)) categories.push('Bites');
  if (/\b(ia|inteligencia artificial|automatizacion|chatbot|asistente inteligente|agente de ia)\b/.test(normalized)) categories.push('IA');
 
  return categories.length > 0 ? categories : ['Otros'];
-};
-
-const buildSeptemberServiceEvents = (invoices: Invoice[], transactions: FinanceTransaction[]): SeptemberServiceEvent[] => {
- const events: SeptemberServiceEvent[] = [];
- const invoiceRegistrationPattern = /(Venta inicial|Nuevo servicio) registrado desde CRM\. Productos:\s*([^.\n]+)\.(?:\s*Fecha:\s*(\d{4}-\d{2}-\d{2})\.)?/gi;
-
- invoices.forEach(invoice => {
-  const notes = invoice.notes || '';
-  let match: RegExpExecArray | null;
-  while ((match = invoiceRegistrationPattern.exec(notes)) !== null) {
-   const date = match[3] || getFinanceDateKey(invoice.date);
-   if (!date.startsWith(SEPTEMBER_GOAL_MONTH)) continue;
-   const products = match[2]
-    .split(',')
-    .map(product => product.trim())
-    .filter(product => product && product.toLocaleLowerCase('es-ES') !== 'sin especificar')
-    .map(normalizeServiceCategory);
-   events.push({
-    clientKey: invoice.clientId || invoice.clientEmail || invoice.clientName,
-    date,
-    kind: match[1].toLocaleLowerCase('es-ES').startsWith('venta') ? 'new-client' : 'existing-client',
-    products,
-   });
-  }
- });
-
- transactions
-  .filter(transaction => transaction.isRecurring && transaction.type === 'income' && /^plan_recurring_(?:initial|additional)_/i.test(transaction.stripePlanId || '') && getFinanceDateKey(transaction.date).startsWith(SEPTEMBER_GOAL_MONTH))
-  .forEach(transaction => {
-   const productText = transaction.description.split('·').pop() || '';
-   const products = productText
-    .split('+')
-    .map(product => product.trim())
-    .filter(Boolean)
-    .map(normalizeServiceCategory);
-   const candidate: SeptemberServiceEvent = {
-    clientKey: transaction.clientId || transaction.id,
-    date: getFinanceDateKey(transaction.date),
-    kind: /^plan_recurring_initial_/i.test(transaction.stripePlanId || '') ? 'new-client' : 'existing-client',
-    products,
-   };
-   const candidateKey = `${candidate.clientKey}|${candidate.date}|${candidate.kind}|${[...candidate.products].sort().join(',')}`;
-   const alreadyTracked = events.some(event => `${event.clientKey}|${event.date}|${event.kind}|${[...event.products].sort().join(',')}` === candidateKey);
-   if (!alreadyTracked) events.push(candidate);
-  });
-
- return events;
 };
 
 const formatStripeFundAmounts = (amounts: StripeFundAmount[] = []): string => {
@@ -1497,27 +1432,46 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     : getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date));
   })
   .slice(0, 4);
- const septemberServiceEvents = buildSeptemberServiceEvents(invoices, transactions);
- const septemberNewClients = new Set(
-  septemberServiceEvents.filter(event => event.kind === 'new-client').map(event => event.clientKey)
- ).size;
- const septemberExistingClientServices = septemberServiceEvents
-  .filter(event => event.kind === 'existing-client')
-  .reduce((sum, event) => sum + event.products.length, 0);
- const countSeptemberServices = (category: SeptemberServiceCategory, kind?: SeptemberServiceEvent['kind']) => septemberServiceEvents
-  .filter(event => !kind || event.kind === kind)
-  .reduce((sum, event) => sum + event.products.filter(product => product === category).length, 0);
- const septemberServiceCounts = {
-  web: countSeptemberServices('web'),
-  bites: countSeptemberServices('bites'),
-  rrss: countSeptemberServices('rrss'),
-  ia: countSeptemberServices('ia'),
-  other: countSeptemberServices('other'),
- };
- const septemberTotalServices = Object.values(septemberServiceCounts).reduce((sum, count) => sum + count, 0);
- const septemberRevenue = nonRecurringTransactions
-  .filter(transaction => transaction.type === 'income' && transaction.status === 'paid' && getFinanceDateKey(transaction.date).startsWith(SEPTEMBER_GOAL_MONTH))
-  .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+ const septemberPaidIncomeTransactions = nonRecurringTransactions.filter(transaction =>
+  transaction.type === 'income' &&
+  transaction.status === 'paid' &&
+  getFinanceDateKey(transaction.date).startsWith(SEPTEMBER_GOAL_MONTH)
+ );
+ const septemberRevenue = septemberPaidIncomeTransactions.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+ const septemberRevenueBreakdown = septemberPaidIncomeTransactions.reduce<Record<IncomeServiceCategory, { amount: number; payments: number; concepts: Set<string> }>>((groups, transaction) => {
+  const linkedInvoice = invoices.find(invoice =>
+   invoice.id === transaction.invoiceId ||
+   (invoice.items || []).some(item => item.pendingTxId === transaction.id)
+  );
+  const serviceContext = [
+   transaction.category,
+   transaction.description,
+   ...(linkedInvoice?.items || []).map(item => item.description),
+  ].join(' · ');
+  const services = getIncomeServiceCategories(serviceContext);
+  const amountPerService = Number(transaction.amount || 0) / services.length;
+  const concept = getTransactionDisplayConcept(transaction.description);
+  services.forEach(service => {
+   groups[service].amount += amountPerService;
+   groups[service].payments += 1;
+   if (concept) groups[service].concepts.add(concept);
+  });
+  return groups;
+ }, {
+  Web: { amount: 0, payments: 0, concepts: new Set<string>() },
+  RRSS: { amount: 0, payments: 0, concepts: new Set<string>() },
+  Bites: { amount: 0, payments: 0, concepts: new Set<string>() },
+  IA: { amount: 0, payments: 0, concepts: new Set<string>() },
+  Otros: { amount: 0, payments: 0, concepts: new Set<string>() },
+ });
+ const septemberGoalContributions = (Object.entries(septemberRevenueBreakdown) as Array<[IncomeServiceCategory, { amount: number; payments: number; concepts: Set<string> }]>)
+  .filter(([, contribution]) => contribution.amount > 0)
+  .sort(([, a], [, b]) => b.amount - a.amount);
+ const septemberNewClients = new Set(septemberPaidIncomeTransactions
+  .filter(transaction => transaction.isInitialSale)
+  .map(transaction => transaction.clientId || transaction.id)).size;
+ const septemberExistingClientServices = septemberPaidIncomeTransactions.filter(transaction => !transaction.isInitialSale).length;
+ const septemberTotalServices = septemberPaidIncomeTransactions.length;
  const septemberGoalProgress = Math.min(100, Math.round(septemberRevenue / SEPTEMBER_REVENUE_GOAL * 100));
  const septemberGoalRemaining = Math.max(0, SEPTEMBER_REVENUE_GOAL - septemberRevenue);
  const septemberGoalAchieved = septemberRevenue >= SEPTEMBER_REVENUE_GOAL;
@@ -1612,57 +1566,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const recentAnalyticsTransactions = [...analyticsTransactions]
   .sort((a, b) => getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date)))
   .slice(0, 5);
- const vatNow = new Date();
- const vatQuarterStartMonth = Math.floor(vatNow.getMonth() / 3) * 3;
- const vatQuarterStart = `${vatNow.getFullYear()}-${String(vatQuarterStartMonth + 1).padStart(2, '0')}-01`;
- const vatQuarterEndDate = new Date(vatNow.getFullYear(), vatQuarterStartMonth + 3, 0);
- const vatQuarterEnd = `${vatQuarterEndDate.getFullYear()}-${String(vatQuarterEndDate.getMonth() + 1).padStart(2, '0')}-${String(vatQuarterEndDate.getDate()).padStart(2, '0')}`;
- const vatQuarterLabel = `T${Math.floor(vatQuarterStartMonth / 3) + 1} ${vatNow.getFullYear()}`;
- const vatQuarterSummary = invoices.reduce((summary, invoice) => {
-  const invoiceTotal = Math.max(0, Number(invoice.total || 0));
-  const invoiceVat = Math.max(0, Number(invoice.taxAmount || 0));
-  if (invoiceTotal <= 0 || invoiceVat <= 0 || Number(invoice.taxPercentage || 0) <= 0) return summary;
-
-  const pendingTransactionIds = new Set((invoice.items || []).map(item => item.pendingTxId).filter(Boolean));
-  const linkedPayments = transactions
-   .filter(transaction => transaction.type === 'income' && transaction.status === 'paid' && (
-    transaction.invoiceId === invoice.id || pendingTransactionIds.has(transaction.id)
-   ))
-   .sort((a, b) => getFinanceDateKey(a.date).localeCompare(getFinanceDateKey(b.date)));
-  const collections = linkedPayments.map(transaction => ({ amount: Number(transaction.amount || 0), date: getFinanceDateKey(transaction.date) }));
-  const explicitlyCollected = collections.reduce((sum, collection) => sum + Math.max(0, collection.amount), 0);
-  if (invoice.status === 'paid' && explicitlyCollected < invoiceTotal) {
-   collections.push({ amount: invoiceTotal - explicitlyCollected, date: linkedPayments.at(-1)?.date || getFinanceDateKey(invoice.date) });
-  }
-
-  let remainingGross = invoiceTotal;
-  let collectedGrossInQuarter = 0;
-  collections.forEach(collection => {
-   const recognizedGross = Math.min(remainingGross, Math.max(0, collection.amount));
-   remainingGross = Math.max(0, remainingGross - recognizedGross);
-   if (collection.date >= vatQuarterStart && collection.date <= vatQuarterEnd) collectedGrossInQuarter += recognizedGross;
-  });
-
-  const vatRateWithinGross = invoiceVat / invoiceTotal;
-  if (collectedGrossInQuarter > 0) {
-   summary.collectedGross += collectedGrossInQuarter;
-   summary.collectedVat += collectedGrossInQuarter * vatRateWithinGross;
-   summary.collectedInvoiceIds.add(invoice.id);
-  }
-  const invoiceDate = getFinanceDateKey(invoice.date);
-  if (invoiceDate >= vatQuarterStart && invoiceDate <= vatQuarterEnd && remainingGross > 0) {
-   summary.pendingVat += remainingGross * vatRateWithinGross;
-  }
-  return summary;
- }, {
-  collectedGross: 0,
-  collectedVat: 0,
-  pendingVat: 0,
-  collectedInvoiceIds: new Set<string>(),
- });
- const collectedVatThisQuarter = Math.round(vatQuarterSummary.collectedVat * 100) / 100;
- const pendingVatThisQuarter = Math.round(vatQuarterSummary.pendingVat * 100) / 100;
- const taxableNetCollectedThisQuarter = Math.round((vatQuarterSummary.collectedGross - vatQuarterSummary.collectedVat) * 100) / 100;
+ const accumulatedVatPayable = Math.round(invoices
+  .filter(invoice => !['draft', 'cancelled', 'canceled'].includes((invoice.status || '').toLocaleLowerCase('en-US')))
+  .reduce((sum, invoice) => sum + Math.max(0, Number(invoice.taxAmount || 0)), 0) * 100) / 100;
  const pendingIncomeItems = analyticsTransactions.filter(t => t.type === 'income' && t.status === 'pending');
  const pendingExpenseItems = analyticsTransactions.filter(t => t.type === 'expense' && t.status === 'pending');
  const todayFinanceKey = getFinanceDateKey(new Date().toISOString());
@@ -3661,28 +3567,24 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
 
     <div className="relative mt-3 grid grid-cols-3 gap-2">
-     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Clientes nuevos</span><strong className="mt-1 block text-xl font-black text-white">{septemberNewClients}</strong></div>
-     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Servicios vendidos</span><strong className="mt-1 block text-xl font-black text-white">{septemberTotalServices}</strong></div>
-     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">A clientes existentes</span><strong className="mt-1 block text-xl font-black text-white">{septemberExistingClientServices}</strong></div>
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Clientes nuevos cobrados</span><strong className="mt-1 block text-xl font-black text-white">{septemberNewClients}</strong></div>
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Cobros incluidos</span><strong className="mt-1 block text-xl font-black text-white">{septemberTotalServices}</strong></div>
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">De clientes existentes</span><strong className="mt-1 block text-xl font-black text-white">{septemberExistingClientServices}</strong></div>
     </div>
 
-    <div className="relative mt-3 grid grid-cols-2 gap-2">
-     <div className="rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.05] p-3">
-      <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-wider text-cyan-300">Webs</span><strong className="text-sm text-white">{septemberServiceCounts.web}</strong></div>
-      <p className="mt-1.5 text-[8px] text-slate-500">{countSeptemberServices('web', 'new-client')} en altas · {countSeptemberServices('web', 'existing-client')} en clientes existentes</p>
-     </div>
-     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.05] p-3">
-      <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-wider text-amber-300">Bites</span><strong className="text-sm text-white">{septemberServiceCounts.bites}</strong></div>
-      <p className="mt-1.5 text-[8px] text-slate-500">{countSeptemberServices('bites', 'new-client')} en altas · {countSeptemberServices('bites', 'existing-client')} en clientes existentes</p>
-     </div>
-    </div>
-
-    <div className="relative mt-2 grid grid-cols-3 gap-2">
-     {([
-      { label: 'RRSS', category: 'rrss' as const, count: septemberServiceCounts.rrss },
-      { label: 'IA', category: 'ia' as const, count: septemberServiceCounts.ia },
-      { label: 'Otros', category: 'other' as const, count: septemberServiceCounts.other },
-     ]).map(item => <div key={item.category} className="rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2"><div className="flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-wider text-slate-400">{item.label}</span><strong className="text-sm text-white">{item.count}</strong></div><p className="mt-1 text-[7px] text-slate-600">{countSeptemberServices(item.category, 'new-client')} altas · {countSeptemberServices(item.category, 'existing-client')} existentes</p></div>)}
+    <div className="relative mt-3">
+     <div className="mb-2 flex items-center justify-between gap-3"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">De qué sale lo cobrado</span><span className="text-[8px] text-slate-600">Solo movimientos pagados de septiembre</span></div>
+     {septemberGoalContributions.length === 0 ? (
+      <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 px-4 py-5 text-center text-[9px] text-slate-500">Aún no hay cobros que contribuyan al objetivo.</div>
+     ) : (
+      <div className="grid gap-2 sm:grid-cols-2">{septemberGoalContributions.map(([category, contribution]) => {
+       const accentClass = category === 'Web' ? 'text-cyan-300' : category === 'RRSS' ? 'text-pink-300' : category === 'Bites' ? 'text-amber-300' : category === 'IA' ? 'text-violet-300' : 'text-slate-300';
+       return <article key={category} className="rounded-2xl border border-white/[0.07] bg-black/20 p-3.5">
+        <div className="flex items-start justify-between gap-3"><div><span className={`text-[9px] font-black uppercase tracking-wider ${accentClass}`}>{category === 'RRSS' ? 'RRSS · incluye SEO' : category}</span><p className="mt-1 text-[8px] text-slate-500">{contribution.payments} {contribution.payments === 1 ? 'cobro incluido' : 'cobros incluidos'}</p></div><strong className="whitespace-nowrap text-base font-black text-white">{contribution.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+        <div className="mt-2 space-y-1 border-t border-white/[0.06] pt-2">{[...contribution.concepts].map(concept => <p key={concept} className="truncate text-[9px] font-semibold text-slate-300">{concept}</p>)}</div>
+       </article>;
+      })}</div>
+     )}
     </div>
    </section>
 
@@ -3711,15 +3613,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
 
     <section className="finance-vat-panel relative mt-4 overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-black/20 to-emerald-300/[0.035] p-4 sm:p-5">
-     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div><span className="text-[8px] font-black uppercase tracking-[.2em] text-amber-300">Estimación fiscal · {vatQuarterLabel}</span><h4 className="mt-1 flex items-center gap-2 text-sm font-bold text-white"><ReceiptText className="h-4 w-4 text-amber-300" />IVA repercutido sobre cobros</h4><p className="mt-1 max-w-2xl text-[9px] leading-4 text-slate-500">Solo usa facturas con IVA y reconoce proporcionalmente los cobros parciales. El efectivo sin factura sujeta a IVA queda excluido automáticamente.</p></div>
-      <span className="shrink-0 rounded-xl border border-amber-300/20 bg-amber-300/[0.09] px-3 py-2 text-[8px] font-black uppercase tracking-wider text-amber-200">Antes de IVA deducible</span>
-     </div>
-     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <div className="finance-vat-card finance-vat-card--amber rounded-2xl border border-amber-300/12 bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">IVA cobrado estimado</span><strong className="mt-1 block whitespace-nowrap text-xl font-black text-white">{collectedVatThisQuarter.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[8px] text-slate-500">A ingresar antes de deducciones</p></div>
-      <div className="finance-vat-card finance-vat-card--cyan rounded-2xl border border-cyan-300/12 bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300">Base neta cobrada</span><strong className="mt-1 block whitespace-nowrap text-xl font-black text-white">{taxableNetCollectedThisQuarter.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[8px] text-slate-500">Importe sin IVA</p></div>
-      <div className="finance-vat-card finance-vat-card--rose rounded-2xl border border-rose-300/12 bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-rose-300">IVA pendiente</span><strong className="mt-1 block whitespace-nowrap text-xl font-black text-white">{pendingVatThisQuarter.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><p className="mt-1 text-[8px] text-slate-500">Facturado en el trimestre, aún no cobrado</p></div>
-      <div className="finance-vat-card finance-vat-card--emerald rounded-2xl border border-emerald-300/12 bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Facturas computadas</span><strong className="mt-1 block text-xl font-black text-white">{vatQuarterSummary.collectedInvoiceIds.size}</strong><p className="mt-1 text-[8px] text-slate-500">Con cobros sujetos a IVA</p></div>
+     <div className="flex items-center justify-between gap-4">
+      <div><span className="text-[8px] font-black uppercase tracking-[.2em] text-amber-300">Obligación fiscal acumulada</span><h4 className="mt-1 flex items-center gap-2 text-sm font-bold text-white"><ReceiptText className="h-4 w-4 text-amber-300" />IVA a pagar a Hacienda</h4></div>
+      <strong className="whitespace-nowrap text-2xl font-black text-white sm:text-3xl">{accumulatedVatPayable.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
      </div>
     </section>
 
