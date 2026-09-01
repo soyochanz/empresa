@@ -607,7 +607,46 @@
 
 /* Rank artwork uses an explicitly downward shadow. Keeping it here avoids
    each badge inheriting a different Tailwind drop-shadow direction. */
+.legacy-rank-visual {
+  isolation: isolate;
+}
+
+.legacy-rank-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  background: linear-gradient(
+    108deg,
+    transparent 41%,
+    rgba(186, 230, 253, 0.18) 45%,
+    rgba(255, 255, 255, 0.92) 49%,
+    rgba(103, 232, 249, 0.5) 52%,
+    transparent 58%
+  );
+  background-size: 300% 100%;
+  background-position: 190% 0;
+  -webkit-mask-image: var(--legacy-rank-mask);
+  mask-image: var(--legacy-rank-mask);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  animation: legacy-rank-shine 3.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: background-position;
+}
+
+@keyframes legacy-rank-shine {
+  0%, 12% { background-position: 190% 0; }
+  68%, 100% { background-position: -90% 0; }
+}
+
 .legacy-rank-badge {
+  position: relative;
+  z-index: 1;
   filter: drop-shadow(0 10px 8px rgba(2, 6, 23, 0.34));
 }
 
@@ -635,6 +674,14 @@
   filter:
     drop-shadow(0 7px 6px rgba(14, 165, 233, 0.28))
     drop-shadow(0 14px 10px rgba(15, 23, 42, 0.2));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legacy-rank-visual::after {
+    animation: none;
+    background-position: 48% 0;
+    opacity: 0.35;
+  }
 }
 
 .commercial-theme-light .bg-violet-600,
