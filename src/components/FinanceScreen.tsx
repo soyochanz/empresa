@@ -3758,83 +3758,85 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </article>
   </section>
 
-  {/* Navigation Inside Finance Module - Modern Pillow Tab Controls */}
-  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-white/5 pb-2 pt-2">
-  <div className="bg-[#0b1329]/60 p-1 border border-white/5 rounded-2xl flex flex-wrap gap-1">
+  {/* Navigation Inside Finance Module */}
+  <div className="finance-tabs-shell flex flex-col gap-3 border-b border-white/5 pb-3 pt-2 lg:flex-row lg:items-center lg:justify-between">
+  <div className="finance-tab-scroll min-w-0 flex-1 overflow-x-auto pb-1">
+  <div role="tablist" aria-label="Secciones de finanzas" className="finance-tab-list flex min-w-max items-center gap-1.5 rounded-2xl border border-white/[0.07] bg-[#0b1329]/70 p-1.5">
    <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'transactions'}
+   data-tone="emerald"
    onClick={() => setActiveTab('transactions')}
-   className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer ${
-    activeTab === 'transactions'  ?
-    'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-sm shadow-emerald-500/5' 
-    : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
-   }`}
+   className={`finance-tab ${activeTab === 'transactions' ? 'is-active' : ''}`}
    >
    Actividad
    </button>
    <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'recurring'}
+   data-tone="violet"
    onClick={() => setActiveTab('recurring')}
-   className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
-    activeTab === 'recurring'  ?
-    'bg-purple-500/10 border border-purple-500/20 text-purple-300 shadow-sm shadow-purple-500/5' 
-    : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
-   }`}
+   className={`finance-tab ${activeTab === 'recurring' ? 'is-active' : ''}`}
    >
    <span>Planes y recurrencias</span>
-   <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold ${activeTab === 'recurring' ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-400'}`}>
+   <span className="finance-tab-badge">
     {stripePlans.length + manualRecurring.length + unpaidStripeRecurrences.length}
    </span>
    </button>
    <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'forecast'}
+   data-tone="cyan"
    onClick={() => setActiveTab('forecast')}
-   className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
-    activeTab === 'forecast'
-    ? 'bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 shadow-sm shadow-cyan-500/5'
-    : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
-   }`}
+   className={`finance-tab ${activeTab === 'forecast' ? 'is-active' : ''}`}
    >
    <CalendarDays className="w-3.5 h-3.5" />
    <span>Previsión</span>
    </button>
    <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'invoices'}
+   data-tone="blue"
    onClick={() => setActiveTab('invoices')}
-   className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
-    activeTab === 'invoices'  ?
-    'bg-blue-500/10 border border-blue-500/20 text-blue-300 shadow-sm shadow-blue-500/5' 
-    : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
-   }`}
+   className={`finance-tab ${activeTab === 'invoices' ? 'is-active' : ''}`}
    >
    <LayoutDashboard className="w-3.5 h-3.5" />
    <span>Facturas</span>
-   <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-bold ${activeTab === 'invoices' ? 'bg-blue-500/20 text-blue-300' : 'bg-white/5 text-slate-400'}`}>
+   <span className="finance-tab-badge">
     {invoices.length}
    </span>
    </button>
    <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'stripe'}
+   data-tone="stripe"
    onClick={() => setActiveTab('stripe')}
-   className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
-    activeTab === 'stripe'  ?
-    'bg-[#00f2fe]/10 border border-[#00f2fe]/20 text-[#00f2fe] shadow-sm shadow-[#00f2fe]/5' 
-    : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
-   }`}
+   className={`finance-tab ${activeTab === 'stripe' ? 'is-active' : ''}`}
    >
    <img src="/stripe-mark.png" alt="" className="h-4 w-4 rounded-[4px]" />
    <span>Stripe</span>
    </button>
    <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'comerciales'}
+   data-tone="amber"
    onClick={() => setActiveTab('comerciales')}
-   className={`text-xs font-bold transition-all px-4 py-2 rounded-xl cursor-pointer flex items-center gap-2 ${
-    activeTab === 'comerciales'  ?
-    'bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-sm shadow-amber-500/5' 
-    : 'border border-transparent text-slate-400 hover:text-slate-200 hover:bg-white/[0.02]'
-   }`}
+   className={`finance-tab ${activeTab === 'comerciales' ? 'is-active' : ''}`}
    >
    <User className="w-3.5 h-3.5" />
    <span>Equipo</span>
    </button>
   </div>
+  </div>
 
   {/* Dynamic Context Helpers */}
-  <span className="text-[11px] font-mono text-slate-500 text-left sm:text-right">
+  <span className="finance-tab-context shrink-0 text-left font-mono text-[10px] text-slate-500 lg:max-w-[330px] lg:text-right">
    {activeTab === 'transactions'  ?
    `${filteredTxs.length} movimientos visibles` 
    : activeTab === 'forecast' ?

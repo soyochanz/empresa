@@ -1182,6 +1182,127 @@
 .admin-theme-light [class*="border-purple-"] { border-color: #ddd6fe !important; }
 
 /* Finance toolbar: opaque semantic controls retain hierarchy on white. */
+.finance-tab-scroll {
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+}
+
+.finance-tab-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.finance-tab-list {
+  width: max-content;
+  max-width: none;
+}
+
+.finance-tab {
+  --finance-tab-accent: #94a3b8;
+  --finance-tab-soft: rgba(148, 163, 184, 0.12);
+  position: relative;
+  display: inline-flex;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 0 15px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.finance-tab[data-tone="emerald"] { --finance-tab-accent: #34d399; --finance-tab-soft: rgba(52, 211, 153, 0.12); }
+.finance-tab[data-tone="violet"] { --finance-tab-accent: #c4b5fd; --finance-tab-soft: rgba(167, 139, 250, 0.13); }
+.finance-tab[data-tone="cyan"] { --finance-tab-accent: #67e8f9; --finance-tab-soft: rgba(34, 211, 238, 0.12); }
+.finance-tab[data-tone="blue"] { --finance-tab-accent: #93c5fd; --finance-tab-soft: rgba(96, 165, 250, 0.12); }
+.finance-tab[data-tone="stripe"] { --finance-tab-accent: #a5b4fc; --finance-tab-soft: rgba(99, 91, 255, 0.14); }
+.finance-tab[data-tone="amber"] { --finance-tab-accent: #fcd34d; --finance-tab-soft: rgba(245, 158, 11, 0.12); }
+
+.finance-tab:hover:not(.is-active) {
+  border-color: rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.035);
+  color: #e2e8f0;
+}
+
+.finance-tab.is-active {
+  border-color: color-mix(in srgb, var(--finance-tab-accent) 35%, transparent);
+  background: var(--finance-tab-soft);
+  color: var(--finance-tab-accent);
+  box-shadow: inset 0 -2px 0 var(--finance-tab-accent), 0 8px 22px rgba(2, 6, 23, 0.16);
+}
+
+.finance-tab:active {
+  transform: translateY(1px);
+}
+
+.finance-tab-badge {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 6px;
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.finance-tab.is-active .finance-tab-badge {
+  background: var(--finance-tab-soft);
+  color: var(--finance-tab-accent);
+}
+
+.admin-theme-light .admin-workspace .finance-tab-list {
+  border-color: #d8e1eb !important;
+  background: linear-gradient(180deg, #f8fafc, #f1f5f9) !important;
+  box-shadow: inset 0 1px 0 #ffffff, 0 5px 18px rgba(15, 23, 42, 0.055) !important;
+}
+
+.admin-theme-light .admin-workspace button.finance-tab {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: #526177 !important;
+  box-shadow: none !important;
+}
+
+.admin-theme-light .admin-workspace button.finance-tab:hover:not(.is-active) {
+  border-color: #d5dee9 !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: #172033 !important;
+}
+
+.admin-theme-light .admin-workspace button.finance-tab.is-active {
+  border-color: color-mix(in srgb, var(--finance-tab-accent) 52%, #cbd5e1) !important;
+  background: #ffffff !important;
+  color: #172033 !important;
+  box-shadow: inset 0 -3px 0 var(--finance-tab-accent), 0 4px 12px rgba(15, 23, 42, 0.09) !important;
+}
+
+.admin-theme-light .admin-workspace .finance-tab-badge {
+  background: #e9eef5 !important;
+  color: #526177 !important;
+}
+
+.admin-theme-light .admin-workspace .finance-tab.is-active .finance-tab-badge {
+  background: var(--finance-tab-soft) !important;
+  color: #334155 !important;
+}
+
+.admin-theme-light .admin-workspace .finance-tab-context {
+  color: #64748b !important;
+}
+
 .admin-theme-light .admin-workspace button.finance-toolbar-button {
   min-height: 36px;
   border-width: 1px !important;
