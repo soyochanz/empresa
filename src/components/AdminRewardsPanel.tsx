@@ -217,7 +217,7 @@ export default function AdminRewardsPanel({ comercialesList, finTransactions, ev
         <div className="mt-5 grid gap-4 xl:grid-cols-2">{legacyProgressRows.map(({ comercial, legacy }, index) => (
           <article key={comercial.id} className="rounded-2xl border border-white/7 bg-black/25 p-4">
             <div className="flex items-center gap-4">
-              <div className="legacy-rank-visual relative h-16 w-16 shrink-0" style={{ '--legacy-rank-mask': `url("${legacy.rank.asset}")` } as React.CSSProperties}><img src={legacy.rank.asset} alt={`Rango ${legacy.rank.name}`} className={`legacy-rank-badge h-full w-full object-contain ${legacy.rank.name === 'Diamante' ? 'legacy-rank-badge--diamond' : ''}`}/></div>
+              <img src={legacy.rank.asset} alt={`Rango ${legacy.rank.name}`} className={`legacy-rank-badge h-16 w-16 shrink-0 object-contain ${legacy.rank.name === 'Diamante' ? 'legacy-rank-badge--diamond' : ''}`}/>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2"><span className="text-[9px] text-slate-600">#{index + 1}</span><h5 className="truncate text-sm font-black text-white">{comercial.name}</h5><span className="rounded-md border border-white/10 px-2 py-0.5 text-[8px] font-black uppercase" style={{ color: legacy.rank.accent }}>{legacy.rank.name}</span></div>
                 <div className="mt-2 flex items-end justify-between gap-3"><strong className="font-mono text-lg text-violet-200">{legacy.total.toLocaleString('es-ES')} PA</strong><span className="text-right text-[8px] text-slate-500">{legacy.nextRank ? `${legacy.pointsToNext.toLocaleString('es-ES')} PA para ${legacy.nextRank.name}` : 'Rango máximo'}</span></div>
