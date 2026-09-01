@@ -1076,7 +1076,7 @@ export default function ComercialesPanelScreen({
   <div className={`${activeView === 'pipeline' ? 'block' : 'hidden lg:block'} bg-gradient-to-r from-amber-500/10 via-violet-500/10 to-cyan-500/10 border border-amber-500/15 rounded-2xl p-4 sm:p-5 overflow-hidden relative`}>
    <div className="absolute right-3 top-2 sm:right-5 sm:top-3 h-20 w-20 sm:h-24 sm:w-24 flex items-center justify-center">
    <div className="absolute inset-3 rounded-full blur-2xl opacity-25" style={{ backgroundColor: myLegacy.rank.accent }} />
-   <img src={myLegacy.rank.asset} alt={`Rango ${myLegacy.rank.name}`} className="relative h-full w-full object-contain drop-shadow-xl" />
+   <img src={myLegacy.rank.asset} alt={`Rango ${myLegacy.rank.name}`} className={`legacy-rank-badge relative h-full w-full object-contain ${myLegacy.rank.name === 'Diamante' ? 'legacy-rank-badge--diamond' : ''}`} />
    </div>
    <div className="pr-24 sm:pr-28">
    <div className="flex flex-wrap items-center gap-2">

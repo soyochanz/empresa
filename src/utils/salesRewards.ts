@@ -164,7 +164,7 @@ export const LEGACY_RANKS = [
   { name: 'Bronce', min: 5000, max: 20000, asset: '/assets/ranks/bronze.png', accent: '#d97706' },
   { name: 'Plata', min: 20000, max: 50000, asset: '/assets/ranks/silver.png', accent: '#bfdbfe' },
   { name: 'Oro', min: 50000, max: 100000, asset: '/assets/ranks/gold.png', accent: '#fbbf24' },
-  { name: 'Diamante', min: 100000, max: 250000, asset: '/assets/ranks/diamond.png', accent: '#67e8f9' },
+  { name: 'Diamante', min: 100000, max: 250000, asset: '/assets/ranks/diamond-v2.png', accent: '#67e8f9' },
   { name: 'Legend', min: 250000, max: Infinity, asset: '/assets/ranks/legend.png', accent: '#c084fc' },
 ] as const;
 
