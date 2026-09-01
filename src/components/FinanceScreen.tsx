@@ -434,6 +434,10 @@ const isConfirmedStripePayment = (transaction: FinanceTransaction) => {
   && !isSimulated;
 };
 
+const isInternalBalanceTransfer = (transaction: FinanceTransaction): boolean =>
+ transaction.category.trim().toLocaleLowerCase('es-ES') === 'transferencia interna' ||
+ transaction.id.startsWith('tx_stripe_payout_');
+
 const getInvoiceCardStyles = (color: string | undefined) => {
  switch (color?.toLowerCase()) {
  case 'indigo':
@@ -1475,7 +1479,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const analyticsTransactions = analyticsRange === 'month'
   ? ledgerTransactions.filter(transaction => getFinanceDateKey(transaction.date).startsWith(analyticsMonthKey))
   : ledgerTransactions;
- const valuedAnalyticsTransactions = analyticsTransactions.filter(transaction => transaction.status !== 'failed');
+ const valuedAnalyticsTransactions = analyticsTransactions.filter(transaction =>
+  transaction.status !== 'failed' && !isInternalBalanceTransfer(transaction)
+ );
 
  const totalIncomes = valuedAnalyticsTransactions
  .filter(t => t.type === 'income')
@@ -1523,7 +1529,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  // Cálculo de Saldos Consolidado y Pendiente según requerimiento
  const consolidatedIncomes = analyticsTransactions
- .filter(t => t.type === 'income' && t.status === 'paid')
+ .filter(t => t.type === 'income' && t.status === 'paid' && !isInternalBalanceTransfer(t))
  .reduce((sum, t) => sum + t.amount, 0);
 
  const consolidatedExpenses = analyticsTransactions
@@ -1546,7 +1552,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   transaction.status === 'paid' && wasCreatedAfterBalanceOpening(transaction)
  );
  const revolutIncome = balanceMovements
-  .filter(transaction => transaction.type === 'income' && (transaction.paymentMethod === 'transfer' || transaction.paymentMethod === 'card'))
+  .filter(transaction => transaction.type === 'income' && (
+   transaction.paymentAccount === 'revolut_pro' ||
+   (!transaction.paymentAccount && (transaction.paymentMethod === 'transfer' || transaction.paymentMethod === 'card'))
+  ))
   .reduce((sum, transaction) => sum + transaction.amount, 0);
  const revolutExpenses = balanceMovements
   .filter(transaction => transaction.type === 'expense' && transaction.paymentAccount === 'revolut_pro')
@@ -1554,7 +1563,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const revolutBalance = REVOLUT_OPENING_BALANCE + revolutIncome - revolutExpenses;
  const revolutMovements = balanceMovements
   .filter(transaction => transaction.paymentAccount === 'revolut_pro' || (
-   transaction.type === 'income' && (transaction.paymentMethod === 'transfer' || transaction.paymentMethod === 'card')
+   transaction.type === 'income' && !transaction.paymentAccount && (transaction.paymentMethod === 'transfer' || transaction.paymentMethod === 'card')
   ))
   .sort((a, b) => {
    const createdDelta = Date.parse(b.createdAt || '') - Date.parse(a.createdAt || '');
@@ -1566,6 +1575,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const septemberPaidIncomeTransactions = nonRecurringTransactions.filter(transaction =>
   transaction.type === 'income' &&
   transaction.status === 'paid' &&
+  !isInternalBalanceTransfer(transaction) &&
   getFinanceDateKey(transaction.date).startsWith(SEPTEMBER_GOAL_MONTH)
  );
  const septemberRevenue = septemberPaidIncomeTransactions.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
@@ -1653,7 +1663,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   .reduce<Record<string, number>>((groups, transaction) => ({ ...groups, [transaction.category]: (groups[transaction.category] || 0) + transaction.amount }), {});
  const topExpenseCategories = (Object.entries(expenseCategoryBreakdown) as Array<[string, number]>).sort(([, a], [, b]) => b - a).slice(0, 6);
  const incomeServiceBreakdown = valuedAnalyticsTransactions
-  .filter(transaction => transaction.type === 'income')
+  .filter(transaction => transaction.type === 'income' && transaction.status === 'paid')
   .reduce<Record<IncomeServiceCategory, number>>((groups, transaction) => {
    const linkedInvoice = transaction.invoiceId ? invoices.find(invoice => invoice.id === transaction.invoiceId) : undefined;
    const serviceContext = [
@@ -5886,7 +5896,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="grid grid-cols-4 gap-2">
      <button
      type="button"
-     onClick={() => setTxPaymentMethod(undefined)}
+     onClick={() => { setTxPaymentMethod(undefined); setTxPaymentAccount(undefined); }}
      className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer ${
       txPaymentMethod === undefined ?
       'bg-slate-700/30 border-slate-500 text-slate-300'
@@ -5897,7 +5907,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </button>
      <button
      type="button"
-     onClick={() => setTxPaymentMethod('cash')}
+     onClick={() => { setTxPaymentMethod('cash'); setTxPaymentAccount(undefined); }}
      className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer flex items-center justify-center gap-1 ${
       txPaymentMethod === 'cash' ?
       'bg-purple-500/10 border-purple-500/30 text-purple-300 shadow-sm'
@@ -5908,7 +5918,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </button>
      <button
      type="button"
-     onClick={() => setTxPaymentMethod('transfer')}
+     onClick={() => { setTxPaymentMethod('transfer'); if (txType === 'income' && !txPaymentAccount) setTxPaymentAccount('revolut_pro'); }}
      className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer flex items-center justify-center gap-1 ${
       txPaymentMethod === 'transfer' ?
       'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 shadow-sm'
@@ -5917,20 +5927,20 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      >
      <span>🏦 Transferencia</span>
      </button>
-     <button type="button" onClick={() => setTxPaymentMethod('card')} className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer flex items-center justify-center gap-1 ${txPaymentMethod === 'card' ? 'bg-blue-500/10 border-blue-500/30 text-blue-300 shadow-sm' : 'bg-transparent border-white/5 text-slate-400 hover:bg-white/5'}`}>
+     <button type="button" onClick={() => { setTxPaymentMethod('card'); if (txType === 'income' && !txPaymentAccount) setTxPaymentAccount('revolut_pro'); }} className={`py-1.5 text-[11px] font-medium rounded-xl border transition cursor-pointer flex items-center justify-center gap-1 ${txPaymentMethod === 'card' ? 'bg-blue-500/10 border-blue-500/30 text-blue-300 shadow-sm' : 'bg-transparent border-white/5 text-slate-400 hover:bg-white/5'}`}>
       <CreditCard className="h-3.5 w-3.5" /><span>Tarjeta</span>
      </button>
     </div>
     </div>
 
-    {txType === 'expense' && (
-    <div className="space-y-1 rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.035] p-3">
-     <label className="text-[9px] uppercase font-mono text-cyan-300 font-bold block">¿Con qué cuenta se pagó?</label>
-     <select value={txPaymentAccount || ''} onChange={event => setTxPaymentAccount((event.target.value || undefined) as FinanceTransaction['paymentAccount'])} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none">
-      <option value="">Sin asignar</option><option value="revolut_pro">Revolut Pro · Empresa</option><option value="carlos_personal">Tarjeta personal · Carlos</option><option value="nacho_personal">Tarjeta personal · Nacho</option>
-     </select>
-     <p className="mt-1 text-[9px] text-slate-500">Sólo los pagos con Revolut Pro reducen el saldo empresarial.</p>
-    </div>
+    {(txType === 'expense' || (txType === 'income' && (txPaymentMethod === 'transfer' || txPaymentMethod === 'card'))) && (
+     <div className="space-y-1 rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.035] p-3">
+      <label className="text-[9px] uppercase font-mono text-cyan-300 font-bold block">{txType === 'income' ? '¿En qué cuenta se recibió?' : '¿Con qué cuenta se pagó?'}</label>
+      <select value={txPaymentAccount || ''} onChange={event => setTxPaymentAccount((event.target.value || undefined) as FinanceTransaction['paymentAccount'])} className="mt-1 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none">
+       <option value="">Sin asignar</option><option value="revolut_pro">Revolut Pro · Empresa</option><option value="carlos_personal">Tarjeta personal · Carlos</option><option value="nacho_personal">Tarjeta personal · Nacho</option>
+      </select>
+      <p className="mt-1 text-[9px] text-slate-500">{txType === 'income' ? 'Los cobros asignados a Revolut Pro aumentan su saldo.' : 'Sólo los pagos con Revolut Pro reducen el saldo empresarial.'}</p>
+     </div>
     )}
 
     {/* Vincular a Factura */}

@@ -189,6 +189,7 @@ let stripeInstance: Stripe | null = null;
 // Los cargos anteriores permanecen en Stripe, pero no cuentan en Finanzas porque eran pruebas.
 const STRIPE_FINANCE_TRACKING_START_AT = "2026-07-31T10:08:53.000Z";
 const STRIPE_FINANCE_TRACKING_START_UNIX = Math.floor(new Date(STRIPE_FINANCE_TRACKING_START_AT).getTime() / 1000);
+const STRIPE_PAYOUT_TRACKING_START_UNIX = Math.floor(new Date("2026-08-30T13:05:07.971Z").getTime() / 1000);
 
 function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -199,6 +200,32 @@ function getStripe(): Stripe {
     stripeInstance = new Stripe(key);
   }
   return stripeInstance;
+}
+
+async function syncPaidStripePayoutToRevolut(payout: Stripe.Payout): Promise<boolean> {
+  if (
+    payout.status !== "paid" ||
+    payout.currency.toLowerCase() !== "eur" ||
+    payout.arrival_date < STRIPE_PAYOUT_TRACKING_START_UNIX
+  ) {
+    return false;
+  }
+
+  const payoutDate = new Date(payout.arrival_date * 1000).toISOString().slice(0, 10);
+  const { error } = await supabaseAdmin.from("finance_transactions").upsert({
+    id: `tx_stripe_payout_${payout.id}`,
+    user_id: null,
+    type: "income",
+    category: "Transferencia interna",
+    amount: Number(payout.amount || 0) / 100,
+    date: payoutDate,
+    description: `Traspaso Stripe a Revolut [PM:transfer] [PACC:revolut_pro]`,
+    "isRecurring": false,
+    "recurrencePeriod": null,
+    status: "paid",
+  }, { onConflict: "id", ignoreDuplicates: true });
+  if (error) throw error;
+  return true;
 }
 
 function getAppUrl(req: express.Request): string {
@@ -1086,6 +1113,11 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       console.warn("Processed Stripe checkout.session.expired webhook:", result);
     }
 
+    if (event.type === "payout.paid") {
+      const synced = await syncPaidStripePayoutToRevolut(event.data.object as Stripe.Payout);
+      console.log("Processed Stripe payout.paid webhook:", { payoutId: event.data.object.id, synced });
+    }
+
     res.json({ received: true });
   } catch (error: any) {
     console.error("Error handling Stripe webhook:", error);
@@ -1399,7 +1431,12 @@ app.get("/api/bites/overview", requireAdminAuth, async (_req, res) => {
 
 app.get("/api/stripe/balance", requireAdminAuth, async (_req, res) => {
   try {
-    const balance = await getStripe().balance.retrieve();
+    const stripe = getStripe();
+    const [balance, payouts] = await Promise.all([
+      stripe.balance.retrieve(),
+      stripe.payouts.list({ limit: 10 }),
+    ]);
+    await Promise.all(payouts.data.map(syncPaidStripePayoutToRevolut));
     const normalizeAmounts = (items: Stripe.Balance.Available[] | Stripe.Balance.Pending[]) =>
       items.map(item => ({
         amount: Number(item.amount || 0) / 100,
