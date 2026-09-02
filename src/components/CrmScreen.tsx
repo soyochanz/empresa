@@ -1480,8 +1480,12 @@ React.useEffect(() => {
  };
 
  const handleToggleClientTransactionPaid = async (tx: FinanceTransaction) => {
-  const nextStatus: FinanceTransaction['status'] = tx.status === 'paid' ? 'pending' : 'paid';
-  const updatedTx: FinanceTransaction = { ...tx, status: nextStatus };
+ const nextStatus: FinanceTransaction['status'] = tx.status === 'paid' ? 'pending' : 'paid';
+  const updatedTx: FinanceTransaction = {
+   ...tx,
+   status: nextStatus,
+   paidAt: nextStatus === 'paid' ? new Date().toISOString() : undefined,
+  };
   try {
    await persistClientTransactionAndInvoice(tx, updatedTx);
   } catch (error) {
@@ -1672,6 +1676,7 @@ React.useEffect(() => {
     date: paymentDate,
     description: paymentDesc.trim() || pendingTransaction.description,
     status: 'paid',
+    paidAt: new Date().toISOString(),
     paymentMethod,
     paymentAccount: paymentMethod === 'transfer' ? paymentAccount : undefined,
     invoiceId: paymentInvoiceId !== 'general' ? paymentInvoiceId : pendingTransaction.invoiceId,
@@ -1725,6 +1730,7 @@ React.useEffect(() => {
   description: paymentDesc.trim() || `Cobro Cliente: ${selectedContact.name} - ${selectedContact.company || ''}`,
   isRecurring: false,
   status: paymentStatus,
+  paidAt: paymentStatus === 'paid' ? new Date().toISOString() : undefined,
   paymentMethod: paymentMethod,
   paymentAccount: paymentMethod === 'transfer' ? paymentAccount : undefined,
   invoiceId: finalInvoiceId,

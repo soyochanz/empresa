@@ -159,6 +159,7 @@ export interface Activity {
 export interface FinanceTransaction {
  id: string;
  createdAt?: string; // Database creation time, used for balance cutoffs and audit views
+ paidAt?: string; // Exact time a pending charge was confirmed as paid
  type: 'income' | 'expense';
  category: string;
  amount: number;

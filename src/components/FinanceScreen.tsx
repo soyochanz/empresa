@@ -186,6 +186,21 @@ const belongsToBalanceAfterOpening = (transaction: FinanceTransaction): boolean 
  return wasCreatedAfterBalanceOpening(transaction) || effectiveDate > BALANCE_OPENING_DATE;
 };
 
+const getBalanceMovementSortTime = (transaction: FinanceTransaction): number => {
+ const effectiveDate = getFinanceDateKey(transaction.date);
+ const paidAt = Date.parse(transaction.paidAt || '');
+ if (Number.isFinite(paidAt)) return paidAt;
+
+ const createdAt = Date.parse(transaction.createdAt || '');
+ const createdDate = Number.isFinite(createdAt) ? getFinanceDateKey(transaction.createdAt || '') : '';
+ // Backward compatibility for charges settled before paidAt started being recorded:
+ // when the effective date differs from creation, treat settlement as the latest event of that day.
+ if (effectiveDate && createdDate && effectiveDate !== createdDate) {
+  return Date.parse(`${effectiveDate}T23:59:59.999`);
+ }
+ return Number.isFinite(createdAt) ? createdAt : Date.parse(`${effectiveDate}T12:00:00`);
+};
+
 const getFinanceBusinessName = (contact?: ClientContact): string => {
  if (!contact) return '';
  const company = (contact.company || '').trim();
@@ -1606,10 +1621,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    transaction.type === 'income' && !transaction.paymentAccount && (transaction.paymentMethod === 'transfer' || transaction.paymentMethod === 'card')
   ))
   .sort((a, b) => {
-   const createdDelta = Date.parse(b.createdAt || '') - Date.parse(a.createdAt || '');
-   return Number.isFinite(createdDelta) && createdDelta !== 0
-    ? createdDelta
-    : getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date));
+   const effectiveDateDelta = getFinanceDateKey(b.date).localeCompare(getFinanceDateKey(a.date));
+   if (effectiveDateDelta !== 0) return effectiveDateDelta;
+   return getBalanceMovementSortTime(b) - getBalanceMovementSortTime(a);
   })
   .slice(0, 4);
  const septemberPaidIncomeTransactions = nonRecurringTransactions.filter(transaction =>
