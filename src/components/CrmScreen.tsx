@@ -1059,6 +1059,8 @@ React.useEffect(() => {
  const assignedEmail = matchedCom ? matchedCom.email : '';
  const commPct = matchedCom?.commissionPercentage ?? 0;
  const commissionableSaleTotal = hasUpfrontServicePayment ? convFinancedTotal : 0;
+ const conversionTaxPercentage = convertingLead.taxPercentage ?? 21;
+ const commissionableSaleNetTotal = commissionableSaleTotal / (1 + conversionTaxPercentage / 100);
 
  let generatedStripeUrl = '';
  let pricePerInstallment = hasUpfrontServicePayment && convInstallments > 0 ? convFinancedTotal / convInstallments : convRecurringPrice;
@@ -1312,7 +1314,7 @@ React.useEffect(() => {
   installments: hasUpfrontServicePayment ? convInstallments : 0,
   commercialName: matchedCom?.name,
   commissionPercentage: matchedCom ? commPct : undefined,
-  commissionAmount: matchedCom ? commissionableSaleTotal * commPct / 100 : undefined,
+  commissionAmount: matchedCom ? commissionableSaleNetTotal * commPct / 100 : undefined,
   stripeUrl: generatedStripeUrl || undefined,
  stripeUrls: serviceFinancialResult.stripeUrls,
  isNewClient: true,
@@ -6274,10 +6276,12 @@ React.useEffect(() => {
      const com = (comercialesList || []).find(c => c.id === effectiveCommissionCommercialId);
      if (com) {
      const pct = com.commissionPercentage ?? 10;
-     const commVal = ((hasUpfrontServicePayment ? convFinancedTotal : 0) * pct) / 100;
+     const taxPercentage = convertingLead?.taxPercentage ?? 21;
+     const commissionableNet = (hasUpfrontServicePayment ? convFinancedTotal : 0) / (1 + taxPercentage / 100);
+     const commVal = commissionableNet * pct / 100;
      return (
       <p className="text-[10px] text-emerald-400 font-mono mt-1">
-      👉 Se asignará una comisión de <strong>{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> ({pct}%) a <strong>{com.name}</strong> en el balance del comercial.
+      👉 Se asignará una comisión de <strong>{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> ({pct}% sobre el importe sin IVA) a <strong>{com.name}</strong>.
       </p>
      );
      }

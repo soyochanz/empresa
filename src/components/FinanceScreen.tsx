@@ -7,6 +7,7 @@ import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { clearInvoicePrefill, peekInvoicePrefill, resolveInvoiceClientData } from '../utils/invoicePrefill';
 import { authenticatedFetch } from '../utils/authenticatedFetch';
+import { getCommissionableNetVolume } from '../utils/commission';
 import {
  buildManualRecurringTransaction,
  getFinanceRecurrenceDate,
@@ -1562,7 +1563,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   );
   const closures = countUniqueInitialSales(allInitialSales);
   const commissionPercentage = commercial.commissionPercentage ?? getTieredCommission(closures);
-  const salesCommission = scopedPaidInitialSales.reduce((volume, transaction) => volume + Number(transaction.amount || 0), 0) * commissionPercentage / 100;
+  const commissionableNetVolume = getCommissionableNetVolume(scopedPaidInitialSales, invoices, contacts);
+  const salesCommission = commissionableNetVolume * commissionPercentage / 100;
   const extras = (commercial.extraCommissions || [])
    .filter(extra => includeExtra(extra.date))
    .reduce((extraSum, extra) => extraSum + Number(extra.amount || 0), 0);

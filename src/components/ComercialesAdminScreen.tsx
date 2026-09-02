@@ -40,13 +40,14 @@ import {
  ,Download
  ,Printer
 } from 'lucide-react';
-import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen, CommercialPresence, CommercialWorkSession, CommercialActivityLog } from '../types';
+import { CalendarEvent, ComercialAccount, ComercialLead, ColdCallingLead, ClientContact, Screen, CommercialPresence, CommercialWorkSession, CommercialActivityLog, FinanceTransaction } from '../types';
 import DossierModal from './DossierModal';
 import AdminRewardsPanel from './AdminRewardsPanel';
 import AdminCommercialEvolution from './AdminCommercialEvolution';
 import { db, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, dedupeCommercialLeads, getRankableCommercials } from '../utils/salesRewards';
 import { downloadCommercialAnalyticsReport, printCommercialAnalyticsReport } from '../utils/commercialAnalyticsReport';
+import { getCommissionableNetVolume } from '../utils/commission';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -362,7 +363,7 @@ export default function ComercialesAdminScreen({
  }
  const linkedTx = incomeTransactions.find(tx => tx.id === extraCommissionTxId);
  const amount = extraCommissionMode === 'income' ?
-  (Number(linkedTx?.amount || 0) * Number(extraCommissionPercent || 0)) / 100
+  (linkedTx ? getCommissionableNetVolume([linkedTx as FinanceTransaction], [], contacts) : 0) * Number(extraCommissionPercent || 0) / 100
   : Number(extraCommissionAmount || 0);
  if (!amount || amount <= 0) {
   triggerAlert('Importe no válido', 'Introduce un importe en euros o un porcentaje válido sobre un ingreso.');
@@ -698,10 +699,12 @@ export default function ComercialesAdminScreen({
  (tx.comercialId === currentComercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === currentComercial.email.toLowerCase()))
  ) : [];
  const indInitialTxsPaid = indInitialTxs.filter(tx => tx.status === 'paid');
- const indInitialSalesVolume = indInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
- const indPendingInitialSalesVolume = indInitialTxs
-  .filter(tx => tx.status === 'pending')
-  .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+ const indInitialSalesVolume = getCommissionableNetVolume(indInitialTxsPaid as FinanceTransaction[], [], contacts);
+ const indPendingInitialSalesVolume = getCommissionableNetVolume(
+  indInitialTxs.filter(tx => tx.status === 'pending') as FinanceTransaction[],
+  [],
+  contacts,
+ );
  const indCommissionPercentage = currentComercial ? (currentComercial.commissionPercentage ?? getTieredCommission(Math.max(indWon.length, countUniqueInitialSales(indInitialTxs)))) : 10;
  const indExtraCommissions = currentComercial ? (currentComercial.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0) : 0;
  const indBenefitsEarned = (indInitialSalesVolume * (indCommissionPercentage / 100)) + indExtraCommissions;
@@ -1289,7 +1292,7 @@ export default function ComercialesAdminScreen({
        {indBenefitsReadyToPayout.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
       </span>
       <span className="mt-1 block text-[8px] font-mono text-slate-500">
-       Sobre {indInitialSalesVolume.toLocaleString('es-ES')} € cobrados
+       Sobre {indInitialSalesVolume.toLocaleString('es-ES')} € de base neta cobrada
       </span>
       </div>
       <div className="text-right">
@@ -1914,11 +1917,15 @@ export default function ComercialesAdminScreen({
        tx.isInitialSale === true && 
        (tx.comercialId === c.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === c.email.toLowerCase()))
       );
-      const initialSalesVolTotal = initialTxsForC.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-      const initialSalesVol = initialTxsForC.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + (tx.amount || 0), 0);
+      const initialSalesVolTotal = getCommissionableNetVolume(initialTxsForC as FinanceTransaction[], [], contacts);
+      const initialSalesVol = getCommissionableNetVolume(
+       initialTxsForC.filter(tx => tx.status === 'paid') as FinanceTransaction[],
+       [],
+       contacts,
+      );
       const wonLeadsCount = (summary as any).wonLeads || 0;
       const closuresForC = Math.max(wonLeadsCount, countUniqueInitialSales(initialTxsForC));
-      const commissionPct = getTieredCommission(closuresForC);
+      const commissionPct = c.commissionPercentage ?? getTieredCommission(closuresForC);
       const tierInfo = getCommissionTierInfo(closuresForC);
       const extraForC = (c.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
       const benefitsEarned = (initialSalesVol * (commissionPct / 100)) + extraForC;

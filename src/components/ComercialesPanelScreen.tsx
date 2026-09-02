@@ -42,7 +42,7 @@ import {
  ,Moon
  ,Sun
  } from 'lucide-react';
-import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact, CommercialPresence } from '../types';
+import { ComercialAccount, ComercialLead, ColdCallingLead, CalendarEvent, ClientContact, CommercialPresence, FinanceTransaction } from '../types';
 import { db } from '../supabaseClient';
 import ColdCallingScreen from './ColdCallingScreen';
 import DossierModal from './DossierModal';
@@ -51,6 +51,7 @@ import CommercialAnalyticsDashboard from './CommercialAnalyticsDashboard';
 import CommercialTrainingCenter from './CommercialTrainingCenter';
 import CommercialCalendarWorkspace from './CommercialCalendarWorkspace';
 import SalesRewardsScreen from './SalesRewardsScreen';
+import { getCommissionableNetVolume } from '../utils/commission';
 
 const safeConfirm = (msg: string): boolean => {
  const isIframe = window.self !== window.top;
@@ -780,10 +781,11 @@ export default function ComercialesPanelScreen({
  );
  const myInitialTxsPaid = myInitialTxs.filter(tx => tx.status === 'paid');
  const myClosuresForTier = Math.max(wonLeads.length, countUniqueInitialSales(myInitialTxs));
- const myCommissionPercentage = comercial.commissionPercentage ?? getTieredCommission(myClosuresForTier);
+ const liveComercial = comercialesList.find(item => item.id === comercial.id) || comercial;
+ const myCommissionPercentage = liveComercial.commissionPercentage ?? getTieredCommission(myClosuresForTier);
  const myTierInfo = getCommissionTierInfo(myClosuresForTier);
- const myInitialSalesVolume = myInitialTxsPaid.reduce((sum, tx) => sum + (tx.amount || 0), 0);
- const myTotalSalesVolume = myInitialTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+ const myInitialSalesVolume = getCommissionableNetVolume(myInitialTxsPaid as FinanceTransaction[], [], contacts);
+ const myTotalSalesVolume = getCommissionableNetVolume(myInitialTxs as FinanceTransaction[], [], contacts);
  const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
  const myExtraCommissions = (comercial.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
  const myBenefitsEarnedWithExtras = myBenefitsEarned + myExtraCommissions;
@@ -796,7 +798,6 @@ export default function ComercialesPanelScreen({
  const myColdCallsCount = coldLeads
  .filter(l => l.assignedToEmail?.toLowerCase() === comercial.email.toLowerCase())
  .reduce((sum, l) => sum + (l.callsCount || 0), 0);
- const liveComercial = comercialesList.find(item => item.id === comercial.id) || comercial;
  const myLegacy = calculateLegacyPoints(liveComercial, finTransactions, events, coldLeads, contacts);
  const recapSlides = [
  {
@@ -2198,6 +2199,5 @@ export default function ComercialesPanelScreen({
  </div>
  );
 }
-
 
 

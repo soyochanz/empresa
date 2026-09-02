@@ -1,4 +1,5 @@
 import { Invoice } from '../types';
+import html2pdf from 'html2pdf.js';
 
 export interface InvoiceHtmlOptions {
  isPaid?: boolean;
@@ -115,7 +116,6 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
 };
 
 export const downloadInvoicePdf = async (html: string, filename: string): Promise<void> => {
- const [{ default: html2pdf }] = await Promise.all([import('html2pdf.js')]);
  const parsed = new DOMParser().parseFromString(html, 'text/html');
  const host = document.createElement('div');
  host.style.position = 'fixed';

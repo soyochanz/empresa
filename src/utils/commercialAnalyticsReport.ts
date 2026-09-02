@@ -1,5 +1,6 @@
-import { ClientContact, ColdCallingLead, ComercialAccount, ComercialLead } from '../types';
+import { ClientContact, ColdCallingLead, ComercialAccount, ComercialLead, FinanceTransaction } from '../types';
 import { countUniqueInitialSales } from './salesRewards';
+import { getCommissionableNetVolume } from './commission';
 
 interface ReportInput {
   commercials: ComercialAccount[];
@@ -80,9 +81,11 @@ const calculateRows = ({ commercials, coldLeads, crmLeads, contacts, finTransact
       transaction.isInitialSale === true
       && (transaction.comercialId === commercial.id || normalized(transaction.comercialEmail) === email)
     );
-    const paidVolume = initialTransactions
-      .filter(transaction => transaction.status === 'paid')
-      .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+    const paidVolume = getCommissionableNetVolume(
+      initialTransactions.filter(transaction => transaction.status === 'paid') as FinanceTransaction[],
+      [],
+      contacts,
+    );
     const paidSales = countUniqueInitialSales(initialTransactions.filter(transaction => transaction.status === 'paid'));
     const commissionPercentage = Number(commercial.commissionPercentage ?? (paidSales >= 18 ? 18 : paidSales >= 17 ? 17 : paidSales >= 15 ? 16 : paidSales >= 13 ? 15 : paidSales >= 10 ? 13.5 : paidSales >= 7 ? 12 : paidSales >= 4 ? 11 : 10));
     const extras = (commercial.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
@@ -170,7 +173,7 @@ export const buildCommercialAnalyticsReport = (input: ReportInput) => {
         <div><span>Tasa de contacto</span><b>${percent(row.contactRate)}</b></div>
         <div><span>Tasa de respuesta</span><b>${percent(row.answerRate)}</b></div>
         <div><span>Paso a closer</span><b>${percent(row.closerRate)}</b></div>
-        <div><span>Ventas cobradas</span><b>${money(row.paidVolume)} €</b></div>
+        <div><span>Base neta cobrada</span><b>${money(row.paidVolume)} €</b></div>
         <div><span>Comisión estimada</span><b>${money(row.commission)} €</b></div>
       </div>
     </section>`).join('');
@@ -185,7 +188,7 @@ export const buildCommercialAnalyticsReport = (input: ReportInput) => {
   <div class="cards">
     <div class="card"><span>Asignados ahora</span><b>${totals.assigned}</b></div><div class="card"><span>Histórico trabajado</span><b>${totals.historical}</b></div>
     <div class="card"><span>Contactados</span><b>${totals.contacted}</b><small>${percent(totalContactRate)}</small></div><div class="card"><span>Al closer</span><b>${totals.closer}</b></div>
-    <div class="card"><span>Cerrados</span><b>${totals.won}</b><small>${percent(totalCloseRate)}</small></div><div class="card"><span>Volumen cobrado</span><b>${money(totals.paidVolume)} €</b></div>
+    <div class="card"><span>Cerrados</span><b>${totals.won}</b><small>${percent(totalCloseRate)}</small></div><div class="card"><span>Base neta cobrada</span><b>${money(totals.paidVolume)} €</b></div>
   </div>
   <h2 class="section-title">Resumen de rendimiento</h2>
   <table><thead><tr><th>Comercial</th><th>Actual</th><th>Histórico</th><th>Contactados</th><th>Contestan</th><th>Closer</th><th>Cerrados</th><th>Perdidos</th><th>Llamadas</th><th>Cobrado</th><th>Comisión est.</th></tr></thead>
