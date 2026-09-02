@@ -2,6 +2,13 @@ import { ClientContact, FinanceTransaction, Invoice } from '../types';
 
 const DEFAULT_TAX_PERCENTAGE = 21;
 
+export const isAutomaticCommissionEligible = (transaction: FinanceTransaction): boolean => {
+ if (transaction.isInitialSale !== true || transaction.isRecurring || transaction.recurrenceSourceId) return false;
+ // A combined service may mention recurrence in its concept. Metadata and the
+ // accounting category, rather than free text, determine which leg commissions.
+ return !/(?:mensualidad|suscripci[oó]n|recurrente|renovaci[oó]n)/i.test(transaction.category || '');
+};
+
 export const getCommissionableNetAmount = (
  transaction: FinanceTransaction,
  invoices: Invoice[] = [],
@@ -33,4 +40,14 @@ export const getCommissionableNetVolume = (
 ): number => transactions.reduce(
  (total, transaction) => total + getCommissionableNetAmount(transaction, invoices, contacts),
  0,
+);
+
+export const getAutomaticCommissionableNetVolume = (
+ transactions: FinanceTransaction[],
+ invoices: Invoice[] = [],
+ contacts: ClientContact[] = [],
+): number => getCommissionableNetVolume(
+ transactions.filter(isAutomaticCommissionEligible),
+ invoices,
+ contacts,
 );

@@ -6068,7 +6068,7 @@ React.useEffect(() => {
          <span className="block text-[8px] font-bold uppercase text-slate-500">Se lleva (€)</span>
          <input type="number" min="0" step="0.01" value={convExtraCommissionAmount || ''} onChange={event => setConvExtraCommissionAmount(Math.max(0, Number(event.target.value) || 0))} placeholder="0,00" className="w-full rounded-lg border border-white/10 bg-[#030305] px-2.5 py-2 text-[9px] text-slate-200 outline-none focus:border-blue-400" />
         </label>
-        <p className="col-span-2 text-[8px] leading-3 text-slate-500">Es un importe fijo para esta nueva factura y se sumará a las comisiones extra del comercial. No crea otro caso ganado.</p>
+        <p className="col-span-2 text-[8px] leading-3 text-slate-500">Es una comisión extra explícita y fija. Puede utilizarse para una recurrencia solo cuando se haya pactado expresamente; no crea otro caso ganado.</p>
        </div>
       )}
      </div>
@@ -6288,7 +6288,7 @@ React.useEffect(() => {
      return null;
     })()}
     {!effectiveCommissionCommercialId && <p className="text-[9px] text-slate-500">Puedes confirmar la venta sin asignar comisión a ningún comercial.</p>}
-    {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Se ha preseleccionado al comercial que captó el lead. Puedes cambiarlo antes de confirmar la venta. Carlos nunca recibe comisión de ventas.</p>}
+    {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Se ha preseleccionado al comercial que captó el lead. La comisión automática se calcula solo sobre el upfront sin IVA, aunque esté dividido en cuotas; la recurrencia queda excluida. Carlos nunca recibe comisión de ventas.</p>}
     </div>
     )}
 

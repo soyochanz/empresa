@@ -7,7 +7,7 @@ import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { clearInvoicePrefill, peekInvoicePrefill, resolveInvoiceClientData } from '../utils/invoicePrefill';
 import { authenticatedFetch } from '../utils/authenticatedFetch';
-import { getCommissionableNetVolume } from '../utils/commission';
+import { getAutomaticCommissionableNetVolume, getCommissionableNetAmount, isAutomaticCommissionEligible } from '../utils/commission';
 import {
  buildManualRecurringTransaction,
  getFinanceRecurrenceDate,
@@ -1557,13 +1557,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const belongsToCommercial = (transaction: FinanceTransaction) =>
    transaction.comercialId === commercial.id ||
    Boolean(transaction.comercialEmail && transaction.comercialEmail.toLowerCase() === commercial.email.toLowerCase());
-  const allInitialSales = nonRecurringTransactions.filter(transaction => transaction.isInitialSale === true && belongsToCommercial(transaction));
+  const allInitialSales = nonRecurringTransactions.filter(transaction => isAutomaticCommissionEligible(transaction) && belongsToCommercial(transaction));
   const scopedPaidInitialSales = paidTransactions.filter(transaction =>
-   transaction.isInitialSale === true && transaction.status === 'paid' && belongsToCommercial(transaction)
+   isAutomaticCommissionEligible(transaction) && transaction.status === 'paid' && belongsToCommercial(transaction)
   );
   const closures = countUniqueInitialSales(allInitialSales);
   const commissionPercentage = commercial.commissionPercentage ?? getTieredCommission(closures);
-  const commissionableNetVolume = getCommissionableNetVolume(scopedPaidInitialSales, invoices, contacts);
+  const commissionableNetVolume = getAutomaticCommissionableNetVolume(scopedPaidInitialSales, invoices, contacts);
   const salesCommission = commissionableNetVolume * commissionPercentage / 100;
   const extras = (commercial.extraCommissions || [])
    .filter(extra => includeExtra(extra.date))
@@ -5418,26 +5418,26 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    {(() => {
     const totalVentasComerciales = rankableComercialesList.reduce((sum, com) => {
     const txs = ledgerTransactions.filter(tx =>
-     tx.isInitialSale === true && 
+     isAutomaticCommissionEligible(tx) &&
      (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
     );
-    return sum + txs.reduce((s, t) => s + (t.amount || 0), 0);
+    return sum + getAutomaticCommissionableNetVolume(txs, invoices, contacts);
     }, 0);
 
     const totalComisionesDevengadas = rankableComercialesList.reduce((sum, com) => {
     const txs = ledgerTransactions.filter(tx =>
-     tx.isInitialSale === true && 
+     isAutomaticCommissionEligible(tx) &&
      (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
     );
     const paidTxs = txs.filter(tx => tx.status === 'paid');
-    const volume = paidTxs.reduce((s, t) => s + (t.amount || 0), 0);
+    const volume = getAutomaticCommissionableNetVolume(paidTxs, invoices, contacts);
     
     const clientsCount = contacts.filter(c => 
      c.status === 'Client' && 
      (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
     ).length;
     const closures = Math.max(clientsCount, countUniqueInitialSales(txs));
-    const pct = getTieredCommission(closures);
+    const pct = com.commissionPercentage ?? getTieredCommission(closures);
     
     const extras = (com.extraCommissions || []).reduce((extraSum, extra) => extraSum + Number(extra.amount || 0), 0);
     return sum + (volume * (pct / 100)) + extras;
@@ -5446,7 +5446,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     const avgComm = rankableComercialesList.length
     ? Math.round(rankableComercialesList.reduce((sum, com) => {
      const txs = ledgerTransactions.filter(tx =>
-      tx.isInitialSale === true && 
+      isAutomaticCommissionEligible(tx) &&
       (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
      );
      const clientsCount = contacts.filter(c => 
@@ -5454,7 +5454,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === com.email.toLowerCase())
      ).length;
      const closures = Math.max(clientsCount, countUniqueInitialSales(txs));
-     return sum + getTieredCommission(closures);
+     return sum + (com.commissionPercentage ?? getTieredCommission(closures));
      }, 0) / rankableComercialesList.length)
     : 10;
 
@@ -5464,12 +5464,12 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <div className="absolute top-5 right-5 bg-blue-500/10 rounded-2xl p-3 border border-blue-500/10">
       <TrendingUp className="w-5 h-5 text-blue-400" />
      </div>
-     <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Volumen Ventas Iniciales</span>
+     <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Base neta de Upfront</span>
      <h3 className="text-3xl font-black text-white mt-2 font-mono">
       {totalVentasComerciales.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-blue-400 text-lg ml-1 font-sans">€</span>
      </h3>
      <p className="text-[10px] text-slate-400 font-mono mt-3">
-      Suma de primeros pagos registrados
+      Solo pagos iniciales, sin IVA ni recurrencias
      </p>
      </div>
 
@@ -5482,7 +5482,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       {totalComisionesDevengadas.toLocaleString('es-ES', { minimumFractionDigits: 2 })}<span className="text-amber-400 text-lg ml-1 font-sans">€</span>
      </h3>
      <p className="text-[10px] text-amber-500/70 font-mono mt-3">
-      Devengadas del total vendido inicial
+      Solo sobre upfront cobrado sin IVA
      </p>
      </div>
 
@@ -5531,12 +5531,12 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      ) : (
      rankableComercialesList.map(com => {
       const txs = ledgerTransactions.filter(tx =>
-      tx.isInitialSale === true && 
+      isAutomaticCommissionEligible(tx) &&
       (tx.comercialId === com.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === com.email.toLowerCase()))
       );
-      const volume = txs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+      const volume = getAutomaticCommissionableNetVolume(txs, invoices, contacts);
       const paidTxs = txs.filter(tx => tx.status === 'paid');
-      const paidVolume = paidTxs.reduce((sum, tx) => sum + (tx.amount || 0), 0);
+      const paidVolume = getAutomaticCommissionableNetVolume(paidTxs, invoices, contacts);
       
       const clientsCount = contacts.filter(c => 
       c.status === 'Client' && 
@@ -5544,7 +5544,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       ).length;
       
       const closures = Math.max(clientsCount, countUniqueInitialSales(txs));
-      const pct = getTieredCommission(closures);
+      const pct = com.commissionPercentage ?? getTieredCommission(closures);
       const extras = (com.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
       const benefits = (paidVolume * (pct / 100)) + extras;
 
@@ -5571,7 +5571,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
         {paidVolume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
        </div>
        <div className="text-[9px] text-slate-500">
-        de {volume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} adjudicado
+        de {volume.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} neto adjudicado
        </div>
        </td>
        <td className="p-4 text-right font-mono text-amber-400 font-bold text-sm">
@@ -5613,7 +5613,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </thead>
     <tbody className="divide-y divide-white/5">
      {(() => {
-     const initialTxs = getUniqueInitialSales(ledgerTransactions).sort((a, b) => {
+     const initialTxs = getUniqueInitialSales(ledgerTransactions.filter(isAutomaticCommissionEligible)).sort((a, b) => {
       const statusPriority = Number(a.status !== 'pending') - Number(b.status !== 'pending');
       if (statusPriority !== 0) return statusPriority;
       return `${b.date}_${b.id}`.localeCompare(`${a.date}_${a.id}`);
@@ -5637,7 +5637,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       let commPct = 10;
       if (assignedCom) {
       const comTxs = ledgerTransactions.filter(tx =>
-       tx.isInitialSale === true && 
+       isAutomaticCommissionEligible(tx) &&
        (tx.comercialId === assignedCom.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === assignedCom.email.toLowerCase()))
       );
       const clientsCount = contacts.filter(c => 
@@ -5645,12 +5645,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        (c.contactedByComercialEmail && c.contactedByComercialEmail.toLowerCase() === assignedCom.email.toLowerCase())
       ).length;
       const closures = Math.max(clientsCount, countUniqueInitialSales(comTxs));
-      commPct = getTieredCommission(closures);
+      commPct = assignedCom.commissionPercentage ?? getTieredCommission(closures);
       }
       
       const isPaid = t.status === 'paid';
-      const commVal = isPaid ? (t.amount * (commPct / 100)) : 0;
-      const potentialComm = t.amount * (commPct / 100);
+      const commissionableNet = getCommissionableNetAmount(t, invoices, contacts);
+      const commVal = isPaid ? (commissionableNet * (commPct / 100)) : 0;
+      const potentialComm = commissionableNet * (commPct / 100);
 
       return (
       <tr key={t.id} className="hover:bg-white/[0.01] transition-colors text-left">
@@ -5663,7 +5664,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        </td>
        <td className="p-3 text-slate-400 font-mono">{t.date}</td>
        <td className="p-3 font-mono font-bold text-emerald-400">
-       <div>{t.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</div>
+       <div>{commissionableNet.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</div>
+       <span className="block text-[8px] text-slate-500">Base sin IVA</span>
        <span className={`text-[8px] font-mono font-bold px-1 py-0.2 rounded mt-0.5 inline-block uppercase tracking-wider ${
         isPaid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
        }`}>

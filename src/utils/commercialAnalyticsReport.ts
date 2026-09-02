@@ -1,6 +1,6 @@
 import { ClientContact, ColdCallingLead, ComercialAccount, ComercialLead, FinanceTransaction } from '../types';
 import { countUniqueInitialSales } from './salesRewards';
-import { getCommissionableNetVolume } from './commission';
+import { getAutomaticCommissionableNetVolume, isAutomaticCommissionEligible } from './commission';
 
 interface ReportInput {
   commercials: ComercialAccount[];
@@ -78,10 +78,10 @@ const calculateRows = ({ commercials, coldLeads, crmLeads, contacts, finTransact
     const lost = crmCommercialLeads.filter(lead => lead.status === 'Perdido').length;
     const calls = historical.reduce((sum, lead) => sum + Math.max(lead.callsLog?.length || 0, Number(lead.callsCount || 0)), 0);
     const initialTransactions = finTransactions.filter(transaction =>
-      transaction.isInitialSale === true
+      isAutomaticCommissionEligible(transaction as FinanceTransaction)
       && (transaction.comercialId === commercial.id || normalized(transaction.comercialEmail) === email)
     );
-    const paidVolume = getCommissionableNetVolume(
+    const paidVolume = getAutomaticCommissionableNetVolume(
       initialTransactions.filter(transaction => transaction.status === 'paid') as FinanceTransaction[],
       [],
       contacts,

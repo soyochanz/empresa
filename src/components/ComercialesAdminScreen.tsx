@@ -47,7 +47,7 @@ import AdminCommercialEvolution from './AdminCommercialEvolution';
 import { db, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, dedupeCommercialLeads, getRankableCommercials } from '../utils/salesRewards';
 import { downloadCommercialAnalyticsReport, printCommercialAnalyticsReport } from '../utils/commercialAnalyticsReport';
-import { getCommissionableNetVolume } from '../utils/commission';
+import { getAutomaticCommissionableNetVolume, getCommissionableNetVolume, isAutomaticCommissionEligible } from '../utils/commission';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -695,12 +695,12 @@ export default function ComercialesAdminScreen({
 
  // Computed commission & benefits - Now automatically tiered/escalonated!
  const indInitialTxs = currentComercial ? finTransactions.filter(tx => 
- tx.isInitialSale === true && 
+ isAutomaticCommissionEligible(tx as FinanceTransaction) &&
  (tx.comercialId === currentComercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === currentComercial.email.toLowerCase()))
  ) : [];
  const indInitialTxsPaid = indInitialTxs.filter(tx => tx.status === 'paid');
- const indInitialSalesVolume = getCommissionableNetVolume(indInitialTxsPaid as FinanceTransaction[], [], contacts);
- const indPendingInitialSalesVolume = getCommissionableNetVolume(
+ const indInitialSalesVolume = getAutomaticCommissionableNetVolume(indInitialTxsPaid as FinanceTransaction[], [], contacts);
+ const indPendingInitialSalesVolume = getAutomaticCommissionableNetVolume(
   indInitialTxs.filter(tx => tx.status === 'pending') as FinanceTransaction[],
   [],
   contacts,
@@ -1914,11 +1914,11 @@ export default function ComercialesAdminScreen({
       
       // Calculate commissions & benefits - Now automatically tiered/escalonated!
       const initialTxsForC = finTransactions.filter(tx => 
-       tx.isInitialSale === true && 
+       isAutomaticCommissionEligible(tx as FinanceTransaction) &&
        (tx.comercialId === c.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === c.email.toLowerCase()))
       );
-      const initialSalesVolTotal = getCommissionableNetVolume(initialTxsForC as FinanceTransaction[], [], contacts);
-      const initialSalesVol = getCommissionableNetVolume(
+      const initialSalesVolTotal = getAutomaticCommissionableNetVolume(initialTxsForC as FinanceTransaction[], [], contacts);
+      const initialSalesVol = getAutomaticCommissionableNetVolume(
        initialTxsForC.filter(tx => tx.status === 'paid') as FinanceTransaction[],
        [],
        contacts,

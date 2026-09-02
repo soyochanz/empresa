@@ -51,7 +51,7 @@ import CommercialAnalyticsDashboard from './CommercialAnalyticsDashboard';
 import CommercialTrainingCenter from './CommercialTrainingCenter';
 import CommercialCalendarWorkspace from './CommercialCalendarWorkspace';
 import SalesRewardsScreen from './SalesRewardsScreen';
-import { getCommissionableNetVolume } from '../utils/commission';
+import { getAutomaticCommissionableNetVolume, isAutomaticCommissionEligible } from '../utils/commission';
 
 const safeConfirm = (msg: string): boolean => {
  const isIframe = window.self !== window.top;
@@ -776,7 +776,7 @@ export default function ComercialesPanelScreen({
 
  // Commission & Benefits calculations for this commercial - Now automatically tiered/escalonated!
  const myInitialTxs = finTransactions.filter(tx => 
- tx.isInitialSale === true && 
+ isAutomaticCommissionEligible(tx as FinanceTransaction) &&
  (tx.comercialId === comercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === comercial.email.toLowerCase()))
  );
  const myInitialTxsPaid = myInitialTxs.filter(tx => tx.status === 'paid');
@@ -784,8 +784,8 @@ export default function ComercialesPanelScreen({
  const liveComercial = comercialesList.find(item => item.id === comercial.id) || comercial;
  const myCommissionPercentage = liveComercial.commissionPercentage ?? getTieredCommission(myClosuresForTier);
  const myTierInfo = getCommissionTierInfo(myClosuresForTier);
- const myInitialSalesVolume = getCommissionableNetVolume(myInitialTxsPaid as FinanceTransaction[], [], contacts);
- const myTotalSalesVolume = getCommissionableNetVolume(myInitialTxs as FinanceTransaction[], [], contacts);
+ const myInitialSalesVolume = getAutomaticCommissionableNetVolume(myInitialTxsPaid as FinanceTransaction[], [], contacts);
+ const myTotalSalesVolume = getAutomaticCommissionableNetVolume(myInitialTxs as FinanceTransaction[], [], contacts);
  const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
  const myExtraCommissions = (comercial.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
  const myBenefitsEarnedWithExtras = myBenefitsEarned + myExtraCommissions;
@@ -2199,5 +2199,4 @@ export default function ComercialesPanelScreen({
  </div>
  );
 }
-
 
