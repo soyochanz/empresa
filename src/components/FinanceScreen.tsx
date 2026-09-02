@@ -1539,11 +1539,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  );
 
  const totalIncomes = valuedAnalyticsTransactions
- .filter(t => t.type === 'income')
+ .filter(t => t.type === 'income' && t.status === 'paid')
  .reduce((sum, t) => sum + t.amount, 0);
 
  const totalExpenses = valuedAnalyticsTransactions
- .filter(t => t.type === 'expense')
+ .filter(t => t.type === 'expense' && t.status === 'paid')
  .reduce((sum, t) => sum + t.amount, 0);
 
  // Commissions are earned when the linked initial sale is paid. Previously
@@ -1713,7 +1713,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  const pendingBalance = pendingIncomes - pendingExpenses;
  const expenseCategoryBreakdown = valuedAnalyticsTransactions
-  .filter(transaction => transaction.type === 'expense')
+  .filter(transaction => transaction.type === 'expense' && transaction.status === 'paid')
   .reduce<Record<string, number>>((groups, transaction) => ({ ...groups, [transaction.category]: (groups[transaction.category] || 0) + transaction.amount }), {});
  const topExpenseCategories = (Object.entries(expenseCategoryBreakdown) as Array<[string, number]>).sort(([, a], [, b]) => b - a).slice(0, 6);
  const incomeServiceBreakdown = valuedAnalyticsTransactions
@@ -3643,60 +3643,29 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   </div>
   )}
 
-  {/* Analytics scope and live Stripe funds */}
-  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.85fr)]">
-   <section className="rounded-3xl border border-white/5 bg-[#0b1329]/30 p-4 sm:p-5">
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-     <div>
-      <span className="text-[9px] font-black uppercase tracking-[.2em] text-slate-500">Periodo de analíticas</span>
-      <h3 className="mt-1 text-sm font-bold text-white">Vista financiera superior</h3>
-      <p className="mt-1 text-[10px] text-slate-500">Todos los indicadores se recalculan con el periodo elegido.</p>
-     </div>
-     <div className="flex rounded-2xl border border-white/10 bg-black/25 p-1">
-      <button
-       type="button"
-       onClick={() => setAnalyticsRange('month')}
-       className={`rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-wider transition ${analyticsRange === 'month' ? 'bg-cyan-400/15 text-cyan-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-      >
-       Este mes
-      </button>
-      <button
-       type="button"
-       onClick={() => setAnalyticsRange('all')}
-       className={`rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-wider transition ${analyticsRange === 'all' ? 'bg-cyan-400/15 text-cyan-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-      >
-       Todo
-      </button>
-     </div>
-    </div>
-   </section>
-
-   <section className="finance-stripe-card relative overflow-hidden rounded-3xl border border-indigo-300/15 bg-gradient-to-br from-indigo-400/[0.09] via-[#0b1329]/70 to-cyan-400/[0.04] p-4 sm:p-5">
+  {/* Treasury balances */}
+  <div className="grid items-stretch gap-4 xl:grid-cols-3">
+   <section className="finance-stripe-card relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-indigo-300/15 bg-gradient-to-br from-indigo-400/[0.09] via-[#0b1329]/70 to-cyan-400/[0.04] p-5">
     <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-indigo-400/10 blur-3xl" />
-    <div className="relative flex items-start justify-between gap-3">
-     <div className="flex items-center gap-3">
-      <div className="rounded-2xl border border-indigo-300/15 bg-indigo-400/10 p-2"><img src="/stripe-mark.png" alt="Stripe" className="h-6 w-6 rounded-md" /></div>
-      <div>
-       <span className="text-[9px] font-black uppercase tracking-[.2em] text-indigo-300">Fondos Stripe</span>
-       <p className="mt-0.5 text-[9px] text-slate-500">Saldo real de la cuenta {stripeFunds?.livemode ? 'live' : 'test'}</p>
-      </div>
+    <div className="relative flex items-start justify-between gap-4">
+     <div>
+      <span className="text-[9px] font-black uppercase tracking-[.18em] text-indigo-300">Tesorería · Stripe</span>
+      <h3 className="mt-1 text-sm font-bold text-white">Saldo disponible</h3>
      </div>
-     <button type="button" onClick={() => void refreshStripeFunds()} disabled={stripeFundsLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 transition hover:text-white disabled:opacity-50" title="Actualizar fondos de Stripe">
-      <RefreshCw className={`h-3.5 w-3.5 ${stripeFundsLoading ? 'animate-spin' : ''}`} />
-     </button>
+     <div className="flex items-center gap-2">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-indigo-300/15 bg-indigo-400/10"><img src="/stripe-mark.png" alt="Stripe" className="h-6 w-6 rounded-md" /></span>
+      <button type="button" onClick={() => void refreshStripeFunds()} disabled={stripeFundsLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 transition hover:text-white disabled:opacity-50" title="Actualizar fondos de Stripe">
+       <RefreshCw className={`h-3.5 w-3.5 ${stripeFundsLoading ? 'animate-spin' : ''}`} />
+      </button>
+     </div>
     </div>
-    <div className="relative mt-4 grid grid-cols-2 gap-3">
-     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.06] p-3">
-      <span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Disponible</span>
-      <strong className="mt-1 block text-lg font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.available)}</strong>
-     </div>
-     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.06] p-3">
-      <span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pendiente</span>
-      <strong className="mt-1 block text-lg font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.pending)}</strong>
-     </div>
+    <strong className={`relative mt-5 block whitespace-nowrap text-3xl font-black ${stripeAvailableBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.available)}</strong>
+    <div className="relative mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-300/10 bg-amber-300/[0.06] px-3 py-2">
+     <span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Fondos pendientes</span>
+     <strong className="whitespace-nowrap text-xs font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.pending)}</strong>
     </div>
     {stripeFundsError && <p className="relative mt-2 text-[9px] text-rose-300">{stripeFundsError}</p>}
-    <div className="relative mt-4 border-t border-white/[0.08] pt-4">
+    <div className="relative mt-5 flex-1 border-t border-white/[0.08] pt-4">
      <div className="mb-2.5 flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Últimos movimientos de Stripe</span><span className="text-[8px] text-slate-600">Importe neto</span></div>
      {(stripeFunds?.movements || []).length === 0 ? (
       <div className="finance-stripe-empty rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-[9px] text-slate-500">Todavía no hay movimientos disponibles en Stripe.</div>
@@ -3712,17 +3681,15 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      )}
     </div>
    </section>
-  </div>
 
-  <div className="grid gap-4 lg:grid-cols-2">
-   <section className="finance-revolut-card relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.1] via-[#0b1329]/70 to-blue-400/[0.05] p-5">
+   <section className="finance-revolut-card relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.1] via-[#0b1329]/70 to-blue-400/[0.05] p-5">
     <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-4">
      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Tesorería · Revolut Pro</span><h3 className="mt-1 text-sm font-bold text-white">Saldo actual</h3></div>
      <img src="/revolut-mark.png" alt="Revolut" className="revolut-brand-mark h-10 w-10 shrink-0 object-contain brightness-0 invert" />
     </div>
     <strong className={`relative mt-5 block whitespace-nowrap text-3xl font-black ${revolutBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{revolutBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
-    <div className="relative mt-5 border-t border-white/[0.08] pt-4">
+    <div className="relative mt-5 flex-1 border-t border-white/[0.08] pt-4">
      <div className="mb-2.5 flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Últimos movimientos</span><span className="text-[8px] text-slate-600">Desde el saldo inicial</span></div>
      {revolutMovements.length === 0 ? (
       <div className="finance-revolut-empty rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-[9px] text-slate-500">Todavía no hay movimientos nuevos en Revolut Pro.</div>
@@ -3738,14 +3705,14 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
    </section>
 
-   <section className="finance-cash-card relative overflow-hidden rounded-3xl border border-lime-300/15 bg-gradient-to-br from-lime-300/[0.09] via-[#0b1329]/70 to-emerald-400/[0.045] p-5">
+   <section className="finance-cash-card relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-lime-300/15 bg-gradient-to-br from-lime-300/[0.09] via-[#0b1329]/70 to-emerald-400/[0.045] p-5">
     <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-lime-300/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-4">
      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-lime-300">Tesorería · Cash</span><h3 className="mt-1 text-sm font-bold text-white">Saldo total actual</h3></div>
      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-lime-300/15 bg-lime-300/10"><Banknote className="h-5 w-5 text-lime-300" /></span>
     </div>
     <strong className={`relative mt-5 block whitespace-nowrap text-3xl font-black ${cashBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{cashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
-    <div className="relative mt-5 border-t border-white/[0.08] pt-4">
+    <div className="relative mt-5 flex-1 border-t border-white/[0.08] pt-4">
      <div className="mb-2.5 flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Últimos movimientos de Cash</span><span className="text-[8px] text-slate-600">Desde el saldo inicial</span></div>
      {recentCashMovements.length === 0 ? (
       <div className="finance-cash-empty rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-[9px] text-slate-500">Todavía no hay movimientos nuevos en Cash.</div>
@@ -3804,17 +3771,23 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   <section className="relative overflow-hidden rounded-[30px] border border-white/[0.07] bg-[#090d14]/92 p-4 shadow-[0_28px_90px_rgba(0,0,0,.28)] sm:p-6">
    <div className="pointer-events-none absolute -left-20 -top-24 h-72 w-72 rounded-full bg-fuchsia-500/[0.07] blur-3xl" />
    <div className="pointer-events-none absolute -right-20 top-16 h-72 w-72 rounded-full bg-cyan-400/[0.06] blur-3xl" />
-   <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+   <div className="relative flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
     <div><span className="text-[9px] font-black uppercase tracking-[.24em] text-fuchsia-300">Analíticas financieras</span><h3 className="mt-1 text-xl font-black tracking-tight text-white">Rendimiento y flujo de caja</h3><p className="mt-1 text-[10px] text-slate-500">Visión oscura, compacta y conectada a los movimientos reales.</p></div>
-    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-2 text-right"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Resultado operativo</span><strong className={`mt-0.5 block text-lg font-black ${netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{netProfit.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+     <div className="finance-analytics-range flex items-center rounded-2xl border border-white/[0.08] bg-black/25 p-1 shadow-inner" aria-label="Periodo de analíticas">
+      <button type="button" aria-pressed={analyticsRange === 'month'} onClick={() => setAnalyticsRange('month')} className={`finance-analytics-range-button rounded-xl px-4 py-2 text-[9px] font-black uppercase tracking-wider transition ${analyticsRange === 'month' ? 'bg-cyan-400/15 text-cyan-200 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>Este mes</button>
+      <button type="button" aria-pressed={analyticsRange === 'all'} onClick={() => setAnalyticsRange('all')} className={`finance-analytics-range-button rounded-xl px-4 py-2 text-[9px] font-black uppercase tracking-wider transition ${analyticsRange === 'all' ? 'bg-cyan-400/15 text-cyan-200 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>Todo</button>
+     </div>
+     <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-2 text-right"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Resultado operativo</span><strong className={`mt-0.5 block text-lg font-black ${netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{netProfit.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+    </div>
    </div>
 
    <div className="relative mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
     {([
      { label: 'Cobrado', value: consolidatedBalance, note: 'Ingresos liquidados', icon: CheckCircle2, accent: 'text-emerald-300', glow: 'from-emerald-400/[0.18]' },
      { label: 'Pendiente neto', value: pendingBalance, note: 'Cobros menos pagos', icon: Clock, accent: 'text-amber-300', glow: 'from-amber-400/[0.18]' },
-     { label: 'Ingresos', value: totalIncomes, note: 'Registrados en el periodo', icon: ArrowUpRight, accent: 'text-cyan-300', glow: 'from-cyan-400/[0.18]' },
-     { label: 'Gastos', value: totalExpenses, note: 'Liquidados y pendientes', icon: ArrowDownLeft, accent: 'text-rose-300', glow: 'from-rose-400/[0.18]' },
+     { label: 'Ingresos', value: totalIncomes, note: 'Cobrados en el periodo', icon: ArrowUpRight, accent: 'text-cyan-300', glow: 'from-cyan-400/[0.18]' },
+     { label: 'Gastos', value: totalExpenses, note: 'Pagados en el periodo', icon: ArrowDownLeft, accent: 'text-rose-300', glow: 'from-rose-400/[0.18]' },
      { label: 'Comisiones', value: commercialSalaries, note: 'Devengadas · liquidadas y pendientes', icon: Briefcase, accent: 'text-violet-300', glow: 'from-violet-400/[0.18]' },
      { label: 'Caja real', value: netCashBalance, note: 'Cuentas y efectivo − comisiones', icon: ShieldCheck, accent: 'text-sky-300', glow: 'from-sky-400/[0.18]' },
      { label: analyticsRange === 'month' ? 'Cash del mes' : 'Cash histórico', value: periodCashFlow, note: 'Ingresos − gastos en efectivo', icon: Banknote, accent: periodCashFlow >= 0 ? 'text-lime-300' : 'text-rose-300', glow: periodCashFlow >= 0 ? 'from-lime-400/[0.18]' : 'from-rose-400/[0.18]', isCashFlow: true },
@@ -3863,7 +3836,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
     <article className="rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
      <span className="text-[8px] font-black uppercase tracking-[.2em] text-cyan-300">Origen de ingresos</span><h4 className="mt-1 text-sm font-bold text-white">Ingresos por servicio</h4>
-     {incomeServiceChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay ingresos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}><PieChart><Pie data={incomeServiceChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{incomeServiceChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-lg font-black text-white">{totalIncomes.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">ingreso total</span></div></div><div className="space-y-2">{incomeServiceChartData.map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="whitespace-nowrap text-white">{item.value.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong></div>)}</div></>}
+     {incomeServiceChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay ingresos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}><PieChart><Pie data={incomeServiceChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{incomeServiceChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-base font-black text-white">{totalIncomes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">ingreso cobrado</span></div></div><div className="space-y-2">{incomeServiceChartData.map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="whitespace-nowrap text-white">{item.value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong></div>)}</div></>}
     </article>
    </div>
 

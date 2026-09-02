@@ -1445,6 +1445,26 @@
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035) !important;
 }
 
+.admin-theme-light .admin-workspace .finance-analytics-range {
+  background: #eef3f8 !important;
+  border-color: #d4deea !important;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+}
+
+.admin-theme-light .admin-workspace button.finance-analytics-range-button {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #64748b !important;
+  box-shadow: none !important;
+}
+
+.admin-theme-light .admin-workspace button.finance-analytics-range-button[aria-pressed="true"] {
+  background: #ffffff !important;
+  border-color: #c8d8e5 !important;
+  color: #087b99 !important;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.09) !important;
+}
+
 /* Floating quick-create menu. */
 .admin-theme-light .admin-workspace .finance-quick-create-menu {
   background: rgba(255, 255, 255, 0.97) !important;
