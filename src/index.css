@@ -1421,11 +1421,12 @@
   box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.04) !important;
 }
 
-/* Revolut balance card and latest account movements. */
+/* Stripe, Revolut and Cash balance cards with latest account movements. */
 .admin-theme-light .admin-workspace .revolut-brand-mark {
   filter: none !important;
 }
 
+.admin-theme-light .admin-workspace .finance-stripe-card,
 .admin-theme-light .admin-workspace .finance-revolut-card,
 .admin-theme-light .admin-workspace .finance-cash-card {
   background: linear-gradient(145deg, #ffffff, #f8fbfd) !important;
@@ -1433,6 +1434,8 @@
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.055) !important;
 }
 
+.admin-theme-light .admin-workspace .finance-stripe-movement,
+.admin-theme-light .admin-workspace .finance-stripe-empty,
 .admin-theme-light .admin-workspace .finance-revolut-movement,
 .admin-theme-light .admin-workspace .finance-revolut-empty,
 .admin-theme-light .admin-workspace .finance-cash-movement,

@@ -60,9 +60,24 @@ type StripeFundAmount = {
  currency: string;
 };
 
+type StripeFundMovement = {
+ id: string;
+ type: string;
+ reportingCategory: string;
+ description: string | null;
+ amount: number;
+ fee: number;
+ net: number;
+ currency: string;
+ status: string;
+ createdAt: string;
+ availableOn: string;
+};
+
 type StripeFunds = {
  available: StripeFundAmount[];
  pending: StripeFundAmount[];
+ movements: StripeFundMovement[];
  livemode: boolean;
  fetchedAt: string;
 };
@@ -387,6 +402,23 @@ const formatStripeCurrency = (amount: number, currency = 'eur'): string => new I
  style: 'currency',
  currency: currency.toUpperCase(),
 }).format(amount);
+
+const STRIPE_MOVEMENT_LABELS: Record<string, string> = {
+ charge: 'Cobro recibido',
+ payment: 'Pago recibido',
+ payout: 'Transferencia a cuenta bancaria',
+ refund: 'Reembolso',
+ payment_refund: 'Reembolso de pago',
+ transfer: 'Transferencia',
+ inbound_transfer: 'Ingreso de fondos',
+ stripe_fee: 'Comisión de Stripe',
+ stripe_fx_fee: 'Comisión de cambio de divisa',
+ adjustment: 'Ajuste de Stripe',
+ topup: 'Recarga de saldo',
+};
+
+const getStripeMovementConcept = (movement: StripeFundMovement): string =>
+ movement.description?.trim() || STRIPE_MOVEMENT_LABELS[movement.type] || STRIPE_MOVEMENT_LABELS[movement.reportingCategory] || 'Movimiento de Stripe';
 
 const formatStripeInterval = (interval: string, intervalCount = 1): string => {
  const names: Record<string, string> = { day: 'día', week: 'semana', month: 'mes', year: 'año' };
@@ -3617,7 +3649,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </div>
    </section>
 
-   <section className="relative overflow-hidden rounded-3xl border border-indigo-300/15 bg-gradient-to-br from-indigo-400/[0.09] via-[#0b1329]/70 to-cyan-400/[0.04] p-4 sm:p-5">
+   <section className="finance-stripe-card relative overflow-hidden rounded-3xl border border-indigo-300/15 bg-gradient-to-br from-indigo-400/[0.09] via-[#0b1329]/70 to-cyan-400/[0.04] p-4 sm:p-5">
     <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-indigo-400/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-3">
      <div className="flex items-center gap-3">
@@ -3642,6 +3674,21 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      </div>
     </div>
     {stripeFundsError && <p className="relative mt-2 text-[9px] text-rose-300">{stripeFundsError}</p>}
+    <div className="relative mt-4 border-t border-white/[0.08] pt-4">
+     <div className="mb-2.5 flex items-center justify-between"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">Últimos movimientos de Stripe</span><span className="text-[8px] text-slate-600">Importe neto</span></div>
+     {(stripeFunds?.movements || []).length === 0 ? (
+      <div className="finance-stripe-empty rounded-2xl border border-dashed border-white/10 px-3 py-5 text-center text-[9px] text-slate-500">Todavía no hay movimientos disponibles en Stripe.</div>
+     ) : (
+      <div className="space-y-1.5">{stripeFunds!.movements.slice(0, 4).map(movement => {
+       const isIncome = movement.net >= 0;
+       return <div key={movement.id} className="finance-stripe-movement flex items-center gap-3 rounded-xl border border-white/[0.06] bg-black/15 px-3 py-2.5">
+        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${isIncome ? 'bg-emerald-300/10 text-emerald-300' : 'bg-rose-300/10 text-rose-300'}`}>{isIncome ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</span>
+        <div className="min-w-0 flex-1"><p className="truncate text-[10px] font-bold text-white">{getStripeMovementConcept(movement)}</p><p className="mt-0.5 truncate text-[8px] text-slate-500">{new Date(movement.createdAt).toLocaleDateString('es-ES')} · {movement.status === 'available' ? 'Disponible' : 'Pendiente'}{movement.fee > 0 ? ` · Bruto ${formatStripeCurrency(movement.amount, movement.currency)} · Comisión ${formatStripeCurrency(movement.fee, movement.currency)}` : ''}</p></div>
+        <strong className={`shrink-0 whitespace-nowrap font-mono text-[10px] ${isIncome ? 'text-emerald-300' : 'text-rose-300'}`}>{isIncome ? '+' : '−'}{formatStripeCurrency(Math.abs(movement.net), movement.currency)}</strong>
+       </div>;
+      })}</div>
+     )}
+    </div>
    </section>
   </div>
 

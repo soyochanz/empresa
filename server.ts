@@ -1432,9 +1432,10 @@ app.get("/api/bites/overview", requireAdminAuth, async (_req, res) => {
 app.get("/api/stripe/balance", requireAdminAuth, async (_req, res) => {
   try {
     const stripe = getStripe();
-    const [balance, payouts] = await Promise.all([
+    const [balance, payouts, balanceTransactions] = await Promise.all([
       stripe.balance.retrieve(),
       stripe.payouts.list({ limit: 10 }),
+      stripe.balanceTransactions.list({ limit: 10 }),
     ]);
     await Promise.all(payouts.data.map(syncPaidStripePayoutToRevolut));
     const normalizeAmounts = (items: Stripe.Balance.Available[] | Stripe.Balance.Pending[]) =>
@@ -1447,6 +1448,19 @@ app.get("/api/stripe/balance", requireAdminAuth, async (_req, res) => {
     res.json({
       available: normalizeAmounts(balance.available),
       pending: normalizeAmounts(balance.pending),
+      movements: balanceTransactions.data.map(transaction => ({
+        id: transaction.id,
+        type: transaction.type,
+        reportingCategory: transaction.reporting_category,
+        description: transaction.description,
+        amount: Number(transaction.amount || 0) / 100,
+        fee: Number(transaction.fee || 0) / 100,
+        net: Number(transaction.net || 0) / 100,
+        currency: transaction.currency,
+        status: transaction.status,
+        createdAt: new Date(transaction.created * 1000).toISOString(),
+        availableOn: new Date(transaction.available_on * 1000).toISOString(),
+      })),
       livemode: balance.livemode,
       fetchedAt: new Date().toISOString(),
     });
