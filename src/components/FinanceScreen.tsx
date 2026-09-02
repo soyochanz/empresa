@@ -168,6 +168,7 @@ const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
 const CASH_OPENING_BALANCE = 820;
 const REVOLUT_OPENING_BALANCE = 1_762.64;
 const BALANCE_OPENING_AT = Date.parse('2026-08-30T13:05:07.971Z');
+const BALANCE_OPENING_DATE = '2026-08-30';
 
 const wasCreatedAfterBalanceOpening = (transaction: FinanceTransaction): boolean => {
  const createdAt = transaction.createdAt ? Date.parse(transaction.createdAt) : Number.NaN;
@@ -176,6 +177,13 @@ const wasCreatedAfterBalanceOpening = (transaction: FinanceTransaction): boolean
  // Newly-created optimistic rows contain their creation timestamp in the id.
  const idTimestamp = transaction.id.match(/(?:^|_)(1\d{12})(?:_|$)/)?.[1];
  return idTimestamp ? Number(idTimestamp) >= BALANCE_OPENING_AT : false;
+};
+
+const belongsToBalanceAfterOpening = (transaction: FinanceTransaction): boolean => {
+ // A pending charge can be created before the opening balance and collected later.
+ // Its payment date is then the effective treasury date and must enter the balance.
+ const effectiveDate = getFinanceDateKey(transaction.date);
+ return wasCreatedAfterBalanceOpening(transaction) || effectiveDate > BALANCE_OPENING_DATE;
 };
 
 const getFinanceBusinessName = (contact?: ClientContact): string => {
@@ -1581,7 +1589,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  const consolidatedBalance = consolidatedIncomes;
  const balanceMovements = nonRecurringTransactions.filter(transaction =>
-  transaction.status === 'paid' && wasCreatedAfterBalanceOpening(transaction)
+  transaction.status === 'paid' && belongsToBalanceAfterOpening(transaction)
  );
  const revolutIncome = balanceMovements
   .filter(transaction => transaction.type === 'income' && (
