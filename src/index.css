@@ -1426,6 +1426,14 @@
   filter: none !important;
 }
 
+.admin-theme-light .admin-workspace .finance-stripe-brand-mark {
+  filter: none !important;
+}
+
+.admin-theme-light .admin-workspace .finance-cash-brand-mark {
+  color: #4d7c0f !important;
+}
+
 .admin-theme-light .admin-workspace .finance-stripe-card,
 .admin-theme-light .admin-workspace .finance-revolut-card,
 .admin-theme-light .admin-workspace .finance-cash-card {

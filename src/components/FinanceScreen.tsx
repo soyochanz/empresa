@@ -3652,17 +3652,17 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       <span className="text-[9px] font-black uppercase tracking-[.18em] text-indigo-300">Tesorería · Stripe</span>
       <h3 className="mt-1 text-sm font-bold text-white">Saldo disponible</h3>
      </div>
+     <img src="/stripe-mark.png" alt="Stripe" className="finance-stripe-brand-mark h-10 w-10 shrink-0 object-contain" />
+    </div>
+    <strong className={`relative mt-5 block whitespace-nowrap text-3xl font-black ${stripeAvailableBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.available)}</strong>
+    <div className="relative mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-300/10 bg-amber-300/[0.06] px-3 py-1.5">
+     <span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Fondos pendientes</span>
      <div className="flex items-center gap-2">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-indigo-300/15 bg-indigo-400/10"><img src="/stripe-mark.png" alt="Stripe" className="h-6 w-6 rounded-md" /></span>
-      <button type="button" onClick={() => void refreshStripeFunds()} disabled={stripeFundsLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 transition hover:text-white disabled:opacity-50" title="Actualizar fondos de Stripe">
+      <strong className="whitespace-nowrap text-xs font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.pending)}</strong>
+      <button type="button" onClick={() => void refreshStripeFunds()} disabled={stripeFundsLoading} className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-black/20 text-slate-400 transition hover:text-white disabled:opacity-50" title="Actualizar fondos de Stripe">
        <RefreshCw className={`h-3.5 w-3.5 ${stripeFundsLoading ? 'animate-spin' : ''}`} />
       </button>
      </div>
-    </div>
-    <strong className={`relative mt-5 block whitespace-nowrap text-3xl font-black ${stripeAvailableBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.available)}</strong>
-    <div className="relative mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-300/10 bg-amber-300/[0.06] px-3 py-2">
-     <span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Fondos pendientes</span>
-     <strong className="whitespace-nowrap text-xs font-black text-white">{stripeFundsLoading && !stripeFunds ? '...' : formatStripeFundAmounts(stripeFunds?.pending)}</strong>
     </div>
     {stripeFundsError && <p className="relative mt-2 text-[9px] text-rose-300">{stripeFundsError}</p>}
     <div className="relative mt-5 flex-1 border-t border-white/[0.08] pt-4">
@@ -3709,7 +3709,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-lime-300/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-4">
      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-lime-300">Tesorería · Cash</span><h3 className="mt-1 text-sm font-bold text-white">Saldo total actual</h3></div>
-     <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-lime-300/15 bg-lime-300/10"><Banknote className="h-5 w-5 text-lime-300" /></span>
+     <Banknote className="finance-cash-brand-mark h-10 w-10 shrink-0 text-lime-300 stroke-[1.6]" aria-label="Cash" />
     </div>
     <strong className={`relative mt-5 block whitespace-nowrap text-3xl font-black ${cashBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>{cashBalance.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
     <div className="relative mt-5 flex-1 border-t border-white/[0.08] pt-4">
