@@ -1771,6 +1771,92 @@ body.admin-theme-light .admin-client-dialog .admin-regenerate-link-button:hover 
   color: #155e75 !important;
 }
 
+/* Client payment controls use opaque semantic surfaces in the light theme. */
+body.admin-theme-light .admin-client-dialog button.crm-client-register-payment,
+body.admin-theme-light .admin-client-dialog button.crm-client-collect-payment {
+  background: linear-gradient(135deg, #0f9f79, #087b5b) !important;
+  border-color: #08705a !important;
+  color: #ffffff !important;
+  box-shadow: 0 5px 14px rgba(8, 123, 91, 0.2) !important;
+  opacity: 1 !important;
+}
+
+body.admin-theme-light .admin-client-dialog button.crm-client-register-payment:hover:not(:disabled),
+body.admin-theme-light .admin-client-dialog button.crm-client-collect-payment:hover:not(:disabled) {
+  background: linear-gradient(135deg, #087b5b, #066348) !important;
+  border-color: #065f46 !important;
+  color: #ffffff !important;
+  filter: none !important;
+}
+
+body.admin-theme-light .crm-payment-modal {
+  background: rgba(15, 23, 42, 0.56) !important;
+  backdrop-filter: blur(9px);
+}
+
+body.admin-theme-light .crm-payment-dialog {
+  background: linear-gradient(160deg, #ffffff 0%, #f8fafc 100%) !important;
+  border-color: #b7d9ce !important;
+  color: #111c2f !important;
+  box-shadow: 0 32px 90px rgba(15, 23, 42, 0.3) !important;
+}
+
+body.admin-theme-light button.crm-payment-method-button {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.07) !important;
+}
+
+body.admin-theme-light button.crm-payment-method-button:hover:not(:disabled) {
+  background: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  color: #172033 !important;
+}
+
+body.admin-theme-light button.crm-payment-method-button[data-tone="emerald"][aria-pressed="true"] {
+  background: #d1fae5 !important;
+  border-color: #34d399 !important;
+  color: #065f46 !important;
+}
+
+body.admin-theme-light button.crm-payment-method-button[data-tone="violet"][aria-pressed="true"] {
+  background: #ede9fe !important;
+  border-color: #a78bfa !important;
+  color: #5b21b6 !important;
+}
+
+body.admin-theme-light button.crm-payment-method-button[data-tone="amber"][aria-pressed="true"] {
+  background: #fef3c7 !important;
+  border-color: #fbbf24 !important;
+  color: #92400e !important;
+}
+
+body.admin-theme-light button.crm-payment-method-button[data-tone="blue"][aria-pressed="true"] {
+  background: #dbeafe !important;
+  border-color: #60a5fa !important;
+  color: #1d4ed8 !important;
+}
+
+body.admin-theme-light button.crm-payment-cancel-button {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+body.admin-theme-light button.crm-payment-confirm-button {
+  background: linear-gradient(135deg, #0f9f79, #087b5b) !important;
+  border-color: #08705a !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgba(8, 123, 91, 0.22) !important;
+}
+
+body.admin-theme-light button.crm-payment-confirm-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #087b5b, #066348) !important;
+  color: #ffffff !important;
+  filter: none !important;
+}
+
 @media (max-width: 767px) {
   .admin-theme-light .admin-workspace section,
   .admin-theme-light .admin-workspace article {

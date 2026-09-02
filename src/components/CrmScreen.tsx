@@ -4783,7 +4783,7 @@ React.useEffect(() => {
       </div>
       <button
        onClick={() => openClientPaymentModal()}
-       className="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition"
+       className="crm-client-register-payment text-[9px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition"
       >
        <Plus className="w-2.5 h-2.5" /> Registrar Cobro
       </button>
@@ -4832,9 +4832,9 @@ React.useEffect(() => {
          {isFailed ? (
           <span className="grid h-6 w-6 place-items-center rounded-md border border-rose-500/15 bg-rose-500/[0.07] text-rose-400" title="Cobro rechazado por Stripe o enlace caducado"><XCircle className="h-3 w-3" /></span>
          ) : isPending ? <button
-          type="button"
-          onClick={() => openClientPaymentModal(tx)}
-          className="inline-flex h-6 items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-2 text-[8px] font-black uppercase text-emerald-400 transition-all hover:bg-emerald-500/15"
+         type="button"
+         onClick={() => openClientPaymentModal(tx)}
+          className="crm-client-collect-payment inline-flex h-6 items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-2 text-[8px] font-black uppercase text-emerald-400 transition-all hover:bg-emerald-500/15"
           title="Cobrar esta transacción y elegir el método de pago"
          >
           <CreditCard className="h-3 w-3" /> Cobrar
@@ -5686,12 +5686,12 @@ React.useEffect(() => {
   )}
 
   {/* Connected payment modal backdrop & form */}
-  {showAddPaymentModal && selectedContact && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-   <div className="w-full max-w-md bg-[#0a0a14] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 max-h-[90vh] flex flex-col">
+  {showAddPaymentModal && selectedContact && createPortal(
+  <div className="crm-payment-modal fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+   <div className="crm-payment-dialog w-full max-w-md bg-[#0a0a14] border border-emerald-500/20 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 max-h-[90vh] flex flex-col" role="dialog" aria-modal="true" aria-labelledby="crm-payment-modal-title">
    {/* Header banner cover */}
    <div className="bg-gradient-to-tr from-emerald-600/20 via-emerald-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
-    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+    <h3 id="crm-payment-modal-title" className="text-sm font-bold text-white flex items-center gap-2">
     <CreditCard className="w-5 h-5 text-emerald-400" />
     <span>{settlingTransactionId ? 'Cobrar transacción pendiente' : 'Registrar Cobro / Transacción'}</span>
     </h3>
@@ -5750,7 +5750,9 @@ React.useEffect(() => {
      <button
      type="button"
      onClick={() => setPaymentMethod('transfer')}
-     className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+     aria-pressed={paymentMethod === 'transfer'}
+     data-tone="emerald"
+     className={`crm-payment-method-button py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
       paymentMethod === 'transfer' ?
        'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
@@ -5761,7 +5763,9 @@ React.useEffect(() => {
      <button
      type="button"
      onClick={() => setPaymentMethod('cash')}
-     className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+     aria-pressed={paymentMethod === 'cash'}
+     data-tone="emerald"
+     className={`crm-payment-method-button py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
       paymentMethod === 'cash' ?
        'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
@@ -5772,7 +5776,9 @@ React.useEffect(() => {
      <button
      type="button"
      onClick={() => setPaymentMethod('stripe')}
-     className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+     aria-pressed={paymentMethod === 'stripe'}
+     data-tone="violet"
+     className={`crm-payment-method-button py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
       paymentMethod === 'stripe' ?
        'bg-violet-500/25 border-violet-500 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.15)]'
        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
@@ -5803,7 +5809,9 @@ React.useEffect(() => {
      <button
      type="button"
      onClick={() => setPaymentStatus('paid')}
-     className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+     aria-pressed={paymentStatus === 'paid'}
+     data-tone="emerald"
+     className={`crm-payment-method-button py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
       paymentStatus === 'paid' ?
        'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
@@ -5814,7 +5822,9 @@ React.useEffect(() => {
      <button
      type="button"
      onClick={() => setPaymentStatus('pending')}
-     className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+     aria-pressed={paymentStatus === 'pending'}
+     data-tone="amber"
+     className={`crm-payment-method-button py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
       paymentStatus === 'pending' ?
        'bg-amber-500/25 border-amber-500 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.15)]'
        : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
@@ -5833,7 +5843,7 @@ React.useEffect(() => {
      <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Plan acordado</label>
      <div className="grid grid-cols-3 gap-2">
      {([1, 2, 3] as const).map(count => (
-      <button type="button" key={count} onClick={() => setPaymentInstallments(count)} className={`py-2.5 rounded-xl border text-xs font-bold ${paymentInstallments === count ? 'bg-blue-500/20 border-blue-400 text-blue-300' : 'bg-white/5 border-white/10 text-slate-400'}`}>
+      <button type="button" key={count} onClick={() => setPaymentInstallments(count)} aria-pressed={paymentInstallments === count} data-tone="blue" className={`crm-payment-method-button py-2.5 rounded-xl border text-xs font-bold ${paymentInstallments === count ? 'bg-blue-500/20 border-blue-400 text-blue-300' : 'bg-white/5 border-white/10 text-slate-400'}`}>
       {count} {count === 1 ? 'pago' : 'meses'}
       </button>
      ))}
@@ -5901,21 +5911,21 @@ React.useEffect(() => {
     <button
      type="button"
      onClick={() => { setShowAddPaymentModal(false); setSettlingTransactionId(null); }}
-     className="flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs text-slate-400 font-semibold cursor-pointer transition-all text-center"
+     className="crm-payment-cancel-button flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs text-slate-400 font-semibold cursor-pointer transition-all text-center"
     >
      Cancelar
     </button>
     <button
      type="submit"
-     className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5"
+     className="crm-payment-confirm-button flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5"
     >
      <Check className="w-4 h-4" />
      <span>{settlingTransactionId ? 'Confirmar cobro pendiente' : 'Confirmar Cobro'}</span>
     </button>
     </div>
-   </form>
+  </form>
    </div>
-  </div>
+  </div>, document.body
   )}
 
   {/* LEAD TO CLIENT CONVERSION MODAL */}
