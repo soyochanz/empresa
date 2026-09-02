@@ -1395,6 +1395,7 @@ React.useEffect(() => {
  const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
  const [paymentAmount, setPaymentAmount] = useState('');
  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'stripe'>('transfer');
+ const [paymentAccount, setPaymentAccount] = useState<FinanceTransaction['paymentAccount']>('revolut_pro');
  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
  const [paymentDesc, setPaymentDesc] = useState('');
  const [paymentInvoiceId, setPaymentInvoiceId] = useState('general');
@@ -1402,6 +1403,7 @@ React.useEffect(() => {
  const [paymentInstallments, setPaymentInstallments] = useState<1 | 2 | 3>(1);
  const [paymentCommissionComercialId, setPaymentCommissionComercialId] = useState('');
  const [paymentCommissionAmount, setPaymentCommissionAmount] = useState(0);
+ const [settlingTransactionId, setSettlingTransactionId] = useState<string | null>(null);
  const selectedPaymentInvoiceForForm = paymentInvoiceId !== 'general'
   ? invoices.find(invoice => invoice.id === paymentInvoiceId)
   : undefined;
@@ -1410,6 +1412,24 @@ React.useEffect(() => {
  ));
  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
  const [invoiceDeleteError, setInvoiceDeleteError] = useState('');
+
+ const openClientPaymentModal = (transaction?: FinanceTransaction) => {
+  const linkedInvoice = transaction
+   ? invoices.find(invoice => invoice.id === transaction.invoiceId || invoice.items.some(item => item.pendingTxId === transaction.id || item.id === transaction.id))
+   : undefined;
+  setSettlingTransactionId(transaction?.id || null);
+  setPaymentAmount(transaction ? String(Number(transaction.amount || 0)) : '');
+  setPaymentMethod(transaction?.paymentMethod === 'cash' || transaction?.paymentMethod === 'stripe' ? transaction.paymentMethod : 'transfer');
+  setPaymentAccount(transaction?.paymentAccount || 'revolut_pro');
+  setPaymentDate(new Date().toISOString().split('T')[0]);
+  setPaymentDesc(transaction?.description || `Cobro Cliente: ${selectedContact?.name || ''}`);
+  setPaymentInvoiceId(linkedInvoice?.id || transaction?.invoiceId || 'general');
+  setPaymentStatus('paid');
+  setPaymentInstallments(1);
+  setPaymentCommissionComercialId('');
+  setPaymentCommissionAmount(0);
+  setShowAddPaymentModal(true);
+ };
 
  const fetchFinancials = async () => {
  setLoadingFinancials(true);
@@ -1427,25 +1447,21 @@ React.useEffect(() => {
  }
  };
 
- const handleToggleClientTransactionPaid = async (tx: FinanceTransaction) => {
-  const nextStatus: FinanceTransaction['status'] = tx.status === 'paid' ? 'pending' : 'paid';
-  const updatedTx: FinanceTransaction = { ...tx, status: nextStatus };
-  try {
+ const persistClientTransactionAndInvoice = async (originalTx: FinanceTransaction, updatedTx: FinanceTransaction) => {
    await db.updateFinanceTransaction(updatedTx);
-   setTransactions(current => current.map(item => item.id === tx.id ? updatedTx : item));
-
+   const updatedTransactions = transactions.map(item => item.id === originalTx.id ? updatedTx : item);
+   setTransactions(updatedTransactions);
    const linkedInvoice = invoices.find(invoice =>
-    invoice.id === tx.invoiceId ||
-    invoice.items.some(item => item.pendingTxId === tx.id || item.id === tx.id)
+    invoice.id === originalTx.invoiceId ||
+    invoice.items.some(item => item.pendingTxId === originalTx.id || item.id === originalTx.id)
    );
    if (linkedInvoice) {
      const updatedItems = linkedInvoice.items.map(item =>
-      (item.pendingTxId === tx.id || item.id === tx.id) ? { ...item, isPending: nextStatus !== 'paid' } : item
+      (item.pendingTxId === originalTx.id || item.id === originalTx.id) ? { ...item, isPending: updatedTx.status !== 'paid', paymentMethod: updatedTx.paymentMethod } : item
      );
      const linkedTransactionIds = new Set(
       updatedItems.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
      );
-     const updatedTransactions = transactions.map(item => item.id === tx.id ? updatedTx : item);
      const latestPaidDate = updatedTransactions
       .filter(item => (item.invoiceId === linkedInvoice.id || linkedTransactionIds.has(item.id)) && item.status === 'paid')
       .map(item => item.date)
@@ -1461,6 +1477,13 @@ React.useEffect(() => {
      await db.updateFinanceInvoice(updatedInvoice);
      setInvoices(current => current.map(invoice => invoice.id === updatedInvoice.id ? updatedInvoice : invoice));
    }
+ };
+
+ const handleToggleClientTransactionPaid = async (tx: FinanceTransaction) => {
+  const nextStatus: FinanceTransaction['status'] = tx.status === 'paid' ? 'pending' : 'paid';
+  const updatedTx: FinanceTransaction = { ...tx, status: nextStatus };
+  try {
+   await persistClientTransactionAndInvoice(tx, updatedTx);
   } catch (error) {
    console.error('Error updating installment payment status:', error);
    alert('No se pudo actualizar el estado del pago.');
@@ -1638,6 +1661,38 @@ React.useEffect(() => {
  }
 
  try {
+  if (settlingTransactionId) {
+   const pendingTransaction = transactions.find(transaction => transaction.id === settlingTransactionId);
+   if (!pendingTransaction || pendingTransaction.status !== 'pending') {
+    throw new Error('La transacción pendiente ya no está disponible o ya fue cobrada.');
+   }
+   const updatedTransaction: FinanceTransaction = {
+    ...pendingTransaction,
+    amount: amt,
+    date: paymentDate,
+    description: paymentDesc.trim() || pendingTransaction.description,
+    status: 'paid',
+    paymentMethod,
+    paymentAccount: paymentMethod === 'transfer' ? paymentAccount : undefined,
+    invoiceId: paymentInvoiceId !== 'general' ? paymentInvoiceId : pendingTransaction.invoiceId,
+   };
+   await persistClientTransactionAndInvoice(pendingTransaction, updatedTransaction);
+   await fetchFinancials();
+   setSettlingTransactionId(null);
+   setPaymentAmount('');
+   setPaymentInvoiceId('general');
+   setPaymentCommissionComercialId('');
+   setPaymentCommissionAmount(0);
+   setShowAddPaymentModal(false);
+   const toast = document.getElementById('toast-msg');
+   if (toast) {
+    toast.innerText = `Éxito: Cobro pendiente de ${amt.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € confirmado sin duplicar la transacción.`;
+    toast.classList.remove('opacity-0');
+    setTimeout(() => toast.classList.add('opacity-0'), 3500);
+   }
+   return;
+  }
+
   // 1. Create the payment transaction
   const txId = 'tx_crm_' + Date.now();
   let finalInvoiceId: string | undefined = undefined;
@@ -1671,6 +1726,7 @@ React.useEffect(() => {
   isRecurring: false,
   status: paymentStatus,
   paymentMethod: paymentMethod,
+  paymentAccount: paymentMethod === 'transfer' ? paymentAccount : undefined,
   invoiceId: finalInvoiceId,
   clientId: selectedContact.id,
   comercialId: paymentCommercial?.id,
@@ -1844,7 +1900,7 @@ React.useEffect(() => {
   }
  } catch (err) {
   console.error('Error registering payment:', err);
-  alert('Hubo un error al registrar el pago.');
+  alert(err instanceof Error ? err.message : 'Hubo un error al registrar el pago.');
  }
  };
 
@@ -4528,8 +4584,11 @@ React.useEffect(() => {
      t.type === 'income'
      && !t.isRecurring
      && transactionBelongsToContact(t, selectedContact, clientInvoices)
-     && (t.status !== 'pending' || Number(t.stripeInstallmentCount || 0) > 1)
-    );
+    ).sort((a, b) => {
+     if (a.status === 'pending' && b.status !== 'pending') return -1;
+     if (a.status !== 'pending' && b.status === 'pending') return 1;
+     return b.date.localeCompare(a.date) || String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
 
     const getInvoicePaymentSummary = (invoice: Invoice) => {
      const invoiceTotal = Number(invoice.total || 0);
@@ -4723,16 +4782,7 @@ React.useEffect(() => {
        <span className="text-[9px] font-mono text-slate-400 bg-white/5 border border-white/5 rounded-full px-2 py-0.5">{clientTransactions.length}</span>
       </div>
       <button
-       onClick={() => {
-       setPaymentAmount('');
-       setPaymentMethod('transfer');
-       setPaymentDate(new Date().toISOString().split('T')[0]);
-       setPaymentDesc(`Cobro Cliente: ${selectedContact.name}`);
-       setPaymentInvoiceId('general');
-       setPaymentCommissionComercialId('');
-       setPaymentCommissionAmount(0);
-       setShowAddPaymentModal(true);
-       }}
+       onClick={() => openClientPaymentModal()}
        className="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 border border-emerald-500/15 px-2.5 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer transition"
       >
        <Plus className="w-2.5 h-2.5" /> Registrar Cobro
@@ -4781,11 +4831,18 @@ React.useEffect(() => {
 
          {isFailed ? (
           <span className="grid h-6 w-6 place-items-center rounded-md border border-rose-500/15 bg-rose-500/[0.07] text-rose-400" title="Cobro rechazado por Stripe o enlace caducado"><XCircle className="h-3 w-3" /></span>
-         ) : <button
+         ) : isPending ? <button
+          type="button"
+          onClick={() => openClientPaymentModal(tx)}
+          className="inline-flex h-6 items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/[0.08] px-2 text-[8px] font-black uppercase text-emerald-400 transition-all hover:bg-emerald-500/15"
+          title="Cobrar esta transacción y elegir el método de pago"
+         >
+          <CreditCard className="h-3 w-3" /> Cobrar
+         </button> : <button
           type="button"
           onClick={() => handleToggleClientTransactionPaid(tx)}
-          className={`grid h-6 w-6 place-items-center rounded-md border transition-all cursor-pointer ${isPending ? 'border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-400 hover:bg-emerald-500/15' : 'border-amber-500/15 bg-amber-500/[0.05] text-amber-400 hover:bg-amber-500/10'}`}
-          title={isPending ? 'Marcar cuota como pagada' : 'Volver a marcar como pendiente'}
+          className="grid h-6 w-6 place-items-center rounded-md border border-amber-500/15 bg-amber-500/[0.05] text-amber-400 transition-all cursor-pointer hover:bg-amber-500/10"
+          title="Volver a marcar como pendiente"
          >
           <Check className="h-3 w-3" />
          </button>}
@@ -5636,14 +5693,14 @@ React.useEffect(() => {
    <div className="bg-gradient-to-tr from-emerald-600/20 via-emerald-950/20 to-slate-950/10 p-6 border-b border-white/5 relative">
     <h3 className="text-sm font-bold text-white flex items-center gap-2">
     <CreditCard className="w-5 h-5 text-emerald-400" />
-    <span>Registrar Cobro / Transacción</span>
+    <span>{settlingTransactionId ? 'Cobrar transacción pendiente' : 'Registrar Cobro / Transacción'}</span>
     </h3>
     <p className="text-[11px] text-slate-400 mt-1 font-sans">
-    Añade un pago realizado o un importe pendiente. Al elegir una factura, el movimiento aparecerá como una nueva línea sin borrar sus conceptos actuales.
+    {settlingTransactionId ? 'Confirma cómo se ha recibido el dinero. Se actualizará la transacción pendiente existente sin crear un cobro duplicado.' : 'Añade un pago realizado o un importe pendiente. Al elegir una factura, el movimiento aparecerá como una nueva línea sin borrar sus conceptos actuales.'}
     </p>
     <button
     type="button"
-    onClick={() => setShowAddPaymentModal(false)}
+    onClick={() => { setShowAddPaymentModal(false); setSettlingTransactionId(null); }}
     className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg bg-slate-955/60 border border-white/5 cursor-pointer transition-colors"
     >
     <X className="w-4 h-4" />
@@ -5662,15 +5719,16 @@ React.useEffect(() => {
     {/* Amount and Date */}
     <div className="grid grid-cols-2 gap-4">
     <div className="space-y-1.5">
-     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Importe a añadir (€)</label>
+     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">{settlingTransactionId ? 'Importe pendiente (€)' : 'Importe a añadir (€)'}</label>
      <input
      type="number"
      step="0.01"
      required
+     readOnly={Boolean(settlingTransactionId)}
      value={paymentAmount}
      onChange={(e) => setPaymentAmount(e.target.value)}
      placeholder="150.00"
-     className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+     className={`w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none ${settlingTransactionId ? 'cursor-not-allowed opacity-75' : ''}`}
      />
     </div>
     <div className="space-y-1.5">
@@ -5688,7 +5746,7 @@ React.useEffect(() => {
     {/* Payment Method */}
     <div className="space-y-1.5">
     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Método de Pago</label>
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-3 gap-2">
      <button
      type="button"
      onClick={() => setPaymentMethod('transfer')}
@@ -5711,11 +5769,35 @@ React.useEffect(() => {
      >
      Efectivo
      </button>
+     <button
+     type="button"
+     onClick={() => setPaymentMethod('stripe')}
+     className={`py-2 px-3 text-xs rounded-xl font-medium border transition-all ${
+      paymentMethod === 'stripe' ?
+       'bg-violet-500/25 border-violet-500 text-violet-300 shadow-[0_0_12px_rgba(139,92,246,0.15)]'
+       : 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10'
+     }`}
+     >
+     Stripe
+     </button>
     </div>
     </div>
 
-    {/* Payment Status (Realizado vs Pendiente) */}
+    {paymentMethod === 'transfer' && (
     <div className="space-y-1.5">
+     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Cuenta de destino</label>
+     <select value={paymentAccount || 'revolut_pro'} onChange={event => setPaymentAccount(event.target.value as FinanceTransaction['paymentAccount'])} className="w-full bg-[#030305] text-slate-200 text-xs border border-white/10 rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer">
+      <option value="revolut_pro">Revolut Pro · Empresa</option>
+      <option value="carlos_personal">Cuenta personal · Carlos</option>
+      <option value="nacho_personal">Cuenta personal · Nacho</option>
+     </select>
+    </div>
+    )}
+
+    {/* Payment Status (Realizado vs Pendiente) */}
+    {settlingTransactionId ? (
+    <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] px-3 py-2.5 text-[9px] leading-4 text-emerald-200/80">Al confirmar, este movimiento pasará de pendiente a pagado y se actualizará también la factura vinculada.</div>
+    ) : <div className="space-y-1.5">
     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Estado del Cobro</label>
     <div className="grid grid-cols-2 gap-2">
      <button
@@ -5744,7 +5826,7 @@ React.useEffect(() => {
     <p className="text-[9px] text-slate-500 font-sans italic leading-tight mt-1">
      El importe quedará reflejado en la factura elegida como pagado o pendiente, según este estado.
     </p>
-    </div>
+    </div>}
 
     {paymentStatus === 'pending' && (
     <div className="space-y-1.5">
@@ -5781,7 +5863,7 @@ React.useEffect(() => {
     </select>
     </div>
 
-    {paymentUsesAutomaticCommission ? (
+    {!settlingTransactionId && (paymentUsesAutomaticCommission ? (
      <div className="rounded-xl border border-emerald-400/15 bg-emerald-400/[0.05] p-3 text-[9px] leading-4 text-emerald-200/80">
       Esta factura pertenece a la venta inicial. El pago heredará su comercial y se sumará automáticamente al volumen sobre el que se calcula su porcentaje, sin crear otro caso ganado.
      </div>
@@ -5799,7 +5881,7 @@ React.useEffect(() => {
        <input type="number" min="0" step="0.01" value={paymentCommissionAmount || ''} onChange={event => setPaymentCommissionAmount(Math.max(0, Number(event.target.value) || 0))} placeholder="Se lleva €" className="w-full rounded-lg border border-white/10 bg-[#030305] px-2.5 py-2 text-[9px] text-slate-200 outline-none focus:border-amber-400" />
       </div>
      </div>
-    )}
+    ))}
 
     {/* Payment Description */}
     <div className="space-y-1.5">
@@ -5818,7 +5900,7 @@ React.useEffect(() => {
     <div className="flex gap-3 pt-4 border-t border-white/5">
     <button
      type="button"
-     onClick={() => setShowAddPaymentModal(false)}
+     onClick={() => { setShowAddPaymentModal(false); setSettlingTransactionId(null); }}
      className="flex-1 py-2.5 border border-white/10 hover:bg-white/5 rounded-xl text-xs text-slate-400 font-semibold cursor-pointer transition-all text-center"
     >
      Cancelar
@@ -5828,7 +5910,7 @@ React.useEffect(() => {
      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-lg shadow-emerald-950/40 transition-all text-center flex items-center justify-center gap-1.5"
     >
      <Check className="w-4 h-4" />
-     <span>Confirmar Cobro</span>
+     <span>{settlingTransactionId ? 'Confirmar cobro pendiente' : 'Confirmar Cobro'}</span>
     </button>
     </div>
    </form>
