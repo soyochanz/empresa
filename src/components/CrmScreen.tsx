@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
 import { beginBlockingDatabaseOperation, db } from '../supabaseClient';
@@ -1060,7 +1060,7 @@ React.useEffect(() => {
  const commPct = matchedCom?.commissionPercentage ?? 0;
  const commissionableSaleTotal = hasUpfrontServicePayment ? convFinancedTotal : 0;
  const conversionTaxPercentage = convertingLead.taxPercentage ?? 21;
- const commissionableSaleNetTotal = commissionableSaleTotal / (1 + conversionTaxPercentage / 100);
+
 
  let generatedStripeUrl = '';
  let pricePerInstallment = hasUpfrontServicePayment && convInstallments > 0 ? convFinancedTotal / convInstallments : convRecurringPrice;
@@ -1314,7 +1314,7 @@ React.useEffect(() => {
   installments: hasUpfrontServicePayment ? convInstallments : 0,
   commercialName: matchedCom?.name,
   commissionPercentage: matchedCom ? commPct : undefined,
-  commissionAmount: matchedCom ? commissionableSaleNetTotal * commPct / 100 : undefined,
+  commissionAmount: matchedCom ? commissionableSaleTotal * commPct / 100 : undefined,
   stripeUrl: generatedStripeUrl || undefined,
  stripeUrls: serviceFinancialResult.stripeUrls,
  isNewClient: true,
@@ -6308,19 +6308,18 @@ React.useEffect(() => {
      const com = (comercialesList || []).find(c => c.id === effectiveCommissionCommercialId);
      if (com) {
      const pct = com.commissionPercentage ?? 10;
-     const taxPercentage = convertingLead?.taxPercentage ?? 21;
-     const commissionableNet = (hasUpfrontServicePayment ? convFinancedTotal : 0) / (1 + taxPercentage / 100);
-     const commVal = commissionableNet * pct / 100;
+     const commissionableGross = hasUpfrontServicePayment ? convFinancedTotal : 0;
+     const commVal = commissionableGross * pct / 100;
      return (
       <p className="text-[10px] text-emerald-400 font-mono mt-1">
-      👉 Se asignará una comisión de <strong>{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> ({pct}% sobre el importe sin IVA) a <strong>{com.name}</strong>.
+      👉 Se asignará una comisión de <strong>{commVal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> ({pct}% sobre el importe bruto, impuestos incluidos) a <strong>{com.name}</strong>.
       </p>
      );
      }
      return null;
     })()}
     {!effectiveCommissionCommercialId && <p className="text-[9px] text-slate-500">Puedes confirmar la venta sin asignar comisión a ningún comercial.</p>}
-    {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Se ha preseleccionado al comercial que captó el lead. La comisión automática se calcula solo sobre el upfront sin IVA, aunque esté dividido en cuotas; la recurrencia queda excluida. Carlos nunca recibe comisión de ventas.</p>}
+    {originCommissionCommercial && <p className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.04] px-3 py-2 text-[9px] leading-4 text-cyan-200/75">Se ha preseleccionado al comercial que captó el lead. La comisión automática se calcula solo sobre el pago inicial bruto, impuestos incluidos, aunque esté dividido en cuotas; la recurrencia queda excluida. Carlos nunca recibe comisión de ventas.</p>}
     </div>
     )}
 

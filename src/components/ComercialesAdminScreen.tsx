@@ -47,7 +47,7 @@ import AdminCommercialEvolution from './AdminCommercialEvolution';
 import { db, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, dedupeCommercialLeads, getRankableCommercials } from '../utils/salesRewards';
 import { downloadCommercialAnalyticsReport, printCommercialAnalyticsReport } from '../utils/commercialAnalyticsReport';
-import { getAutomaticCommissionableNetVolume, getCommissionableNetVolume, isAutomaticCommissionEligible } from '../utils/commission';
+import { getAutomaticCommissionableGrossVolume, getCommissionableGrossVolume, isAutomaticCommissionEligible } from '../utils/commission';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -372,7 +372,7 @@ export default function ComercialesAdminScreen({
  }
  const linkedTx = incomeTransactions.find(tx => tx.id === extraCommissionTxId);
  const amount = extraCommissionMode === 'income' ?
-  (linkedTx ? getCommissionableNetVolume([linkedTx as FinanceTransaction], [], contacts) : 0) * Number(extraCommissionPercent || 0) / 100
+  (linkedTx ? getCommissionableGrossVolume([linkedTx as FinanceTransaction], [], contacts) : 0) * Number(extraCommissionPercent || 0) / 100
   : Number(extraCommissionAmount || 0);
  if (!amount || amount <= 0) {
   triggerAlert('Importe no válido', 'Introduce un importe en euros o un porcentaje válido sobre un ingreso.');
@@ -708,8 +708,8 @@ export default function ComercialesAdminScreen({
  (tx.comercialId === currentComercial.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === currentComercial.email.toLowerCase()))
  ) : [];
  const indInitialTxsPaid = indInitialTxs.filter(tx => tx.status === 'paid');
- const indInitialSalesVolume = getAutomaticCommissionableNetVolume(indInitialTxsPaid as FinanceTransaction[], [], contacts);
- const indPendingInitialSalesVolume = getAutomaticCommissionableNetVolume(
+ const indInitialSalesVolume = getAutomaticCommissionableGrossVolume(indInitialTxsPaid as FinanceTransaction[], [], contacts);
+ const indPendingInitialSalesVolume = getAutomaticCommissionableGrossVolume(
   indInitialTxs.filter(tx => tx.status === 'pending') as FinanceTransaction[],
   [],
   contacts,
@@ -1301,7 +1301,7 @@ export default function ComercialesAdminScreen({
        {indBenefitsReadyToPayout.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
       </span>
       <span className="mt-1 block text-[8px] font-mono text-slate-500">
-       Sobre {indInitialSalesVolume.toLocaleString('es-ES')} € de base neta cobrada
+       Sobre {indInitialSalesVolume.toLocaleString('es-ES')} € de importe bruto cobrado
       </span>
       </div>
       <div className="text-right">
@@ -1906,8 +1906,8 @@ export default function ComercialesAdminScreen({
        isAutomaticCommissionEligible(tx as FinanceTransaction) &&
        (tx.comercialId === c.id || (tx.comercialEmail && tx.comercialEmail.toLowerCase() === c.email.toLowerCase()))
       );
-      const initialSalesVolTotal = getAutomaticCommissionableNetVolume(initialTxsForC as FinanceTransaction[], [], contacts);
-      const initialSalesVol = getAutomaticCommissionableNetVolume(
+      const initialSalesVolTotal = getAutomaticCommissionableGrossVolume(initialTxsForC as FinanceTransaction[], [], contacts);
+      const initialSalesVol = getAutomaticCommissionableGrossVolume(
        initialTxsForC.filter(tx => tx.status === 'paid') as FinanceTransaction[],
        [],
        contacts,
