@@ -1,5 +1,5 @@
 import { ComponentType } from 'react';
-import { Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, PanelLeftClose, PanelLeftOpen, PhoneCall, Receipt, ScrollText, Utensils, UsersRound, X } from 'lucide-react';
+import { ArrowUpRight, Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, Instagram, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, PanelLeftClose, PanelLeftOpen, PhoneCall, Receipt, ScrollText, Utensils, UsersRound, X } from 'lucide-react';
 import { Screen } from '../types';
 
 interface SidebarProps {
@@ -50,6 +50,10 @@ const quickAccess: NavItem[] = [
  { screen: 'developer_hub', label: 'Dev', icon: Code2 }
 ];
 
+const tools = [
+ { name: 'InstaFeed', description: 'Widgets de Instagram', href: 'https://instafeed-widget.contact635344.chatgpt.site/', icon: Instagram }
+];
+
 export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogout, onOpenNotifications, unreadCount = 0, mobileOpen = false, onMobileClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
  const navigate = (screen: Screen) => { onNavigate(screen, 'none'); onMobileClose?.(); };
 
@@ -73,7 +77,7 @@ export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogo
    <div className="grid grid-cols-3 gap-2">{quickAccess.map(item => { const Icon = item.icon; const active = currentScreen === item.screen; return <button key={item.screen} onClick={() => navigate(item.screen)} className={`group flex min-w-0 flex-col items-center gap-2 rounded-2xl border px-2 py-3 transition ${active ? 'border-[#d6b96f]/35 bg-[#d6b96f]/[0.11] text-[#f1d995]' : 'border-white/[0.065] bg-white/[0.025] text-slate-400 hover:border-white/15 hover:bg-white/[0.05] hover:text-white'}`}><Icon className="h-4 w-4" /><span className="truncate text-[9px] font-medium">{item.label}</span></button>; })}</div>
   </div>
 
-  <nav className={`relative flex-1 overflow-y-auto px-3 pb-5 pt-1 ${collapsed ? 'lg:px-2' : ''}`}>{groups.map(group => <div key={group.label} className={`${collapsed ? 'lg:mt-3' : 'mt-5 first:mt-2'}`}>
+  <nav className={`relative min-h-0 flex-1 overflow-y-auto px-3 pb-5 pt-1 ${collapsed ? 'lg:px-2' : ''}`}>{groups.map(group => <div key={group.label} className={`${collapsed ? 'lg:mt-3' : 'mt-5 first:mt-2'}`}>
    <p className={`mb-1.5 px-3 text-[8px] font-semibold uppercase tracking-[.24em] text-white/22 ${collapsed ? 'lg:hidden' : ''}`}>{group.label}</p>
    <div className="space-y-1">{group.items.map(item => { const Icon = item.icon; const active = currentScreen === item.screen; return <button key={item.screen} onClick={() => navigate(item.screen)} title={collapsed ? item.label : undefined} aria-label={item.label} className={`group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${collapsed ? 'lg:justify-center lg:px-1.5' : ''} ${active ? 'border-[#d6b96f]/25 bg-gradient-to-r from-[#d6b96f]/[0.13] to-cyan-300/[0.035] text-white shadow-[inset_2px_0_0_#d6b96f]' : 'border-transparent text-slate-400 hover:border-white/[0.055] hover:bg-white/[0.035] hover:text-white'}`}>
     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${active ? 'border-[#d6b96f]/20 bg-[#d6b96f]/[0.08] text-[#e5cb8b]' : 'border-white/[0.055] bg-white/[0.018] text-slate-500 group-hover:text-cyan-200'}`}><Icon className="h-4 w-4" /></span>
@@ -88,5 +92,13 @@ export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogo
     <button onClick={() => onLogout ? onLogout() : onNavigate('acceso','push_back')} title={collapsed ? 'Cerrar sesión' : undefined} className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[8px] text-slate-500 transition hover:bg-red-500/[0.07] hover:text-red-300"><LogOut className="mt-1.5 h-3.5 w-3.5" /><span className={collapsed ? 'lg:hidden' : ''}>Salir</span></button>
    </div>
   </div>
+  <section aria-label="Herramientas" className={`relative shrink-0 border-t border-white/[0.07] bg-black/15 px-4 pb-4 pt-3 ${collapsed ? 'lg:px-2' : ''}`}>
+   <p className={`mb-2.5 px-1 text-[8px] font-semibold uppercase tracking-[.24em] text-slate-400 ${collapsed ? 'lg:hidden' : ''}`}>Herramientas</p>
+   <div className="space-y-2">{tools.map(tool => { const Icon = tool.icon; return <a key={tool.name} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => onMobileClose?.()} aria-label={`${tool.name}: ${tool.description} (se abre en una nueva pestaña)`} title={`${tool.name} · ${tool.description} · Nueva pestaña`} className={`group flex items-center gap-3 rounded-2xl border border-fuchsia-400/15 bg-gradient-to-br from-fuchsia-400/[0.08] via-violet-400/[0.04] to-orange-300/[0.06] p-3 transition hover:border-fuchsia-400/35 hover:shadow-[0_0_24px_rgba(192,38,211,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 ${collapsed ? 'lg:justify-center lg:px-1 lg:py-2' : ''}`}>
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400 text-white shadow-[0_4px_16px_rgba(192,38,211,0.22)] ring-1 ring-inset ring-white/20 transition group-hover:scale-105"><Icon aria-hidden="true" className="h-5 w-5" /></span>
+    <span className={`min-w-0 flex-1 ${collapsed ? 'lg:hidden' : ''}`}><span className="block text-xs font-semibold text-slate-200">{tool.name}</span><span className="mt-1 block text-[10px] text-slate-400">{tool.description}</span></span>
+    <ArrowUpRight aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-400 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-fuchsia-300 ${collapsed ? 'lg:hidden' : ''}`} />
+   </a>; })}</div>
+  </section>
  </aside>;
 }
