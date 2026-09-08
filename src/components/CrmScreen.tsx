@@ -2857,6 +2857,7 @@ React.useEffect(() => {
  const [newLinkedin, setNewLinkedin] = useState('');
  const [newAvatarUrl, setNewAvatarUrl] = useState('');
  const [newAssignedUserEmail, setNewAssignedUserEmail] = useState('');
+ const [newOriginCommercialId, setNewOriginCommercialId] = useState('');
  const [newColor, setNewColor] = useState('');
 
  const resetFormFields = () => {
@@ -2879,6 +2880,7 @@ React.useEffect(() => {
  setNewLinkedin('');
  setNewAvatarUrl('');
  setNewAssignedUserEmail('');
+ setNewOriginCommercialId('');
  setNewColor('');
  setEditingContact(null);
  };
@@ -2936,6 +2938,15 @@ React.useEffect(() => {
   .slice(0, 2);
 
  const matchedUser = usersList.find(u => u.email === newAssignedUserEmail);
+ const originCommercial = comercialesList.find(commercial => commercial.id === newOriginCommercialId);
+ if (newOriginCommercialId && newOriginCommercialId !== '__existing__' && !originCommercial) {
+  window.alert('El comercial seleccionado ya no está disponible. Selecciona otro comercial.');
+  return;
+ }
+ const commercialOrigin = newOriginCommercialId === '__existing__'
+  ? { contactedByComercialName: editingContact?.contactedByComercialName, contactedByComercialEmail: editingContact?.contactedByComercialEmail }
+  : { contactedByComercialName: originCommercial?.name, contactedByComercialEmail: originCommercial?.email };
+
 
  if (editingContact) {
   const updatedContact: ClientContact = {
@@ -2958,6 +2969,7 @@ React.useEffect(() => {
   phone: newPhone || undefined,
   linkedin: newLinkedin || undefined,
   avatarUrl: newAvatarUrl || undefined,
+  ...commercialOrigin,
   assignedUserEmail: newAssignedUserEmail || undefined,
   assignedUserId: matchedUser ? matchedUser.id : undefined,
   initials: initials || 'N',
@@ -3045,6 +3057,7 @@ React.useEffect(() => {
   phone: newPhone || undefined,
   linkedin: newLinkedin || undefined,
   avatarUrl: newAvatarUrl || undefined,
+  ...commercialOrigin,
   assignedUserEmail: newAssignedUserEmail || undefined,
   assignedUserId: matchedUser ? matchedUser.id : undefined,
   initials: initials || 'N',
@@ -3370,6 +3383,13 @@ React.useEffect(() => {
      setNewLinkedin(selectedContact.linkedin || '');
      setNewAvatarUrl(selectedContact.avatarUrl || '');
      setNewAssignedUserEmail(selectedContact.assignedUserEmail || '');
+     const originCommercial = comercialesList.find(commercial =>
+      selectedContact.contactedByComercialEmail
+       ? commercial.email.trim().toLowerCase() === selectedContact.contactedByComercialEmail.trim().toLowerCase()
+       : Boolean(selectedContact.contactedByComercialName && commercial.name.trim().toLocaleLowerCase('es-ES') === selectedContact.contactedByComercialName.trim().toLocaleLowerCase('es-ES'))
+     );
+     setNewOriginCommercialId(originCommercial?.id || (selectedContact.contactedByComercialName || selectedContact.contactedByComercialEmail ? '__existing__' : ''));
+
      setNewColor(selectedContact.color || '');
      setShowAddModal(true);
      }}
@@ -4903,9 +4923,9 @@ React.useEffect(() => {
     <h4 className="text-[9px] font-mono uppercase tracking-widest text-[#D4AF37] font-bold">Historial de Prospección</h4>
     <div className="bg-[#030306]/40 p-4 rounded-xl space-y-3.5 border border-white/5">
      <div className="flex justify-between items-center text-xs text-slate-300">
-     <span className="text-slate-500 font-medium font-sans">Comercial que le contact?:</span>
+     <span className="text-slate-500 font-medium font-sans">Comercial de origen:</span>
      <span className="font-semibold text-white bg-violet-500/10 border border-violet-500/20 px-2.5 py-1 rounded text-[10px]">
-      {selectedContact.contactedByComercialName || selectedContact.contactedByComercialEmail || 'No registrado en llamada previa'}
+      {selectedContact.contactedByComercialName || selectedContact.contactedByComercialEmail || 'Sin comercial de origen'}
      </span>
      </div>
 
@@ -5241,6 +5261,16 @@ React.useEffect(() => {
      onChange={(e) => setNewEmail(e.target.value)}
      className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
     />
+    </div>
+
+    <div className="space-y-2 rounded-xl border border-amber-400/15 bg-amber-400/[0.04] p-3">
+     <label htmlFor="contact-origin-commercial" className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-amber-400"><BriefcaseBusiness className="h-3.5 w-3.5" aria-hidden="true" />Comercial de origen</label>
+     <select id="contact-origin-commercial" value={newOriginCommercialId} onChange={event => setNewOriginCommercialId(event.target.value)} aria-describedby="contact-origin-commercial-help" className="w-full rounded-xl border border-white/10 bg-[#060e20] px-4 py-2.5 text-xs text-slate-100 focus:border-amber-400 focus:outline-none">
+      <option value="">Sin comercial</option>
+      {newOriginCommercialId === '__existing__' && <option value="__existing__">{editingContact?.contactedByComercialName || editingContact?.contactedByComercialEmail} (registro actual)</option>}
+      {comercialesList.map(commercial => <option key={commercial.id} value={commercial.id}>{commercial.name} · {commercial.email}</option>)}
+     </select>
+     <p id="contact-origin-commercial-help" className="text-[10px] leading-relaxed text-slate-400">Comercial que trajo este cliente o lead. Cambiarlo no modifica las comisiones de ventas ya registradas.</p>
     </div>
 
     {/* Company & Role */}
