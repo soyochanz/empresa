@@ -774,6 +774,13 @@ export default function App() {
   return () => clearInterval(interval);
   }, [handleRefreshFinance]);
 
+ // Refresh commissions on entry even when Realtime is unavailable.
+ useEffect(() => {
+  if (currentScreen !== 'comerciales_admin') return;
+  invalidateSharedPipelineCache(['finance_transactions']);
+  void handleRefreshFinance();
+ }, [currentScreen, handleRefreshFinance]);
+
  useEffect(() => {
   const channel = supabase.channel('app-finance-transactions-sync')
    .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_transactions' }, () => {
@@ -1711,6 +1718,12 @@ export default function App() {
   await db.updateComercialAccount(updated, currentUser?.id || undefined);
   setComercialesList(prev => prev.map(c => c.id === updated.id ? updated : c));
   if (currentComercial && currentComercial.id === updated.id) setCurrentComercial(updated);
+  try {
+   await db.syncCommercialCashouts(updated, currentUser?.id || undefined);
+   await handleRefreshFinance();
+  } catch (error) {
+   throw new Error('El cashout está guardado, pero no se pudo registrar su salida en Finanzas. No repitas el pago; vuelve a guardar el comercial para sincronizarlo.');
+  }
  } catch (err) {
   console.error('Supabase failed to update comercial account:', err);
   throw err;

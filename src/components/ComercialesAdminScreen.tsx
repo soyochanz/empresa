@@ -94,7 +94,7 @@ interface ComercialesAdminScreenProps {
  contacts?: ClientContact[];
  events?: CalendarEvent[];
  onAddComercial: (comercial: ComercialAccount) => void;
- onUpdateComercial: (account: ComercialAccount) => void;
+ onUpdateComercial: (account: ComercialAccount) => void | Promise<void>;
  onDeleteComercial: (id: string) => void;
  onNavigate?: (target: Screen, transition: 'none' | 'push' | 'push_back') => void;
 }
@@ -283,6 +283,7 @@ export default function ComercialesAdminScreen({
  };
 
  const handleLiquidateComercialStripe = async (comercial: ComercialAccount, amount: number) => {
+ let createdTransferId = '';
  setStripePayoutLoading(true);
  try {
   const response = await fetch('/api/stripe/create-comercial-transfer', {
@@ -299,6 +300,7 @@ export default function ComercialesAdminScreen({
   if (!response.ok) {
   throw new Error(data.error || 'Stripe no pudo crear la transferencia');
   }
+  createdTransferId = data.transferId;
 
   const newPayout = {
   id: `pay_${Date.now()}`,
@@ -313,7 +315,7 @@ export default function ComercialesAdminScreen({
   paymentMethod: 'stripe' as const
   };
 
-  onUpdateComercial({
+  await onUpdateComercial({
   ...comercial,
   payouts: [...(comercial.payouts || []), newPayout]
   });
@@ -323,13 +325,15 @@ export default function ComercialesAdminScreen({
   `Stripe ha creado la transferencia ${data.transferId} por ${amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}. El ingreso en banco depende del calendario de payouts de la cuenta conectada.`
   );
  } catch (err: any) {
-  triggerAlert('Stripe no ha liquidado', err?.message || 'No se pudo crear la transferencia real en Stripe.');
+  triggerAlert(createdTransferId ? 'Transferencia creada: revisar registro' : 'Stripe no ha liquidado', createdTransferId ? `Stripe ya ha creado ${createdTransferId}. No repitas el pago. ${err?.message || 'No se pudo guardar el registro.'}` : err?.message || 'No se pudo crear la transferencia real en Stripe.');
  } finally {
   setStripePayoutLoading(false);
  }
  };
 
- const handleManualLiquidation = (comercial: ComercialAccount, amount: number, method: 'transfer' | 'cash') => {
+ const handleManualLiquidation = async (comercial: ComercialAccount, amount: number, method: 'transfer' | 'cash') => {
+ setStripePayoutLoading(true);
+ try {
  const newPayout = {
   id: `pay_${method}_${Date.now()}`,
   comercialId: comercial.id,
@@ -340,8 +344,13 @@ export default function ComercialesAdminScreen({
   bankName: method === 'transfer' ? (comercial.bankName || 'Transferencia bancaria') : 'Cash',
   paymentMethod: method
  };
- onUpdateComercial({ ...comercial, payouts: [...(comercial.payouts || []), newPayout] });
+ await onUpdateComercial({ ...comercial, payouts: [...(comercial.payouts || []), newPayout] });
  triggerAlert('Liquidación registrada', `${amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })} marcados como liquidados por ${method === 'cash' ? 'cash' : 'transferencia bancaria'}.`);
+ } catch (error: any) {
+  triggerAlert('Revisar liquidación', error?.message || 'No se pudo guardar la liquidación.');
+ } finally {
+  setStripePayoutLoading(false);
+ }
  };
 
  const incomeTransactions = finTransactions.filter(tx => tx.type === 'income' && tx.status === 'paid');
@@ -1362,8 +1371,8 @@ export default function ComercialesAdminScreen({
       <>
       <div className="space-y-2.5">
        <div className="flex justify-between items-center text-xs">
-       <span className="text-slate-400 font-sans">Comisiones listas:</span>
-       <span className="font-mono text-slate-200 font-bold">{indBenefitsReadyToPayout.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
+       <span className="text-slate-400 font-sans">Comisiones generadas por cobros:</span>
+       <span className="font-mono text-slate-200 font-bold">{indBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
        </div>
        <div className="flex justify-between items-center text-xs">
        <span className="text-slate-400 font-sans">Ya liquidadas:</span>
@@ -1374,7 +1383,7 @@ export default function ComercialesAdminScreen({
        <span className="font-mono text-amber-400 text-sm font-black">{indPendingCommission.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
        </div>
        <div className="flex justify-between items-center text-xs">
-       <span className="text-slate-400 font-sans">Pendiente de cobro del cliente:</span>
+       <span className="text-slate-400 font-sans">Comisión pendiente de cobro:</span>
        <span className="font-mono text-blue-300 font-bold">{indBenefitsPendingOnClientPayment.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
        </div>
       </div>
@@ -1462,27 +1471,7 @@ export default function ComercialesAdminScreen({
         () => {
         if (payoutMethod === 'stripe') handleLiquidateComercialStripe(currentComercial, indPendingCommission);
         else handleManualLiquidation(currentComercial, indPendingCommission, payoutMethod);
-        return;
-        const newPayout = {
-         id: `pay_${Date.now()}`,
-         comercialId: currentComercial.id,
-         amount: indPendingCommission,
-         date: new Date().toISOString(),
-         status: 'completed' as const,
-         bankAccount: currentComercial.iban,
-         bankName: currentComercial.bankName,
-         stripeTransferId: `manual_${Date.now()}`
-        };
 
-        onUpdateComercial({
-         ...currentComercial,
-         payouts: [...(currentComercial.payouts || []), newPayout]
-        });
-        
-        triggerAlert(
-         'Liquidación Exitosa',
-         <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">Liquidación Stripe Direct</h4>
-        );
         }
        );
        }}

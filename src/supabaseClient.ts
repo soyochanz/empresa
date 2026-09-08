@@ -1,3 +1,4 @@
+import { buildCommercialCashout } from './utils/commercialCashout';
 import { createClient } from '@supabase/supabase-js';
 import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ColdCallingProspectGroup, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog, PartnerCompany } from './types';
 import { buildDueRecurringTransactions } from './utils/financeRecurrence';
@@ -3141,6 +3142,23 @@ const dbImplementation = {
  if (error) throw error;
  if (!data) throw new Error(`No se pudo crear el comercial ${account.id}: Supabase no confirmó la fila.`);
  invalidateCache('comerciales_accounts');
+ },
+
+ async syncCommercialCashouts(account: ComercialAccount, userId?: string): Promise<string[]> {
+ const transactions = (account.payouts || []).map(payout => buildCommercialCashout(account, payout)).filter((transaction): transaction is FinanceTransaction => transaction !== null);
+ if (!transactions.length) return [];
+ const payload = transactions.map(transaction => ({
+  id: transaction.id, type: transaction.type, category: transaction.category,
+  amount: transaction.amount, date: transaction.date, status: transaction.status,
+  isRecurring: false, recurrencePeriod: null, user_id: userId || null,
+  description: this._encodeDescription(transaction.description, transaction)
+ }));
+ // A payout keeps the same ledger ID across retries; never debit it twice.
+ const { data, error } = await supabase.from('finance_transactions')
+  .upsert(payload, { onConflict: 'id', ignoreDuplicates: true }).select('id');
+ if (error) throw error;
+ invalidateCache('finance_transactions');
+ return (data || []).map(transaction => transaction.id);
  },
 
  async updateComercialAccount(account: ComercialAccount, userId?: string): Promise<void> {

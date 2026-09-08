@@ -238,7 +238,7 @@ interface CrmScreenProps {
  onAddEvent?: (event: CalendarEvent) => void;
  comercialesList?: ComercialAccount[];
  onUpdateComercial?: (account: ComercialAccount) => void | Promise<void>;
- onRefreshFinance?: () => void;
+ onRefreshFinance?: () => void | Promise<void>;
 }
 
 export default function CrmScreen({ 
@@ -1442,6 +1442,7 @@ React.useEffect(() => {
   ]);
   setInvoices(invList || []);
   setTransactions(txList || []);
+  await onRefreshFinance?.();
  } catch (err) {
   console.error('Error fetching financials in CRM screen:', err);
  } finally {
@@ -1451,6 +1452,7 @@ React.useEffect(() => {
 
  const persistClientTransactionAndInvoice = async (originalTx: FinanceTransaction, updatedTx: FinanceTransaction) => {
    await db.updateFinanceTransaction(updatedTx);
+   await onRefreshFinance?.();
    const updatedTransactions = transactions.map(item => item.id === originalTx.id ? updatedTx : item);
    setTransactions(updatedTransactions);
    const linkedInvoice = invoices.find(invoice =>

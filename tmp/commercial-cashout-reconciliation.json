@@ -1,0 +1,15 @@
+{
+  "commercial": "Sabrina Podda Marquez",
+  "payoutId": "pay_cash_1788799550266",
+  "date": "2026-09-07T16:45:50.266Z",
+  "amount": 124.99,
+  "method": "cash",
+  "description": "Cashout comercial · Sabrina Podda Marquez",
+  "inserted": [
+    "tx_commercial_payout_com_gm6hemd8b_pay_cash_1788799550266"
+  ],
+  "repeatInserted": [],
+  "cashBefore": 1615,
+  "cashAfter": 1490.01,
+  "verified": true
+}

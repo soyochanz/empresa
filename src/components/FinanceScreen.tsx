@@ -1,3 +1,4 @@
+import { isCommercialCashout } from '../utils/commercialCashout';
 import React, { useState, useEffect } from 'react';
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
@@ -1536,7 +1537,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   ? ledgerTransactions.filter(transaction => getFinanceDateKey(transaction.date).startsWith(analyticsMonthKey))
   : ledgerTransactions;
  const valuedAnalyticsTransactions = analyticsTransactions.filter(transaction =>
-  transaction.status !== 'failed' && !isInternalBalanceTransfer(transaction)
+  transaction.status !== 'failed' && !isInternalBalanceTransfer(transaction) && !isCommercialCashout(transaction)
  );
 
  const totalIncomes = valuedAnalyticsTransactions
@@ -5726,7 +5727,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   const monthTxs = ledgerTransactions.filter(tx => (tx.date || '').startsWith(currentMonth));
   const prevTxs = ledgerTransactions.filter(tx => (tx.date || '').startsWith(prev));
   const monthIncome = monthTxs.filter(tx => tx.type === 'income').reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-  const monthExpenses = monthTxs.filter(tx => tx.type === 'expense').reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+  const monthExpenses = monthTxs.filter(tx => tx.type === 'expense' && !isCommercialCashout(tx)).reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
   const prevIncome = prevTxs.filter(tx => tx.type === 'income').reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
   const growth = prevIncome ? Math.round(((monthIncome - prevIncome) / prevIncome) * 100) : 100;
   const monthClients = contacts.filter(c => c.status === 'Client' && (c.addedDate || '').includes(String(now.getFullYear()))).length;
