@@ -1,5 +1,5 @@
 import { ComponentType } from 'react';
-import { ArrowUpRight, Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, Instagram, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, PanelLeftClose, PanelLeftOpen, PhoneCall, Receipt, ScrollText, Utensils, UsersRound, X } from 'lucide-react';
+import { ArrowUpRight, BarChart3, Bell, BriefcaseBusiness, Building2, CalendarDays, ChevronRight, Code2, FileText, FolderKanban, Home, Infinity, Instagram, LayoutDashboard, LogOut, Mail, Megaphone, NotebookPen, Orbit, PanelLeftClose, PanelLeftOpen, PhoneCall, Receipt, ScrollText, Search, Target, Utensils, UsersRound, X } from 'lucide-react';
 import { Screen } from '../types';
 
 interface SidebarProps {
@@ -51,7 +51,12 @@ const quickAccess: NavItem[] = [
 ];
 
 const tools = [
- { name: 'InstaFeed', description: 'Widgets de Instagram', href: 'https://instafeed-widget.contact635344.chatgpt.site/', icon: Instagram }
+ { name: 'InstaFeed', description: 'Widgets de Instagram', href: 'https://instafeed-widget.contact635344.chatgpt.site/', icon: Instagram, gradient: 'from-violet-500 via-fuchsia-500 to-orange-400' },
+ { name: 'SEO Orbita', description: 'Optimización SEO', href: 'https://seo-orbita-lab.contact635344.chatgpt.site/', icon: Orbit, gradient: 'from-violet-600 to-indigo-400' },
+ { name: 'Meta Ads', description: 'Campañas en Meta', href: 'https://adsmanager.facebook.com/', icon: Infinity, gradient: 'from-blue-600 to-sky-400' },
+ { name: 'Google Ads', description: 'Campañas en Google', href: 'https://ads.google.com/home/', icon: Target, gradient: 'from-blue-500 to-emerald-400' },
+ { name: 'Search Console', description: 'Rendimiento en buscadores', href: 'https://search.google.com/search-console/', icon: Search, gradient: 'from-emerald-600 to-teal-400' },
+ { name: 'Analytics', description: 'Tráfico y conversiones', href: 'https://analytics.google.com/', icon: BarChart3, gradient: 'from-orange-500 to-amber-400' }
 ];
 
 export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogout, onOpenNotifications, unreadCount = 0, mobileOpen = false, onMobileClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
@@ -94,10 +99,10 @@ export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogo
   </div>
   <section aria-label="Herramientas" className={`relative shrink-0 border-t border-white/[0.07] bg-black/15 px-4 pb-4 pt-3 ${collapsed ? 'lg:px-2' : ''}`}>
    <p className={`mb-2.5 px-1 text-[8px] font-semibold uppercase tracking-[.24em] text-slate-400 ${collapsed ? 'lg:hidden' : ''}`}>Herramientas</p>
-   <div className="space-y-2">{tools.map(tool => { const Icon = tool.icon; return <a key={tool.name} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => onMobileClose?.()} aria-label={`${tool.name}: ${tool.description} (se abre en una nueva pestaña)`} title={`${tool.name} · ${tool.description} · Nueva pestaña`} className={`group flex items-center gap-3 rounded-2xl border border-fuchsia-400/15 bg-gradient-to-br from-fuchsia-400/[0.08] via-violet-400/[0.04] to-orange-300/[0.06] p-3 transition hover:border-fuchsia-400/35 hover:shadow-[0_0_24px_rgba(192,38,211,0.10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 ${collapsed ? 'lg:justify-center lg:px-1 lg:py-2' : ''}`}>
-    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400 text-white shadow-[0_4px_16px_rgba(192,38,211,0.22)] ring-1 ring-inset ring-white/20 transition group-hover:scale-105"><Icon aria-hidden="true" className="h-5 w-5" /></span>
-    <span className={`min-w-0 flex-1 ${collapsed ? 'lg:hidden' : ''}`}><span className="block text-xs font-semibold text-slate-200">{tool.name}</span><span className="mt-1 block text-[10px] text-slate-400">{tool.description}</span></span>
-    <ArrowUpRight aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-400 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-fuchsia-300 ${collapsed ? 'lg:hidden' : ''}`} />
+   <div className={`grid max-h-[30dvh] grid-cols-2 gap-2 overflow-y-auto overscroll-contain p-1 ${collapsed ? 'lg:grid-cols-1' : ''}`}>{tools.map(tool => { const Icon = tool.icon; return <a key={tool.name} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => onMobileClose?.()} aria-label={`${tool.name}: ${tool.description} (se abre en una nueva pestaña)`} title={`${tool.name} · ${tool.description} · Nueva pestaña`} className={`group relative flex min-w-0 flex-col items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.025] px-2 py-3 text-center transition hover:border-[#d6b96f]/30 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d6b96f] ${collapsed ? 'lg:px-1 lg:py-2' : ''}`}>
+    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${tool.gradient} text-white shadow-lg ring-1 ring-inset ring-white/20 transition group-hover:scale-105`}><Icon aria-hidden="true" className="h-5 w-5" /></span>
+    <span className={`block max-w-full text-[10px] font-semibold leading-tight text-slate-200 ${collapsed ? 'lg:hidden' : ''}`}>{tool.name}</span>
+    <ArrowUpRight aria-hidden="true" className={`absolute right-2 top-2 h-3 w-3 text-slate-400 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 ${collapsed ? 'lg:hidden' : ''}`} />
    </a>; })}</div>
   </section>
  </aside>;
