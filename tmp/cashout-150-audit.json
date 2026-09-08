@@ -1,0 +1,12 @@
+{
+  "commercial": "Sabrina Podda Marquez",
+  "payoutId": "pay_cash_1788799550266",
+  "transactionId": "tx_commercial_payout_com_gm6hemd8b_pay_cash_1788799550266",
+  "originalAmount": 124.99008264462812,
+  "originalLedgerAmount": 124.99,
+  "newAmount": 150,
+  "additionalCashDebit": 25.01,
+  "cashBefore": 1490.01,
+  "cashAfter": 1465,
+  "verified": true
+}
