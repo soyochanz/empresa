@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { getStripeForecastOccurrences, ForecastSubscription } from '../src/utils/stripeForecast';
+const today=new Date('2026-09-09T12:00:00');
+const plan:ForecastSubscription={id:'sub_test',customerName:'Cliente',status:'active',amount:181.5,currency:'eur',interval:'month',intervalCount:1,nextPaymentAt:'2026-10-01T12:00:00',lastPaidAt:'2026-09-01T12:00:00',endsAt:null,paymentLimit:null,paymentCount:1};
+const count=(p:ForecastSubscription,month='2026-11')=>getStripeForecastOccurrences(p,month,today).length;
+assert.equal(count(plan),1);
+assert.equal(count({...plan,amount:97}),1);
+assert.equal(170+plan.amount+97,448.5);
+assert.equal(count({...plan,endsAt:'2026-10-14'}),0);
+assert.equal(count({...plan,cancelAt:'2026-11-01T00:00:00Z'}),0);
+assert.equal(count({...plan,paymentLimit:2}),0);
+assert.equal(count({...plan,status:'canceled'}),0);
+assert.equal(count({...plan,intervalCount:2}),0);
+assert.equal(count({...plan,intervalCount:2},'2026-12'),1);
+assert.equal(count({...plan,nextPaymentAt:null}),1);
+assert.equal(count({...plan,nextPaymentAt:'2026-10-31T12:00:00'}),1);
+assert.equal(count(plan,'2026-09'),0);
+console.log('Previsión Stripe: suscripciones, intervalos, fin de mes, límite de cuotas y cancelación verificados.');

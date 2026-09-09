@@ -1,3 +1,4 @@
+import CommercialCommissionBreakdown from './CommercialCommissionBreakdown';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
  User, 
@@ -1353,6 +1354,8 @@ export default function ComercialesAdminScreen({
      )}
     </div>
 
+    <CommercialCommissionBreakdown transactions={indInitialTxs} commercial={currentComercial} percentage={indCommissionPercentage} contacts={contacts} />
+
     {/* STRIPE PAYOUT CARD FOR ADMIN */}
     <div className="bg-[#0b0c1e] border-2 border-indigo-500/20 rounded-2xl p-5 space-y-4 shadow-xl">
      <div className="flex items-center gap-2 border-b border-white/5 pb-3">
@@ -1371,7 +1374,7 @@ export default function ComercialesAdminScreen({
       <>
       <div className="space-y-2.5">
        <div className="flex justify-between items-center text-xs">
-       <span className="text-slate-400 font-sans">Comisiones generadas por cobros:</span>
+       <span className="text-slate-400 font-sans">Comisiones por cobros y extras:</span>
        <span className="font-mono text-slate-200 font-bold">{indBenefitsEarned.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</span>
        </div>
        <div className="flex justify-between items-center text-xs">

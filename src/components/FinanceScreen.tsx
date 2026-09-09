@@ -1,3 +1,4 @@
+import { getStripeForecastOccurrences } from '../utils/stripeForecast';
 import { isCommercialCashout } from '../utils/commercialCashout';
 import React, { useState, useEffect } from 'react';
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -98,6 +99,9 @@ type StripeAccountSubscription = {
  installmentCount: number | null;
  paymentLimit: number | null;
  endsAt: string | null;
+ nextPaymentAt?: string | null;
+ stripePlanId?: string | null;
+ cancelAt?: string | null;
  paymentCount: number;
  paidAmount: number;
  openAmount: number;
@@ -3387,6 +3391,24 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
     date,
     amount: Number(transaction.nextAmount ?? transaction.amount ?? 0)
    })));
+  for (const plan of stripeSubscriptions) {
+   for (const date of getStripeForecastOccurrences(plan, key)) {
+    // A scheduled ledger entry already represents this cycle in the monthly total.
+    const represented = transactions.some(transaction => !transaction.isRecurring
+     && transaction.type === 'income' && transaction.status !== 'failed'
+     && (transaction.stripePlanId === plan.id || Boolean(plan.stripePlanId && transaction.stripePlanId === plan.stripePlanId))
+     && getFinanceDateKey(transaction.date) === getFinanceDateKey(date.toISOString()));
+    if (represented) continue;
+    recurringItems.push({
+     transaction: {
+      id: `forecast_${plan.id}`, type: 'income', status: 'pending', category: 'Suscripción Stripe',
+      description: `Suscripción · ${plan.customerName}`, amount: plan.amount,
+      date: getFinanceDateKey(date.toISOString()), paymentMethod: 'stripe', isRecurring: true,
+      recurrencePeriod: plan.interval === 'year' ? 'yearly' : plan.interval === 'week' ? 'weekly' : 'monthly'
+     }, date, amount: plan.amount
+    });
+   }
+  }
   const pendingTotal = pendingItems.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
   const recurringTotal = recurringItems.reduce((sum, item) => sum + item.amount, 0);
   return {
@@ -3943,6 +3965,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
   {/* Monthly income forecast */}
   {activeTab === 'forecast' && selectedForecast && (
   <div className="space-y-5">
+   {stripeFinanceError && <p role="status" className="rounded-xl border border-amber-400/20 p-3 text-xs text-amber-400">No se ha podido actualizar Stripe. La previsión puede estar incompleta. {stripeFinanceError}</p>}
+   {stripeFinanceLoading && !stripeFinanceOverview && <p role="status" className="text-xs text-slate-400">Cargando suscripciones de Stripe para completar la previsión…</p>}
    <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-[#08111d]/80 to-emerald-400/[0.04] p-5 sm:p-6">
     <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl pointer-events-none" />
     <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">

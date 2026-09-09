@@ -1647,10 +1647,20 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         billingType: isInstallmentPlan ? "installment" : "subscription",
         installmentCount,
         paymentLimit,
+        stripePlanId: subscription.metadata?.stripePlanId || null,
+        nextPaymentAt: (() => {
+          const next = (subscription as any).current_period_end || (firstItem as any)?.current_period_end || subscription.trial_end;
+          return next ? new Date(next * 1000).toISOString() : null;
+        })(),
+        cancelAt: (() => {
+          const end = subscription.cancel_at || (subscription.cancel_at_period_end
+            ? (subscription as any).current_period_end || (firstItem as any)?.current_period_end : null);
+          return end ? new Date(end * 1000).toISOString() : null;
+        })(),
         endsAt: paymentLimit
           ? new Date(addStripeBillingIntervalsKeepingDay(
               (subscription.trial_end || subscription.start_date || Math.floor(Date.now() / 1000)) * 1000,
-              Math.max(0, paymentLimit - 1),
+              Math.max(0, paymentLimit - 1) * (firstItem?.price.recurring?.interval_count || 1),
               firstItem?.price.recurring?.interval || "month",
             )).toISOString()
           : subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null,
