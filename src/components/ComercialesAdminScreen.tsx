@@ -1,3 +1,4 @@
+import ManualCommissionForm from './ManualCommissionForm';
 import CommercialCommissionBreakdown from './CommercialCommissionBreakdown';
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
@@ -132,6 +133,7 @@ export default function ComercialesAdminScreen({
  const [showDossierModal, setShowDossierModal] = useState(false);
  const [stripePayoutLoading, setStripePayoutLoading] = useState(false);
  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
+ const [manualCommissionSaving, setManualCommissionSaving] = useState(false);
  const [payoutMethod, setPayoutMethod] = useState<'stripe' | 'transfer' | 'cash'>('stripe');
  const [extraCommissionComercialId, setExtraCommissionComercialId] = useState(comercialesList[0]?.id || '');
  const [extraCommissionMode, setExtraCommissionMode] = useState<'manual' | 'income'>('manual');
@@ -1391,6 +1393,8 @@ export default function ComercialesAdminScreen({
        </div>
       </div>
 
+      <ManualCommissionForm key={currentComercial.id} commercial={currentComercial} disabled={stripePayoutLoading} onSave={onUpdateComercial} onBusyChange={setManualCommissionSaving} />
+
       {/* DESTINATION BANK ACC INFO */}
       <div className="bg-slate-950/50 p-3.5 rounded-xl border border-white/5 space-y-2 text-left">
        <div className="flex justify-between items-center">
@@ -1478,7 +1482,7 @@ export default function ComercialesAdminScreen({
         }
        );
        }}
-       disabled={stripePayoutLoading || indPendingCommission <= 0}
+       disabled={stripePayoutLoading || manualCommissionSaving || indPendingCommission <= 0}
        className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md font-sans ${
        stripePayoutLoading || indPendingCommission <= 0 ?
         'bg-slate-900 text-slate-600 border border-white/5 cursor-not-allowed shadow-none'

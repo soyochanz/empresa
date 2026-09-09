@@ -1,3 +1,4 @@
+import { exportSources, matchesExportSource, exportTotals, createMovementPdf, type ExportSource } from '../utils/financeExport';
 import { getStripeForecastOccurrences } from '../utils/stripeForecast';
 import { isCommercialCashout } from '../utils/commercialCashout';
 import React, { useState, useEffect } from 'react';
@@ -1010,7 +1011,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [txDateRangeFilter, setTxDateRangeFilter] = useState<'all' | 'today' | 'week'>('all');
  const [showExportPanel, setShowExportPanel] = useState(false);
  const [exportType, setExportType] = useState<'all' | 'income' | 'expense'>('all');
- const [exportSource, setExportSource] = useState<'all' | 'revolut_pro' | 'carlos_personal' | 'nacho_personal' | 'stripe_income'>('all');
+ const [exportSource, setExportSource] = useState<ExportSource>('all');
  const [exportPeriod, setExportPeriod] = useState<'all' | 'month' | 'date'>('all');
  const [exportMonth, setExportMonth] = useState(() => getMonthKey(new Date()));
  const [exportDate, setExportDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1214,10 +1215,10 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }
  };
 
- const handleExportTransactions = async () => {
-  const exportTransactions = ledgerTransactions
+ const handleExportTransactions = async (format: 'xlsx' | 'pdf' = 'xlsx') => {
+  const exportTransactions = transactions
    .filter(transaction => exportType === 'all' || transaction.type === exportType)
-   .filter(transaction => exportSource === 'all' || (exportSource === 'stripe_income' ? transaction.type === 'income' && transaction.paymentMethod === 'stripe' : transaction.type === 'expense' && transaction.paymentAccount === exportSource))
+   .filter(transaction => matchesExportSource(transaction, exportSource))
    .filter(transaction => {
     const dateKey = getTxDateKey(transaction);
     if (exportPeriod === 'month') return dateKey.startsWith(exportMonth);
@@ -1233,21 +1234,6 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
   setExportLoading(true);
   try {
-   const ExcelJS = await import('exceljs');
-   const workbook = new ExcelJS.Workbook();
-   workbook.creator = 'Althera Solutions';
-   workbook.company = 'Althera Solutions';
-   workbook.created = new Date();
-   workbook.modified = new Date();
-   workbook.calcProperties.fullCalcOnLoad = true;
-
-   const transactionsSheet = workbook.addWorksheet('Transacciones', {
-    views: [{ state: 'frozen', ySplit: 1, showGridLines: false }]
-   });
-   const summarySheet = workbook.addWorksheet('Resumen', {
-    views: [{ showGridLines: false }]
-   });
-
    const typeLabel = exportType === 'income' ? 'Solo ingresos' : exportType === 'expense' ? 'Solo gastos' : 'Todas las transacciones';
    const periodLabel = exportPeriod === 'month'
     ? new Date(`${exportMonth}-01T12:00:00`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
@@ -1255,8 +1241,33 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
      ? new Date(`${exportDate}T12:00:00`).toLocaleDateString('es-ES')
      : 'Todo el histórico';
 
+   const totals = exportTotals(exportTransactions);
+   const sourceLabel = exportSources[exportSource];
+   const periodSuffix = exportPeriod === 'month' ? exportMonth : exportPeriod === 'date' ? exportDate : 'historico';
+   const filename = `movimientos_althera_${exportSource}_${exportType}_${periodSuffix}`;
+   const methodLabel = (t: FinanceTransaction) => ({ stripe: 'Stripe', cash: 'Efectivo', transfer: 'Transferencia', card: 'Tarjeta' }[t.paymentMethod] || 'Sin indicar');
+   const accountLabel = (t: FinanceTransaction) => t.paymentAccount ? exportSources[t.paymentAccount] : matchesExportSource(t, 'revolut_pro') ? 'Revolut Pro' : '';
+   const statusLabel = (t: FinanceTransaction) => t.status === 'paid' ? (t.type === 'income' ? 'Cobrado' : 'Pagado') : t.status === 'failed' ? 'Denegado' : t.type === 'income' ? 'Por cobrar' : 'Por pagar';
+   if (format === 'pdf') {
+    const pdf = await createMovementPdf(sourceLabel, `${periodLabel} · ${typeLabel}`, totals, exportTransactions.map(t => [
+     parseFinanceDate(t.date)?.toLocaleDateString('es-ES') || t.date,
+     [getCleanBillingConcept(t.description), contacts.find(c => c.id === t.clientId)?.name || t.clientId, t.invoiceId ? `Factura: ${t.invoiceId}` : '', t.stripeCheckoutSessionId || t.stripeInvoiceId].filter(Boolean).join(' · '),
+     t.type === 'income' ? 'Ingreso' : 'Gasto', statusLabel(t), [methodLabel(t), accountLabel(t)].filter(Boolean).join(' / '),
+     `${t.type === 'expense' ? '-' : '+'}${Number(t.amount).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+    ]));
+    pdf.save(`${filename}.pdf`);
+    showToast(`PDF exportado con ${exportTransactions.length} movimientos.`);
+    return;
+   }
+   const ExcelJS = await import('exceljs');
+   const workbook = new ExcelJS.Workbook();
+   workbook.creator = 'Althera Solutions';
+   workbook.created = new Date();
+   workbook.calcProperties.fullCalcOnLoad = true;
+   const summarySheet = workbook.addWorksheet('Resumen', { views: [{ showGridLines: false }] });
+   const transactionsSheet = workbook.addWorksheet('Transacciones', { views: [{ state: 'frozen', ySplit: 1, showGridLines: false }] });
    summarySheet.mergeCells('A1:D2');
-   summarySheet.getCell('A1').value = 'BITÁCORA FINANCIERA · ALTHERA SOLUTIONS';
+   summarySheet.getCell('A1').value = `ALTHERA · ${sourceLabel.toUpperCase()}`;
    summarySheet.getCell('A1').font = { name: 'Aptos Display', size: 18, bold: true, color: { argb: 'FFFFFFFF' } };
    summarySheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
    summarySheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF071426' } };
@@ -1267,6 +1278,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    summarySheet.getColumn('C').width = 24;
    summarySheet.getColumn('D').width = 24;
 
+   summarySheet.mergeCells('B4:D4');
+   summarySheet.mergeCells('B5:D5');
    summarySheet.getCell('A4').value = 'Tipo exportado';
    summarySheet.getCell('B4').value = typeLabel;
    summarySheet.getCell('A5').value = 'Periodo';
@@ -1279,20 +1292,16 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    }
 
    const lastTransactionRow = exportTransactions.length + 1;
-   const exportedIncomeTotal = exportTransactions
-    .filter(transaction => transaction.type === 'income' && transaction.status !== 'failed')
-    .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
-   const exportedExpenseTotal = exportTransactions
-    .filter(transaction => transaction.type === 'expense' && transaction.status !== 'failed')
-    .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+   const exportedIncomeTotal = totals.income;
+   const exportedExpenseTotal = totals.expense;
    summarySheet.getCell('A9').value = 'MOVIMIENTOS';
-   summarySheet.getCell('B9').value = 'INGRESOS';
-   summarySheet.getCell('C9').value = 'GASTOS';
-   summarySheet.getCell('D9').value = 'BALANCE NETO';
+   summarySheet.getCell('B9').value = 'INGRESOS COBRADOS';
+   summarySheet.getCell('C9').value = 'GASTOS PAGADOS';
+   summarySheet.getCell('D9').value = 'FLUJO NETO REALIZADO';
    summarySheet.getCell('A10').value = { formula: `COUNTA('Transacciones'!A2:A${lastTransactionRow})`, result: exportTransactions.length };
-   summarySheet.getCell('B10').value = { formula: `SUMIF('Transacciones'!B2:B${lastTransactionRow},"Ingreso",'Transacciones'!G2:G${lastTransactionRow})`, result: exportedIncomeTotal };
-   summarySheet.getCell('C10').value = { formula: `SUMIF('Transacciones'!B2:B${lastTransactionRow},"Gasto",'Transacciones'!G2:G${lastTransactionRow})`, result: exportedExpenseTotal };
-   summarySheet.getCell('D10').value = { formula: 'B10-C10', result: exportedIncomeTotal - exportedExpenseTotal };
+   summarySheet.getCell('B10').value = { formula: `SUMIFS('Transacciones'!G2:G${lastTransactionRow},'Transacciones'!B2:B${lastTransactionRow},"Ingreso",'Transacciones'!C2:C${lastTransactionRow},"Cobrado")`, result: exportedIncomeTotal };
+   summarySheet.getCell('C10').value = { formula: `SUMIFS('Transacciones'!G2:G${lastTransactionRow},'Transacciones'!B2:B${lastTransactionRow},"Gasto",'Transacciones'!C2:C${lastTransactionRow},"Pagado")`, result: exportedExpenseTotal };
+   summarySheet.getCell('D10').value = { formula: 'B10-C10', result: totals.net };
    summarySheet.getRow(9).eachCell({ includeEmpty: true }, cell => {
     cell.font = { bold: true, color: { argb: 'FFCBD5E1' }, size: 10 };
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF10233D' } };
@@ -1311,6 +1320,18 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     }
    }
 
+   summarySheet.getCell('A13').value = 'Pendiente de cobrar';
+   summarySheet.getCell('B13').value = totals.pendingIncome;
+   summarySheet.getCell('A14').value = 'Pendiente de pagar';
+   summarySheet.getCell('B14').value = totals.pendingExpense;
+   summarySheet.getCell('A15').value = 'Movimientos denegados';
+   summarySheet.getCell('B15').value = totals.failed;
+   summarySheet.getCell('B13').numFmt = summarySheet.getCell('B14').numFmt = '#,##0.00 "€"';
+   summarySheet.mergeCells('A18:D20');
+   summarySheet.getCell('A18').value = 'Movimientos registrados en Althera. Pendientes y denegados no forman parte del flujo realizado. Este informe no representa el saldo bancario. Las tarjetas de Revolut aparecen en ambos informes; no se deben sumar entre sí.';
+   summarySheet.getCell('A18').alignment = { wrapText: true, vertical: 'middle' };
+   summarySheet.getCell('A18').font = { size: 10, color: { argb: 'FF64748B' } };
+   summarySheet.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 1 };
    const transactionRows = exportTransactions.map(transaction => {
     const parsedDate = parseFinanceDate(transaction.date);
     const client = contacts.find(contact => contact.id === transaction.clientId);
@@ -1326,11 +1347,12 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
      getCleanBillingConcept(transaction.description),
      transaction.category,
      Number(transaction.amount || 0),
-     transaction.paymentMethod === 'stripe' ? 'Stripe' : transaction.paymentMethod === 'cash' ? 'Efectivo' : transaction.paymentMethod === 'transfer' ? 'Transferencia' : '',
+     methodLabel(transaction),
      transaction.invoiceId || '',
      client?.name || transaction.clientId || '',
      transaction.stripeCheckoutSessionId || transaction.stripeInvoiceId || '',
-     transaction.isInitialSale ? 'Sí' : 'No'
+     transaction.isInitialSale ? 'Sí' : 'No',
+     accountLabel(transaction)
     ];
    });
 
@@ -1346,7 +1368,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     'Factura',
     'Cliente',
     'Referencia Stripe',
-    'Venta inicial'
+    'Venta inicial',
+    'Cuenta'
    ];
    transactionsSheet.addRow(transactionHeaders);
    transactionsSheet.addRows(transactionRows);
@@ -1357,7 +1380,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    transactionsSheet.columns = [
     { width: 22 }, { width: 13 }, { width: 14 }, { width: 13 },
     { width: 46 }, { width: 22 }, { width: 16 }, { width: 20 },
-    { width: 18 }, { width: 28 }, { width: 30 }, { width: 14 }
+    { width: 18 }, { width: 28 }, { width: 30 }, { width: 14 }, { width: 28 }
    ];
    transactionsSheet.getRow(1).height = 24;
    transactionsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -1365,13 +1388,13 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    transactionsSheet.getRow(1).alignment = { vertical: 'middle' };
    for (let rowNumber = 2; rowNumber <= transactionRows.length + 1; rowNumber += 1) {
     const row = transactionsSheet.getRow(rowNumber);
-    row.height = 21;
+    row.height = Math.min(409, Math.max(30, ...transactionRows[rowNumber - 2].map((value, index) => Math.ceil(String(value instanceof Date ? '' : value).length / Math.max(8, (transactionsSheet.getColumn(index + 1).width || 20) - 4)) * 15)));
     if (rowNumber % 2 === 0) {
      row.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDFA' } };
     }
     row.eachCell({ includeEmpty: true }, cell => {
      cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
-     cell.alignment = { ...cell.alignment, vertical: 'middle' };
+     cell.alignment = { ...cell.alignment, vertical: 'middle', wrapText: true };
     });
    }
    transactionsSheet.getColumn(4).numFmt = 'dd/mm/yyyy';
@@ -1383,17 +1406,16 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    const blob = new Blob([buffer as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
    const downloadUrl = URL.createObjectURL(blob);
    const link = document.createElement('a');
-   const periodSuffix = exportPeriod === 'month' ? exportMonth : exportPeriod === 'date' ? exportDate : 'historico';
    link.href = downloadUrl;
-   link.download = `bitacora_althera_${exportType}_${periodSuffix}.xlsx`;
+   link.download = `${filename}.xlsx`;
    document.body.appendChild(link);
    link.click();
    link.remove();
-   URL.revokeObjectURL(downloadUrl);
+   window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 10000);
    showToast(`Excel exportado con ${exportTransactions.length} movimientos.`);
   } catch (error) {
-   console.error('Excel export error:', error);
-   showToast('No se pudo generar el archivo Excel.', true);
+   console.error('Movement export error:', error);
+   showToast('No se pudo generar el informe.', true);
   } finally {
    setExportLoading(false);
   }
@@ -4101,7 +4123,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300 transition hover:bg-emerald-400/15"
     >
      <FileSpreadsheet className="h-4 w-4" />
-     Exportar Excel
+     Exportar movimientos
     </button>
    </div>
 
@@ -4110,8 +4132,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
        <span className="text-[9px] font-black uppercase tracking-[.2em] text-emerald-300">Exportación profesional</span>
-       <h3 className="mt-1 text-sm font-bold text-white">Descargar bitácora en Excel</h3>
-       <p className="mt-1 text-[10px] text-slate-500">Incluye resumen, totales, filtros, columnas ordenadas y referencias de factura y Stripe.</p>
+       <h3 className="mt-1 text-sm font-bold text-white">Informes de tarjeta, Revolut y Stripe</h3>
+       <p className="mt-1 text-[10px] text-slate-500">Elige un origen y descarga su PDF o Excel. Incluye todo el histórico registrado en Althera, con resumen, detalle y pendientes separados.</p>
+       <p className="mt-1 text-[10px] text-slate-500">Las operaciones con tarjeta de Revolut aparecen en ambos informes.</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[170px_170px_180px_auto]">
        <label className="block">
@@ -4125,7 +4148,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        <label className="block">
         <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Cuenta / origen</span>
         <select value={exportSource} onChange={event => setExportSource(event.target.value as typeof exportSource)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
-         <option value="all">Todos los orígenes</option><option value="revolut_pro">Gastos · Revolut Pro</option><option value="carlos_personal">Gastos · Carlos</option><option value="nacho_personal">Gastos · Nacho</option><option value="stripe_income">Ingresos · Stripe</option>
+         {Object.entries(exportSources).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
        </label>
        <label className="block">
@@ -4150,6 +4173,9 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        <button type="button" onClick={() => void handleExportTransactions()} disabled={exportLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-slate-950 transition hover:bg-emerald-300 disabled:opacity-60">
         {exportLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
         {exportLoading ? 'Generando...' : 'Descargar .xlsx'}
+       </button>
+       <button type="button" onClick={() => void handleExportTransactions('pdf')} disabled={exportLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-emerald-400/30 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-400/10 disabled:opacity-60">
+        <FileText className="h-4 w-4" /> Descargar PDF
        </button>
       </div>
      </div>
