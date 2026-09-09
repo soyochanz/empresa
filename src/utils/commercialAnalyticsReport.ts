@@ -1,6 +1,6 @@
 import { ClientContact, ColdCallingLead, ComercialAccount, ComercialLead, FinanceTransaction } from '../types';
 import { countUniqueInitialSales } from './salesRewards';
-import { getAutomaticCommissionableGrossVolume, isAutomaticCommissionEligible } from './commission';
+import { getSalesCommission, getSalesCommissionTotal, getAutomaticCommissionableGrossVolume, isAutomaticCommissionEligible } from './commission';
 
 interface ReportInput {
   commercials: ComercialAccount[];
@@ -100,7 +100,7 @@ const calculateRows = ({ commercials, coldLeads, crmLeads, contacts, finTransact
       lost,
       calls,
       paidVolume,
-      commission: paidVolume * commissionPercentage / 100 + extras,
+      commission: getSalesCommissionTotal(initialTransactions.filter(transaction => transaction.status === 'paid'), commissionPercentage) + extras,
       contactRate: historical.length ? contacted.length / historical.length * 100 : 0,
       answerRate: contacted.length ? answered.length / contacted.length * 100 : 0,
       closerRate: answered.length ? closerIds.size / answered.length * 100 : 0,

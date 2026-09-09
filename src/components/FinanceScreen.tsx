@@ -9,7 +9,7 @@ import { buildInvoiceHtml, downloadInvoicePdf } from '../utils/invoiceHtml';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber';
 import { clearInvoicePrefill, peekInvoicePrefill, resolveInvoiceClientData } from '../utils/invoicePrefill';
 import { authenticatedFetch } from '../utils/authenticatedFetch';
-import { getAutomaticCommissionableGrossVolume, getCommissionableGrossAmount, isAutomaticCommissionEligible } from '../utils/commission';
+import { getSalesCommission, getSalesCommissionTotal, getAutomaticCommissionableGrossVolume, getCommissionableGrossAmount, isAutomaticCommissionEligible } from '../utils/commission';
 import {
  buildManualRecurringTransaction,
  getFinanceRecurrenceDate,
@@ -1569,7 +1569,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const closures = countUniqueInitialSales(allInitialSales);
   const commissionPercentage = commercial.commissionPercentage ?? getTieredCommission(closures);
   const commissionableGrossVolume = getAutomaticCommissionableGrossVolume(scopedPaidInitialSales, invoices, contacts);
-  const salesCommission = commissionableGrossVolume * commissionPercentage / 100;
+  const salesCommission = getSalesCommissionTotal(scopedPaidInitialSales, commissionPercentage);
   const extras = (commercial.extraCommissions || [])
    .filter(extra => includeExtra(extra.date))
    .reduce((extraSum, extra) => extraSum + Number(extra.amount || 0), 0);
@@ -5465,7 +5465,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     const pct = com.commissionPercentage ?? getTieredCommission(closures);
     
     const extras = (com.extraCommissions || []).reduce((extraSum, extra) => extraSum + Number(extra.amount || 0), 0);
-    return sum + (volume * (pct / 100)) + extras;
+    return sum + getSalesCommissionTotal(paidTxs, pct) + extras;
     }, 0);
 
     const avgComm = rankableComercialesList.length
@@ -5571,7 +5571,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       const closures = Math.max(clientsCount, countUniqueInitialSales(txs));
       const pct = com.commissionPercentage ?? getTieredCommission(closures);
       const extras = (com.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
-      const benefits = (paidVolume * (pct / 100)) + extras;
+      const benefits = getSalesCommissionTotal(paidTxs, pct) + extras;
 
       return (
       <tr key={com.id} className="text-xs hover:bg-white/[0.01] transition-colors">
@@ -5675,8 +5675,8 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       
       const isPaid = t.status === 'paid';
       const commissionableGross = getCommissionableGrossAmount(t, invoices, contacts);
-      const commVal = isPaid ? (commissionableGross * (commPct / 100)) : 0;
-      const potentialComm = commissionableGross * (commPct / 100);
+      const commVal = isPaid ? getSalesCommission(t, commPct) : 0;
+      const potentialComm = getSalesCommission(t, commPct);
 
       return (
       <tr key={t.id} className="hover:bg-white/[0.01] transition-colors text-left">

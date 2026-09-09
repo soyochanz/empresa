@@ -157,6 +157,7 @@ export interface Activity {
 }
 
 export interface FinanceTransaction {
+ commissionFixedAmount?: number; // Agreed commission for this payment; overrides the percentage.
  id: string;
  createdAt?: string; // Database creation time, used for balance cutoffs and audit views
  paidAt?: string; // Exact time a pending charge was confirmed as paid

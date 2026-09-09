@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {db} from '../src/supabaseClient';
+import {getSalesCommissionTotal} from '../src/utils/commission';
+const base={id:'test',description:'Bites',amount:756.19,category:'Ventas',type:'income' as const,status:'paid' as const,date:'2026-08-19',isInitialSale:true,commissionFixedAmount:75};
+const encoded=db._encodeDescription(base.description,base);
+const decoded=db._decodeDescription(encoded);
+assert.equal(decoded.commissionFixedAmount,75);assert.equal(decoded.description,'Bites');
+assert.equal(getSalesCommissionTotal([base,{...base,id:'second'}],10),150);
+assert.equal(getSalesCommissionTotal([base,{...base,id:'second'}],20),150);
+assert.equal(getSalesCommissionTotal([{...base,commissionFixedAmount:undefined,amount:825}],10),82.5);
+console.log('Comisión pactada: persistencia, 150 € para Bites y porcentaje normal para otras ventas verificados.');

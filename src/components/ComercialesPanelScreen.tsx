@@ -51,7 +51,7 @@ import CommercialAnalyticsDashboard from './CommercialAnalyticsDashboard';
 import CommercialTrainingCenter from './CommercialTrainingCenter';
 import CommercialCalendarWorkspace from './CommercialCalendarWorkspace';
 import SalesRewardsScreen from './SalesRewardsScreen';
-import { getAutomaticCommissionableGrossVolume, isAutomaticCommissionEligible } from '../utils/commission';
+import { getSalesCommission, getSalesCommissionTotal, getAutomaticCommissionableGrossVolume, isAutomaticCommissionEligible } from '../utils/commission';
 
 const safeConfirm = (msg: string): boolean => {
  const isIframe = window.self !== window.top;
@@ -786,10 +786,10 @@ export default function ComercialesPanelScreen({
  const myTierInfo = getCommissionTierInfo(myClosuresForTier);
  const myInitialSalesVolume = getAutomaticCommissionableGrossVolume(myInitialTxsPaid as FinanceTransaction[], [], contacts);
  const myTotalSalesVolume = getAutomaticCommissionableGrossVolume(myInitialTxs as FinanceTransaction[], [], contacts);
- const myBenefitsEarned = myInitialSalesVolume * (myCommissionPercentage / 100);
+ const myBenefitsEarned = getSalesCommissionTotal(myInitialTxsPaid, myCommissionPercentage);
  const myExtraCommissions = (comercial.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
  const myBenefitsEarnedWithExtras = myBenefitsEarned + myExtraCommissions;
- const myBenefitsPotential = (myTotalSalesVolume * (myCommissionPercentage / 100)) + myExtraCommissions;
+ const myBenefitsPotential = getSalesCommissionTotal(myInitialTxs, myCommissionPercentage) + myExtraCommissions;
  const myBenefitsPendingOnClientPayment = Math.max(0, myBenefitsPotential - myBenefitsEarnedWithExtras);
  const myBenefitsPaidOut = (comercial.payouts || [])
  .filter(p => p.status === 'completed')

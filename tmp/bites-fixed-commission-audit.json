@@ -1,0 +1,57 @@
+{
+  "previousExtras": [
+    {
+      "id": "extra_first_cashout_pay_cash_1788799550266",
+      "amount": 25.01,
+      "date": "2026-09-07T16:45:50.266Z",
+      "reason": "Extra del primer cobro de Bitesmenus, incluido en el cashout de 150 € del 07/09/2026. No es un anticipo de futuras comisiones.",
+      "status": "paid"
+    }
+  ],
+  "previousPayments": [
+    {
+      "id": "tx_service_louhsrr_1",
+      "createdAt": "2026-08-19T13:08:11.890788+00:00",
+      "type": "income",
+      "category": "Desarrollo",
+      "amount": 756.19,
+      "date": "2026-09-02",
+      "status": "paid",
+      "isRecurring": false,
+      "recurrencePeriod": null,
+      "description": "Puesta a punto Bitesmenus - Pago inicial",
+      "paymentMethod": "transfer",
+      "paymentAccount": "revolut_pro",
+      "clientId": "crm_from_cold_pxpoj4k",
+      "stripePlanId": "plan_service_9ehoxzj",
+      "stripeInstallmentIndex": 1,
+      "stripeInstallmentCount": 1,
+      "invoiceId": "AL-2026-899",
+      "comercialId": "com_gm6hemd8b",
+      "comercialEmail": "sabrinacloserht@gmail.com",
+      "isInitialSale": true
+    },
+    {
+      "id": "tx_service_qegebyz_1",
+      "createdAt": "2026-08-19T13:07:40.029034+00:00",
+      "type": "income",
+      "category": "Desarrollo",
+      "amount": 756.19,
+      "date": "2026-08-19",
+      "status": "paid",
+      "isRecurring": false,
+      "recurrencePeriod": null,
+      "description": "Puesta a punto Bitesmenus - Pago inicial",
+      "paymentMethod": "transfer",
+      "clientId": "crm_from_cold_pxpoj4k",
+      "stripePlanId": "plan_service_39buo0n",
+      "stripeInstallmentIndex": 1,
+      "stripeInstallmentCount": 1,
+      "invoiceId": "AL-2026-899",
+      "comercialId": "com_gm6hemd8b",
+      "comercialEmail": "sabrinacloserht@gmail.com",
+      "isInitialSale": true
+    }
+  ],
+  "agreedCommission": 150
+}

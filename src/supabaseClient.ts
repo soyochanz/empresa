@@ -1497,6 +1497,7 @@ const dbImplementation = {
  invoiceId?: string;
  comercialId?: string;
  comercialEmail?: string;
+ commissionFixedAmount?: number;
  isInitialSale?: boolean;
  recurrenceSourceId?: string;
  recurrenceScheduledDate?: string;
@@ -1504,6 +1505,7 @@ const dbImplementation = {
  recurrenceOccurrenceCount?: number;
  }): string {
  let res = description || '';
+ if (metadata.commissionFixedAmount !== undefined) res += ` [COMMISSION_FIXED:${metadata.commissionFixedAmount}]`;
  if (metadata.paymentMethod) {
   res += ` [PM:${metadata.paymentMethod}]`;
  }
@@ -1580,6 +1582,7 @@ const dbImplementation = {
  invoiceId?: string;
  comercialId?: string;
  comercialEmail?: string;
+ commissionFixedAmount?: number;
  isInitialSale?: boolean;
  recurrenceSourceId?: string;
  recurrenceScheduledDate?: string;
@@ -1729,7 +1732,8 @@ const dbImplementation = {
  cleanDesc = cleanDesc.replace(recurrenceCountRegex, '');
 
  return {
-  description: cleanDesc.trim(),
+  commissionFixedAmount: Number.isFinite(Number(rawDesc.match(/\[COMMISSION_FIXED:([\d.]+)\]/)?.[1])) ? Number(rawDesc.match(/\[COMMISSION_FIXED:([\d.]+)\]/)?.[1]) : undefined,
+  description: cleanDesc.replace(/\s*\[COMMISSION_FIXED:[^\]]+\]/g, '').trim(),
   paymentMethod,
   paymentAccount,
   paidAt,
@@ -1796,6 +1800,7 @@ const dbImplementation = {
   invoiceId: decoded.invoiceId,
   comercialId: decoded.comercialId,
   comercialEmail: decoded.comercialEmail,
+  commissionFixedAmount: decoded.commissionFixedAmount,
   isInitialSale: decoded.isInitialSale,
   recurrenceSourceId: decoded.recurrenceSourceId,
   recurrenceScheduledDate: decoded.recurrenceScheduledDate,
@@ -1850,7 +1855,7 @@ const dbImplementation = {
 
  async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
  const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
- const { paymentMethod, paymentAccount, paidAt, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
+ const { paymentMethod, paymentAccount, paidAt, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, commissionFixedAmount, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
 
  const encodedDesc = this._encodeDescription(description, {
   paymentMethod,
@@ -1868,6 +1873,7 @@ const dbImplementation = {
   invoiceId,
   comercialId,
   comercialEmail,
+  commissionFixedAmount,
   isInitialSale,
   recurrenceSourceId,
   recurrenceScheduledDate,
@@ -1896,7 +1902,7 @@ const dbImplementation = {
 
  async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
  const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
- const { paymentMethod, paymentAccount, paidAt, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
+ const { paymentMethod, paymentAccount, paidAt, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, commissionFixedAmount, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
 
  const encodedDesc = this._encodeDescription(description, {
   paymentMethod,
@@ -1914,6 +1920,7 @@ const dbImplementation = {
   invoiceId,
   comercialId,
   comercialEmail,
+  commissionFixedAmount,
   isInitialSale,
   recurrenceSourceId,
   recurrenceScheduledDate,

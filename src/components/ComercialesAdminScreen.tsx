@@ -48,7 +48,7 @@ import AdminCommercialEvolution from './AdminCommercialEvolution';
 import { db, supabase } from '../supabaseClient';
 import { countUniqueInitialSales, dedupeCommercialLeads, getRankableCommercials } from '../utils/salesRewards';
 import { downloadCommercialAnalyticsReport, printCommercialAnalyticsReport } from '../utils/commercialAnalyticsReport';
-import { getAutomaticCommissionableGrossVolume, getCommissionableGrossVolume, isAutomaticCommissionEligible } from '../utils/commission';
+import { getSalesCommission, getSalesCommissionTotal, getAutomaticCommissionableGrossVolume, getCommissionableGrossVolume, isAutomaticCommissionEligible } from '../utils/commission';
 
 export const getTieredCommission = (closures: number): number => {
  if (closures <= 0) return 10;
@@ -717,8 +717,8 @@ export default function ComercialesAdminScreen({
  );
  const indCommissionPercentage = currentComercial ? (currentComercial.commissionPercentage ?? getTieredCommission(Math.max(indWon.length, countUniqueInitialSales(indInitialTxs)))) : 10;
  const indExtraCommissions = currentComercial ? (currentComercial.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0) : 0;
- const indBenefitsEarned = (indInitialSalesVolume * (indCommissionPercentage / 100)) + indExtraCommissions;
- const indBenefitsPendingOnClientPayment = indPendingInitialSalesVolume * (indCommissionPercentage / 100);
+ const indBenefitsEarned = getSalesCommissionTotal(indInitialTxsPaid, indCommissionPercentage) + indExtraCommissions;
+ const indBenefitsPendingOnClientPayment = getSalesCommissionTotal(indInitialTxs.filter(tx => tx.status === 'pending'), indCommissionPercentage);
  const indBenefitsPaidOut = currentComercial ? (currentComercial.payouts || [])
   .filter(payout => payout.status === 'completed')
   .reduce((sum, payout) => sum + Number(payout.amount || 0), 0) : 0;
@@ -1920,7 +1920,7 @@ export default function ComercialesAdminScreen({
       const commissionPct = c.commissionPercentage ?? getTieredCommission(closuresForC);
       const tierInfo = getCommissionTierInfo(closuresForC);
       const extraForC = (c.extraCommissions || []).reduce((sum, extra) => sum + Number(extra.amount || 0), 0);
-      const benefitsEarned = (initialSalesVol * (commissionPct / 100)) + extraForC;
+      const benefitsEarned = getSalesCommissionTotal(initialTxsForC.filter(tx => tx.status === 'paid'), commissionPct) + extraForC;
 
       return (
        <tr key={c.id} className="hover:bg-white/[0.01] transition-colors group">

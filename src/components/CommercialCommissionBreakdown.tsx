@@ -1,5 +1,5 @@
 import type { ClientContact, ComercialAccount, FinanceTransaction } from '../types';
-import { getCommissionableGrossAmount } from '../utils/commission';
+import { getSalesCommission, getCommissionableGrossAmount } from '../utils/commission';
 
 const money = (amount: number) => amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
 const dateLabel = (value: string) => {
@@ -17,7 +17,7 @@ export default function CommercialCommissionBreakdown({ transactions, commercial
  const pending = transactions.filter(transaction => transaction.status === 'pending');
  const extras = commercial.extraCommissions || [];
  const payouts = (commercial.payouts || []).filter(payout => payout.status === 'completed');
- const commission = (transaction: FinanceTransaction) => getCommissionableGrossAmount(transaction) * percentage / 100;
+ const commission = (transaction: FinanceTransaction) => getSalesCommission(transaction, percentage);
  const generated = paid.reduce((total, transaction) => total + commission(transaction), 0);
  const extraTotal = extras.reduce((total, extra) => total + Number(extra.amount || 0), 0);
  const liquidated = payouts.reduce((total, payout) => total + Number(payout.amount || 0), 0);
@@ -31,14 +31,14 @@ export default function CommercialCommissionBreakdown({ transactions, commercial
      const contact = contacts.find(item => item.id === transaction.clientId);
      return <tr key={transaction.id} className="border-t border-white/[0.06] text-slate-200">
       <td className="p-3"><p className="font-semibold">{contact?.company || contact?.name || 'Cliente sin vincular'}</p><p className="mt-1 text-slate-400">{transaction.description}</p>{transaction.invoiceId && <p className="mt-1 text-[10px] text-slate-500">Factura {transaction.invoiceId}</p>}</td>
-      <td className="whitespace-nowrap p-3 text-slate-400">{dateLabel(transaction.date)}</td><td className="whitespace-nowrap p-3 text-right">{money(getCommissionableGrossAmount(transaction))}</td><td className="p-3 text-right">{percentage}%</td><td className="whitespace-nowrap p-3 text-right font-bold">{money(commission(transaction))}</td>
+      <td className="whitespace-nowrap p-3 text-slate-400">{dateLabel(transaction.date)}</td><td className="whitespace-nowrap p-3 text-right">{money(getCommissionableGrossAmount(transaction))}</td><td className="p-3 text-right">{transaction.commissionFixedAmount !== undefined ? 'Pactada' : `${percentage}%`}</td><td className="whitespace-nowrap p-3 text-right font-bold">{money(commission(transaction))}</td>
      </tr>;
     })}</tbody>
    </table>
   </div>}
  </div>;
  return <section className="space-y-5 rounded-2xl border border-indigo-400/20 bg-[#0b0c1e] p-5" aria-label="Desglose de comisiones">
-  <div><h4 className="text-sm font-bold text-white">Desglose de comisiones</h4><p className="mt-1 text-[11px] leading-relaxed text-slate-400">{percentage}% sobre el importe bruto, impuestos incluidos. Se aplica el porcentaje actual a las ventas iniciales registradas, también a las anteriores. Las recurrencias no generan comisión automática.</p></div>
+  <div><h4 className="text-sm font-bold text-white">Desglose de comisiones</h4><p className="mt-1 text-[11px] leading-relaxed text-slate-400">{percentage}% sobre el importe bruto, impuestos incluidos. Se aplica el porcentaje actual a las ventas iniciales registradas, también a las anteriores. Las comisiones pactadas mantienen su importe fijo. Las recurrencias no generan comisión automática.</p></div>
   {renderPayments(paid, 'Comisiones por cobros recibidos')}
   {renderPayments(pending, 'Comisiones pendientes de cobro del cliente')}
   <div className="space-y-2"><h5 className="text-xs font-bold text-slate-200">Extras · {money(extraTotal)}</h5>

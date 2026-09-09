@@ -35,3 +35,11 @@ export const getAutomaticCommissionableGrossVolume = (
  invoices,
  contacts,
 );
+
+export const getSalesCommission = (transaction: FinanceTransaction, percentage: number): number => {
+ if (!isAutomaticCommissionEligible(transaction)) return 0;
+ if (transaction.commissionFixedAmount !== undefined && Number.isFinite(transaction.commissionFixedAmount)) return Math.max(0, transaction.commissionFixedAmount);
+ return getCommissionableGrossAmount(transaction) * percentage / 100;
+};
+export const getSalesCommissionTotal = (transactions: FinanceTransaction[], percentage: number): number =>
+ transactions.reduce((sum, transaction) => sum + getSalesCommission(transaction, percentage), 0);
