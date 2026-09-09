@@ -1215,14 +1215,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }
  };
 
- const handleExportTransactions = async (format: 'xlsx' | 'pdf' = 'xlsx') => {
+ const handleExportTransactions = async (format: 'xlsx' | 'pdf' = 'xlsx', sourceOverride?: ExportSource) => {
+  const source = sourceOverride ?? exportSource;
+  const type = sourceOverride ? 'all' : exportType;
+  const period = sourceOverride ? 'all' : exportPeriod;
   const exportTransactions = transactions
-   .filter(transaction => exportType === 'all' || transaction.type === exportType)
-   .filter(transaction => matchesExportSource(transaction, exportSource))
+   .filter(transaction => type === 'all' || transaction.type === type)
+   .filter(transaction => matchesExportSource(transaction, source))
    .filter(transaction => {
     const dateKey = getTxDateKey(transaction);
-    if (exportPeriod === 'month') return dateKey.startsWith(exportMonth);
-    if (exportPeriod === 'date') return dateKey === exportDate;
+    if (period === 'month') return dateKey.startsWith(exportMonth);
+    if (period === 'date') return dateKey === exportDate;
     return true;
    })
    .sort((a, b) => `${b.date}_${b.id}`.localeCompare(`${a.date}_${a.id}`));
@@ -1234,17 +1237,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
   setExportLoading(true);
   try {
-   const typeLabel = exportType === 'income' ? 'Solo ingresos' : exportType === 'expense' ? 'Solo gastos' : 'Todas las transacciones';
-   const periodLabel = exportPeriod === 'month'
+   const typeLabel = type === 'income' ? 'Solo ingresos' : type === 'expense' ? 'Solo gastos' : 'Todas las transacciones';
+   const periodLabel = period === 'month'
     ? new Date(`${exportMonth}-01T12:00:00`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
-    : exportPeriod === 'date'
+    : period === 'date'
      ? new Date(`${exportDate}T12:00:00`).toLocaleDateString('es-ES')
      : 'Todo el histórico';
 
    const totals = exportTotals(exportTransactions);
-   const sourceLabel = exportSources[exportSource];
-   const periodSuffix = exportPeriod === 'month' ? exportMonth : exportPeriod === 'date' ? exportDate : 'historico';
-   const filename = `movimientos_althera_${exportSource}_${exportType}_${periodSuffix}`;
+   const sourceLabel = exportSources[source];
+   const periodSuffix = period === 'month' ? exportMonth : period === 'date' ? exportDate : 'historico';
+   const filename = `movimientos_althera_${source}_${type}_${periodSuffix}`;
    const methodLabel = (t: FinanceTransaction) => ({ stripe: 'Stripe', cash: 'Efectivo', transfer: 'Transferencia', card: 'Tarjeta' }[t.paymentMethod] || 'Sin indicar');
    const accountLabel = (t: FinanceTransaction) => t.paymentAccount ? exportSources[t.paymentAccount] : matchesExportSource(t, 'revolut_pro') ? 'Revolut Pro' : '';
    const statusLabel = (t: FinanceTransaction) => t.status === 'paid' ? (t.type === 'income' ? 'Cobrado' : 'Pagado') : t.status === 'failed' ? 'Denegado' : t.type === 'income' ? 'Por cobrar' : 'Por pagar';
@@ -3727,6 +3730,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       })}</div>
      )}
     </div>
+    <div className="relative mt-4 border-t border-white/10 pt-3">
+     <p className="mb-2 text-[9px] text-slate-500">Exportar todo el histórico registrado en Althera</p>
+     <div className="flex flex-wrap gap-2">
+      <button type="button" disabled={exportLoading} onClick={() => void handleExportTransactions('pdf', 'stripe')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10 disabled:opacity-50"><FileText className="h-3.5 w-3.5" />{exportLoading ? 'Generando…' : 'PDF'}</button>
+      <button type="button" disabled={exportLoading} onClick={() => void handleExportTransactions('xlsx', 'stripe')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10 disabled:opacity-50"><FileSpreadsheet className="h-3.5 w-3.5" />{exportLoading ? 'Generando…' : 'Excel'}</button>
+     </div>
+    </div>
    </section>
 
    <section className="finance-revolut-card relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-300/[0.1] via-[#0b1329]/70 to-blue-400/[0.05] p-5">
@@ -3750,6 +3760,14 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       ))}</div>
      )}
     </div>
+    <div className="relative mt-4 border-t border-white/10 pt-3">
+     <p className="mb-2 text-[9px] text-slate-500">Exportar todo el histórico registrado en Althera</p>
+     <div className="flex flex-wrap gap-2">
+      <button type="button" disabled={exportLoading} onClick={() => void handleExportTransactions('pdf', 'revolut_pro')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10 disabled:opacity-50"><FileText className="h-3.5 w-3.5" />{exportLoading ? 'Generando…' : 'PDF'}</button>
+      <button type="button" disabled={exportLoading} onClick={() => void handleExportTransactions('xlsx', 'revolut_pro')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10 disabled:opacity-50"><FileSpreadsheet className="h-3.5 w-3.5" />{exportLoading ? 'Generando…' : 'Excel'}</button>
+      <button type="button" onClick={() => { setExportSource('card'); setExportType('all'); setExportPeriod('all'); setActiveTab('transactions'); setShowExportPanel(true); window.setTimeout(() => document.getElementById('finance-export-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10"><CreditCard className="h-3.5 w-3.5" />Tarjetas</button>
+     </div>
+    </div>
    </section>
 
    <section className="finance-cash-card relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-lime-300/15 bg-gradient-to-br from-lime-300/[0.09] via-[#0b1329]/70 to-emerald-400/[0.045] p-5">
@@ -3772,6 +3790,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        </div>
       ))}</div>
      )}
+    </div>
+    <div className="relative mt-4 border-t border-white/10 pt-3">
+     <p className="mb-2 text-[9px] text-slate-500">Exportar todo el histórico registrado en Althera</p>
+     <div className="flex flex-wrap gap-2">
+      <button type="button" disabled={exportLoading} onClick={() => void handleExportTransactions('pdf', 'cash')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10 disabled:opacity-50"><FileText className="h-3.5 w-3.5" />{exportLoading ? 'Generando…' : 'PDF'}</button>
+      <button type="button" disabled={exportLoading} onClick={() => void handleExportTransactions('xlsx', 'cash')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10 disabled:opacity-50"><FileSpreadsheet className="h-3.5 w-3.5" />{exportLoading ? 'Generando…' : 'Excel'}</button>
+     </div>
     </div>
    </section>
   </div>
@@ -3862,7 +3887,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <article className="min-h-[330px] rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><span className="text-[8px] font-black uppercase tracking-[.2em] text-cyan-300">Evolución · 6 meses</span><h4 className="mt-1 text-sm font-bold text-white">Ingresos frente a gastos</h4></div><div className="flex gap-3 text-[8px] font-bold uppercase tracking-wider"><span className="flex items-center gap-1.5 text-cyan-200"><i className="h-2 w-2 rounded-full bg-cyan-300" />Ingresos</span><span className="flex items-center gap-1.5 text-rose-200"><i className="h-2 w-2 rounded-full bg-rose-300" />Gastos</span></div></div>
      <div className="mt-4 h-[245px]">
-      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 640, height: 245 }}>
        <AreaChart data={financeTrendData} margin={{ left: 0, right: 10, top: 8, bottom: 0 }}>
         <defs><linearGradient id="financeIncomeGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#67e8f9" stopOpacity={0.38} /><stop offset="100%" stopColor="#67e8f9" stopOpacity={0} /></linearGradient><linearGradient id="financeExpenseGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fda4af" stopOpacity={0.24} /><stop offset="100%" stopColor="#fda4af" stopOpacity={0} /></linearGradient></defs>
         <CartesianGrid stroke="rgba(255,255,255,.045)" vertical={false} />
@@ -3878,12 +3903,12 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
     <article className="rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
      <span className="text-[8px] font-black uppercase tracking-[.2em] text-fuchsia-300">Distribución</span><h4 className="mt-1 text-sm font-bold text-white">Gastos por categoría</h4>
-     {expenseChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay gastos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}><PieChart><Pie data={expenseChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{expenseChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-lg font-black text-white">{totalExpenses.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">gasto total</span></div></div><div className="space-y-2">{expenseChartData.slice(0, 4).map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="text-white">{item.value.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong></div>)}</div></>}
+     {expenseChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay gastos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 190 }}><PieChart><Pie data={expenseChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{expenseChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-lg font-black text-white">{totalExpenses.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">gasto total</span></div></div><div className="space-y-2">{expenseChartData.slice(0, 4).map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="text-white">{item.value.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong></div>)}</div></>}
     </article>
 
     <article className="rounded-3xl border border-white/[0.065] bg-black/20 p-4 sm:p-5">
      <span className="text-[8px] font-black uppercase tracking-[.2em] text-cyan-300">Origen de ingresos</span><h4 className="mt-1 text-sm font-bold text-white">Ingresos por servicio</h4>
-     {incomeServiceChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay ingresos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}><PieChart><Pie data={incomeServiceChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{incomeServiceChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-base font-black text-white">{totalIncomes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">ingreso cobrado</span></div></div><div className="space-y-2">{incomeServiceChartData.map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="whitespace-nowrap text-white">{item.value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong></div>)}</div></>}
+     {incomeServiceChartData.length === 0 ? <div className="flex h-[250px] items-center justify-center text-center text-[10px] text-slate-500">Aún no hay ingresos<br />en este periodo.</div> : <><div className="relative h-[190px]"><ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1} initialDimension={{ width: 320, height: 190 }}><PieChart><Pie data={incomeServiceChartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={74} paddingAngle={4} stroke="none">{incomeServiceChartData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip contentStyle={{ background: '#090d14', border: '1px solid rgba(255,255,255,.1)', borderRadius: 14, color: '#fff', fontSize: 10 }} formatter={(value: number) => `${Number(value).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`} /></PieChart></ResponsiveContainer><div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><strong className="text-base font-black text-white">{totalIncomes.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong><span className="text-[7px] uppercase tracking-wider text-slate-500">ingreso cobrado</span></div></div><div className="space-y-2">{incomeServiceChartData.map(item => <div key={item.name} className="flex items-center justify-between gap-3 text-[9px]"><span className="flex min-w-0 items-center gap-2 truncate text-slate-400"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><strong className="whitespace-nowrap text-white">{item.value.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €</strong></div>)}</div></>}
     </article>
    </div>
 
@@ -4128,7 +4153,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </div>
 
    {showExportPanel && (
-    <section className="rounded-3xl border border-emerald-300/15 bg-gradient-to-br from-emerald-300/[0.07] via-[#0b1329]/70 to-cyan-300/[0.03] p-4 sm:p-5">
+    <section id="finance-export-panel" className="rounded-3xl border border-emerald-300/15 bg-gradient-to-br from-emerald-300/[0.07] via-[#0b1329]/70 to-cyan-300/[0.03] p-4 sm:p-5">
      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
        <span className="text-[9px] font-black uppercase tracking-[.2em] text-emerald-300">Exportación profesional</span>

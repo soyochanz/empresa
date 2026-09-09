@@ -1,14 +1,14 @@
 import type { FinanceTransaction } from '../types';
 
 export const exportSources = {
- all: 'Todos los orígenes', card: 'Tarjetas', revolut_pro: 'Revolut Pro',
+ all: 'Todos los orígenes', cash: 'Cash', card: 'Tarjetas', revolut_pro: 'Revolut Pro',
  stripe: 'Stripe', carlos_personal: 'Carlos · Cuenta personal', nacho_personal: 'Nacho · Cuenta personal'
 };
 export type ExportSource = keyof typeof exportSources;
 export function matchesExportSource(t: FinanceTransaction, source: ExportSource) {
  if (t.isRecurring) return false;
  if (source === 'all') return true;
- if (source === 'card' || source === 'stripe') return t.paymentMethod === source;
+ if (source === 'card' || source === 'stripe' || source === 'cash') return t.paymentMethod === source;
  if (source === 'revolut_pro') return t.paymentAccount === source || (
   t.type === 'income' && !t.paymentAccount && (t.paymentMethod === 'transfer' || t.paymentMethod === 'card')
  );
