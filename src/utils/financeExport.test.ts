@@ -1,8 +1,19 @@
 import assert from 'node:assert/strict';
 import { matchesExportSource, exportTotals, createMovementPdf } from './financeExport';
 import type { FinanceTransaction } from '../types';
+import { CASH_OPENING_BALANCE, CASH_OPENING_ISO, isCashAfterOpening } from './cashOpening';
 
 const tx = (patch: Partial<FinanceTransaction> = {}): FinanceTransaction => ({ id: 'test', type: 'income', status: 'paid', amount: 100, category: 'Ventas', description: 'Prueba', date: '2026-09-09', ...patch });
+assert.equal(CASH_OPENING_BALANCE, 670);
+assert.equal(isCashAfterOpening(tx({ date: '2026-08-30', createdAt: CASH_OPENING_ISO })), true);
+assert.equal(isCashAfterOpening(tx({ date: '2026-08-30', createdAt: '2026-08-30T13:05:07.970Z' })), false);
+assert.equal(isCashAfterOpening(tx({ date: '2026-08-29', createdAt: '2026-09-09T12:00:00Z' })), false);
+assert.equal(isCashAfterOpening(tx({ date: '2026-08-29', paidAt: '2026-09-01T12:00:00Z' })), true);
+for (const source of ['cash', 'all'] as const) {
+ assert.equal(matchesExportSource(tx({ paymentMethod: 'cash', date: '2026-08-29' }), source), false);
+ assert.equal(matchesExportSource(tx({ paymentMethod: 'cash', date: '2026-08-31' }), source), true);
+}
+assert.equal(matchesExportSource(tx({ paymentMethod: 'transfer', date: '2026-08-29' }), 'all'), true);
 assert.equal(matchesExportSource(tx({ paymentMethod: 'card' }), 'card'), true);
 assert.equal(matchesExportSource(tx({ paymentMethod: 'card' }), 'revolut_pro'), true);
 assert.equal(matchesExportSource(tx({ paymentMethod: 'card', paymentAccount: 'carlos_personal' }), 'revolut_pro'), false);

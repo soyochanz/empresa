@@ -1,3 +1,4 @@
+import { CASH_OPENING_BALANCE, isCashAfterOpening } from '../utils/cashOpening';
 import { exportSources, matchesExportSource, exportTotals, createMovementPdf, type ExportSource } from '../utils/financeExport';
 import { getStripeForecastOccurrences } from '../utils/stripeForecast';
 import { isCommercialCashout } from '../utils/commercialCashout';
@@ -172,7 +173,6 @@ interface FinanceScreenProps {
 }
 
 const INITIAL_TRANSACTIONS: FinanceTransaction[] = [];
-const CASH_OPENING_BALANCE = 820;
 const REVOLUT_OPENING_BALANCE = 1_762.64;
 const BALANCE_OPENING_AT = Date.parse('2026-08-30T13:05:07.971Z');
 const BALANCE_OPENING_DATE = '2026-08-30';
@@ -1242,7 +1242,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     ? new Date(`${exportMonth}-01T12:00:00`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
     : period === 'date'
      ? new Date(`${exportDate}T12:00:00`).toLocaleDateString('es-ES')
-     : 'Todo el histórico';
+     : source === 'cash' ? 'Desde la base del 30/08/2026 · 15:05 (España peninsular)' : 'Todo el histórico';
 
    const totals = exportTotals(exportTransactions);
    const sourceLabel = exportSources[source];
@@ -1331,7 +1331,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    summarySheet.getCell('B15').value = totals.failed;
    summarySheet.getCell('B13').numFmt = summarySheet.getCell('B14').numFmt = '#,##0.00 "€"';
    summarySheet.mergeCells('A18:D20');
-   summarySheet.getCell('A18').value = 'Movimientos registrados en Althera. Pendientes y denegados no forman parte del flujo realizado. Este informe no representa el saldo bancario. Las tarjetas de Revolut aparecen en ambos informes; no se deben sumar entre sí.';
+   if (source === 'cash' || source === 'all') {
+    summarySheet.mergeCells('A17:D17');
+    summarySheet.getCell('A17').value = `Cash: base ${CASH_OPENING_BALANCE} € · 30/08/2026 a las 15:05 (España peninsular)`;
+   }
+   summarySheet.getCell('A18').value = 'El cash excluye movimientos anteriores a su base. Movimientos registrados en Althera. Pendientes y denegados no forman parte del flujo realizado. Este informe no representa el saldo bancario. Las tarjetas de Revolut aparecen en ambos informes; no se deben sumar entre sí.';
    summarySheet.getCell('A18').alignment = { wrapText: true, vertical: 'middle' };
    summarySheet.getCell('A18').font = { size: 10, color: { argb: 'FF64748B' } };
    summarySheet.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 1 };
@@ -1703,9 +1707,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const septemberGoalRemaining = Math.max(0, SEPTEMBER_REVENUE_GOAL - septemberRevenue);
  const septemberGoalAchieved = septemberRevenue >= SEPTEMBER_REVENUE_GOAL;
  const stripeAvailableBalance = (stripeFunds?.available || []).reduce((sum, fund) => sum + Number(fund.amount || 0), 0);
- const cashMovementsSinceOpening = balanceMovements.filter(transaction =>
+ const cashMovementsSinceOpening = nonRecurringTransactions.filter(transaction =>
   transaction.status === 'paid' &&
-  transaction.paymentMethod === 'cash'
+  transaction.paymentMethod === 'cash' && isCashAfterOpening(transaction)
  );
  const cashIncome = cashMovementsSinceOpening.filter(transaction => transaction.type === 'income').reduce((sum, transaction) => sum + transaction.amount, 0);
  const cashExpenses = cashMovementsSinceOpening.filter(transaction => transaction.type === 'expense').reduce((sum, transaction) => sum + transaction.amount, 0);
@@ -3792,7 +3796,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      )}
     </div>
     <div className="relative mt-4 border-t border-white/10 pt-3">
-     <p className="mb-2 text-[9px] text-slate-500">Exportar todo el histórico registrado en Althera</p>
+     <p className="mb-2 text-[9px] text-slate-500">Exportar desde la base del 30/08/2026 · 670 €</p>
      <div className="flex flex-wrap gap-2">
       <button type="button" disabled={exportLoading} onClick={() => void handleExportTransactions('pdf', 'cash')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10 disabled:opacity-50"><FileText className="h-3.5 w-3.5" />{exportLoading ? 'Generando…' : 'PDF'}</button>
       <button type="button" disabled={exportLoading} onClick={() => void handleExportTransactions('xlsx', 'cash')} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-400/30 px-3 py-2 text-[10px] font-bold text-slate-400 hover:bg-slate-400/10 disabled:opacity-50"><FileSpreadsheet className="h-3.5 w-3.5" />{exportLoading ? 'Generando…' : 'Excel'}</button>

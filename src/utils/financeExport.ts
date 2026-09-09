@@ -1,4 +1,5 @@
 import type { FinanceTransaction } from '../types';
+import { isCashAfterOpening } from './cashOpening';
 
 export const exportSources = {
  all: 'Todos los orígenes', cash: 'Cash', card: 'Tarjetas', revolut_pro: 'Revolut Pro',
@@ -7,6 +8,7 @@ export const exportSources = {
 export type ExportSource = keyof typeof exportSources;
 export function matchesExportSource(t: FinanceTransaction, source: ExportSource) {
  if (t.isRecurring) return false;
+ if (t.paymentMethod === 'cash' && !isCashAfterOpening(t)) return false;
  if (source === 'all') return true;
  if (source === 'card' || source === 'stripe' || source === 'cash') return t.paymentMethod === source;
  if (source === 'revolut_pro') return t.paymentAccount === source || (
