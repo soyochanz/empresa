@@ -297,6 +297,7 @@ export default function CrmScreen({
 
  // Connected Accounting & Invoice state definitions
  const [invoices, setInvoices] = useState<Invoice[]>([]);
+ const [clientContracts, setClientContracts] = useState<any[]>([]);
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
  const [invoiceConceptEditor, setInvoiceConceptEditor] = useState<Invoice | null>(null);
  const [invoiceConceptDrafts, setInvoiceConceptDrafts] = useState<string[]>([]);
@@ -1436,11 +1437,13 @@ React.useEffect(() => {
  const fetchFinancials = async () => {
  setLoadingFinancials(true);
  try {
-  const [invList, txList] = await Promise.all([
+  const [invList, txList, contractList] = await Promise.all([
   db.getFinanceInvoices(),
-  db.getFinanceTransactions()
+  db.getFinanceTransactions(),
+  db.getContractsAlthera()
   ]);
   setInvoices(invList || []);
+  setClientContracts(contractList || []);
   setTransactions(txList || []);
   await onRefreshFinance?.();
  } catch (err) {
@@ -4919,6 +4922,18 @@ React.useEffect(() => {
      </div>
     );
     })()}
+
+    <section className="space-y-3 border-b border-white/5 pb-4" aria-label="Contratos del cliente">
+     <div className="flex items-center justify-between gap-2">
+      <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#D4AF37]">Contratos</h4>
+      <button type="button" onClick={() => { sessionStorage.setItem('althera-contract-request', JSON.stringify({ contactId: selectedContact.id })); onNavigate('contratos', 'push'); }} className="rounded-lg border border-amber-400/20 px-3 py-1.5 text-[10px] text-amber-400 hover:bg-amber-400/10">Crear contrato</button>
+     </div>
+     {clientContracts.filter(contract => contract.selectedContactId === selectedContact.id).length === 0 && <p className="text-xs text-slate-400">Este cliente o lead todavía no tiene contratos guardados.</p>}
+     {clientContracts.filter(contract => contract.selectedContactId === selectedContact.id).map(contract => <button key={contract.id} type="button" onClick={() => { sessionStorage.setItem('althera-contract-request', JSON.stringify({ contractId: contract.id })); onNavigate('contratos', 'push'); }} className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-3 text-left transition hover:border-amber-400/30">
+      <span><span className="block text-xs font-semibold text-slate-200">{contract.selectedModality === 'rrss' ? 'Contrato RRSS y SEO' : 'Contrato de desarrollo web'}</span><span className="mt-1 block text-[10px] text-slate-400">{contract.id} · {contract.signingDay}/{contract.signingMonth}/{contract.signingYear}</span></span>
+      <span className="text-[10px] text-amber-400">Abrir</span>
+     </button>)}
+    </section>
 
     {/* Comercial & Call Notes Section */}
     <div className="space-y-2 border-b border-white/5 pb-4">

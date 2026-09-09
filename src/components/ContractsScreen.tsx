@@ -68,6 +68,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  const [savedInvoices, setSavedInvoices] = useState<Invoice[]>([]);
  const [selectedContractIdInDb, setSelectedContractIdInDb] = useState('');
  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+ const contractSaveInFlight = useRef(false);
  const [contractSearchText, setContractSearchText] = useState('');
  const [clientSearchText, setClientSearchText] = useState('');
 
@@ -191,14 +192,16 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  };
 
  const handleSaveToDb = async () => {
- if (!selectedContactId) {
-  setSaveMessage('Selecciona un cliente antes de guardar el contrato.');
+ if (contractSaveInFlight.current) return false;
+ if (selectedContactId && !contacts.some(contact => contact.id === selectedContactId)) {
+  setSaveMessage('El contacto seleccionado ya no está disponible. Selecciona otro o deja el contrato sin asignar.');
   setTimeout(() => setSaveMessage(null), 4000);
-  return;
+  return false;
  }
+ contractSaveInFlight.current = true;
  try {
   const contractObj = {
-  id: selectedContractIdInDb || 'cnt_' + Date.now().toString().slice(-6),
+  id: selectedContractIdInDb || 'cnt_' + crypto.randomUUID(),
   clientName,
   clientDni,
   clientAddress,
@@ -229,16 +232,10 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   selectedContactId: selectedContactId || null
   };
 
-  let dbSuccess = false;
-  try {
   if (selectedContractIdInDb) {
    await db.updateContractAlthera(contractObj);
   } else {
    await db.insertContractAlthera(contractObj);
-  }
-  dbSuccess = true;
-  } catch (dbErr) {
-  console.warn('Database write error, falling back locally to prevent failures:', dbErr);
   }
 
   // Synchronize in-memory list
@@ -253,17 +250,17 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   setSavedContracts(currentList);
   setSelectedContractIdInDb(contractObj.id);
 
-  if (dbSuccess) {
-  setSaveMessage('Contrato guardado con éxito en la base de datos.');
-  } else {
-  setSaveMessage('Contrato actualizado temporalmente.');
-  }
+  setSaveMessage(selectedContactId ? 'Contrato guardado y vinculado a su ficha del CRM.' : 'Contrato guardado sin asignar a un cliente.');
   
   setTimeout(() => setSaveMessage(null), 4500);
+  return true;
  } catch (err) {
   console.error('General error saving contract:', err);
-  setSaveMessage('Error general al guardar el contrato.');
+  setSaveMessage('No se pudo guardar el contrato. Revisa la conexión e inténtalo de nuevo.');
   setTimeout(() => setSaveMessage(null), 4500);
+  return false;
+ } finally {
+  contractSaveInFlight.current = false;
  }
  };
 
@@ -568,6 +565,26 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  }, [selectedContactId]);
 
 
+ useEffect(() => {
+  const raw = sessionStorage.getItem('althera-contract-request');
+  if (!raw) return;
+  try {
+   const request = JSON.parse(raw);
+   if (request.contractId) {
+    if (!savedContracts.some(contract => contract.id === request.contractId)) return;
+    handleLoadContract(request.contractId);
+   } else {
+    if (!contacts.some(contact => contact.id === request.contactId)) return;
+    setSelectedContactId(request.contactId);
+    setSelectedContractIdInDb('');
+   }
+   setActiveTab('contract');
+   sessionStorage.removeItem('althera-contract-request');
+  } catch {
+   sessionStorage.removeItem('althera-contract-request');
+  }
+ }, [savedContracts, contacts]);
+
  // --- INVOICE STATE ---
  const [invoiceNumber, setInvoiceNumber] = useState(`AL-${new Date().getFullYear()}-${Math.floor(Math.random() * 900) + 100}`);
  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
@@ -777,7 +794,11 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  .reduce((acc, t) => acc + t.amount, 0)) * 100) / 100;
 
  // Print trigger
- const handlePrint = () => {
+ const handlePrint = async () => {
+ if (activeTab === 'contract') {
+  if (!await handleSaveToDb()) return;
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+ }
  const printArea = document.getElementById('print-area');
  if (!printArea) {
   window.print();
@@ -806,7 +827,11 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  };
 
  // Standalone HTML Download Trigger
- const handleDownloadHTML = () => {
+ const handleDownloadHTML = async () => {
+ if (activeTab === 'contract') {
+  if (!await handleSaveToDb()) return;
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+ }
  const printArea = document.getElementById('print-area');
  if (!printArea) return;
  
@@ -1197,8 +1222,6 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
     <div className="flex gap-2">
      <button
      onClick={handleSaveToDb}
-     disabled={!selectedContactId}
-     title={!selectedContactId ? 'Primero selecciona un cliente' : undefined}
      type="button"
      className="flex-1 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 text-neutral-950 font-bold text-[11px] py-1.5 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-amber-500/10"
      >
@@ -1271,20 +1294,20 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
     {/* Optional CRM Link Pre-fill */}
     <div className="bg-[#0c0c0c] border border-amber-500/10 p-3 rounded-2xl">
     <label className="text-[10px] font-mono text-amber-500 uppercase tracking-widest font-bold flex items-center gap-1.5 mb-2">
-     <Users className="w-3.5 h-3.5" /> Pre-llenar desde Cliente CRM
+     <Users className="w-3.5 h-3.5" /> Cliente o lead del contrato · Recomendado
     </label>
     <select
      value={selectedContactId}
      onChange={(e) => handleSelectClient(e.target.value)}
      className="w-full bg-black border border-neutral-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
     >
-     <option value="">- Selecciona un contacto del CRM -</option>
+     <option value="">Sin asignar · Selección opcional</option>
      {contacts.map(c => (
-     <option key={c.id} value={c.id}>{c.name} ({c.company})</option>
+     <option key={c.id} value={c.id}>{c.name} ({c.company}) · {c.status === 'Client' ? 'Cliente' : 'Lead'}</option>
      ))}
     </select>
     <p className="text-[9px] text-slate-500 font-light mt-1.5">
-     Selecciona a cualquier cliente registrado para rellenar sus campos legales automáticamente en el borrador de abajo.
+     Recomendamos seleccionar un cliente o lead para que el contrato aparezca en su ficha del CRM. También puedes guardarlo, descargarlo o imprimirlo sin asignar.
     </p>
     </div>
 
