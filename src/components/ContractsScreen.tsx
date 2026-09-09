@@ -149,6 +149,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  setSelectedContractIdInDb(id);
  if (!id) {
   setSelectedContactId('');
+  setSeoMonthlyPrice(97);
   return;
  }
  const contract = savedContracts.find(c => c.id === id);
@@ -173,6 +174,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   setSigningMonth(contract.signingMonth || '');
   setSigningYear(contract.signingYear || '');
   setPriceSingle(basePrice);
+  setSeoMonthlyPrice(contract.seoMonthlyPrice ?? 97);
   setFin2Total(basePrice + twoMonthFee);
   setFin2Cuota(Number(((basePrice + twoMonthFee) / 2).toFixed(2)));
   setFin2Coste(twoMonthFee);
@@ -213,6 +215,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   signingMonth,
   signingYear,
   priceSingle: Number(priceSingle) || 0,
+  seoMonthlyPrice,
   fin2Total: Number(fin2Total) || 0,
   fin2Cuota: Number(fin2Cuota) || 0,
   fin2Coste: Number(fin2Coste) || 0,
@@ -501,6 +504,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
 
  // Prices
  const [priceSingle, setPriceSingle] = useState(950);
+ const [seoMonthlyPrice, setSeoMonthlyPrice] = useState(97);
  const [fin2Total, setFin2Total] = useState(950);
  const [fin2Cuota, setFin2Cuota] = useState(475);
  const [fin2Coste, setFin2Coste] = useState(0);
@@ -1346,8 +1350,8 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
     
     <div>
      <label className="text-[9px] font-mono text-[#D4AF37] block mb-1 flex justify-between">
-     <span>Precio Base (Pago Único) €</span>
-     <span>Genera calculos para cuotas</span>
+     <span>{selectedModality === 'rrss' ? 'Cuota mensual RRSS y SEO (€)' : 'Precio Base (Pago Único) €'}</span>
+     <span>{selectedModality === 'rrss' ? 'Introduce el precio acordado' : 'Genera calculos para cuotas'}</span>
      </label>
      <input
      type="number"
@@ -1356,6 +1360,12 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
      className="w-full bg-neutral-950 border border-[#D4AF37]/20 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
      />
     </div>
+
+    {selectedModality !== 'rrss' && <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3">
+     <label htmlFor="contract-seo-price" className="mb-1 block text-[10px] font-semibold text-slate-200">Precio del SEO adicional (€/mes)</label>
+     <input id="contract-seo-price" type="number" min="0" step="0.01" value={seoMonthlyPrice} onChange={event => setSeoMonthlyPrice(Math.max(0, Number(event.target.value) || 0))} className="w-full rounded-xl border border-amber-500/20 bg-neutral-950 px-3 py-2 text-xs text-slate-100 outline-none focus:border-amber-500" />
+     <p className="mt-1.5 text-[9px] text-slate-400">Se incluirá en la cláusula de servicios adicionales y se guardará con este contrato.</p>
+    </div>}
 
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
      <div className="rounded-xl border border-neutral-900 bg-neutral-950/60 p-3">
@@ -2554,7 +2564,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
       7. SERVICIOS Y CUOTAS ADICIONALES
       </h4>
       <p>
-      EL CLIENTE podrá encomendar trabajos opcionales y de soporte post-lanzamiento tales como posicionamiento SEO periódico, marketing en Facebook Ads, mantenimiento preventivo de código, agentes o integraciones de Inteligencia Artificial avanzadas y automatizaciones. Estos servicios dispondrán de una tarifa de abono mensual estándar de <strong>97 €/mes</strong>, salvo estipulaciones específicas suscritas por separado.
+      EL CLIENTE podrá encomendar el servicio adicional de posicionamiento SEO periódico por una cuota de <strong>{seoMonthlyPrice.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/mes</strong>. Otros trabajos opcionales de soporte post-lanzamiento, tales como marketing en Facebook Ads, mantenimiento preventivo de código, agentes o integraciones de Inteligencia Artificial avanzadas y automatizaciones, dispondrán de una tarifa de abono mensual estándar de <strong>97 €/mes</strong>, salvo estipulaciones específicas suscritas por separado.
       </p>
      </div>
 

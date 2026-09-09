@@ -1,3 +1,4 @@
+import { encodeContractPricing, decodeContractPricing } from './utils/contractPricing';
 import { buildCommercialCashout } from './utils/commercialCashout';
 import { createClient } from '@supabase/supabase-js';
 import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ColdCallingProspectGroup, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog, PartnerCompany } from './types';
@@ -2025,13 +2026,13 @@ const dbImplementation = {
   console.warn('contracts_althera table read error:', error.message);
   return [];
  }
- const result = data || [];
+ const result = (data || []).map(decodeContractPricing);
  setCached(cacheKey, result);
  return result;
  },
 
  async insertContractAlthera(contract: any, userId?: string): Promise<void> {
- const payload = { ...contract, user_id: userId || null };
+ const payload = { ...encodeContractPricing(contract), user_id: userId || null };
  const { data, error } = await supabase.from('contracts_althera').insert(payload).select('id').maybeSingle();
  if (error) throw error;
  if (!data) throw new Error(`No se pudo crear el contrato ${contract.id}: Supabase no confirmó la fila.`);
@@ -2040,7 +2041,7 @@ const dbImplementation = {
 
  async updateContractAlthera(contract: any, userId?: string): Promise<void> {
  // Prevent overwriting the user_id column on update to allow admins to edit other admins' entries.
- const { user_id, ...payload } = contract;
+ const { user_id, ...payload } = encodeContractPricing(contract);
  const { data, error } = await supabase.from('contracts_althera').update(payload).eq('id', contract.id).select('id').maybeSingle();
  if (error) throw error;
  if (!data) throw new Error(`No se pudo actualizar el contrato ${contract.id}: Supabase no modificó ninguna fila.`);
