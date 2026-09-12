@@ -2,7 +2,7 @@ import { CASH_OPENING_BALANCE, isCashAfterOpening } from '../utils/cashOpening';
 import { exportSources, matchesExportSource, exportTotals, createMovementPdf, type ExportSource } from '../utils/financeExport';
 import { getStripeForecastOccurrences } from '../utils/stripeForecast';
 import { isCommercialCashout } from '../utils/commercialCashout';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { FinanceTransaction, Invoice, ClientContact, Screen, InvoiceItem, ComercialAccount } from '../types';
 import { db, invalidateSharedPipelineCache, supabase } from '../supabaseClient';
@@ -14,6 +14,10 @@ import { authenticatedFetch } from '../utils/authenticatedFetch';
 import { getSalesCommission, getSalesCommissionTotal, getAutomaticCommissionableGrossVolume, getCommissionableGrossAmount, isAutomaticCommissionEligible } from '../utils/commission';
 import {
  buildManualRecurringTransaction,
+ getPendingManualRecurrences,
+ isManualFinanceRecurrence,
+ isRecurringOccurrenceRepresented,
+ toFinanceDateKey,
  getFinanceRecurrenceDate,
  getNextFinanceRecurrenceDate,
  isFinanceRecurrenceOccurrenceAllowed
@@ -549,6 +553,8 @@ const getInvoiceCardStyles = (color: string | undefined) => {
 
 export default function FinanceScreen({ contacts, onNavigate, comercialesList = [], onRefreshFinance }: FinanceScreenProps) {
  const rankableComercialesList = getRankableCommercials(comercialesList);
+ const recurrenceRegistrationInFlight = useRef(new Set<string>());
+ const [registeringRecurrences, setRegisteringRecurrences] = useState<Set<string>>(new Set());
  // Navigation tabs: 'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
  const [activeTab, setActiveTab] = useState<'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'>('transactions');
  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
@@ -1911,7 +1917,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   recurrencePeriod: txIsRecurring ? txPeriod : undefined,
   recurrenceEndDate: txIsRecurring ? (txRecurrenceEndDate || undefined) : undefined,
   recurrenceOccurrenceCount: txIsRecurring && txRecurrenceCount ? Number(txRecurrenceCount) : undefined,
-  status: txStatus,
+  status: txIsRecurring && !isEditingTx && (txPaymentMethod === 'cash' || txPaymentMethod === 'transfer') ? 'pending' : txStatus,
   invoiceId: txInvoiceId || undefined,
   paymentMethod: txPaymentMethod,
   paymentAccount: txPaymentAccount,
@@ -2727,48 +2733,27 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setInvLanguage('es');
  };
 
- // Helper to trigger recurrence manual payment simulation
-const handleProcessRecurring = async (tx: FinanceTransaction) => {
- const manualPayment = buildManualRecurringTransaction(tx);
- const chargeAmount = manualPayment.amount;
- const isIncome = tx.type === 'income';
- if (transactions.some(transaction => transaction.id === manualPayment.id)) {
-  showToast('Ese concepto recurrente ya tiene un movimiento registrado hoy.', true);
-  return;
- }
-
- try {
-  await db.insertFinanceTransaction(manualPayment);
-  setTransactions(prev => [manualPayment, ...prev]);
- } catch (err: any) {
-  if (err?.code === '23505') {
-   showToast('Ese concepto recurrente ya tiene un movimiento registrado hoy.', true);
-   return;
+ // Register the scheduled instalment, never a new instalment for today's date.
+ const handleProcessRecurring = async (tx: FinanceTransaction) => {
+  if (recurrenceRegistrationInFlight.current.has(tx.id)) return;
+  const due = getPendingManualRecurrences(tx, transactions)[0];
+  if (!due) { showToast('No hay cuotas vencidas pendientes de registrar.', true); return; }
+  recurrenceRegistrationInFlight.current.add(tx.id);
+  setRegisteringRecurrences(new Set(recurrenceRegistrationInFlight.current));
+  try {
+   const payment = buildManualRecurringTransaction(tx, due.date);
+   await db.registerManualFinanceRecurrence(payment, due.existing);
+   const registered: FinanceTransaction = due.existing
+    ? { ...due.existing, status: 'paid', paidAt: payment.paidAt }
+    : payment;
+   setTransactions(prev => [registered, ...prev.filter(item => item.id !== registered.id)]);
+   showToast(`${tx.type === 'income' ? 'Cobro' : 'Pago'} de ${registered.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € registrado para la cuota del ${due.date.toLocaleDateString('es-ES')}.`);
+  } catch (error: any) {
+   showToast(error?.code === '23505' ? 'Esta cuota ya está registrada. Actualiza el historial.' : `No se registró la cuota: ${error?.message || 'No se recibió confirmación del servidor.'}`, true);
+  } finally {
+   recurrenceRegistrationInFlight.current.delete(tx.id);
+   setRegisteringRecurrences(new Set(recurrenceRegistrationInFlight.current));
   }
-  console.error('Error inserting transaction into DB:', err);
-  showToast(`No se procesó el movimiento: ${err?.message || 'Supabase no confirmó la operación'}`, true);
-  return;
- }
-
- const toast = document.getElementById('toast-msg');
- if (toast) {
-  const text = isIncome ?
-  `Ingreso de ${chargeAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ procesado para: "${tx.description}"`
-  : `Pago de ${chargeAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}€ procesado para: "${tx.description}"`;
-  
-  const span = toast.querySelector('span');
-  if (span) {
-  span.textContent = text;
-  } else {
-  toast.innerText = text;
-  }
-  toast.classList.remove('opacity-0', 'pointer-events-none', 'hidden');
-  toast.classList.add('opacity-100');
-  setTimeout(() => {
-  toast.classList.add('opacity-0', 'pointer-events-none');
-  toast.classList.remove('opacity-100');
-  }, 3500);
- }
  };
 
  // Print helper for invoice preview
@@ -3415,10 +3400,12 @@ const handleProcessRecurring = async (tx: FinanceTransaction) => {
    // Stripe plans are reconciled from Stripe itself. Never project them as an
    // unlimited local recurrence, especially after Stripe has a final date.
    .filter(transaction => transaction.type === 'income' && transaction.isRecurring && transaction.paymentMethod !== 'stripe')
-   .flatMap(transaction => getRecurringIncomeOccurrences(transaction, key).map(date => ({
+   .flatMap(transaction => getRecurringIncomeOccurrences(transaction, key)
+    .filter(date => !isRecurringOccurrenceRepresented(transaction, toFinanceDateKey(date), transactions))
+    .map(date => ({
     transaction,
     date,
-    amount: Number(transaction.nextAmount ?? transaction.amount ?? 0)
+    amount: Number(toFinanceDateKey(date) === transaction.date.slice(0, 10) ? transaction.firstAmount ?? transaction.amount ?? 0 : transaction.nextAmount ?? transaction.amount ?? 0)
    })));
   for (const plan of stripeSubscriptions) {
    for (const date of getStripeForecastOccurrences(plan, key)) {
@@ -4549,7 +4536,12 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
 
     <section className="rounded-3xl border border-amber-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4"><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Stripe · financiación</span><h4 className="mt-1 text-sm font-bold text-white">Pagos split / fraccionados</h4><p className="mt-1 text-[10px] text-slate-500">Planes con un número limitado de cuotas; no se tratan como una suscripción abierta.</p></div><div className="grid gap-3 lg:grid-cols-2">{stripeInstallments.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay pagos fraccionados activos.</div> : stripeInstallments.map(plan => <article key={plan.id} className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.045] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-amber-300/20 bg-amber-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-amber-200">{plan.installmentCount || '?'} cuotas</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 text-[10px] text-amber-200">{plan.paymentCount}/{plan.paymentLimit || plan.installmentCount || '?'} cobradas · quedan {formatStripeCurrency(plan.openAmount, plan.currency)}</p>{plan.endsAt && <p className="mt-1 text-[9px] text-slate-500">Última cuota: {new Date(plan.endsAt).toLocaleDateString('es-ES')}</p>}</div><strong className="shrink-0 font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}</strong></div><div className="mt-4 flex justify-end border-t border-amber-300/10 pt-3"><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="text-[9px] font-black text-amber-300 hover:text-amber-100">Abrir plan en Stripe →</a></div></article>)}</div></section>
 
-    <section className="rounded-3xl border border-cyan-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Fuera de Stripe</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias manuales</h4><p className="mt-1 text-[10px] text-slate-500">Movimientos periódicos pagados por transferencia o efectivo.</p></div><button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setIsTxModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-[10px] font-black text-slate-950"><Plus className="h-4 w-4" /> Nueva recurrencia</button></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{manualRecurring.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Añade una recurrencia manual para controlar los cobros y pagos no procesados por Stripe.</div> : manualRecurring.map(item => <article key={item.id} className="rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.04] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wider ${item.paymentMethod === 'cash' ? 'border-emerald-300/20 bg-emerald-300/[0.1] text-emerald-200' : 'border-cyan-300/20 bg-cyan-300/[0.1] text-cyan-200'}`}>{item.paymentMethod === 'cash' ? <Banknote className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}{item.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{getTransactionDisplayConcept(item.description)}</h5><p className="mt-1 text-[10px] text-slate-500">{item.type === 'income' ? 'Cobro' : 'Pago'} · {item.recurrencePeriod === 'weekly' ? 'semanal' : item.recurrencePeriod === 'yearly' ? 'anual' : 'mensual'}</p></div><strong className={item.type === 'income' ? 'font-mono text-sm text-emerald-300' : 'font-mono text-sm text-rose-300'}>{item.type === 'income' ? '+' : '-'}{(item.nextAmount ?? item.amount).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><div className="mt-4 flex items-center justify-between border-t border-cyan-300/10 pt-3"><span className="text-[9px] text-slate-400">{getRecurringLastPaymentDate(item) ? `Último pago: ${getRecurringLastPaymentDate(item)}` : `Próxima: ${getNextPaymentDate(item.date, item.recurrencePeriod)}`}</span><div className="flex gap-2"><button type="button" onClick={() => handleEditTx(item)} className="text-[9px] font-black text-cyan-300">Editar</button><button type="button" onClick={() => handleProcessRecurring(item)} className="text-[9px] font-black text-white">Registrar hoy</button></div></div></article>)}</div></section>
+    <section className="rounded-3xl border border-cyan-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Fuera de Stripe</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias manuales</h4><p className="mt-1 text-[10px] text-slate-500">Los cobros y pagos en efectivo o transferencia quedan pendientes hasta que pulses Registrar.</p></div><button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setIsTxModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-[10px] font-black text-slate-950"><Plus className="h-4 w-4" /> Nueva recurrencia</button></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{manualRecurring.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Añade una recurrencia manual para controlar los cobros y pagos no procesados por Stripe.</div> : manualRecurring.map(item => {
+ const pending = getPendingManualRecurrences(item, transactions);
+ const due = pending[0];
+ const isManual = isManualFinanceRecurrence(item);
+ const amount = due?.existing?.amount ?? (due && toFinanceDateKey(due.date) === item.date.slice(0, 10) ? item.firstAmount ?? item.amount : item.nextAmount ?? item.amount);
+ return <article key={item.id} className="rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.04] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wider ${item.paymentMethod === 'cash' ? 'border-emerald-300/20 bg-emerald-300/[0.1] text-emerald-200' : 'border-cyan-300/20 bg-cyan-300/[0.1] text-cyan-200'}`}>{item.paymentMethod === 'cash' ? <Banknote className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}{item.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{getTransactionDisplayConcept(item.description)}</h5><p className="mt-1 text-[10px] text-slate-500">{item.type === 'income' ? 'Cobro' : 'Pago'} · {item.recurrencePeriod === 'weekly' ? 'semanal' : item.recurrencePeriod === 'yearly' ? 'anual' : 'mensual'}</p></div><strong className={item.type === 'income' ? 'font-mono text-sm text-emerald-300' : 'font-mono text-sm text-rose-300'}>{item.type === 'income' ? '+' : '-'}{amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><div className="mt-4 flex items-center justify-between border-t border-cyan-300/10 pt-3"><span className="text-[9px] text-slate-400">{due ? `Pendiente: ${due.date.toLocaleDateString('es-ES')} · ${pending.length} cuota${pending.length === 1 ? '' : 's'}` : isManual ? 'Sin cuotas vencidas pendientes' : 'Registro automático'}</span><div className="flex gap-2"><button type="button" onClick={() => handleEditTx(item)} className="text-[9px] font-black text-cyan-300">Editar</button><button type="button" disabled={!due || registeringRecurrences.has(item.id)} onClick={() => void handleProcessRecurring(item)} className="text-[9px] font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{registeringRecurrences.has(item.id) ? 'Registrando…' : 'Registrar'}</button></div></div></article>; })}</div></section>
    </div>
   )}
 
@@ -6094,7 +6086,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       Crear recurrencia manual
      </span>
      <span className="text-[9px] text-slate-500 block">
-      Para efectivo o transferencia. Los planes Stripe se sincronizan automáticamente.
+      Efectivo y transferencia quedan pendientes hasta pulsar Registrar en Recurrencias. Los planes Stripe se sincronizan automáticamente.
      </span>
      </div>
      <button
@@ -6941,4 +6933,3 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
  </div>
  );
 }
-

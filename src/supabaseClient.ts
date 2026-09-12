@@ -2,7 +2,7 @@ import { saveContractPricing, decodeContractPricing } from './utils/contractPric
 import { buildCommercialCashout } from './utils/commercialCashout';
 import { createClient } from '@supabase/supabase-js';
 import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ColdCallingProspectGroup, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog, PartnerCompany } from './types';
-import { buildDueRecurringTransactions } from './utils/financeRecurrence';
+import { buildDueRecurringTransactions, isManualFinanceRecurrence } from './utils/financeRecurrence';
 
 // Use environment variables or fallback directly to the provided credentials
 const getSupabaseConfig = () => {
@@ -1851,6 +1851,27 @@ const dbImplementation = {
  if (error) throw error;
  invalidateCache('finance_transactions');
  return { attempted: dueTransactions.length, inserted: data?.length || 0 };
+ },
+
+ async registerManualFinanceRecurrence(payment: FinanceTransaction, existing?: FinanceTransaction): Promise<void> {
+ if (!isManualFinanceRecurrence({ ...payment, isRecurring: true }) || !payment.recurrenceSourceId) {
+  throw new Error('Esta cuota no admite registro manual.');
+ }
+ if (!existing) {
+  await this.insertFinanceTransaction(payment, payment.ownerUserId);
+  return;
+ }
+ if (existing.isRecurring || !['pending', 'failed'].includes(existing.status)) {
+  throw new Error('Esta cuota ya está registrada. Actualiza el historial.');
+ }
+ // Confirm the existing pending row atomically, preserving its amount and links.
+ const description = this._encodeDescription(existing.description, { ...existing, paidAt: payment.paidAt });
+ const { data, error } = await supabase.from('finance_transactions')
+  .update({ status: 'paid', description }).eq('id', existing.id)
+  .eq('status', existing.status).eq('isRecurring', false).select('id').maybeSingle();
+ if (error) throw error;
+ if (!data) throw new Error('La cuota ha cambiado o ya está registrada. Actualiza el historial.');
+ invalidateCache('finance_transactions');
  },
 
  async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {

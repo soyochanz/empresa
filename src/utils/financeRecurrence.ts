@@ -1,4 +1,4 @@
-import { FinanceTransaction } from '../types';
+import type { FinanceTransaction } from '../types';
 
 const MAX_OCCURRENCES_PER_CONCEPT = 10_000;
 
@@ -75,6 +75,49 @@ const normalizeLegacyDescription = (description?: string): string =>
 export const getRecurringOccurrenceId = (sourceId: string, scheduledDate: string): string =>
  `${sourceId}__rec__${scheduledDate.replaceAll('-', '')}`;
 
+export const isManualFinanceRecurrence = (source: FinanceTransaction): boolean =>
+ Boolean(source.isRecurring && (source.paymentMethod === 'cash' || source.paymentMethod === 'transfer'));
+
+export const findRecurringOccurrence = (
+ source: FinanceTransaction, scheduledDate: string, transactions: FinanceTransaction[]
+): FinanceTransaction | undefined => transactions.find(transaction => {
+ if (transaction.isRecurring) return false;
+ if (transaction.id === getRecurringOccurrenceId(source.id, scheduledDate)) return true;
+ if (transaction.recurrenceSourceId) return transaction.recurrenceSourceId === source.id
+  && (transaction.recurrenceScheduledDate || transaction.date).slice(0, 10) === scheduledDate;
+ return transaction.date.slice(0, 10) === scheduledDate
+  && transaction.type === source.type && transaction.category === source.category
+  && transaction.clientId === source.clientId
+  && /\((Ingreso Procesado|Cargo Procesado|Ingreso recurrente autom[aá]tico|Gasto recurrente autom[aá]tico)\)\s*$/i.test(transaction.description || '')
+  && normalizeLegacyDescription(transaction.description) === normalizeLegacyDescription(source.description);
+});
+
+export const isRecurringOccurrenceRepresented = (
+ source: FinanceTransaction, scheduledDate: string, transactions: FinanceTransaction[]
+): boolean => {
+ const existing = findRecurringOccurrence(source, scheduledDate, transactions);
+ return Boolean(existing && existing.status !== 'failed')
+  || (scheduledDate === source.date.slice(0, 10) && source.status === 'paid');
+};
+
+// Pending manual instalments are a projection, not paid ledger rows.
+export const getPendingManualRecurrences = (
+ source: FinanceTransaction, transactions: FinanceTransaction[], throughDate = new Date()
+): { date: Date; existing?: FinanceTransaction }[] => {
+ const start = parseDateKey(source.date);
+ if (!start || !isManualFinanceRecurrence(source)) return [];
+ const due: { date: Date; existing?: FinanceTransaction }[] = [];
+ for (let index = 0; index < MAX_OCCURRENCES_PER_CONCEPT; index++) {
+  const date = getFinanceRecurrenceDate(start, source.recurrencePeriod, index);
+  const key = toFinanceDateKey(date);
+  if (!isFinanceRecurrenceOccurrenceAllowed(source, index, date) || key > toFinanceDateKey(throughDate)) break;
+  const existing = findRecurringOccurrence(source, key, transactions);
+  if (existing?.status === 'paid' || (index === 0 && source.status === 'paid' && !existing)) continue;
+  due.push({ date, existing });
+ }
+ return due;
+};
+
 export const buildDueRecurringTransactions = (
  transactions: FinanceTransaction[],
  throughDate = new Date()
@@ -94,7 +137,7 @@ export const buildDueRecurringTransactions = (
  const due: FinanceTransaction[] = [];
 
  // Stripe-controlled subscriptions are materialized only after a signed paid-invoice webhook.
- for (const source of transactions.filter(transaction => transaction.isRecurring && transaction.paymentMethod !== 'stripe')) {
+ for (const source of transactions.filter(transaction => transaction.isRecurring && transaction.paymentMethod !== 'stripe' && !isManualFinanceRecurrence(transaction))) {
   const sourceDate = parseDateKey(source.date);
   if (!sourceDate) continue;
 
@@ -146,25 +189,32 @@ export const buildDueRecurringTransactions = (
 
 export const buildManualRecurringTransaction = (
  source: FinanceTransaction,
- date = new Date()
+ date = new Date(),
+ paidAt = new Date()
 ): FinanceTransaction => {
+ if (!isManualFinanceRecurrence(source)) throw new Error('Solo se registran manualmente las recurrencias en efectivo o transferencia.');
  const scheduledDate = toFinanceDateKey(date);
- const amount = Math.abs(Number(source.nextAmount ?? source.amount));
+ const first = scheduledDate === source.date.slice(0, 10);
+ const amount = Math.abs(Number(first ? source.firstAmount ?? source.amount : source.nextAmount ?? source.amount));
+ if (!Number.isFinite(amount) || amount <= 0) throw new Error('El importe de la cuota debe ser mayor que cero.');
  return {
   id: getRecurringOccurrenceId(source.id, scheduledDate),
   type: source.type,
   category: source.category,
   amount,
   date: scheduledDate,
-  description: `${source.description} (${source.type === 'income' ? 'Ingreso' : 'Gasto'} recurrente automático)`,
+  description: `${source.description} (${source.type === 'income' ? 'Ingreso' : 'Cargo'} Procesado)`,
   isRecurring: false,
   status: 'paid',
   paymentMethod: source.paymentMethod,
+  paymentAccount: source.paymentAccount,
+  paidAt: paidAt.toISOString(),
   clientId: source.clientId,
   stripePlanId: source.stripePlanId,
   comercialId: source.comercialId,
   comercialEmail: source.comercialEmail,
-  isInitialSale: false,
+  isInitialSale: first ? source.isInitialSale : false,
+  invoiceId: first ? source.invoiceId : undefined,
   recurrenceSourceId: source.id,
   recurrenceScheduledDate: scheduledDate,
   ownerUserId: source.ownerUserId

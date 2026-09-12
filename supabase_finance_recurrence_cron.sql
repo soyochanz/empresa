@@ -91,6 +91,8 @@ begin
    template.date::date as scheduled_date
   from public.finance_transactions as template
   where template."isRecurring" is true
+   -- Cash/transfer require a manual confirmation; Stripe uses its webhook.
+   and coalesce(template.description, '') !~ '\[PM:(cash|transfer|stripe)\]'
    and template.date ~ '^\d{4}-\d{2}-\d{2}'
    and template.date::date <= p_through_date
 
