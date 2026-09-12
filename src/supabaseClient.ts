@@ -3,6 +3,7 @@ import { buildCommercialCashout } from './utils/commercialCashout';
 import { createClient } from '@supabase/supabase-js';
 import { ClientContact, CalendarEvent, Note, Activity, InquiryMessage, FinanceTransaction, Invoice, ColdCallingLead, ColdCallingProspectGroup, ComercialLead, ComercialAccount, DemoSite, CommercialPresence, CommercialPresenceStatus, CommercialWorkSession, CommercialActivityLog, PartnerCompany } from './types';
 import { buildDueRecurringTransactions, isManualFinanceRecurrence } from './utils/financeRecurrence';
+import { isStripeManagedTransaction } from './utils/pendingFinance';
 
 // Use environment variables or fallback directly to the provided credentials
 const getSupabaseConfig = () => {
@@ -1857,6 +1858,14 @@ const dbImplementation = {
  if (!isManualFinanceRecurrence({ ...payment, isRecurring: true }) || !payment.recurrenceSourceId) {
   throw new Error('Esta cuota no admite registro manual.');
  }
+ await this.registerPendingFinanceTransaction(payment, existing);
+ },
+
+ async registerPendingFinanceTransaction(payment: FinanceTransaction, existing?: FinanceTransaction): Promise<void> {
+ if (isStripeManagedTransaction(payment) || (existing && isStripeManagedTransaction(existing))
+  || !['cash', 'transfer', 'card'].includes(payment.paymentMethod || '') || payment.status !== 'paid') {
+  throw new Error('Selecciona un método de pago fuera de Stripe.');
+ }
  if (!existing) {
   await this.insertFinanceTransaction(payment, payment.ownerUserId);
   return;
@@ -1865,7 +1874,7 @@ const dbImplementation = {
   throw new Error('Esta cuota ya está registrada. Actualiza el historial.');
  }
  // Confirm the existing pending row atomically, preserving its amount and links.
- const description = this._encodeDescription(existing.description, { ...existing, paidAt: payment.paidAt });
+ const description = this._encodeDescription(existing.description, { ...existing, paidAt: payment.paidAt, paymentMethod: payment.paymentMethod, paymentAccount: payment.paymentAccount });
  const { data, error } = await supabase.from('finance_transactions')
   .update({ status: 'paid', description }).eq('id', existing.id)
   .eq('status', existing.status).eq('isRecurring', false).select('id').maybeSingle();

@@ -1,6 +1,8 @@
 import { CASH_OPENING_BALANCE, isCashAfterOpening } from '../utils/cashOpening';
 import { exportSources, matchesExportSource, exportTotals, createMovementPdf, type ExportSource } from '../utils/financeExport';
 import { getStripeForecastOccurrences } from '../utils/stripeForecast';
+import PendingFinancePanel from './PendingFinancePanel';
+import { getMonthlyPendingFinance, type PendingFinanceItem } from '../utils/pendingFinance';
 import { isCommercialCashout } from '../utils/commercialCashout';
 import React, { useState, useEffect, useRef } from 'react';
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -1034,6 +1036,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
  // TRANSACTION MODAL controls
  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+ const [txModalTab, setTxModalTab] = useState<'new' | 'pending'>('new');
+ const [pendingMonth, setPendingMonth] = useState(() => toFinanceDateKey(new Date()).slice(0, 7));
+ const pendingRegistrationInFlight = useRef(new Set<string>());
+ const [registeringPending, setRegisteringPending] = useState<Set<string>>(new Set());
+ const monthlyPendingItems = getMonthlyPendingFinance(transactions, pendingMonth);
  const [isEditingTx, setIsEditingTx] = useState(false);
  const [editingTxId, setEditingTxId] = useState<string | null>(null);
 
@@ -2009,6 +2016,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  const resetTxForm = () => {
+ setTxModalTab('new');
+ setPendingMonth(toFinanceDateKey(new Date()).slice(0, 7));
  setIsEditingTx(false);
  setEditingTxId(null);
  setTxType('income');
@@ -2753,6 +2762,39 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   } finally {
    recurrenceRegistrationInFlight.current.delete(tx.id);
    setRegisteringRecurrences(new Set(recurrenceRegistrationInFlight.current));
+  }
+ };
+
+ const handleRegisterPending = async (item: PendingFinanceItem, method: 'cash' | 'transfer' | 'card', account?: FinanceTransaction['paymentAccount']) => {
+  if (pendingRegistrationInFlight.current.size > 0) return;
+  // Re-resolve against current state so an already confirmed row cannot be submitted again.
+  const current = getMonthlyPendingFinance(transactions, pendingMonth).find(candidate => candidate.id === item.id);
+  if (!current) { showToast('Este movimiento ya no está pendiente.', true); return; }
+  pendingRegistrationInFlight.current.add(item.id);
+  setRegisteringPending(new Set(pendingRegistrationInFlight.current));
+  try {
+   const payment: FinanceTransaction = { ...current.transaction, status: 'paid', paidAt: new Date().toISOString(), paymentMethod: method, paymentAccount: account };
+   await db.registerPendingFinanceTransaction(payment, current.existing);
+   const nextTransactions = [payment, ...transactions.filter(tx => tx.id !== payment.id)];
+   setTransactions(prev => [payment, ...prev.filter(tx => tx.id !== payment.id)]);
+   showToast(`${payment.type === 'income' ? 'Cobro' : 'Pago'} registrado correctamente.`);
+   // Keep linked invoice instalments pending until all their payments are settled.
+   try {
+    for (const invoice of invoices.filter(inv => inv.id === payment.invoiceId || inv.items.some(line => line.pendingTxId === payment.id))) {
+     const items = invoice.items.map(line => line.pendingTxId === payment.id ? { ...line, isPending: false } : line);
+     const linked = nextTransactions.filter(tx => !tx.isRecurring && (tx.invoiceId === invoice.id || items.some(line => line.pendingTxId === tx.id)));
+     const allPaid = linked.length > 0 && linked.every(tx => tx.status === 'paid') && !items.some(line => line.isPending)
+      && linked.reduce((sum, tx) => sum + tx.amount, 0) + 0.005 >= invoice.total;
+     const updated = { ...invoice, items, status: allPaid ? 'paid' as const : invoice.status };
+     await db.updateFinanceInvoice(updated);
+     setInvoices(prev => prev.map(inv => inv.id === updated.id ? updated : inv));
+    }
+   } catch { showToast('El movimiento está registrado, pero no se pudo sincronizar la factura. Revisa su estado.', true); }
+  } catch (error: any) {
+   showToast(error?.code === '23505' ? 'Este movimiento ya está registrado. Actualiza el historial.' : `No se registró: ${error?.message || 'No se recibió confirmación del servidor.'}`, true);
+  } finally {
+   pendingRegistrationInFlight.current.delete(item.id);
+   setRegisteringPending(new Set(pendingRegistrationInFlight.current));
   }
  };
 
@@ -5877,7 +5919,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </button>
    </div>
 
-   <form onSubmit={handleSaveTransaction} className="p-5 space-y-4">
+   {!isEditingTx && <div className="flex gap-2 border-b border-white/5 px-5 py-3" role="tablist" aria-label="Registrar transacción">
+    <button type="button" role="tab" aria-selected={txModalTab === 'new'} onClick={() => setTxModalTab('new')} className={`rounded-xl px-4 py-2 text-xs font-bold ${txModalTab === 'new' ? 'bg-white/10 text-white' : 'text-slate-400'}`}>Nueva transacción</button>
+    <button type="button" role="tab" aria-selected={txModalTab === 'pending'} onClick={() => setTxModalTab('pending')} className={`rounded-xl px-4 py-2 text-xs font-bold ${txModalTab === 'pending' ? 'bg-amber-400/10 text-amber-300' : 'text-slate-400'}`}>Pendientes ({monthlyPendingItems.length})</button>
+   </div>}
+   {!isEditingTx && txModalTab === 'pending' ? <PendingFinancePanel items={monthlyPendingItems} month={pendingMonth} onMonthChange={setPendingMonth} registering={registeringPending} onRegister={handleRegisterPending} /> : <form onSubmit={handleSaveTransaction} className="p-5 space-y-4">
     
     {/* Type Switcher */}
     <div className="space-y-1">
@@ -6183,7 +6229,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     </button>
     </div>
 
-   </form>
+   </form>}
    </div>
   </div>
   )}
