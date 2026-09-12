@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ClientContact, Invoice } from '../types';
 import { db, SQL_SETUP_SCRIPT, supabase } from '../supabaseClient';
+import { contractSaveErrorMessage } from '../utils/contractPricing';
 import { 
  FileText, 
  Receipt, 
@@ -199,6 +200,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   return false;
  }
  contractSaveInFlight.current = true;
+ setSaveMessage(null);
  try {
   const contractObj = {
   id: selectedContractIdInDb || 'cnt_' + crypto.randomUUID(),
@@ -256,8 +258,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
   return true;
  } catch (err) {
   console.error('General error saving contract:', err);
-  setSaveMessage('No se pudo guardar el contrato. Revisa la conexión e inténtalo de nuevo.');
-  setTimeout(() => setSaveMessage(null), 4500);
+  setSaveMessage(contractSaveErrorMessage(err));
   return false;
  } finally {
   contractSaveInFlight.current = false;
