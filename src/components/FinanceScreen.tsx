@@ -3834,6 +3834,19 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </section>
   </div>
 
+  <section aria-label="Saldo total de Althera" className="flex flex-col gap-3 rounded-3xl border border-cyan-300/20 bg-cyan-300/[0.06] p-5 sm:flex-row sm:items-center sm:justify-between">
+   <div>
+    <h3 className="text-sm font-bold text-white">Saldo total de Althera</h3>
+    <p className="mt-1 text-xs text-slate-400">Stripe disponible + Revolut Pro + efectivo</p>
+   </div>
+   <div className="sm:text-right" aria-live="polite">
+    <strong className={`block whitespace-nowrap text-3xl font-black ${grossCashBalance >= 0 ? 'text-white' : 'text-rose-300'}`}>
+     {stripeFunds ? grossCashBalance.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : stripeFundsError ? 'No disponible' : 'Cargando…'}
+    </strong>
+    {stripeFundsError && <p className="mt-1 text-xs text-amber-300">{stripeFunds ? 'Pendiente de actualizar el saldo de Stripe.' : 'No se pudo obtener el saldo de Stripe.'}</p>}
+   </div>
+  </section>
+
    <section className="relative overflow-hidden rounded-3xl border border-amber-300/15 bg-gradient-to-br from-amber-300/[0.09] via-[#11131a]/80 to-[#0b1329]/70 p-5">
     <div className="absolute -right-14 -top-14 h-40 w-40 rounded-full bg-amber-300/10 blur-3xl" />
     <div className="relative flex items-start justify-between gap-4">
