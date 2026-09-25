@@ -3421,6 +3421,24 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const stripePlans = stripeFinanceOverview?.activeSubscriptions ?? [];
  const stripeSubscriptions = stripePlans.filter(plan => plan.billingType === 'subscription');
  const stripeInstallments = stripePlans.filter(plan => plan.billingType === 'installment');
+ const getForecastPayer = (transaction: FinanceTransaction): string => {
+  const source = transactions.find(item => item.id === transaction.recurrenceSourceId);
+  const findInvoice = (tx: FinanceTransaction) => invoices.find(item => item.id === tx.invoiceId)
+   || invoices.find(item => item.items.some(line => line.pendingTxId === tx.id || line.id === tx.id));
+  const invoice = findInvoice(transaction) || (source ? findInvoice(source) : undefined);
+  const plan = stripePlans.find(item => transaction.id === `forecast_${item.id}`
+   || transaction.stripePlanId === item.id
+   || Boolean(item.stripePlanId && transaction.stripePlanId === item.stripePlanId));
+  const clientIds = [transaction.clientId, invoice?.clientId, source?.clientId].filter(Boolean);
+  let contact = clientIds.map(id => contacts.find(item => item.id === id)).find(Boolean);
+  if (!contact && plan?.customerId) contact = contacts.find(item => item.stripeCustomerId === plan.customerId);
+  if (!contact) {
+   const email = (plan?.customerEmail || invoice?.clientEmail || '').trim().toLowerCase();
+   const matches = email ? contacts.filter(item => item.email?.trim().toLowerCase() === email) : [];
+   if (matches.length === 1) contact = matches[0];
+  }
+  return getFinanceBusinessName(contact) || invoice?.clientName?.trim() || plan?.customerName?.trim() || 'Sin empresa vinculada';
+ };
  const forecastMonths = Array.from({ length: 12 }, (_, index) => {
   const monthDate = new Date();
   monthDate.setDate(1);
@@ -4096,11 +4114,11 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    <div className="grid gap-5 xl:grid-cols-2">
     <section className="overflow-hidden rounded-3xl border border-amber-300/10 bg-[#0b1329]/20">
      <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-amber-300">Pendientes con fecha en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.pendingItems.length} cobros · {selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
-     {selectedForecast.pendingItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos pendientes fechados para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.pendingItems.sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div><strong className="shrink-0 font-mono text-sm text-amber-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+     {selectedForecast.pendingItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos pendientes fechados para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.pendingItems.sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div><strong className="shrink-0 font-mono text-sm text-amber-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
     </section>
     <section className="overflow-hidden rounded-3xl border border-violet-300/10 bg-[#0b1329]/20">
      <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-violet-300">Cuotas recurrentes previstas</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.recurringItems.length} cuotas · {selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
-     {selectedForecast.recurringItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos recurrentes previstos para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.recurringItems.sort((a, b) => a.date.getTime() - b.date.getTime()).map((item, index) => <div key={`${item.transaction.id}_${item.date.toISOString()}_${index}`} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(item.transaction.description)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{item.date.toLocaleDateString('es-ES')} · {item.transaction.recurrencePeriod === 'weekly' ? 'Semanal' : item.transaction.recurrencePeriod === 'yearly' ? 'Anual' : 'Mensual'}</p></div><strong className="shrink-0 font-mono text-sm text-violet-300">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+     {selectedForecast.recurringItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos recurrentes previstos para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.recurringItems.sort((a, b) => a.date.getTime() - b.date.getTime()).map((item, index) => <div key={`${item.transaction.id}_${item.date.toISOString()}_${index}`} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(item.transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(item.transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{item.date.toLocaleDateString('es-ES')} · {item.transaction.recurrencePeriod === 'weekly' ? 'Semanal' : item.transaction.recurrencePeriod === 'yearly' ? 'Anual' : 'Mensual'}</p></div><strong className="shrink-0 font-mono text-sm text-violet-300">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
     </section>
    </div>
   </div>
