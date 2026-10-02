@@ -515,6 +515,7 @@ export default function App() {
    let customerId = 'cus_mock_123';
     let subscriptionId = 'sub_mock_123';
     let paymentConfirmed = sessionId.startsWith('cs_test_mock_');
+    let confirmedPaidDate = '';
     let scheduledFirstPaymentDate = '';
     let scheduledSetupConfirmed = false;
    
@@ -525,6 +526,7 @@ export default function App() {
    const res = await fetch(`/api/stripe/retrieve-session?sessionId=${sessionId}`);
    const sessionData = await res.json();
    if (!res.ok) throw new Error(sessionData.error || 'No se pudo verificar el pago con Stripe.');
+    confirmedPaidDate = sessionData.paidDate || '';
     customerId = sessionData.customerId;
     subscriptionId = sessionData.subscriptionId;
     scheduledFirstPaymentDate = sessionData.firstPaymentDate || '';
@@ -575,7 +577,8 @@ export default function App() {
     }
 
    const allTxsBeforePayment = await db.getFinanceTransactions();
-   const todayStr = new Date().toISOString().split('T')[0];
+   const todayStr = confirmedPaidDate || (sessionId.startsWith('cs_test_mock_') ? new Date().toISOString().split('T')[0] : '');
+   if (!todayStr) throw new Error('No se pudo confirmar la fecha real del pago en Stripe.');
    const baseConcept = customConcept ? decodeURIComponent(customConcept) : (isSubscription
     ? `Mensualidad Stripe Automática - ${client.name}`
     : `Pago Único Stripe - ${client.name}`);

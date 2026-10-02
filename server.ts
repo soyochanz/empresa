@@ -732,7 +732,14 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
   const rows = await getStripeTransactionCandidates({ invoiceId, stripePlanId, pendingTxId: firstPendingTxId });
   const existingInvoiceRow = rows.find((tx: any) => (tx.description || "").includes(`[STRIPEINVOICE:${invoiceId}]`));
   if (existingInvoiceRow?.status === "paid") {
-    return { updated: false, reason: "already_processed" };
+    const paidDate = getStripePaidDate(invoice);
+    if (existingInvoiceRow.date !== paidDate) {
+      const { error } = await supabaseAdmin.from("finance_transactions")
+        .update({ date: paidDate }).eq("id", existingInvoiceRow.id);
+      if (error) throw error;
+      return { updated: true, reason: "payment_date_repaired", txId: existingInvoiceRow.id };
+    }
+    return { updated: false, reason: "already_processed", txId: existingInvoiceRow.id };
   }
 
   const matchingRows = rows.filter((tx: any) => {
@@ -952,16 +959,32 @@ async function markStripeInvoiceAsFailed(invoice: Stripe.Invoice): Promise<{ upd
   return { updated: !insertError, reason: insertError ? "already_marked_failed" : undefined, txId: failedTxId };
 }
 
-async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session): Promise<{ updated: boolean; reason?: string; txId?: string }> {
+async function getStripeCheckoutPaidDate(session: Stripe.Checkout.Session): Promise<string | undefined> {
+  if (session.payment_status !== "paid") return undefined;
+  const stripe = getStripe();
+  const invoice = typeof session.invoice === "string"
+    ? await stripe.invoices.retrieve(session.invoice) : session.invoice;
+  if (invoice?.status_transitions?.paid_at) return getStripePaidDate(invoice);
+  const intent = typeof session.payment_intent === "string"
+    ? await stripe.paymentIntents.retrieve(session.payment_intent, { expand: ["latest_charge"] })
+    : session.payment_intent;
+  const charge = typeof intent?.latest_charge === "string"
+    ? await stripe.charges.retrieve(intent.latest_charge) : intent?.latest_charge;
+  if (!charge?.paid || !charge.created) return undefined;
+  return getStripePaidDate({ status_transitions: { paid_at: charge.created } } as Stripe.Invoice);
+}
+
+async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session): Promise<{ updated: boolean; reason?: string; txId?: string; paidDate?: string }> {
   const isPaid = session.payment_status === "paid";
   if (!isPaid) return { updated: false, reason: "payment_not_confirmed" };
 
+  const paidDate = await getStripeCheckoutPaidDate(session);
   const pendingTxId = session.metadata?.pendingTxId || "";
-  if (!pendingTxId) return { updated: false, reason: "missing_pending_transaction" };
+  if (!pendingTxId) return { updated: false, reason: "missing_pending_transaction", paidDate };
 
   const { data: targetTx, error: txReadError } = await supabaseAdmin
     .from("finance_transactions")
-    .select("id,description,status")
+    .select("id,description,status,date")
     .eq("id", pendingTxId)
     .maybeSingle();
 
@@ -981,7 +1004,7 @@ async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session)
     .from("finance_transactions")
     .update({
       status: "paid",
-      date: new Date().toISOString().split("T")[0],
+      ...(paidDate ? { date: paidDate } : {}),
       description: updatedDescription,
     })
     .eq("id", pendingTxId);
@@ -1015,7 +1038,7 @@ async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session)
       }),
   );
 
-  return { updated: targetTx.status !== "paid", txId: pendingTxId };
+  return { updated: targetTx.status !== "paid" || Boolean(paidDate && targetTx.date !== paidDate), txId: pendingTxId, paidDate };
 }
 
 async function markStripeCheckoutSessionAsExpired(session: Stripe.Checkout.Session): Promise<{ updated: boolean; reason?: string; txId?: string }> {
@@ -2313,6 +2336,7 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
       status: session.status,
       expiresAt: session.expires_at,
       url: shareableUrl,
+      paidDate: paymentResult.paidDate,
       transactionUpdated: paymentResult.updated,
       transactionId: paymentResult.txId,
       invoiceGenerated: generatedInvoice,
