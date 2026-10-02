@@ -406,9 +406,9 @@ const getFinanceDateKey = (value?: string): string => {
 
 type IncomeServiceCategory = 'Web' | 'RRSS' | 'Bites' | 'IA' | 'Otros';
 
-const SEPTEMBER_GOAL_MONTH = '2026-09';
-const SEPTEMBER_REVENUE_GOAL = 12_705;
-const SEPTEMBER_SALARY_REWARD = 1_500;
+const OCTOBER_GOAL_MONTH = '2026-10';
+const OCTOBER_REVENUE_GOAL = 12_705;
+const OCTOBER_SALARY_REWARD = 1_500;
 const VAT_ACCOUNTING_START_DATE = '2026-07-15';
 
 const getIncomeServiceCategories = (value: string): IncomeServiceCategory[] => {
@@ -1675,14 +1675,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    return getBalanceMovementSortTime(b) - getBalanceMovementSortTime(a);
   })
   .slice(0, 4);
- const septemberPaidIncomeTransactions = nonRecurringTransactions.filter(transaction =>
+ const octoberPaidIncomeTransactions = nonRecurringTransactions.filter(transaction =>
   transaction.type === 'income' &&
   transaction.status === 'paid' &&
   !isInternalBalanceTransfer(transaction) &&
-  getFinanceDateKey(transaction.date).startsWith(SEPTEMBER_GOAL_MONTH)
+  getFinanceDateKey(transaction.date).startsWith(OCTOBER_GOAL_MONTH)
  );
- const septemberRevenue = septemberPaidIncomeTransactions.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
- const septemberRevenueBreakdown = septemberPaidIncomeTransactions.reduce<Record<IncomeServiceCategory, { amount: number; payments: number; concepts: Set<string> }>>((groups, transaction) => {
+ const octoberRevenue = octoberPaidIncomeTransactions.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+ const octoberRevenueBreakdown = octoberPaidIncomeTransactions.reduce<Record<IncomeServiceCategory, { amount: number; payments: number; concepts: Set<string> }>>((groups, transaction) => {
   const linkedInvoice = invoices.find(invoice =>
    invoice.id === transaction.invoiceId ||
    (invoice.items || []).some(item => item.pendingTxId === transaction.id)
@@ -1708,17 +1708,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   IA: { amount: 0, payments: 0, concepts: new Set<string>() },
   Otros: { amount: 0, payments: 0, concepts: new Set<string>() },
  });
- const septemberGoalContributions = (Object.entries(septemberRevenueBreakdown) as Array<[IncomeServiceCategory, { amount: number; payments: number; concepts: Set<string> }]>)
+ const octoberGoalContributions = (Object.entries(octoberRevenueBreakdown) as Array<[IncomeServiceCategory, { amount: number; payments: number; concepts: Set<string> }]>)
   .filter(([, contribution]) => contribution.amount > 0)
   .sort(([, a], [, b]) => b.amount - a.amount);
- const septemberNewClients = new Set(septemberPaidIncomeTransactions
+ const octoberNewClients = new Set(octoberPaidIncomeTransactions
   .filter(transaction => transaction.isInitialSale)
   .map(transaction => transaction.clientId || transaction.id)).size;
- const septemberExistingClientServices = septemberPaidIncomeTransactions.filter(transaction => !transaction.isInitialSale).length;
- const septemberTotalServices = septemberPaidIncomeTransactions.length;
- const septemberGoalProgress = Math.min(100, Math.round(septemberRevenue / SEPTEMBER_REVENUE_GOAL * 100));
- const septemberGoalRemaining = Math.max(0, SEPTEMBER_REVENUE_GOAL - septemberRevenue);
- const septemberGoalAchieved = septemberRevenue >= SEPTEMBER_REVENUE_GOAL;
+ const octoberExistingClientServices = octoberPaidIncomeTransactions.filter(transaction => !transaction.isInitialSale).length;
+ const octoberTotalServices = octoberPaidIncomeTransactions.length;
+ const octoberGoalProgress = Math.min(100, Math.round(octoberRevenue / OCTOBER_REVENUE_GOAL * 100));
+ const octoberGoalRemaining = Math.max(0, OCTOBER_REVENUE_GOAL - octoberRevenue);
+ const octoberGoalAchieved = octoberRevenue >= OCTOBER_REVENUE_GOAL;
  const stripeAvailableBalance = (stripeFunds?.available || []).reduce((sum, fund) => sum + Number(fund.amount || 0), 0);
  const cashMovementsSinceOpening = nonRecurringTransactions.filter(transaction =>
   transaction.status === 'paid' &&
@@ -3443,14 +3443,22 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   const monthDate = new Date();
   monthDate.setDate(1);
   monthDate.setHours(12, 0, 0, 0);
-  // Start with the current month so the forecast answers "what is still due
-  // this month" before showing the following months.
+  // Show the complete month: collected income plus outstanding forecasts.
   monthDate.setMonth(monthDate.getMonth() + index);
   const key = getMonthKey(monthDate);
   const pendingItems = transactions.filter(transaction =>
    transaction.type === 'income'
    && transaction.status === 'pending'
    && !transaction.isRecurring
+   && !isInternalBalanceTransfer(transaction)
+   && (() => {
+    const transactionDate = parseFinanceDate(transaction.date);
+    return transactionDate ? getMonthKey(transactionDate) === key : false;
+   })()
+  );
+  const paidItems = transactions.filter(transaction =>
+   transaction.type === 'income' && transaction.status === 'paid' && !transaction.isRecurring
+   && !isInternalBalanceTransfer(transaction)
    && (() => {
     const transactionDate = parseFinanceDate(transaction.date);
     return transactionDate ? getMonthKey(transactionDate) === key : false;
@@ -3486,16 +3494,19 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    }
   }
   const pendingTotal = pendingItems.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+  const paidTotal = paidItems.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
   const recurringTotal = recurringItems.reduce((sum, item) => sum + item.amount, 0);
   return {
    key,
    label: monthDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }),
    shortLabel: monthDate.toLocaleDateString('es-ES', { month: 'short', year: '2-digit' }).replace('.', ''),
    pendingItems,
+   paidItems,
+   paidTotal,
    recurringItems,
    pendingTotal,
    recurringTotal,
-   total: pendingTotal + recurringTotal
+   total: paidTotal + pendingTotal + recurringTotal
   };
  });
  const selectedForecast = forecastMonths.find(month => month.key === forecastMonth) || forecastMonths[0];
@@ -3870,30 +3881,30 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
     <div className="relative flex items-start justify-between gap-4">
      <div className="flex items-center gap-2.5">
       <div className="rounded-xl border border-amber-300/15 bg-amber-300/10 p-2"><Target className="h-4 w-4 text-amber-300" /></div>
-      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Objetivo septiembre</span><h3 className="mt-0.5 text-sm font-bold text-white">12.705 € cobrados · cualquier combinación</h3></div>
+      <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Objetivo octubre</span><h3 className="mt-0.5 text-sm font-bold text-white">12.705 € cobrados · cualquier combinación</h3></div>
      </div>
-     <div className="text-right"><strong className="text-xl font-black text-white">{septemberGoalProgress}%</strong><p className="text-[8px] uppercase tracking-wider text-slate-500">del objetivo</p></div>
+     <div className="text-right"><strong className="text-xl font-black text-white">{octoberGoalProgress}%</strong><p className="text-[8px] uppercase tracking-wider text-slate-500">del objetivo</p></div>
     </div>
-    <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-black/35"><div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-all duration-700" style={{ width: `${septemberGoalProgress}%` }} /></div>
+    <div className="relative mt-4 h-2 overflow-hidden rounded-full bg-black/35"><div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 transition-all duration-700" style={{ width: `${octoberGoalProgress}%` }} /></div>
 
     <div className="relative mt-4 grid grid-cols-3 gap-2">
-     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Cobrado</span><strong className="mt-1 block text-lg font-black text-white">{septemberRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
-     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">{septemberGoalAchieved ? 'Objetivo logrado' : 'Falta'}</span><strong className="mt-1 block text-lg font-black text-white">{septemberGoalRemaining.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
-     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Premio al lograrlo</span><strong className="mt-1 block text-sm font-black text-white">{SEPTEMBER_SALARY_REWARD.toLocaleString('es-ES')} € cada uno</strong></div>
+     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Cobrado</span><strong className="mt-1 block text-lg font-black text-white">{octoberRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">{octoberGoalAchieved ? 'Objetivo logrado' : 'Falta'}</span><strong className="mt-1 block text-lg font-black text-white">{octoberGoalRemaining.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.06] p-3"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Premio al lograrlo</span><strong className="mt-1 block text-sm font-black text-white">{OCTOBER_SALARY_REWARD.toLocaleString('es-ES')} € cada uno</strong></div>
     </div>
 
     <div className="relative mt-3 grid grid-cols-3 gap-2">
-     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Clientes nuevos cobrados</span><strong className="mt-1 block text-xl font-black text-white">{septemberNewClients}</strong></div>
-     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Cobros incluidos</span><strong className="mt-1 block text-xl font-black text-white">{septemberTotalServices}</strong></div>
-     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">De clientes existentes</span><strong className="mt-1 block text-xl font-black text-white">{septemberExistingClientServices}</strong></div>
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Clientes nuevos cobrados</span><strong className="mt-1 block text-xl font-black text-white">{octoberNewClients}</strong></div>
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Cobros incluidos</span><strong className="mt-1 block text-xl font-black text-white">{octoberTotalServices}</strong></div>
+     <div className="rounded-2xl border border-white/[0.07] bg-black/20 p-3"><span className="text-[8px] font-black uppercase tracking-wider text-slate-500">De clientes existentes</span><strong className="mt-1 block text-xl font-black text-white">{octoberExistingClientServices}</strong></div>
     </div>
 
     <div className="relative mt-3">
-     <div className="mb-2 flex items-center justify-between gap-3"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">De qué sale lo cobrado</span><span className="text-[8px] text-slate-600">Solo movimientos pagados de septiembre</span></div>
-     {septemberGoalContributions.length === 0 ? (
+     <div className="mb-2 flex items-center justify-between gap-3"><span className="text-[8px] font-black uppercase tracking-[.18em] text-slate-500">De qué sale lo cobrado</span><span className="text-[8px] text-slate-600">Solo movimientos pagados de octubre</span></div>
+     {octoberGoalContributions.length === 0 ? (
       <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 px-4 py-5 text-center text-[9px] text-slate-500">Aún no hay cobros que contribuyan al objetivo.</div>
      ) : (
-      <div className="grid gap-2 sm:grid-cols-2">{septemberGoalContributions.map(([category, contribution]) => {
+      <div className="grid gap-2 sm:grid-cols-2">{octoberGoalContributions.map(([category, contribution]) => {
        const accentClass = category === 'Web' ? 'text-cyan-300' : category === 'RRSS' ? 'text-pink-300' : category === 'Bites' ? 'text-amber-300' : category === 'IA' ? 'text-violet-300' : 'text-slate-300';
        return <article key={category} className="rounded-2xl border border-white/[0.07] bg-black/20 p-3.5">
         <div className="flex items-start justify-between gap-3"><div><span className={`text-[9px] font-black uppercase tracking-wider ${accentClass}`}>{category === 'RRSS' ? 'RRSS · incluye SEO' : category}</span><p className="mt-1 text-[8px] text-slate-500">{contribution.payments} {contribution.payments === 1 ? 'cobro incluido' : 'cobros incluidos'}</p></div><strong className="whitespace-nowrap text-base font-black text-white">{contribution.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
@@ -4084,17 +4095,17 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <div>
       <span className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Planificación de cobros</span>
       <h3 className="mt-1 text-xl font-black capitalize text-white">{selectedForecast.label}</h3>
-      <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Suma los ingresos pendientes cuya fecha cae en el mes y las próximas cuotas de los conceptos recurrentes de ingresos.</p>
+      <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Total del mes: ingresos ya cobrados + cobros pendientes + cuotas recurrentes previstas. Cada cuota se cuenta una sola vez, según su fecha registrada.</p>
      </div>
      <div className="rounded-2xl border border-cyan-300/15 bg-black/25 px-5 py-3 text-right">
-      <span className="block text-[8px] font-black uppercase tracking-widest text-cyan-300">Cobro total previsto</span>
+      <span className="block text-[8px] font-black uppercase tracking-widest text-cyan-300">Total del mes · cobrado + previsto</span>
       <strong className="mt-1 block text-3xl font-black text-white">{selectedForecast.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
      </div>
     </div>
     <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
      <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pendientes del mes</span><strong className="mt-2 block text-xl text-white">{selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.pendingItems.length} cobro{selectedForecast.pendingItems.length === 1 ? '' : 's'} pendiente{selectedForecast.pendingItems.length === 1 ? '' : 's'}</small></div>
-     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Ingresos recurrentes</span><strong className="mt-2 block text-xl text-white">{selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.recurringItems.length} cuota{selectedForecast.recurringItems.length === 1 ? '' : 's'} prevista{selectedForecast.recurringItems.length === 1 ? '' : 's'}</small></div>
-     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Peso recurrente</span><strong className="mt-2 block text-xl text-white">{selectedForecast.total > 0 ? Math.round(selectedForecast.recurringTotal / selectedForecast.total * 100) : 0}%</strong><small className="mt-1 block text-[9px] text-slate-500">del cobro previsto para el mes</small></div>
+     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Cuotas previstas por cobrar</span><strong className="mt-2 block text-xl text-white">{selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.recurringItems.length} cuota{selectedForecast.recurringItems.length === 1 ? '' : 's'} prevista{selectedForecast.recurringItems.length === 1 ? '' : 's'}</small></div>
+     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Ya cobrado</span><strong className="mt-2 block text-xl text-white">{selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.paidItems.length} cobros registrados en el mes</small></div>
     </div>
    </section>
 
@@ -4105,7 +4116,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       <button key={month.key} type="button" onClick={() => setForecastMonth(month.key)} className={`rounded-2xl border p-3 text-left transition ${forecastMonth === month.key ? 'border-cyan-300/35 bg-cyan-300/10 shadow-lg shadow-cyan-400/5' : 'border-white/[0.06] bg-black/20 hover:border-white/15 hover:bg-white/[0.025]'}`}>
        <span className={`block text-[8px] font-black uppercase tracking-wider ${forecastMonth === month.key ? 'text-cyan-300' : 'text-slate-500'}`}>{index === 0 ? 'Este mes' : month.shortLabel}</span>
        <strong className="mt-2 block text-sm text-white">{month.total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} €</strong>
-       <span className="mt-1 block text-[8px] text-slate-600">{month.pendingItems.length + month.recurringItems.length} movimientos</span>
+       <span className="mt-1 block text-[8px] text-slate-600">{month.paidItems.length + month.pendingItems.length + month.recurringItems.length} movimientos</span>
       </button>
      ))}
     </div>
@@ -4121,6 +4132,13 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      {selectedForecast.recurringItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos recurrentes previstos para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.recurringItems.sort((a, b) => a.date.getTime() - b.date.getTime()).map((item, index) => <div key={`${item.transaction.id}_${item.date.toISOString()}_${index}`} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(item.transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(item.transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{item.date.toLocaleDateString('es-ES')} · {item.transaction.recurrencePeriod === 'weekly' ? 'Semanal' : item.transaction.recurrencePeriod === 'yearly' ? 'Anual' : 'Mensual'}</p></div><strong className="shrink-0 font-mono text-sm text-violet-300">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
     </section>
    </div>
+   <section className="overflow-hidden rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.04]">
+    <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-emerald-300">Ya cobrado en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.paidItems.length} cobros · {selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
+    {selectedForecast.paidItems.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Todavía no hay ingresos cobrados registrados para este mes.</p> : <div className="divide-y divide-white/[0.05]">{[...selectedForecast.paidItems].sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4">
+     <div className="min-w-0"><p className="break-words text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div>
+     <div className="shrink-0 text-right"><span className="mb-1 block text-[9px] font-bold text-emerald-300">Cobrado</span><strong className="font-mono text-sm text-emerald-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+    </div>)}</div>}
+   </section>
   </div>
   )}
 
