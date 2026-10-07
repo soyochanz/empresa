@@ -1,3 +1,5 @@
+import PendingFinancePanel from './PendingFinancePanel';
+import { getMonthlyPendingFinance, type PendingFinanceItem } from '../utils/pendingFinance';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ClientContact, CalendarEvent, Screen, Invoice, FinanceTransaction, ComercialAccount, InvoiceItem, ComercialLead } from '../types';
@@ -319,6 +321,33 @@ export default function CrmScreen({
   .filter(transaction => transaction.type === 'income' && transaction.isRecurring && transactionBelongsToContact(transaction, selectedContact, selectedClientInvoices))
   .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
  }, [transactions, selectedContact, selectedClientInvoices]);
+
+ const [recurrenceMonth, setRecurrenceMonth] = useState(() => toLocalDateKey(new Date()).slice(0, 7));
+ const [registeringRecurrence, setRegisteringRecurrence] = useState<Set<string>>(new Set());
+ const recurrenceBusy = React.useRef(false);
+ const clientPendingRecurrences = React.useMemo(() => selectedContact
+  ? getMonthlyPendingFinance(transactions, recurrenceMonth).filter(item => item.source
+   && item.transaction.type === 'income'
+   && transactionBelongsToContact(item.transaction, selectedContact, selectedClientInvoices)) : [],
+ [transactions, recurrenceMonth, selectedContact, selectedClientInvoices]);
+ const registerClientRecurrence = async (item: PendingFinanceItem, method: 'cash' | 'transfer' | 'card', account?: FinanceTransaction['paymentAccount']) => {
+  if (recurrenceBusy.current) return;
+  const current = clientPendingRecurrences.find(candidate => candidate.id === item.id);
+  if (!current) return;
+  recurrenceBusy.current = true;
+  setRegisteringRecurrence(new Set([item.id]));
+  try {
+   const payment: FinanceTransaction = { ...current.transaction, status: 'paid', paymentMethod: method, paymentAccount: account, paidAt: new Date().toISOString() };
+   await db.registerPendingFinanceTransaction(payment, current.existing);
+   setTransactions(previous => [payment, ...previous.filter(tx => tx.id !== payment.id)]);
+   onRefreshFinance?.();
+  } catch (error: any) {
+   alert(error?.message || 'No se pudo registrar la cuota.');
+  } finally {
+   recurrenceBusy.current = false;
+   setRegisteringRecurrence(new Set());
+  }
+ };
 
  const selectedPaymentSummary = React.useMemo(() => {
  const saleTransactions = selectedClientTransactions.filter(t => t.type === 'income');
@@ -992,10 +1021,10 @@ React.useEffect(() => {
     recurrencePeriod: convRecurringInterval === 'year' ? 'yearly' : 'monthly',
     recurrenceEndDate,
     recurrenceOccurrenceCount: recurrenceCount,
-    status: 'paid',
+    status: convPaymentMethod === 'stripe' ? 'paid' : 'pending',
     paymentMethod: convPaymentMethod,
     clientId: contact.id,
-    stripePlanId: recurringPlanId,
+    stripePlanId: convPaymentMethod === 'stripe' ? recurringPlanId : undefined,
     comercialId: commercial?.id,
     comercialEmail: commercialEmail,
     isInitialSale: false,
@@ -1515,7 +1544,7 @@ React.useEffect(() => {
    currency: selectedContact.currency || 'EUR',
    language: selectedContact.language || 'es',
    taxPercentage: selectedContact.taxPercentage ?? 21,
-   transactionIds: [tx.id, ...pendingTransactionIds]
+   transactionIds: tx.recurrenceSourceId ? [tx.id] : [tx.id, ...pendingTransactionIds]
   });
   onNavigate('finanzas', 'push');
  };
@@ -2463,10 +2492,10 @@ React.useEffect(() => {
     recurrencePeriod: chargePlan === 'year' ? 'yearly' : 'monthly',
     recurrenceEndDate,
     recurrenceOccurrenceCount: recurrenceCount,
-    status: 'paid',
+    status: isStripe ? 'paid' : 'pending',
     paymentMethod: chargePaymentMethod,
     clientId: contact.id,
-    stripePlanId,
+    stripePlanId: isStripe ? stripePlanId : undefined,
    };
 
    if (isStripe) {
@@ -2513,7 +2542,7 @@ React.useEffect(() => {
     const updatedTransactions = [recurringTemplate, ...transactions];
     await db.materializeDueRecurringFinanceTransactions(updatedTransactions);
     setTransactions(await db.getFinanceTransactions());
-    setChargeSuccess('Suscripción e ingreso de hoy registrados.');
+    setChargeSuccess('Recurrencia creada. Las cuotas quedan pendientes hasta que registres cada cobro.');
    }
    return;
   }
@@ -4659,8 +4688,10 @@ React.useEffect(() => {
     const totalPaidFromTxs = clientTransactions.filter(t => t.status === 'paid').reduce((sum, t) => sum + t.amount, 0);
     const totalPendingFromTxs = clientTransactions.filter(t => t.status === 'pending').reduce((sum, t) => sum + t.amount, 0);
 
-    const totalPaid = clientInvoices.length > 0 ? totalPaidFromInvoices : totalPaidFromTxs;
-    const totalPending = clientInvoices.length > 0 ? totalPendingFromInvoices : totalPendingFromTxs;
+    const uninvoiced = clientTransactions.filter(tx => !clientInvoices.some(inv => inv.id === tx.invoiceId || inv.items.some(item => item.pendingTxId === tx.id || item.id === tx.id)));
+    const totalPaid = clientInvoices.length > 0 ? totalPaidFromInvoices + uninvoiced.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + tx.amount, 0) : totalPaidFromTxs;
+    const totalPending = (clientInvoices.length > 0 ? totalPendingFromInvoices + uninvoiced.filter(tx => tx.status === 'pending').reduce((sum, tx) => sum + tx.amount, 0) : totalPendingFromTxs)
+     + clientPendingRecurrences.filter(item => !item.existing).reduce((sum, item) => sum + item.transaction.amount, 0);
     const totalInvoiced = clientInvoices.length > 0 ? totalInvoicedFromInvoices : (totalPaid + totalPending);
 
     return (
@@ -4715,6 +4746,11 @@ React.useEffect(() => {
       </span>
       </div>
      </div>
+
+     {selectedClientRecurringTransactions.some(tx => tx.paymentMethod === 'cash' || tx.paymentMethod === 'transfer') && <div className="rounded-xl border border-amber-500/20">
+      <h4 className="px-5 pt-4 text-sm font-bold text-amber-400">Cuotas recurrentes pendientes</h4>
+      <PendingFinancePanel items={clientPendingRecurrences} month={recurrenceMonth} onMonthChange={setRecurrenceMonth} registering={registeringRecurrence} onRegister={registerClientRecurrence} />
+     </div>}
 
      <div className="space-y-2.5 pt-1 border-t border-white/[0.06]">
       <div className="flex items-center justify-between pt-3">
@@ -4884,7 +4920,7 @@ React.useEffect(() => {
           type="button"
           onClick={() => openInvoiceGeneratorForClientPayment(tx)}
           className="grid h-6 w-6 place-items-center rounded-md border border-blue-500/15 bg-blue-500/[0.07] text-blue-400 transition-all hover:bg-blue-500/15 hover:text-blue-300"
-          title="Generar factura con este pago y los importes pendientes"
+          title={tx.recurrenceSourceId ? "Generar factura de esta cuota" : "Generar factura con este pago y los importes pendientes"}
          >
           <Receipt className="h-3 w-3" />
          </button>

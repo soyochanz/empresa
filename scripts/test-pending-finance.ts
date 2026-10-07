@@ -31,3 +31,18 @@ assert.equal(isStripeManagedTransaction(tx({ paymentMethod: 'card' })), false);
 const stripeSource = { ...source, paymentMethod: 'stripe' as const };
 assert.deepEqual(getMonthlyPendingFinance([stripeSource, existing], '2026-09'), []);
 console.log('Pendientes: mes completo, cuotas e ingresos/gastos, ausencia de duplicados y exclusión de Stripe verificados.');
+
+// CRM manual services must expose the first quota without creating a receipt.
+const legacyService = tx({ id: 'recurring_service_example', date: '2026-10-07', isRecurring: true, recurrencePeriod: 'monthly', status: 'paid', stripePlanId: 'plan_recurring_additional_example', clientId: 'client_a' });
+const october = getMonthlyPendingFinance([legacyService], '2026-10');
+assert.equal(october.length, 1);
+assert.equal(october[0].transaction.status, 'pending');
+assert.equal(october[0].transaction.stripePlanId, undefined);
+assert.equal(october[0].transaction.clientId, 'client_a');
+const receipt = { ...october[0].transaction, status: 'paid' as const };
+assert.equal(getMonthlyPendingFinance([legacyService, receipt], '2026-10').length, 0);
+const november = getMonthlyPendingFinance([legacyService, receipt], '2026-11');
+assert.equal(november.length, 1);
+assert.notEqual(november[0].id, receipt.id);
+assert.equal(getMonthlyPendingFinance([{ ...legacyService, paymentMethod: 'stripe' }], '2026-10').length, 0);
+assert.equal(getMonthlyPendingFinance([{ ...legacyService, stripeCheckoutSessionId: 'cs_real' }], '2026-10').length, 0);

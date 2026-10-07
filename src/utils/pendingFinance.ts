@@ -17,6 +17,15 @@ export interface PendingFinanceItem {
 // Include the entire selected month, including instalments not yet due today.
 export function getMonthlyPendingFinance(transactions: FinanceTransaction[], month: string): PendingFinanceItem[] {
  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return [];
+ // Older CRM service templates used a local plan identifier even for cash/transfer
+ // and marked the template paid without creating a payment. Recover only those
+ // templates without any Stripe checkout/invoice evidence; never rewrite receipts.
+ transactions = transactions.map(tx => tx.isRecurring
+  && /^(recurring_service_|recurring_tx_)/.test(tx.id)
+  && isManualFinanceRecurrence(tx) && !tx.stripeCheckoutSessionId && !tx.stripeCheckoutUrl && !tx.stripeInvoiceId
+  && (!tx.stripePlanId || !tx.stripePlanId.startsWith('sub_'))
+  ? { ...tx, stripePlanId: undefined, status: 'pending' as const } : tx);
+
  const [year, monthNumber] = month.split('-').map(Number);
  const through = new Date(year, monthNumber, 0, 12);
  const items = new Map<string, PendingFinanceItem>();
