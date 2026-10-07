@@ -46,3 +46,11 @@ assert.equal(november.length, 1);
 assert.notEqual(november[0].id, receipt.id);
 assert.equal(getMonthlyPendingFinance([{ ...legacyService, paymentMethod: 'stripe' }], '2026-10').length, 0);
 assert.equal(getMonthlyPendingFinance([{ ...legacyService, stripeCheckoutSessionId: 'cs_real' }], '2026-10').length, 0);
+
+const editedQuota = { ...october[0].transaction, amount: 125 };
+assert.equal(getMonthlyPendingFinance([legacyService, editedQuota], '2026-10')[0].transaction.amount, 125);
+assert.equal(getMonthlyPendingFinance([legacyService, editedQuota], '2026-11')[0].transaction.amount, 170);
+const retired = { ...legacyService, recurrenceEndDate: '2026-10-06' };
+assert.equal(getMonthlyPendingFinance([retired], '2026-10').length, 0);
+assert.equal(getMonthlyPendingFinance([retired], '2026-11').length, 0);
+assert.equal(getMonthlyPendingFinance([retired, receipt], '2026-10').length, 0);

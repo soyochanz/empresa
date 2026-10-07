@@ -41,7 +41,7 @@ export function getMonthlyPendingFinance(transactions: FinanceTransaction[], mon
    if (due.existing && isStripeManagedTransaction(due.existing)) continue;
    const amount = toFinanceDateKey(due.date) === source.date.slice(0, 10) ? source.firstAmount ?? source.amount : source.nextAmount ?? source.amount;
    if (!due.existing && (!Number.isFinite(Number(amount)) || Number(amount) <= 0)) continue;
-   const transaction = due.existing || { ...buildManualRecurringTransaction(source, due.date), status: 'pending' as const, paidAt: undefined };
+   const transaction = due.existing || { ...buildManualRecurringTransaction(source, due.date), status: 'pending' as const, paidAt: undefined, description: source.description };
    items.set(transaction.id, { id: transaction.id, transaction, existing: due.existing, source });
   }
  }

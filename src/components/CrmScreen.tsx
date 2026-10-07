@@ -349,6 +349,49 @@ export default function CrmScreen({
   }
  };
 
+ const editClientRecurrence = async (item: PendingFinanceItem) => {
+  const value = window.prompt('Importe de esta cuota (€). Las siguientes conservan su importe.', String(item.transaction.amount));
+  if (value === null) return;
+  const amount = Number(value.replace(',', '.'));
+  if (!Number.isFinite(amount) || amount <= 0) { alert('Introduce un importe mayor que cero.'); return; }
+  if (recurrenceBusy.current) return;
+  recurrenceBusy.current = true;
+  setRegisteringRecurrence(new Set([item.id]));
+  try {
+   const fresh = await db.getFinanceTransactions();
+   const existing = fresh.find(tx => tx.id === item.id);
+   if (existing && existing.status !== 'pending') throw new Error('Esta cuota ya no está pendiente.');
+   const updated = { ...(existing || item.transaction), amount };
+   if (existing) await db.updateFinanceTransaction(updated);
+   else await db.insertFinanceTransaction(updated);
+   setTransactions(previous => [updated, ...previous.filter(tx => tx.id !== updated.id)]);
+   onRefreshFinance?.();
+  } catch (error: any) { alert(error?.message || 'No se pudo editar la cuota.'); }
+  finally { recurrenceBusy.current = false; setRegisteringRecurrence(new Set()); }
+ };
+ const editRegisteredRecurrence = async (tx: FinanceTransaction) => {
+  if (tx.invoiceId || invoices.some(inv => inv.items.some(item => item.pendingTxId === tx.id || item.id === tx.id))) { alert('Esta cuota ya está facturada. Edita la factura vinculada para mantener los importes coherentes.'); return; }
+  const value = window.prompt('Importe de este cobro (€). No modifica la recurrencia.', String(tx.amount));
+  if (value === null) return;
+  const amount = Number(value.replace(',', '.'));
+  if (!Number.isFinite(amount) || amount <= 0) { alert('Introduce un importe mayor que cero.'); return; }
+  try { const updated = { ...tx, amount }; await db.updateFinanceTransaction(updated); setTransactions(prev => prev.map(item => item.id === tx.id ? updated : item)); onRefreshFinance?.(); }
+  catch { alert('No se pudo editar el cobro.'); }
+ };
+
+ const retireClientRecurrence = async (source: FinanceTransaction) => {
+  if (!window.confirm('¿Retirar esta recurrencia y sus previsiones? Los cobros ya registrados se conservan.')) return;
+  try {
+   // End before its first occurrence: retain the source and all actual payments.
+   const end = new Date(`${source.date.slice(0, 10)}T12:00:00`);
+   end.setDate(end.getDate() - 1);
+   const updated = { ...source, recurrenceEndDate: toLocalDateKey(end) };
+   await db.updateFinanceTransaction(updated);
+   setTransactions(previous => previous.map(tx => tx.id === source.id ? updated : tx));
+   onRefreshFinance?.();
+  } catch (error: any) { alert(error?.message || 'No se pudo retirar la recurrencia.'); }
+ };
+
  const selectedPaymentSummary = React.useMemo(() => {
  const saleTransactions = selectedClientTransactions.filter(t => t.type === 'income');
  const paidTransactions = saleTransactions.filter(t => t.status === 'paid');
@@ -4013,8 +4056,13 @@ React.useEffect(() => {
          </button>
         )}
        </div>
+       <details className="mb-2 text-xs text-slate-500"><summary>Recurrencias retiradas</summary>
+        {selectedClientRecurringTransactions.filter(tx => tx.recurrenceEndDate && tx.recurrenceEndDate < tx.date.slice(0, 10)).map(tx => <div key={tx.id} className="flex justify-between gap-3 p-2"><span>{tx.description}</span><button type="button" onClick={async () => {
+         try { const restored = { ...tx, recurrenceEndDate: undefined }; await db.updateFinanceTransaction(restored); setTransactions(prev => prev.map(item => item.id === tx.id ? restored : item)); onRefreshFinance?.(); } catch { alert('No se pudo restaurar la recurrencia.'); }
+        }}>Restaurar</button></div>)}
+       </details>
        <div className="space-y-1.5">
-        {recurringServices.map((recurrence, index) => {
+        {recurringServices.filter(recurrence => !recurrence.recurrenceEndDate || recurrence.recurrenceEndDate >= recurrence.date?.slice(0, 10)).map((recurrence, index) => {
          const hasEnded = Boolean(recurrence.recurrenceEndDate && recurrence.recurrenceEndDate < toLocalDateKey(new Date()));
          return (
           <div key={recurrence.id} className="crm-recurrence-row grid min-w-0 gap-2 rounded-lg border border-white/[0.045] bg-black/10 p-2 sm:grid-cols-[86px_minmax(0,1.5fr)_110px_120px] sm:items-center">
@@ -4034,12 +4082,30 @@ React.useEffect(() => {
             <span className="block text-[6.5px] font-bold uppercase tracking-[.12em] text-slate-600">Fecha límite</span>
             <span className={`mt-0.5 block text-[8.5px] font-bold ${hasEnded ? 'text-rose-400' : recurrence.recurrenceEndDate ? 'text-amber-300' : 'text-emerald-300'}`}>{hasEnded ? `Finalizó · ${formatCrmRecurrenceDate(recurrence.recurrenceEndDate)}` : formatCrmRecurrenceDate(recurrence.recurrenceEndDate)}</span>
            </div>
+           {('paymentMethod' in recurrence) && ['cash', 'transfer'].includes(String(recurrence.paymentMethod)) && !hasEnded && <button type="button" onClick={() => retireClientRecurrence(recurrence as FinanceTransaction)} className="text-xs text-rose-400">Retirar recurrencia</button>}
           </div>
          );
         })}
        </div>
       </div>
      );
+    })()}
+
+    {(() => {
+     const links = [...new Map<string, FinanceTransaction>(selectedClientTransactions.filter(tx => tx.status === 'pending' && (tx.stripeCheckoutUrl || tx.stripeCheckoutSessionId)).map(tx => [tx.stripeCheckoutSessionId || tx.stripeCheckoutUrl || tx.id, tx] as [string, FinanceTransaction])).values()];
+     return links.length > 0 && <section className="space-y-3 rounded-2xl border border-violet-400/20 p-4">
+      <h4 className="text-sm font-bold">Enlaces de Stripe pendientes ({links.length})</h4>
+      {links.map(tx => {
+       const state = checkoutSessionState[tx.id];
+       const url = state?.url || tx.stripeCheckoutUrl;
+       const unavailable = state?.status === 'expired' || state?.status === 'complete' || state?.paymentStatus === 'paid';
+       return <div key={tx.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 p-3">
+        <div><p className="text-sm font-semibold">{tx.description}</p><p className="text-xs">{tx.amount.toLocaleString('es-ES')} € · {unavailable ? 'Enlace cerrado' : 'Pendiente'}</p></div>
+        <button type="button" onClick={() => inspectCheckoutSession(tx)} className="text-xs">Comprobar enlace</button>
+        {url && !unavailable && <button type="button" onClick={() => navigator.clipboard.writeText(url).catch(() => alert('No se pudo copiar el enlace.'))} className="rounded-lg bg-violet-500/20 px-3 py-2 text-xs">Copiar enlace</button>}
+       </div>;
+      })}
+     </section>;
     })()}
 
     <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#080b12] to-[#030407] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)]">
@@ -4749,7 +4815,7 @@ React.useEffect(() => {
 
      {selectedClientRecurringTransactions.some(tx => tx.paymentMethod === 'cash' || tx.paymentMethod === 'transfer') && <div className="rounded-xl border border-amber-500/20">
       <h4 className="px-5 pt-4 text-sm font-bold text-amber-400">Cuotas recurrentes pendientes</h4>
-      <PendingFinancePanel items={clientPendingRecurrences} month={recurrenceMonth} onMonthChange={setRecurrenceMonth} registering={registeringRecurrence} onRegister={registerClientRecurrence} />
+      <PendingFinancePanel items={clientPendingRecurrences} month={recurrenceMonth} onMonthChange={setRecurrenceMonth} registering={registeringRecurrence} onRegister={registerClientRecurrence} onEdit={editClientRecurrence} onRemove={item => item.source && retireClientRecurrence(item.source)} />
      </div>}
 
      <div className="space-y-2.5 pt-1 border-t border-white/[0.06]">
@@ -4893,6 +4959,7 @@ React.useEffect(() => {
          </div>
 
          <div className="flex shrink-0 items-center gap-1">
+         {tx.recurrenceSourceId && <button type="button" title="Editar importe de esta cuota" onClick={() => editRegisteredRecurrence(tx)} className="p-1 text-blue-400"><Edit className="h-3 w-3" /></button>}
          {/* Amount */}
          <span className={`mr-1 text-[10px] font-mono font-black ${isFailed ? 'text-rose-400' : isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
           {isPending || isFailed ? '' : '+'}{tx.amount.toFixed(2)} €

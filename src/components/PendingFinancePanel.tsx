@@ -4,11 +4,13 @@ import type { PendingFinanceItem } from '../utils/pendingFinance';
 
 type PaymentMethod = 'cash' | 'transfer' | 'card';
 
-export default function PendingFinancePanel({ items, month, onMonthChange, registering, onRegister }: {
+export default function PendingFinancePanel({ items, month, onMonthChange, registering, onRegister, onEdit, onRemove }: {
  items: PendingFinanceItem[];
  month: string;
  onMonthChange: (month: string) => void;
  registering: Set<string>;
+ onEdit?: (item: PendingFinanceItem) => void;
+ onRemove?: (item: PendingFinanceItem) => void;
  onRegister: (item: PendingFinanceItem, method: PaymentMethod, account?: FinanceTransaction['paymentAccount']) => void;
 }) {
  const [methods, setMethods] = useState<Record<string, PaymentMethod>>({});
@@ -35,6 +37,10 @@ export default function PendingFinancePanel({ items, month, onMonthChange, regis
       </div>
       <strong className={`shrink-0 text-sm ${tx.type === 'income' ? 'text-emerald-300' : 'text-rose-300'}`}>{tx.type === 'income' ? '+' : '−'}{tx.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
      </div>
+     {(onEdit || onRemove) && <div className="flex gap-3 text-xs">
+      {onEdit && <button type="button" disabled={busy} onClick={() => onEdit(item)}>Editar importe de esta cuota</button>}
+      {onRemove && <button type="button" disabled={busy} onClick={() => onRemove(item)} className="text-rose-400">Retirar recurrencia</button>}
+     </div>}
      <div className="flex flex-wrap items-end gap-2">
       <label className="min-w-[130px] flex-1 text-xs text-slate-400">Método de pago
        <select aria-label={`Método de pago: ${tx.description}`} value={method || ''} disabled={busy} onChange={event => setMethods(prev => ({ ...prev, [item.id]: event.target.value as PaymentMethod }))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 p-2 text-xs text-white">
