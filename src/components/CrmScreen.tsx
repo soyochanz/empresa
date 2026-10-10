@@ -1,3 +1,4 @@
+import { attachChargeToInvoice, acknowledgeHistoricalPayment } from '../utils/invoiceAttachment';
 import PendingFinancePanel from './PendingFinancePanel';
 import { getMonthlyPendingFinance, type PendingFinanceItem } from '../utils/pendingFinance';
 import React, { useState, useEffect } from 'react';
@@ -301,6 +302,11 @@ export default function CrmScreen({
  const [invoices, setInvoices] = useState<Invoice[]>([]);
  const [clientContracts, setClientContracts] = useState<any[]>([]);
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
+ const [chargeToAttach, setChargeToAttach] = useState<FinanceTransaction | null>(null);
+ const [chargeInvoiceId, setChargeInvoiceId] = useState('');
+ const [historicalPayment, setHistoricalPayment] = useState<FinanceTransaction | null>(null);
+ const [savingCharge, setSavingCharge] = useState(false);
+ const chargeSavingRef = React.useRef(false);
  const [invoiceConceptEditor, setInvoiceConceptEditor] = useState<Invoice | null>(null);
  const [invoiceConceptDrafts, setInvoiceConceptDrafts] = useState<string[]>([]);
  const [isSavingInvoiceConcepts, setIsSavingInvoiceConcepts] = useState(false);
@@ -1558,12 +1564,48 @@ React.useEffect(() => {
    }
  };
 
+ const saveHistoricalPayment = async () => {
+  if (!historicalPayment || chargeSavingRef.current) return;
+  chargeSavingRef.current = true; setSavingCharge(true);
+  try {
+   await persistClientTransactionAndInvoice(historicalPayment, acknowledgeHistoricalPayment(historicalPayment));
+   setHistoricalPayment(null);
+  } catch (error) {
+   window.alert(error instanceof Error ? error.message : 'No se pudo guardar el estado del cobro.');
+  } finally { chargeSavingRef.current = false; setSavingCharge(false); }
+ };
+
+ const saveChargeInvoice = async () => {
+  if (!chargeToAttach || !selectedContact || !chargeInvoiceId || chargeSavingRef.current) return;
+  chargeSavingRef.current = true; setSavingCharge(true);
+  try {
+   const [latestInvoices, latestTransactions] = await Promise.all([db.getFinanceInvoices(), db.getFinanceTransactions()]);
+   const target = latestInvoices.find(inv => inv.id === chargeInvoiceId && invoiceBelongsToContact(inv, selectedContact));
+   const tx = latestTransactions.find(item => item.id === chargeToAttach.id);
+   if (!target || !tx || !transactionBelongsToContact(tx, selectedContact, latestInvoices.filter(inv => invoiceBelongsToContact(inv, selectedContact)))) throw new Error('El cargo o la factura ya no están disponibles para este cliente.');
+   const otherInvoice = latestInvoices.find(inv => inv.id !== target.id && inv.items.some(item => item.pendingTxId === tx.id || item.id === tx.id));
+   if (otherInvoice) throw new Error(`Este cargo ya está incluido en la factura ${otherInvoice.id}.`);
+   const updatedInvoice = attachChargeToInvoice(target, tx);
+   // The line is the canonical link. Retrying after a transaction update failure cannot add it twice.
+   await db.updateFinanceInvoice(updatedInvoice);
+   setInvoices(current => current.map(inv => inv.id === updatedInvoice.id ? updatedInvoice : inv));
+   const updatedTx = { ...tx, invoiceId: target.id };
+   await db.updateFinanceTransaction(updatedTx);
+   setTransactions(current => current.map(item => item.id === tx.id ? updatedTx : item));
+   await onRefreshFinance?.();
+   setChargeToAttach(null);
+  } catch (error) {
+   window.alert(error instanceof Error ? error.message : 'No se pudo vincular el cargo. Puedes reintentar sin duplicarlo.');
+  } finally { chargeSavingRef.current = false; setSavingCharge(false); }
+ };
+
  const handleToggleClientTransactionPaid = async (tx: FinanceTransaction) => {
  const nextStatus: FinanceTransaction['status'] = tx.status === 'paid' ? 'pending' : 'paid';
   const updatedTx: FinanceTransaction = {
    ...tx,
    status: nextStatus,
    paidAt: nextStatus === 'paid' ? new Date().toISOString() : undefined,
+   excludedFromLedger: nextStatus === 'pending' ? undefined : tx.excludedFromLedger,
   };
   try {
    await persistClientTransactionAndInvoice(tx, updatedTx);
@@ -4941,6 +4983,7 @@ React.useEffect(() => {
          <div className="min-w-0 space-y-1">
          <p className="flex min-w-0 items-center gap-1.5 truncate text-[9.5px] font-semibold text-slate-200">
           {tx.description}
+          {tx.excludedFromLedger && <span className="text-emerald-500">Pagado · fuera de bitácora</span>}
           {isPending && (
           <span className="shrink-0 rounded border border-amber-500/15 bg-amber-500/[0.08] px-1 py-0.5 font-mono text-[6.5px] font-bold uppercase text-amber-400">Pendiente</span>
           )}
@@ -4960,6 +5003,8 @@ React.useEffect(() => {
 
          <div className="flex shrink-0 items-center gap-1">
          {tx.recurrenceSourceId && <button type="button" title="Editar importe de esta cuota" onClick={() => editRegisteredRecurrence(tx)} className="p-1 text-blue-400"><Edit className="h-3 w-3" /></button>}
+         {!tx.invoiceId && !clientInvoices.some(inv => inv.items.some(item => item.pendingTxId === tx.id || item.id === tx.id)) && <button type="button" title="Añadir a factura existente" onClick={() => { setChargeToAttach(tx); setChargeInvoiceId(''); }} className="p-1 text-blue-400"><LinkIcon className="h-3 w-3" /></button>}
+         {isPending && <button type="button" title="Marcar pagado sin sumar a bitácora" onClick={() => setHistoricalPayment(tx)} className="p-1 text-emerald-400"><Check className="h-3 w-3" /></button>}
          {/* Amount */}
          <span className={`mr-1 text-[10px] font-mono font-black ${isFailed ? 'text-rose-400' : isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
           {isPending || isFailed ? '' : '+'}{tx.amount.toFixed(2)} €
@@ -6462,6 +6507,29 @@ React.useEffect(() => {
    </form>
    </div>
   </div>, document.body
+  )}
+
+  {(chargeToAttach || historicalPayment) && (
+   <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label={historicalPayment ? 'Confirmar pago fuera de bitácora' : 'Añadir cargo a factura existente'}>
+    <div className="w-full max-w-lg rounded-2xl border border-slate-600 bg-slate-900 p-6 text-slate-100">
+     <h3 className="text-lg font-bold">{historicalPayment ? 'Marcar pagado sin sumar a bitácora' : 'Añadir a factura existente'}</h3>
+     <p className="mt-3">{(historicalPayment || chargeToAttach)?.description} · {(historicalPayment || chargeToAttach)?.amount.toFixed(2)} €</p>
+     {historicalPayment ? <p className="mt-3 text-sm">El cobro quedará pagado en el CRM con su fecha e importe originales. Se excluirá de la bitácora, sus totales y comisiones. No se realizará ningún cargo.</p> : <>
+      <label className="mt-4 block">Factura del cliente
+       <select aria-label="Factura del cliente" value={chargeInvoiceId} onChange={e => setChargeInvoiceId(e.target.value)} className="mt-2 w-full rounded-lg bg-slate-800 p-3">
+        <option value="">Selecciona una factura</option>
+        {invoices.filter(inv => selectedContact && invoiceBelongsToContact(inv, selectedContact)).map(inv => <option key={inv.id} value={inv.id}>{inv.id} · {inv.total.toFixed(2)} €</option>)}
+       </select>
+      </label>
+      <p className="mt-3 text-sm">Se añadirá el cargo como concepto, con el IVA de la factura. El movimiento y su estado de pago se conservan.</p>
+      {chargeInvoiceId && <p className="mt-2 font-bold">Nuevo total: {(() => { const inv = invoices.find(item => item.id === chargeInvoiceId); return inv && chargeToAttach ? attachChargeToInvoice(inv, chargeToAttach).total.toFixed(2) : ''; })()} €</p>}
+     </>}
+     <div className="mt-5 flex justify-end gap-3">
+      <button type="button" disabled={savingCharge} onClick={() => { setChargeToAttach(null); setHistoricalPayment(null); }} className="rounded-lg border border-slate-600 px-4 py-2">Cancelar</button>
+      <button type="button" disabled={savingCharge || (!historicalPayment && !chargeInvoiceId)} onClick={historicalPayment ? saveHistoricalPayment : saveChargeInvoice} className="rounded-lg bg-emerald-600 px-4 py-2 disabled:opacity-40">{savingCharge ? 'Guardando…' : historicalPayment ? 'Confirmar pagado sin sumar' : 'Añadir cargo'}</button>
+     </div>
+    </div>
+   </div>
   )}
 
   {invoiceConceptEditor && (

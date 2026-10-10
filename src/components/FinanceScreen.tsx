@@ -1571,7 +1571,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Calculations for transactions
- const nonRecurringTransactions = transactions.filter(transaction => !transaction.isRecurring);
+ const nonRecurringTransactions = transactions.filter(transaction => !transaction.isRecurring && !transaction.excludedFromLedger);
  // La bitácora solo anticipa cuotas divididas. Los cobros recurrentes viven
  // en Recurrencias/Previsión hasta que Stripe confirma el cobro o el fallo.
  const ledgerTransactions = nonRecurringTransactions.filter(transaction =>
@@ -3457,7 +3457,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    })()
   );
   const paidItems = transactions.filter(transaction =>
-   transaction.type === 'income' && transaction.status === 'paid' && !transaction.isRecurring
+   transaction.type === 'income' && transaction.status === 'paid' && !transaction.isRecurring && !transaction.excludedFromLedger
    && !isInternalBalanceTransfer(transaction)
    && (() => {
     const transactionDate = parseFinanceDate(transaction.date);
@@ -4926,7 +4926,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
        const date = new Date(today);
        date.setDate(today.getDate() - (11 - index));
        const key = getFinanceDateKey(date.toISOString());
-       const dayTransactions = transactions.filter(transaction => !transaction.isRecurring && transaction.status !== 'failed' && getFinanceDateKey(transaction.date) === key);
+       const dayTransactions = transactions.filter(transaction => !transaction.isRecurring && !transaction.excludedFromLedger && transaction.status !== 'failed' && getFinanceDateKey(transaction.date) === key);
        return {
         key,
         date,

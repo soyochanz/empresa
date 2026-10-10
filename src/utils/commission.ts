@@ -1,6 +1,7 @@
 import { ClientContact, FinanceTransaction, Invoice } from '../types';
 
 export const isAutomaticCommissionEligible = (transaction: FinanceTransaction): boolean => {
+ if (transaction.excludedFromLedger) return false;
  if (transaction.isInitialSale !== true || transaction.isRecurring || transaction.recurrenceSourceId) return false;
  // A combined service may mention recurrence in its concept. Metadata and the
  // accounting category, rather than free text, determine which leg commissions.

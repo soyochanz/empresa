@@ -1485,6 +1485,7 @@ const dbImplementation = {
  _encodeDescription(description: string, metadata: {
  paymentMethod?: 'cash' | 'transfer' | 'stripe' | 'card';
  paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
+ excludedFromLedger?: boolean;
  paidAt?: string;
  firstAmount?: number;
  nextAmount?: number;
@@ -1511,6 +1512,7 @@ const dbImplementation = {
   res += ` [PM:${metadata.paymentMethod}]`;
  }
  if (metadata.paymentAccount) res += ` [PACC:${metadata.paymentAccount}]`;
+ if (metadata.excludedFromLedger) res += ' [LEDGER_EXCLUDED:true]';
  if (metadata.paidAt) res += ` [PAID_AT:${metadata.paidAt}]`;
  if (metadata.firstAmount !== undefined && metadata.firstAmount !== null) {
   res += ` [FA:${metadata.firstAmount}]`;
@@ -1570,6 +1572,7 @@ const dbImplementation = {
  description: string;
  paymentMethod?: 'cash' | 'transfer' | 'stripe' | 'card';
  paymentAccount?: 'revolut_pro' | 'carlos_personal' | 'nacho_personal';
+ excludedFromLedger?: boolean;
  paidAt?: string;
  firstAmount?: number;
  nextAmount?: number;
@@ -1590,7 +1593,8 @@ const dbImplementation = {
  recurrenceEndDate?: string;
  recurrenceOccurrenceCount?: number;
  } {
- let cleanDesc = rawDesc || '';
+ const excludedFromLedger = /\[LEDGER_EXCLUDED:true\]/.test(rawDesc || '');
+ let cleanDesc = (rawDesc || '').replace(/\s*\[LEDGER_EXCLUDED:true\]/g, '');
  let paymentMethod: 'cash' | 'transfer' | 'stripe' | 'card' | undefined = undefined;
  let paymentAccount: 'revolut_pro' | 'carlos_personal' | 'nacho_personal' | undefined = undefined;
  let paidAt: string | undefined = undefined;
@@ -1737,6 +1741,7 @@ const dbImplementation = {
   description: cleanDesc.replace(/\s*\[COMMISSION_FIXED:[^\]]+\]/g, '').trim(),
   paymentMethod,
   paymentAccount,
+  excludedFromLedger,
   paidAt,
   firstAmount,
   nextAmount,
@@ -1789,6 +1794,7 @@ const dbImplementation = {
   paymentMethod: decoded.paymentMethod,
   paymentAccount: decoded.paymentAccount,
   paidAt: decoded.paidAt,
+  excludedFromLedger: decoded.excludedFromLedger,
   firstAmount: decoded.firstAmount,
   nextAmount: decoded.nextAmount,
   clientId: decoded.clientId,
@@ -1885,11 +1891,12 @@ const dbImplementation = {
 
  async insertFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
  const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
- const { paymentMethod, paymentAccount, paidAt, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, commissionFixedAmount, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
+ const { paymentMethod, paymentAccount, excludedFromLedger, paidAt, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, commissionFixedAmount, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
 
  const encodedDesc = this._encodeDescription(description, {
   paymentMethod,
   paymentAccount,
+  excludedFromLedger,
   paidAt,
   firstAmount,
   nextAmount,
@@ -1932,11 +1939,12 @@ const dbImplementation = {
 
  async updateFinanceTransaction(transaction: FinanceTransaction, userId?: string): Promise<void> {
  const { id, type, category, amount, date, description, isRecurring, recurrencePeriod, status } = transaction;
- const { paymentMethod, paymentAccount, paidAt, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, commissionFixedAmount, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
+ const { paymentMethod, paymentAccount, excludedFromLedger, paidAt, firstAmount, nextAmount, clientId, stripePlanId, stripeCheckoutUrl, stripeCheckoutSessionId, stripeInvoiceId, stripeInstallmentIndex, stripeInstallmentCount, invoiceId, comercialId, comercialEmail, commissionFixedAmount, isInitialSale, recurrenceSourceId, recurrenceScheduledDate, recurrenceEndDate, recurrenceOccurrenceCount } = transaction;
 
  const encodedDesc = this._encodeDescription(description, {
   paymentMethod,
   paymentAccount,
+  excludedFromLedger,
   paidAt,
   firstAmount,
   nextAmount,
