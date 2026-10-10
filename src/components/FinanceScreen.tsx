@@ -2820,6 +2820,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  );
  const dueDate = paidTransactions.map(tx => tx.date).filter(Boolean).sort((a, b) => b.localeCompare(a))[0] || previewInvoice.dueDate;
  const html = buildInvoiceHtml(resolveInvoiceClientData(previewInvoice, contacts), {
+  transactions,
   isPaid,
   dueDate,
   bank: {
@@ -3275,6 +3276,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 </html>`;
  void legacyHtmlContent;
  const htmlContent = buildInvoiceHtml(resolveInvoiceClientData(inv, contacts), {
+  transactions,
   isPaid: isInvoicePaid,
   dueDate: effectiveDueDate,
   bank: {
@@ -6809,6 +6811,7 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
      <iframe
       title={`Vista previa de factura ${previewInvoice.id}`}
       srcDoc={buildInvoiceHtml(resolveInvoiceClientData(previewInvoice, contacts), {
+  transactions,
        isPaid,
        dueDate,
        bank: {

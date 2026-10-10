@@ -1,7 +1,9 @@
-import { Invoice } from '../types';
+import { reconcileInvoicePayments } from './invoiceAttachment';
+import { FinanceTransaction, Invoice } from '../types';
 import html2pdf from 'html2pdf.js';
 
 export interface InvoiceHtmlOptions {
+ transactions?: FinanceTransaction[];
  isPaid?: boolean;
  dueDate?: string;
  bank?: {
@@ -30,7 +32,10 @@ const cleanConcept = (description?: string): string =>
   .trim();
 
 export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions = {}): string => {
- const isPaid = options.isPaid ?? invoice.status === 'paid';
+ const reconciled = options.transactions ? reconcileInvoicePayments(invoice, options.transactions) : invoice;
+ const paymentStateChanged = reconciled !== invoice;
+ invoice = reconciled;
+ const isPaid = paymentStateChanged ? invoice.status === 'paid' : options.isPaid ?? invoice.status === 'paid';
  const dueDate = options.dueDate || invoice.dueDate;
  const language = invoice.language || 'es';
  const currency = invoice.currency || 'EUR';

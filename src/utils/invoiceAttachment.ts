@@ -25,3 +25,21 @@ export function acknowledgeHistoricalPayment(transaction: FinanceTransaction): F
   description: transaction.description.replace(/\s*\(Pendiente\)/gi, '').trim(),
  };
 }
+
+// Invoice payment status is independent of whether a receipt counts in the ledger.
+export function reconcileInvoicePayments(invoice: Invoice, transactions: FinanceTransaction[]): Invoice {
+ const itemIds = new Set(invoice.items.flatMap(item => [item.pendingTxId, item.id]).filter(Boolean));
+ const linked = transactions.filter(tx => !tx.isRecurring && tx.type === 'income' &&
+  (tx.invoiceId === invoice.id || itemIds.has(tx.id)));
+ if (!linked.length) return invoice;
+ const paidTotal = linked.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + tx.amount, 0);
+ const fullyPaid = linked.every(tx => tx.status === 'paid') && paidTotal + 0.005 >= invoice.total;
+ const items = invoice.items.map(item => {
+  const tx = linked.find(row => row.id === item.pendingTxId || row.id === item.id);
+  if (!tx && !fullyPaid) return item;
+  return { ...item, isPending: tx ? tx.status !== 'paid' : false,
+   paymentMethod: tx?.paymentMethod || item.paymentMethod };
+ });
+ const hasUnpaid = linked.some(tx => tx.status !== 'paid') || items.some(item => item.isPending);
+ return { ...invoice, items, status: fullyPaid ? 'paid' : hasUnpaid && invoice.status === 'paid' ? 'sent' : invoice.status };
+}

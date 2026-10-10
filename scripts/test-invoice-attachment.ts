@@ -27,3 +27,20 @@ assert.equal(matchesExportSource(acknowledged, 'all'), false);
 assert.equal(exportTotals([acknowledged]).income, 0);
 assert.equal(isAutomaticCommissionEligible(acknowledged), false);
 console.log('Invoice attachment: totals, retry deduplication, client boundaries and historical payment exclusions passed.');
+
+// Legacy invoice lines can retain pending flags after their receipt was paid.
+const { reconcileInvoicePayments } = await import('../src/utils/invoiceAttachment');
+const installmentInvoice: Invoice = { ...invoice, total: 960, items: [1,2,3].map(n => ({id:`line${n}`, pendingTxId:`quota${n}`, description:'Web', quantity:1, unitPrice:320/1.21, total:320/1.21, grossAmount:320, isPending:n>1})) };
+const receipts = [1,2,3].map(n => ({...charge, id:`quota${n}`, amount:320, invoiceId:invoice.id, excludedFromLedger:n===3}));
+const repaired = reconcileInvoicePayments(installmentInvoice, receipts);
+assert.equal(repaired.status, 'paid');
+assert.deepEqual(repaired.items.map(item => item.isPending), [false,false,false]);
+assert.equal(repaired.total,960);
+assert.equal(receipts[2].excludedFromLedger,true);
+assert.equal(reconcileInvoicePayments(repaired, receipts.map(tx => tx.id==='quota2' ? {...tx,status:'pending' as const}:tx)).items[1].isPending,true);
+assert.equal(reconcileInvoicePayments(repaired, receipts.map(tx => tx.id==='quota2' ? {...tx,status:'pending' as const}:tx)).status,'sent');
+assert.equal(reconcileInvoicePayments(installmentInvoice, []),installmentInvoice);
+const legacy = {...installmentInvoice,items:installmentInvoice.items.map(item => ({...item,pendingTxId:undefined}))};
+assert.equal(reconcileInvoicePayments(legacy,receipts).items.some(item=>item.isPending),false);
+assert.equal(reconcileInvoicePayments(legacy,receipts.slice(0,1)).items[1].isPending,true);
+console.log('Invoice payment reconciliation: all paid receipts, partial payment, legacy links and ledger exclusion passed.');

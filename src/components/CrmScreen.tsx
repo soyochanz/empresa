@@ -1,4 +1,4 @@
-import { attachChargeToInvoice, acknowledgeHistoricalPayment } from '../utils/invoiceAttachment';
+import { attachChargeToInvoice, acknowledgeHistoricalPayment, reconcileInvoicePayments } from '../utils/invoiceAttachment';
 import PendingFinancePanel from './PendingFinancePanel';
 import { getMonthlyPendingFinance, type PendingFinanceItem } from '../utils/pendingFinance';
 import React, { useState, useEffect } from 'react';
@@ -1536,31 +1536,14 @@ React.useEffect(() => {
    await onRefreshFinance?.();
    const updatedTransactions = transactions.map(item => item.id === originalTx.id ? updatedTx : item);
    setTransactions(updatedTransactions);
-   const linkedInvoice = invoices.find(invoice =>
+   const linkedInvoices = invoices.filter(invoice =>
     invoice.id === originalTx.invoiceId ||
     invoice.items.some(item => item.pendingTxId === originalTx.id || item.id === originalTx.id)
    );
-   if (linkedInvoice) {
-     const updatedItems = linkedInvoice.items.map(item =>
-      (item.pendingTxId === originalTx.id || item.id === originalTx.id) ? { ...item, isPending: updatedTx.status !== 'paid', paymentMethod: updatedTx.paymentMethod } : item
-     );
-     const linkedTransactionIds = new Set(
-      updatedItems.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
-     );
-     const latestPaidDate = updatedTransactions
-      .filter(item => (item.invoiceId === linkedInvoice.id || linkedTransactionIds.has(item.id)) && item.status === 'paid')
-      .map(item => item.date)
-      .filter(Boolean)
-      .sort((a, b) => b.localeCompare(a))[0];
-     const hasPendingItems = updatedItems.some(item => item.isPending);
-     const updatedInvoice: Invoice = {
-      ...linkedInvoice,
-      items: updatedItems,
-      status: hasPendingItems ? 'sent' : 'paid',
-      dueDate: !hasPendingItems && latestPaidDate ? latestPaidDate : linkedInvoice.dueDate
-     };
-     await db.updateFinanceInvoice(updatedInvoice);
-     setInvoices(current => current.map(invoice => invoice.id === updatedInvoice.id ? updatedInvoice : invoice));
+   for (const invoice of linkedInvoices) {
+    const updatedInvoice = reconcileInvoicePayments(invoice, updatedTransactions);
+    await db.updateFinanceInvoice(updatedInvoice);
+    setInvoices(current => current.map(item => item.id === updatedInvoice.id ? updatedInvoice : item));
    }
  };
 
@@ -2100,6 +2083,19 @@ React.useEffect(() => {
  };
 
  const handleDownloadInvoiceHtml = async (inv: Invoice) => {
+ // Repair legacy line flags before exporting, using all receipts (including outside the ledger).
+ const reconciled = reconcileInvoicePayments(inv, transactions);
+ if (JSON.stringify(reconciled) !== JSON.stringify(inv)) {
+  try {
+   await db.updateFinanceInvoice(reconciled);
+   setInvoices(current => current.map(item => item.id === inv.id ? reconciled : item));
+  } catch (error) {
+   window.alert('No se pudo guardar el estado actualizado de la factura. Inténtalo de nuevo.');
+   return;
+  }
+ }
+ inv = reconciled;
+
  const filename = `Factura_${inv.id}_${inv.clientName.replace(/\s+/g, '_')}.pdf`;
  const invoiceTransactionIds = new Set(
   inv.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
@@ -2451,6 +2447,7 @@ React.useEffect(() => {
 </html>`;
  void legacyHtmlContent;
  const htmlContent = buildInvoiceHtml(resolveInvoiceClientData(inv, contacts), {
+  transactions,
   isPaid: isInvoicePaid,
   dueDate: effectiveDueDate
  });
@@ -4982,7 +4979,7 @@ React.useEffect(() => {
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
          <div className="min-w-0 space-y-1">
          <p className="flex min-w-0 items-center gap-1.5 truncate text-[9.5px] font-semibold text-slate-200">
-          {tx.description}
+          {tx.status === 'paid' ? tx.description.replace(/\s*\(Pendiente\)/gi, '').trim() : tx.description}
           {tx.excludedFromLedger && <span className="text-emerald-500">Pagado · fuera de bitácora</span>}
           {isPending && (
           <span className="shrink-0 rounded border border-amber-500/15 bg-amber-500/[0.08] px-1 py-0.5 font-mono text-[6.5px] font-bold uppercase text-amber-400">Pendiente</span>
