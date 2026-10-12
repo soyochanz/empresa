@@ -1150,7 +1150,17 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
 app.use(express.json());
 
+// Country-only language selection: no external geolocation service or precise location.
+app.get('/api/locale', (req, res) => {
+  const rawCountry = req.get('x-vercel-ip-country') || req.get('cf-ipcountry') || '';
+  const country = /^[A-Z]{2}$/i.test(rawCountry) && rawCountry.toUpperCase() !== 'XX' ? rawCountry.toUpperCase() : null;
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Vary', 'x-vercel-ip-country, cf-ipcountry');
+  res.json({ country });
+});
+
 app.post('/api/analytics/track', async (req, res) => {
+  if (req.get('X-Althera-Consent') !== 'analytics-v1') { res.status(204).end(); return; }
   try {
     const body = req.body || {};
     if (!['page_view', 'contact_intent', 'portal_open'].includes(body.eventName)) return res.status(400).json({ error: 'Invalid event' });

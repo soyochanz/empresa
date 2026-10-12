@@ -1,0 +1,15 @@
+{
+  "dimensions": [
+    1080,
+    2160
+  ],
+  "target": 0.98,
+  "metric": "1 - mean absolute RGB difference / 255",
+  "pixelSimilarity": 0.7779300212860107,
+  "meanAbsoluteChannelDifference": 56.627845764160156,
+  "changedPixelFractionAt16": 0.9998508230452675,
+  "regions": [],
+  "criticalRegionsEvaluated": false,
+  "numericTargetMet": false,
+  "requiresVisualReview": true
+}
