@@ -47,7 +47,7 @@
 .landing-v3 .lp-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 24px; margin-top: 31px; }
 .landing-v3 .lp-text-link { display: inline-flex; align-items: center; gap: 11px; font-size: 11px; font-weight: 700; padding: 0; border: 0; background: transparent; color: inherit; }
 .landing-v3 .lp-hero-visual { position: relative; margin-right: -45px; }
-.landing-v3 .lp-hero-visual img { display: block; width: 100%; height: auto; mix-blend-mode: lighten; }
+.landing-v3 .lp-hero-visual img { display: block; width: 100%; height: auto; }
 .landing-v3 .lp-ecosystem { background: var(--lp-gold); color: #1d231a; padding-block: 25px 34px; position: relative; z-index: 2; }
 .landing-v3 .lp-ecosystem .lp-eyebrow { text-align: center; color: #434831; font-size: 9px; margin-bottom: 19px; }
 .landing-v3 .lp-brand-strip { display: flex; align-items: center; justify-content: space-around; gap: 26px; }
@@ -382,4 +382,3 @@
   .landing-v3 .lp-identity-art img { width: 85%; }
   .landing-v3 .lp-identity-outline { left: 0; font-size: 22vw; }
 }
-.landing-v3 .lp-hero-visual img { mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent), linear-gradient(to bottom, transparent, #000 9%, #000 90%, transparent); mask-composite: intersect; }
