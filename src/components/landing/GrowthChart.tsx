@@ -13,8 +13,7 @@ export default function GrowthChart({ language, onBites }: { language: 'es' | 'e
   return <section ref={ref} className="lp-growth lp-section lp-container" aria-labelledby="growth-title">
     <div className="lp-growth-copy"><img src="/bites-logo.png" width="90" height="60" alt="Bites" />
       <h2 id="growth-title">{es ? 'Cada mesa.' : 'Every table.'}<br /><em>{es ? 'Más posibilidades.' : 'More possibilities.'}</em></h2>
-      <p>{es ? 'Una carta que invita a descubrir, añadir y volver.' : 'A menu that invites customers to explore, add and return.'}</p>
-      <a className="lp-button" href="#contacto" onClick={onBites}>{es ? 'Quiero Bites en mi negocio' : 'Bring Bites to my business'}<ArrowUpRight size={18} /></a>
+      <div className="lp-bites-trial"><div className="lp-trial-number">14<span>{es ? 'DÍAS' : 'DAYS'}</span></div><div className="lp-trial-details"><strong>{es ? 'Pruébalo gratis.' : 'Try it free.'}</strong><p>{es ? 'Todas las funciones de Bites. Durante 14 días.' : 'Every Bites feature. For 14 days.'}</p><a className="lp-button" href="#contacto" onClick={onBites}>{es ? 'Quiero mi prueba gratuita' : 'Request my free trial'}<ArrowUpRight size={18} /></a></div></div>
     </div>
     <div className="lp-growth-chart">
       <div className="lp-growth-stat"><strong>+{reduced ? 30 : increase}%</strong><span>{es ? 'Escenario de ticket medio' : 'Average spend scenario'}</span></div>

@@ -36,3 +36,12 @@ The user's newer Moocare reference supersedes the first composition as the style
 - Bites chart progresses with scroll; browser observed 0%, 12% and 30%. €20 → €26 is explicitly labelled an illustrative scenario, not measured results, pending evidence for the proposed claim. The CTA selects Bites in the contact form.
 - Added oversized Althera wordmark and gold flowing shapes to footer; legal links retained. Keyboard focus visible and legal ES/EN route switching verified. Mobile 390×844 has no horizontal overflow or broken images. No production form was submitted.
 - Production geo endpoint returned AE from the UAE connection. Local country/consent tests and production build passed. No console errors in the isolated QA tab.
+
+## Bellablack, curated portfolio and Bites trial follow-up
+
+- Captured Bellablack desktop and mobile directly from the supplied live site, after dismissing its cookie notice. Generated a transparent laptop/phone composition using those two real screenshots; this replaces the earlier fictional hospitality screen.
+- New pinned scroll sequence types “Necesito más clientes” / “I need more customers”, then reveals the solution and Althera. Verified partial typing and final sharp brand (opacity 1, blur 0); scrolling backwards reverses the sequence. Reduced-motion mode displays the complete sequence without the long sticky scroll.
+- Owner-supplied Kapsely icon appears in its product row and brand strip.
+- Public client showcase is now exactly La Encina, Bellablack, Bodega El Solar, Luez Beauty, Eloísa Neleb and Diábola, using screenshots of the six supplied URLs. CRM project records are untouched. Captures were visually inspected; La Encina's initial post-cookie scroll position was corrected to its actual hero.
+- Bites offer displays 14 days free with all features in both languages. The request button selects Bites in the existing inquiry form; it does not claim to activate an account automatically or invent payment conditions.
+- Desktop and 390×844 mobile reviewed; no horizontal overflow or broken images. Trial CTA selected Bites successfully. Production build and TypeScript lint passed with pre-existing build warnings only.
