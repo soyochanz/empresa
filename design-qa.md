@@ -25,3 +25,14 @@ Scope: adaptation of the supplied composition to Althera, explicitly replacing t
 ## Legal boundaries
 
 Business identity taken from the supplied licence, with no shareholder/passport data published. Privacy, cookies, company notice and service terms cover the implemented public site. Official sources and applicability limits are recorded in `docs/landing-qa/legal-sources.md`. Operational retention, processor arrangements and international-transfer safeguards still require business/legal validation; these pages do not establish that every UAE obligation has been fulfilled.
+
+## Follow-up visual refinement — same day
+
+The user's newer Moocare reference supersedes the first composition as the style target: softer glass cards, larger titles, abstract flowing footer and less supporting text. Earlier comparison files document the preceding iteration, not a pixel score for this refinement.
+
+- Removed section eyebrow labels and service descriptions; enlarged service headings. Per-card viewport entry uses opacity, 64px movement and a small scale transition, with staggered columns. Browser inspection confirmed second-row opacity changes from 0 to 1 after scrolling.
+- Actual client projects (including Pilates Controllogy and Smokie Madriz) retain their stored screenshot, title and clickable URL in a browser frame; descriptions removed. Screenshots saved in `client-browser-mockups.png` and `refined-mobile.png`.
+- Generated isolated laptop/phone mockup has genuine RGBA transparency (alpha range 0–255), optimized as WebP.
+- Bites chart progresses with scroll; browser observed 0%, 12% and 30%. €20 → €26 is explicitly labelled an illustrative scenario, not measured results, pending evidence for the proposed claim. The CTA selects Bites in the contact form.
+- Added oversized Althera wordmark and gold flowing shapes to footer; legal links retained. Keyboard focus visible and legal ES/EN route switching verified. Mobile 390×844 has no horizontal overflow or broken images. No production form was submitted.
+- Production geo endpoint returned AE from the UAE connection. Local country/consent tests and production build passed. No console errors in the isolated QA tab.
