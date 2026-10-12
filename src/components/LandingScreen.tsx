@@ -120,7 +120,7 @@ export default function LandingScreen({ onNavigate, projects = [], partners = []
       <section id="inicio" ref={hero} className="lp-hero lp-container">
         <div className="lp-hero-depth" aria-hidden="true"><i /><i /><i /></div>
         <Reveal className="lp-hero-copy"><h1>{t.hero[0]}<br />{t.hero[1]}<br /><em>{t.hero[2]}</em></h1><p className="lp-intro">{t.intro}</p><div className="lp-actions"><a className="lp-button" href="#contacto">{t.cta}<ArrowUpRight size={18} /></a><a className="lp-text-link" href="#proyectos">{t.explore}<ArrowRight size={16} /></a></div></Reveal>
-        <motion.div className="lp-hero-visual" style={{ y: reduced ? 0 : parallax }}><img src="/landing/growth-hero-transparent.png" alt="" width="1672" height="941" fetchPriority="high" /></motion.div>
+        <motion.div className="lp-hero-visual" style={{ y: reduced ? 0 : parallax }}><img src="/landing/digital-solutions-hero.png" alt="" width="1672" height="941" fetchPriority="high" /></motion.div>
       </section>
       <section className="lp-ecosystem"><div className="lp-container"><div className="lp-brand-strip"><a href="#bites"><img src="/bites-logo.png" alt="Bites" width="100" height="64" /></a><a href="https://instaremoveai.com/" target="_blank" rel="noopener noreferrer">InstaRemove<span>AI</span><ArrowUpRight size={16} /></a><a href="https://apps.apple.com/es/app/kapsely/id6759984193" target="_blank" rel="noopener noreferrer"><img className="lp-kapsely-strip" src="/landing/kapsely-onyx.png" alt="" width="36" height="36" />Kapsely<ArrowUpRight size={16} /></a><a href="#althera-os">Althera OS<ArrowUpRight size={16} /></a></div></div></section>
       <SearchStory language={language} />
