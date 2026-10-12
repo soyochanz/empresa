@@ -22,7 +22,7 @@ export default function SearchStory({ language }: { language: 'es' | 'en' }) {
         <div className="lp-search-input" aria-hidden="true"><Search strokeWidth={1.5} /><span>{reduced ? query : query.slice(0, letters)}<i className="lp-typing-cursor" /></span><ArrowUpRight className="lp-search-arrow" /></div>
         <div className="lp-solution-label" aria-hidden="true" style={{ opacity: solution, transform: `translateY(${(1 - solution) * 28}px)` }}>{language === 'es' ? 'La solución.' : 'The solution.'}</div>
         <div className="lp-search-answer" aria-hidden="true" style={{ opacity: brand, transform: `translateY(${(1 - brand) * 36}px) scale(${.88 + brand * .12})`, filter: `blur(${(1 - brand) * 14}px)` }}>
-          <img src="/althera-logo-transparent.png" alt="" width="92" height="104" /><span>althera<small>SOLUTIONS</small></span>
+          <span>althera</span>
         </div>
         <div className="lp-search-cta">{(ready || reduced) && <a href="#contacto" className="lp-text-link">{language === 'es' ? 'Empecemos por tu negocio' : 'Let’s start with your business'}<ArrowUpRight size={18} /></a>}</div>
       </div>
