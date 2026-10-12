@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
+import { motion, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { ArrowUpRight, ArrowRight, Check, Globe2, Menu, X, Search, Target, Code2, Sparkles, Instagram } from 'lucide-react';
 import { InquiryMessage, PartnerCompany, Screen } from '../types';
 import { db } from '../supabaseClient';
@@ -59,6 +59,8 @@ export default function LandingScreen({ onNavigate, projects = [], partners = []
   const reduced = useReducedMotion();
   // The page scroll source also exists on legal routes, where there is no hero.
   const { scrollY } = useScroll();
+  const [headerCompact, setHeaderCompact] = useState(() => window.scrollY > 40);
+  useMotionValueEvent(scrollY, 'change', value => setHeaderCompact(value > 40));
   const parallax = useTransform(scrollY, [0, 900], [0, 95]);
   const pageTracked = useRef(false);
   useEffect(() => {
@@ -97,7 +99,7 @@ export default function LandingScreen({ onNavigate, projects = [], partners = []
   const openPreferences = () => window.dispatchEvent(new Event(OPEN_COOKIE_PREFERENCES));
   return <div className="althera-landing landing-v3">
     <a className="lp-skip" href="#contenido">{t.skip}</a>
-    <header className="lp-header"><div className="lp-container lp-header-inner">
+    <header className={`lp-header${headerCompact ? ' is-compact' : ' is-expanded'}`}><div className="lp-container lp-header-inner">
       <a className="lp-brand" href={legalPage ? home : '#inicio'} aria-label="Althera Solutions"><Brand /></a>
       <nav className="lp-nav" aria-label={language === 'es' ? 'Navegación principal' : 'Main navigation'}>
         {['servicios', 'proyectos', 'nosotros'].map((id, index) => <a key={id} href={section(id)}>{t.nav[index]}</a>)}
@@ -116,20 +118,37 @@ export default function LandingScreen({ onNavigate, projects = [], partners = []
       {legalPage === 'cookies' && <button className="lp-button" onClick={openPreferences}>{t.preferences}</button>}
     </main> : <main id="contenido">
       <section id="inicio" ref={hero} className="lp-hero lp-container">
+        <div className="lp-hero-depth" aria-hidden="true"><i /><i /><i /></div>
         <Reveal className="lp-hero-copy"><h1>{t.hero[0]}<br />{t.hero[1]}<br /><em>{t.hero[2]}</em></h1><p className="lp-intro">{t.intro}</p><div className="lp-actions"><a className="lp-button" href="#contacto">{t.cta}<ArrowUpRight size={18} /></a><a className="lp-text-link" href="#proyectos">{t.explore}<ArrowRight size={16} /></a></div></Reveal>
         <motion.div className="lp-hero-visual" style={{ y: reduced ? 0 : parallax }}><img src="/landing/generated/growth-hero.webp" alt="" width="1374" height="1145" fetchPriority="high" /></motion.div>
       </section>
-      <section className="lp-ecosystem"><div className="lp-container"><div className="lp-brand-strip"><a href="#bites"><img src="/bites-logo.png" alt="Bites" width="100" height="64" /></a><a href="https://instaremoveai.com/" target="_blank" rel="noopener noreferrer">InstaRemove<span>AI</span><ArrowUpRight size={16} /></a><a href="https://apps.apple.com/es/app/kapsely/id6759984193" target="_blank" rel="noopener noreferrer"><img className="lp-kapsely-strip" src="/landing/kapsely-logo.png" alt="" width="36" height="36" />Kapsely<ArrowUpRight size={16} /></a><a href="#althera-os">Althera OS<ArrowUpRight size={16} /></a></div></div></section>
+      <section className="lp-ecosystem"><div className="lp-container"><div className="lp-brand-strip"><a href="#bites"><img src="/bites-logo.png" alt="Bites" width="100" height="64" /></a><a href="https://instaremoveai.com/" target="_blank" rel="noopener noreferrer">InstaRemove<span>AI</span><ArrowUpRight size={16} /></a><a href="https://apps.apple.com/es/app/kapsely/id6759984193" target="_blank" rel="noopener noreferrer"><img className="lp-kapsely-strip" src="/landing/kapsely-black.png" alt="" width="36" height="36" />Kapsely<ArrowUpRight size={16} /></a><a href="#althera-os">Althera OS<ArrowUpRight size={16} /></a></div></div></section>
       <SearchStory language={language} />
       <section id="nosotros" className="lp-section lp-container lp-about">
         <Reveal className="lp-about-visual"><img src="/landing/generated/bellablack-devices.webp" alt={language === 'es' ? 'Web real de Bellablack en ordenador y móvil' : 'Actual Bellablack website on a laptop and phone'} width="1536" height="1024" loading="lazy" /><a className="lp-mockup-link" href="https://www.pizzeriabellablack.com/" target="_blank" rel="noopener noreferrer">pizzeriabellablack.com<ArrowUpRight size={15} /></a></Reveal>
         <Reveal><h2>{t.aboutTitle[0]}<br /><em>{t.aboutTitle[1]}</em></h2><ul className="lp-about-points">{t.aboutPoints.map(point => <li key={point}><Check size={16} />{point}</li>)}</ul><a className="lp-text-link" href="#contacto">{t.talk}<ArrowUpRight size={18} /></a></Reveal>
       </section>
       <section id="servicios" className="lp-section lp-services-section"><div className="lp-container"><Reveal className="lp-heading-centered"><h2>{t.servicesTitle[0]}<br /><em>{t.servicesTitle[1]}</em></h2></Reveal><div className="lp-services-grid">{t.services.map(([title, text], index) => { const Icon = serviceIcons[index]; return <Reveal key={title} delay={(index % 3) * .09}><article className={`lp-service${index === 2 ? ' lp-service-featured' : ''}`}><span className="lp-service-icon"><Icon size={29} strokeWidth={1.3} /></span><h3>{title}</h3><a href="#contacto" onClick={() => setInterest(Math.min(index, 4))} aria-label={`${t.serviceLink}: ${title}`}>{t.serviceLink}<ArrowRight size={15} /></a></article></Reveal>; })}</div></div></section>
+      <section id="identidad" className="lp-identity lp-section">
+        <div className="lp-container lp-identity-grid">
+          <Reveal className="lp-identity-copy">
+            <h2>{language === 'es' ? 'Que te vean.' : 'Be seen.'}<br /><em>{language === 'es' ? 'Que te recuerden.' : 'Be remembered.'}</em></h2>
+            <p>{language === 'es' ? 'Damos a tu marca una identidad online que se reconoce, conecta y deja huella.' : 'We give your brand an online identity that stands out, connects and stays with people.'}</p>
+            <div className="lp-identity-tags"><span>{language === 'es' ? 'Identidad' : 'Identity'}</span><span>{language === 'es' ? 'Diseño' : 'Design'}</span><span>{language === 'es' ? 'Contenido' : 'Content'}</span></div>
+            <a href="#contacto" className="lp-button">{language === 'es' ? 'Dale identidad a mi marca' : 'Build my brand identity'}<ArrowUpRight size={18} /></a>
+          </Reveal>
+          <Reveal className="lp-identity-art">
+            <div className="lp-identity-halo" aria-hidden="true" />
+            <span className="lp-identity-outline" aria-hidden="true">{language === 'es' ? 'ÚNICA.' : 'UNIQUE.'}</span>
+            <img src="/landing/brand-identity.png" alt={language === 'es' ? 'Composición creativa de una modelo saliendo de un móvil con un producto de marca' : 'Creative composition of a model stepping out of a phone with a branded product'} width="942" height="1672" loading="lazy" />
+            <span className="lp-identity-signature" aria-hidden="true">made to stand out ↗</span>
+          </Reveal>
+        </div>
+      </section>
       <section id="proyectos" className="lp-section lp-container">
         <Reveal className="lp-heading-row"><div><h2>{t.workTitle[0]}<br /><em>{t.workTitle[1]}</em></h2></div><a className="lp-text-link" href="#contacto">{t.cta}<ArrowUpRight size={18} /></a></Reveal>
         <div className="lp-project-showcase"><Reveal className="lp-project-reveal"><div id="bites"><BrowserProject title="Bites" image="/landing/generated/bites-mockup.webp" caption={t.mockup} /><a href="#contacto" onClick={() => setInterest(5)} className="lp-text-link">{t.bitesLink}<ArrowUpRight size={18} /></a></div></Reveal><Reveal className="lp-project-reveal" delay={.12}><BrowserProject title="InstaRemoveAI" url="https://instaremoveai.com/" image="/landing/generated/instaremove-mockup.webp" /></Reveal></div>
-        <div className="lp-small-projects"><Reveal><article><h3 className="lp-kapsely-title"><img src="/landing/kapsely-logo.png" alt="" width="64" height="64" />Kapsely</h3><a className="lp-text-link" href="https://apps.apple.com/es/app/kapsely/id6759984193" target="_blank" rel="noopener noreferrer">App Store<ArrowUpRight size={17} /></a></article></Reveal><Reveal><article id="althera-os"><h3>Althera OS</h3><a className="lp-text-link" href="#contacto">{t.talk}<ArrowUpRight size={17} /></a></article></Reveal></div>
+        <div className="lp-small-projects"><Reveal><article><h3 className="lp-kapsely-title"><img src="/landing/kapsely-black.png" alt="" width="64" height="64" />Kapsely</h3><a className="lp-text-link" href="https://apps.apple.com/es/app/kapsely/id6759984193" target="_blank" rel="noopener noreferrer">App Store<ArrowUpRight size={17} /></a></article></Reveal><Reveal><article id="althera-os"><h3>Althera OS</h3><a className="lp-text-link" href="#contacto">{t.talk}<ArrowUpRight size={17} /></a></article></Reveal></div>
         <div className="lp-real-projects"><div className="lp-project-showcase">{featuredProjects.map((project, index) => <Reveal key={project.url} className="lp-project-reveal" delay={(index % 2) * .1}><BrowserProject title={project.title} url={project.url} image={project.image} /></Reveal>)}</div></div>
         {partners.length > 0 && <div className="lp-partners">{partners.map(partner => <img key={partner.id} src={partner.logoUrl} alt={partner.name} width="120" height="60" loading="lazy" />)}</div>}
       </section>

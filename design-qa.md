@@ -45,3 +45,12 @@ The user's newer Moocare reference supersedes the first composition as the style
 - Public client showcase is now exactly La Encina, Bellablack, Bodega El Solar, Luez Beauty, Eloísa Neleb and Diábola, using screenshots of the six supplied URLs. CRM project records are untouched. Captures were visually inspected; La Encina's initial post-cookie scroll position was corrected to its actual hero.
 - Bites offer displays 14 days free with all features in both languages. The request button selects Bites in the existing inquiry form; it does not claim to activate an account automatically or invent payment conditions.
 - Desktop and 390×844 mobile reviewed; no horizontal overflow or broken images. Trial CTA selected Bites successfully. Production build and TypeScript lint passed with pre-existing build warnings only.
+
+## 2026-10-12 — Hero depth and brand identity
+- Increased hero minimum height to 760px / available viewport height; ecosystem follows below it.
+- Header wordmark expands to 39px at the top, then returns to 27px after scrolling; mobile 30px / 24px.
+- Added layered light, orbit, gentle floating movement and existing scroll parallax; reduced-motion disables animation.
+- Replaced both Kapsely icons with supplied transparent black capsule. New bilingual identity section uses supplied transparent model/product artwork, unchanged.
+- Reviewed rendered desktop (1185px and 1333px), tablet (768×1024), mobile (390×844): no horizontal overflow, assets load, responsive typography and header states verified. Original layout, not a pixel replica; no similarity score claimed.
+- Build and TypeScript pass. Existing print CSS and bundle-size warnings remain unrelated.
+- Evidence: docs/landing-qa/brand-identity-desktop.png and brand-identity-mobile.png.
