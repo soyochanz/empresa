@@ -11,9 +11,9 @@ export default function SearchStory({ language }: { language: 'es' | 'en' }) {
   useMotionValueEvent(scrollYProgress, 'change', value => setProgress(Math.round(value * 1000) / 1000));
   const phase = (start: number, end: number) => Math.max(0, Math.min(1, (progress - start) / (end - start)));
   const letters = Math.round(phase(.04, .44) * query.length);
-  const ready = progress >= .82;
+  const ready = progress >= .94;
   const solution = reduced ? 1 : phase(.47, .6);
-  const brand = reduced ? 1 : phase(.66, .84);
+  const brand = reduced ? 1 : phase(.76, .94);
   return <section ref={section} id="la-solucion" className={`lp-search-story${reduced ? ' is-reduced' : ''}`} aria-label={language === 'es' ? 'Necesito más clientes. La solución: Althera Solutions.' : 'I need more customers. The solution: Althera Solutions.'}>
     <div className="lp-search-stage">
       <div className="lp-search-aura" aria-hidden="true" style={{ opacity: reduced ? .65 : .1 + phase(.4, .95) * .55 }} />
