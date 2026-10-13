@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, useMotionValueEvent, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { ArrowUpRight, ArrowRight, Check, Globe2, Menu, X, Search, Target, Code2, Sparkles, Instagram } from 'lucide-react';
 import { InquiryMessage, PartnerCompany, Screen } from '../types';
-import { db } from '../supabaseClient';
 import { trackWebsiteEvent } from '../utils/webAnalytics';
 import { CONSENT_EVENT, getWebsiteConsent } from '../utils/websiteConsent';
 import { landingCopy } from './landing/content';
@@ -90,6 +89,7 @@ export default function LandingScreen({ onNavigate, projects = [], partners = []
       archived: false, created_at: timestamp,
     };
     try {
+      const { db } = await import('../supabaseClient');
       await db.insertInquiry(inquiry);
       trackWebsiteEvent('contact_intent');
       setSent(true); setName(''); setEmail(''); setMessage(''); setPrivacyAccepted(false);

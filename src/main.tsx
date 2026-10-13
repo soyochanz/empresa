@@ -1,7 +1,9 @@
-import {StrictMode} from 'react';
+import {StrictMode, Suspense, lazy} from 'react';
 import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
-import DatabaseMutationOverlay from './components/DatabaseMutationOverlay.tsx';
+import PublicApp from './PublicApp';
+import { isPublicEntry } from './utils/publicEntry';
+const PrivateApp = lazy(() => import('./PrivateApp'));
+const publicEntry = isPublicEntry(window.location.pathname, window.location.search, window.location.hash);
 import './index.css';
 
 if (typeof window !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)) {
@@ -24,7 +26,6 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
  <StrictMode>
- <App />
- <DatabaseMutationOverlay />
+ {publicEntry ? <PublicApp /> : <Suspense fallback={<div role="status" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#090c0b', color: '#d6bd83' }}>Cargando área privada…</div>}><PrivateApp /></Suspense>}
  </StrictMode>,
 );
