@@ -6,7 +6,7 @@ for (const path of ['/', '/es', '/en/', '/es/privacy', '/en/cookies/', '/terms',
 for (const path of ['/portal', '/area-privada', '/admin', '/admin/finanzas', '/login', '/acceso', '/comerciales/panel', '/pago-confirmado', '/unknown']) {
   assert.equal(isPublicEntry(path), false, path);
 }
-for (const query of ['?stripe_status=success', '?stripe_session_id=cs_123', '?code=oauth', '?token_hash=token', '?error_description=denied']) {
+for (const query of ['?stripe_connect=success', '?stripe_status=success', '?stripe_session_id=cs_123', '?code=oauth', '?token_hash=token', '?error_description=denied']) {
   assert.equal(isPublicEntry('/', query), false, query);
 }
 for (const hash of ['#access_token=test', '#refresh_token=test&type=recovery', '#type=recovery', '#error=access_denied']) {

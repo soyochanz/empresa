@@ -1,32 +1,28 @@
-# Separación de landing y panel
+# Landing en Hostinger y backend en Render
 
-Estado: código separado; alojamiento y DNS todavía SIN cambiar.
+La entrada pública monta PublicApp; PrivateApp se importa para administración, portal y callbacks de pagos/autenticación. Render conserva `npm start` → `dist/server.cjs`, sus secretos, tareas y webhooks.
 
-## Cambio aplicado
+## Gateway público
 
-La entrada pública (`/`, `/es`, `/en` y las páginas legales) monta PublicApp directamente. No monta App, su sincronización de CRM, autenticación ni DatabaseMutationOverlay. PrivateApp se importa al entrar a las rutas privadas. Los callbacks de autenticación y Stripe conservan la entrada original.
+Hostinger usa Express, Node 22, raíz `./`, build `npm run build`, entrada `dist/gateway.cjs`.
 
-El formulario importa el cliente de datos al enviar. Los logos de colaboradores se consultan al aproximarse al portfolio. No se han cambiado políticas de base de datos, triggers, webhooks ni tareas del servidor.
+- `/`, `/es`, `/en` y páginas legales: HTML y assets locales, sin esperar a Render.
+- `/api/locale`: respuesta local con país si el proveedor suministra `cf-ipcountry`; sin esa cabecera se aplica el fallback de idioma del cliente.
+- `/admin`, `/portal`, resto de rutas privadas, `/api/*`, `/p/*`, `/pago-confirmado` y callbacks Stripe: proxy HTTPS al servicio existente `https://althera.onrender.com`.
+- Conserva método, ruta, query, autorización, cookies, status y redirecciones. Los cuerpos se transmiten sin parsear para preservar firmas Stripe. Las respuestas privadas no se cachean.
+- No inicia tareas financieras ni necesita secretos de Stripe/Supabase en Hostinger.
+- Bloquea bundles de servidor y sourcemaps.
 
-Build verificado: entrada JS 417.59 kB (134.39 kB gzip), antes aproximadamente 3386 kB. El HTML no precarga PrivateApp ni supabaseClient; ambas importaciones son dinámicas. CSS compartido permanece en el bundle público.
+El dominio público y los enlaces existentes permanecen iguales. No retirar los dominios de Render durante la migración. No cambiar endpoints de Stripe ni generar cobros de prueba en producción.
 
-## Cambio de alojamiento pendiente
+## Validación
 
-El dominio público responde actualmente con `x-render-origin-server: Render`. Mientras el HTML salga de ese servicio, la pantalla de arranque de Render puede aparecer antes de ejecutar JavaScript. La separación del bundle no resuelve ese arranque de infraestructura.
+`pnpm exec tsx scripts/test-public-gateway.ts` verifica contra un servidor local: landing con backend caído, proxy de rutas privadas y callbacks, cookies múltiples, autorización, redirects de enlaces y webhook firmado con Stripe usando un secreto local de prueba. `pnpm exec tsx scripts/test-public-entry.ts` comprueba clasificación de rutas. Ejecutar también `pnpm lint` y `pnpm build`.
 
-Destino propuesto:
-- altherasolutions.com: archivos públicos servidos desde alojamiento estático en Hostinger.
-- admin.altherasolutions.com: servicio Render existente, con panel, API, reconciliación y webhooks.
+## Activación y recuperación
 
-Antes del cambio DNS, comprobar en los paneles reales el alojamiento disponible, el nombre del servicio Render y la configuración de dominio/TLS. No se ha inventado una IP ni un destino onrender.com.
+Antes de cambiar DNS: desplegar Hostinger, comprobar entrada gateway, HTTPS y proxy por el destino de prueba disponible. Guardar registros DNS anteriores. Después, verificar el dominio público y las rutas privadas sin generar transacciones.
 
-Orden de migración:
-1. Añadir y verificar el subdominio de administración en Render y DNS, sin retirar el dominio actual.
-2. Preparar alojamiento estático y fallback SPA para idiomas y páginas legales. Reemplazar __APP_ORIGIN__ en el HTML por el origen público, puesto que Express ya no lo interpolará.
-3. Configurar el enlace de área privada y las rutas antiguas de administración/comerciales al nuevo origen.
-4. Mantener un proxy para las rutas API y enlaces de pago existentes o migrar sus consumidores de forma coordinada. Los POST de Stripe necesitan un endpoint operativo, no una redirección HTML. Revisar URLs generadas, APP_URL y callbacks de autenticación antes de cambiar el origen.
-5. Mantener /api/locale y /api/analytics/track operativos en el origen público (o configurar sus destinos). La detección por país requiere cabecera fiable del alojamiento; no basta con idioma del navegador.
-6. Probar landing con Render sin disponibilidad; probar login, formulario, enlaces de pago existentes y entrega de webhooks sin generar cobros reales.
-7. Cambiar DNS público y verificar HTTPS, rutas legales y recursos. Conservar la configuración anterior para rollback.
+Si falla la validación, mantener/restaurar los registros DNS originales hacia Render. La aplicación Render sigue intacta; el nuevo bundle gateway no cambia su comando de arranque.
 
-No publicar dist/server.cjs ni su sourcemap en el directorio público de Hostinger: solo archivos de frontend.
+Estado de infraestructura: pendiente de validación del despliegue Hostinger y cambio DNS.
