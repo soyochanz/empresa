@@ -4,7 +4,7 @@ La entrada pública monta PublicApp; PrivateApp se importa para administración,
 
 ## Gateway público
 
-Hostinger usa Express, Node 22, raíz `./`, build `npm run build`, entrada `dist/gateway.cjs`.
+Hostinger usa el preajuste Other (Express no ejecuta build en este panel), Node 22, raíz `./`, build `npm run build`, entrada `dist/gateway.cjs`.
 
 - `/`, `/es`, `/en` y páginas legales: HTML y assets locales, sin esperar a Render.
 - `/api/locale`: respuesta local con país si el proveedor suministra `cf-ipcountry`; sin esa cabecera se aplica el fallback de idioma del cliente.
@@ -25,4 +25,6 @@ Antes de cambiar DNS: desplegar Hostinger, comprobar entrada gateway, HTTPS y pr
 
 Si falla la validación, mantener/restaurar los registros DNS originales hacia Render. La aplicación Render sigue intacta; el nuevo bundle gateway no cambia su comando de arranque.
 
-Estado de infraestructura: pendiente de validación del despliegue Hostinger y cambio DNS.
+Estado verificado el 13/10/2026: gateway desplegado en Hostinger, commit ed57317, entrada dist/gateway.cjs, salida dist. Runtime: «Althera public gateway ready». Vista previa HTTPS: https://green-crow-344589.hostingersite.com. Landing, /admin y /api/health responden con X-Althera-Gateway: public-v1; /server.cjs da 404. Acceso al portal renderizado correctamente. Prueba de webhook sin firma devuelve rechazo, sin generar eventos financieros.
+
+DNS de producción SIN cambiar: raíz resuelve 216.24.57.18 y 216.24.57.16; www es CNAME althera.onrender.com. Hostinger indica IP 147.79.103.56. Su certificado para altherasolutions.com está caducado; renovación solicitada y pendiente. No activar DNS hasta validar HTTPS y las rutas privadas en ese dominio.
