@@ -1,3 +1,4 @@
+import { assertInvoiceTotals } from './utils/invoiceTotals';
 import { saveContractPricing, decodeContractPricing } from './utils/contractPricing';
 import { buildCommercialCashout } from './utils/commercialCashout';
 import { createClient } from '@supabase/supabase-js';
@@ -2010,6 +2011,7 @@ const dbImplementation = {
  },
 
  async insertFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
+ assertInvoiceTotals(invoice);
  const payload = {
   id: invoice.id,
   user_id: userId || null,
@@ -2033,6 +2035,7 @@ const dbImplementation = {
  },
 
  async updateFinanceInvoice(invoice: Invoice, userId?: string): Promise<void> {
+ assertInvoiceTotals(invoice);
  const payload = {
   clientId: invoice.clientId || null,
   clientName: invoice.clientName,

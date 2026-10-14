@@ -1,3 +1,4 @@
+import { assertInvoiceTotals } from './invoiceTotals';
 import { reconcileInvoicePayments } from './invoiceAttachment';
 import { FinanceTransaction, Invoice } from '../types';
 import html2pdf from 'html2pdf.js';
@@ -35,6 +36,12 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
  const reconciled = options.transactions ? reconcileInvoicePayments(invoice, options.transactions) : invoice;
  const paymentStateChanged = reconciled !== invoice;
  invoice = reconciled;
+ try {
+  assertInvoiceTotals(invoice);
+ } catch (error) {
+  const message = error instanceof Error ? error.message : 'Revisa los importes de la factura.';
+  return `<!doctype html><html lang="es"><body data-invoice-invalid="true" style="font-family:Arial;padding:32px;color:#334155"><h1>Factura pendiente de revisión</h1><p>${escapeHtml(message)}</p><p>Abre el editor y revisa los conceptos antes de volver a descargarla.</p></body></html>`;
+ }
  const isPaid = paymentStateChanged ? invoice.status === 'paid' : options.isPaid ?? invoice.status === 'paid';
  const dueDate = options.dueDate || invoice.dueDate;
  const language = invoice.language || 'es';
@@ -121,6 +128,10 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
 };
 
 export const downloadInvoicePdf = async (html: string, filename: string): Promise<void> => {
+ if (html.includes('data-invoice-invalid="true"')) {
+  window.alert('No se ha generado el PDF porque los importes no cuadran. Abre el editor de la factura y revisa sus conceptos.');
+  return;
+ }
  const parsed = new DOMParser().parseFromString(html, 'text/html');
  const host = document.createElement('div');
  host.style.position = 'fixed';

@@ -1,3 +1,4 @@
+import { calculateInvoiceTotals } from '../utils/invoiceTotals';
 import { CASH_OPENING_BALANCE, isCashAfterOpening } from '../utils/cashOpening';
 import { exportSources, matchesExportSource, exportTotals, createMovementPdf, type ExportSource } from '../utils/financeExport';
 import { getStripeForecastOccurrences } from '../utils/stripeForecast';
@@ -2244,12 +2245,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   return;
  }
 
- const total = parseFloat(validItems.reduce(
-  (sum, item) => sum + (item.grossAmount ?? item.total * (1 + invTaxPercentage / 100)),
-  0
- ).toFixed(2));
- const subtotal = parseFloat((total / (1 + invTaxPercentage / 100)).toFixed(2));
- const taxAmount = parseFloat((total - subtotal).toFixed(2));
+ let totals: ReturnType<typeof calculateInvoiceTotals>;
+ try {
+  totals = calculateInvoiceTotals(validItems, invTaxPercentage);
+ } catch (error) {
+  alert(error instanceof Error ? error.message : 'Revisa los importes de la factura.');
+  return;
+ }
+ const { total, subtotal, taxAmount } = totals;
 
  const invoiceId = isEditingInv && editingInvId ? editingInvId : getNextInvoiceNumber(invoices);
  const editingInvoice = isEditingInv && editingInvId ? invoices.find(invoice => invoice.id === editingInvId) : undefined;

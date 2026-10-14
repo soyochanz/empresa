@@ -17,7 +17,7 @@ export function matchesExportSource(t: FinanceTransaction, source: ExportSource)
  return t.paymentAccount === source;
 }
 export function exportTotals(rows: FinanceTransaction[]) {
- const sum = (type: string, status: string) => Math.round(rows.filter(t => !t.excludedFromLedger && t.type === type && t.status === status).reduce((n, t) => n + Number(t.amount || 0), 0) * 100) / 100;
+ const sum = (type: string, status: string) => Math.round(rows.filter(t => !t.excludedFromLedger && !t.isRecurring && t.type === type && t.status === status).reduce((n, t) => n + Number(t.amount || 0), 0) * 100) / 100;
  const income = sum('income', 'paid'), expense = sum('expense', 'paid');
  return { income, expense, net: Math.round((income - expense) * 100) / 100,
   pendingIncome: sum('income', 'pending'), pendingExpense: sum('expense', 'pending'),

@@ -1,4 +1,4 @@
-import { repriceInvoiceTax } from '../utils/invoiceTotals';
+import { repriceInvoiceTax, splitInstallmentAmounts } from '../utils/invoiceTotals';
 import { attachChargeToInvoice, acknowledgeHistoricalPayment, reconcileInvoicePayments } from '../utils/invoiceAttachment';
 import PendingFinancePanel from './PendingFinancePanel';
 import { getMonthlyPendingFinance, type PendingFinanceItem } from '../utils/pendingFinance';
@@ -953,11 +953,15 @@ React.useEffect(() => {
     : options.isInitialSale;
    const stripePlanId = `plan_service_${Math.random().toString(36).slice(2, 9)}`;
    const installmentCount = Math.max(1, convInstallments);
-   const installmentAmount = Math.round((convFinancedTotal / installmentCount) * 100) / 100;
+   const installmentAmounts = splitInstallmentAmounts(convFinancedTotal, installmentCount);
+   if (convPaymentMethod === 'stripe' && installmentAmounts.some(amount => amount !== installmentAmounts[0])) {
+    throw new Error('El total no se puede dividir en cuotas iguales de céntimos para Stripe. Ajusta el total o el número de cuotas antes de crear el plan.');
+   }
    const taxPercentage = targetInvoice?.taxPercentage ?? contact.taxPercentage ?? 21;
    const invoiceItems: InvoiceItem[] = [];
 
    for (let index = 1; index <= installmentCount; index += 1) {
+    const installmentAmount = installmentAmounts[index - 1];
     const transactionId = `tx_service_${Math.random().toString(36).slice(2, 9)}_${index}`;
     const installmentDate = addMonthsKeepingDay(firstUpfrontPaymentDate, index - 1);
     invoiceItems.push({
@@ -1031,7 +1035,7 @@ React.useEffect(() => {
       clientId: contact.id,
       clientName: getContactInvoiceName(contact),
       clientEmail: safeClientEmail,
-      amount: installmentAmount.toFixed(2),
+      amount: installmentAmounts[0].toFixed(2),
       interval: installmentCount > 1 ? 'month' : 'once',
       installments: installmentCount.toString(),
       concept: `${convConcept} - ${installmentCount > 1 ? `${installmentCount} cuotas` : 'pago inicial'}`,

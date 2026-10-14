@@ -44,3 +44,4 @@ const legacy = {...installmentInvoice,items:installmentInvoice.items.map(item =>
 assert.equal(reconcileInvoicePayments(legacy,receipts).items.some(item=>item.isPending),false);
 assert.equal(reconcileInvoicePayments(legacy,receipts.slice(0,1)).items[1].isPending,true);
 console.log('Invoice payment reconciliation: all paid receipts, partial payment, legacy links and ledger exclusion passed.');
+assert.equal(exportTotals([{ ...charge, isRecurring: true }]).income, 0);
