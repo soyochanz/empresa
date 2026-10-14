@@ -1,3 +1,4 @@
+import { repriceInvoiceTax } from '../utils/invoiceTotals';
 import { attachChargeToInvoice, acknowledgeHistoricalPayment, reconcileInvoicePayments } from '../utils/invoiceAttachment';
 import PendingFinancePanel from './PendingFinancePanel';
 import { getMonthlyPendingFinance, type PendingFinanceItem } from '../utils/pendingFinance';
@@ -3105,32 +3106,9 @@ React.useEffect(() => {
   const linkedInvoices = invoices.filter(invoice => invoiceBelongsToContact(invoice, editingContact));
   const updatedInvoices = linkedInvoices.map(invoice => {
    const taxPercentage = updatedContact.taxPercentage ?? invoice.taxPercentage;
-   const linkedTransactionIds = new Set(
-    invoice.items.flatMap(item => [item.pendingTxId, item.id]).filter((id): id is string => Boolean(id))
-   );
-   const linkedTransactions = transactions.filter(transaction =>
-    transaction.invoiceId === invoice.id || linkedTransactionIds.has(transaction.id)
-   );
-   const transactionGrossTotal = linkedTransactions.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
-   const itemGrossTotal = invoice.items.reduce((sum, item) =>
-    sum + Number(item.grossAmount ?? item.total * (1 + invoice.taxPercentage / 100)), 0
-   );
-   const grossTotal = Number((transactionGrossTotal > 0 ? transactionGrossTotal : itemGrossTotal > 0 ? itemGrossTotal : invoice.total).toFixed(2));
-   const subtotal = Number((grossTotal / (1 + taxPercentage / 100)).toFixed(2));
-   const taxAmount = Number((grossTotal - subtotal).toFixed(2));
-   const items = invoice.items.map(item => {
-    const linkedTransaction = linkedTransactions.find(transaction => transaction.id === item.pendingTxId || transaction.id === item.id);
-    const grossAmount = Number(linkedTransaction?.amount ?? item.grossAmount ?? item.total * (1 + invoice.taxPercentage / 100));
-    const netTotal = grossAmount / (1 + taxPercentage / 100);
-    return {
-     ...item,
-     grossAmount,
-     unitPrice: netTotal / Math.max(1, Number(item.quantity) || 1),
-     total: netTotal
-    };
-   });
+   const repriced = repriceInvoiceTax(invoice, taxPercentage);
    return {
-    ...invoice,
+    ...repriced,
     clientName: getContactInvoiceName(updatedContact),
     clientEmail: updatedContact.email,
     clientTaxId: updatedContact.taxId,
@@ -3138,10 +3116,6 @@ React.useEffect(() => {
     currency: updatedContact.currency || invoice.currency || 'EUR',
     language: updatedContact.language || invoice.language || 'es',
     taxPercentage,
-    subtotal,
-    taxAmount,
-    total: grossTotal,
-    items
    };
   });
   await Promise.all(updatedInvoices.map(invoice => db.updateFinanceInvoice(invoice)));
