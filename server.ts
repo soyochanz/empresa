@@ -2081,7 +2081,7 @@ app.post("/api/stripe/customer-overview", requireAdminAuth, async (req, res) => 
       stripe.customers.retrieve(resolvedCustomerId),
       stripe.subscriptions.list({ customer: resolvedCustomerId, status: "all", limit: 10 }),
       stripe.invoices.list({ customer: resolvedCustomerId, limit: 12 }),
-      stripe.paymentIntents.list({ customer: resolvedCustomerId, limit: 12 }),
+      stripe.paymentIntents.list({ customer: resolvedCustomerId, limit: 100, expand: ["data.latest_charge"] }),
     ]);
 
     const normalizedSubscriptions = subscriptions.data.map((sub: any) => ({
@@ -2124,6 +2124,7 @@ app.post("/api/stripe/customer-overview", requireAdminAuth, async (req, res) => 
       status: payment.status,
       amount: (payment.amount || 0) / 100,
       amountReceived: (payment.amount_received || 0) / 100,
+      amountRefunded: typeof payment.latest_charge === "object" ? (payment.latest_charge?.amount_refunded || 0) / 100 : 0,
       currency: payment.currency,
       created: payment.created,
       description: payment.description,
@@ -2164,6 +2165,7 @@ app.post("/api/stripe/customer-overview", requireAdminAuth, async (req, res) => 
       subscriptions: normalizedSubscriptions,
       invoices: normalizedInvoices,
       payments: normalizedPayments,
+      paymentsHasMore: paymentIntents.has_more,
       totals: {
         paidInvoices: normalizedInvoices.filter(inv => inv.paid).reduce((sum, inv) => sum + inv.amountPaid, 0),
         openInvoices: normalizedInvoices.filter(inv => inv.status === "open").reduce((sum, inv) => sum + inv.amountRemaining, 0),

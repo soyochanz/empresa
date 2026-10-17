@@ -1,3 +1,4 @@
+import ClientStripeActivity from './ClientStripeActivity';
 import { repriceInvoiceTax, splitInstallmentAmounts } from '../utils/invoiceTotals';
 import { attachChargeToInvoice, acknowledgeHistoricalPayment, reconcileInvoicePayments } from '../utils/invoiceAttachment';
 import PendingFinancePanel from './PendingFinancePanel';
@@ -456,6 +457,8 @@ export default function CrmScreen({
  const [chargeSuccess, setChargeSuccess] = useState('');
  const [stripeEmailInput, setStripeEmailInput] = useState('');
  const [stripeOverview, setStripeOverview] = useState<any>(null);
+ const [financeHistoryFilter, setFinanceHistoryFilter] = useState('all');
+ const [financeHistorySearch, setFinanceHistorySearch] = useState('');
  const [stripeOverviewLoading, setStripeOverviewLoading] = useState(false);
  const [stripeOverviewError, setStripeOverviewError] = useState('');
  const [stripeCancelLoading, setStripeCancelLoading] = useState<string | null>(null);
@@ -484,6 +487,8 @@ export default function CrmScreen({
  setStripeError('');
  setChargeSuccess('');
  setInvoiceDeleteError('');
+ setFinanceHistoryFilter('all');
+ setFinanceHistorySearch('');
  setStripeOverview(null);
  setStripeOverviewError('');
  setStripeCancelLoading(null);
@@ -4108,23 +4113,6 @@ React.useEffect(() => {
      );
     })()}
 
-    {(() => {
-     const links = [...new Map<string, FinanceTransaction>(selectedClientTransactions.filter(tx => tx.status === 'pending' && (tx.stripeCheckoutUrl || tx.stripeCheckoutSessionId)).map(tx => [tx.stripeCheckoutSessionId || tx.stripeCheckoutUrl || tx.id, tx] as [string, FinanceTransaction])).values()];
-     return links.length > 0 && <section className="space-y-3 rounded-2xl border border-violet-400/20 p-4">
-      <h4 className="text-sm font-bold">Enlaces de Stripe pendientes ({links.length})</h4>
-      {links.map(tx => {
-       const state = checkoutSessionState[tx.id];
-       const url = state?.url || tx.stripeCheckoutUrl;
-       const unavailable = state?.status === 'expired' || state?.status === 'complete' || state?.paymentStatus === 'paid';
-       return <div key={tx.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 p-3">
-        <div><p className="text-sm font-semibold">{tx.description}</p><p className="text-xs">{tx.amount.toLocaleString('es-ES')} € · {unavailable ? 'Enlace cerrado' : 'Pendiente'}</p></div>
-        <button type="button" onClick={() => inspectCheckoutSession(tx)} className="text-xs">Comprobar enlace</button>
-        {url && !unavailable && <button type="button" onClick={() => navigator.clipboard.writeText(url).catch(() => alert('No se pudo copiar el enlace.'))} className="rounded-lg bg-violet-500/20 px-3 py-2 text-xs">Copiar enlace</button>}
-       </div>;
-      })}
-     </section>;
-    })()}
-
     <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-[#080b12] to-[#030407] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)]">
      <div className="mb-3 flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
@@ -4775,10 +4763,11 @@ React.useEffect(() => {
     const totalPaid = clientInvoices.length > 0 ? totalPaidFromInvoices + uninvoiced.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + tx.amount, 0) : totalPaidFromTxs;
     const totalPending = (clientInvoices.length > 0 ? totalPendingFromInvoices + uninvoiced.filter(tx => tx.status === 'pending').reduce((sum, tx) => sum + tx.amount, 0) : totalPendingFromTxs)
      + clientPendingRecurrences.filter(item => !item.existing).reduce((sum, item) => sum + item.transaction.amount, 0);
-    const totalInvoiced = clientInvoices.length > 0 ? totalInvoicedFromInvoices : (totalPaid + totalPending);
+    const totalInvoiced = totalInvoicedFromInvoices;
 
+    const visiblePayments = clientTransactions.filter(tx => (financeHistoryFilter === 'all' || tx.status === financeHistoryFilter) && `${tx.description} ${tx.invoiceId || ''}`.toLocaleLowerCase('es').includes(financeHistorySearch.toLocaleLowerCase('es')));
     return (
-     <div className="space-y-4 bg-slate-950/35 border border-white/[0.08] rounded-2xl p-4 shadow-[0_14px_35px_rgba(0,0,0,.16)]">
+     <div className="client-finance-hub space-y-4 bg-slate-950/35 border border-white/[0.08] rounded-2xl p-4 shadow-[0_14px_35px_rgba(0,0,0,.16)]">
      <div className="flex justify-between items-center">
       <div>
        <h4 className="text-[11px] uppercase tracking-[0.16em] text-slate-100 font-extrabold flex items-center gap-2">
@@ -4809,7 +4798,7 @@ React.useEffect(() => {
       </button>
      </div>
 
-     <div className="grid grid-cols-3 gap-2.5">
+     <div className="finance-summary grid grid-cols-1 sm:grid-cols-3 gap-2.5">
       <div className="text-left p-3 rounded-xl bg-white/[0.025] border border-white/[0.06]">
       <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-wider">Facturado</span>
       <span className="text-xs font-mono font-extrabold text-slate-200 block mt-0.5">
@@ -4817,7 +4806,7 @@ React.useEffect(() => {
       </span>
       </div>
       <div className="text-left p-3 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/15">
-      <span className="block text-[8px] font-mono text-emerald-500 uppercase tracking-wider">Cobrado</span>
+      <span className="block text-[8px] font-mono text-emerald-500 uppercase tracking-wider">Cobrado registrado</span>
       <span className="text-xs font-mono font-extrabold text-emerald-400 block mt-0.5">
        {totalPaid.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
       </span>
@@ -4829,6 +4818,9 @@ React.useEffect(() => {
       </span>
       </div>
      </div>
+
+     <p className="finance-note">Los importes resumen los registros del CRM; los reembolsos consultados en Stripe se muestran por separado.</p>
+     <ClientStripeActivity key={selectedContact.id} transactions={selectedClientTransactions} states={checkoutSessionState} overview={stripeOverview} loading={stripeOverviewLoading} error={stripeOverviewError} onRefresh={handleLoadStripeOverview} onInspect={inspectCheckoutSession} />
 
      {selectedClientRecurringTransactions.some(tx => tx.paymentMethod === 'cash' || tx.paymentMethod === 'transfer') && <div className="rounded-xl border border-amber-500/20">
       <h4 className="px-5 pt-4 text-sm font-bold text-amber-400">Cuotas recurrentes pendientes</h4>
@@ -4848,7 +4840,7 @@ React.useEffect(() => {
        <p className="text-[10px] text-slate-500 font-sans">No hay facturas emitidas para este cliente.</p>
       </div>
       ) : (
-      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+      <div className="finance-invoices space-y-2">
        {clientInvoices.map(inv => {
        const paymentSummary = getInvoicePaymentSummary(inv);
        const isEffectivelyPaid = paymentSummary.state === 'paid';
@@ -4881,7 +4873,7 @@ React.useEffect(() => {
          className="p-1 hover:bg-emerald-500/20 text-emerald-400 rounded-lg border border-emerald-500/20 transition-all cursor-pointer"
          >
          <Check className="w-3.5 h-3.5" />
-         </button>
+         <span>Marcar como cobrada</span></button>
         )}
 
         <button
@@ -4890,7 +4882,7 @@ React.useEffect(() => {
          className="p-1 hover:bg-blue-500/20 text-blue-400 rounded-lg border border-blue-500/20 transition-all cursor-pointer"
         >
          <Edit className="w-3.5 h-3.5" />
-        </button>
+        <span>Datos fiscales</span></button>
 
         <button
          onClick={() => openInvoiceConceptEditor(inv)}
@@ -4898,7 +4890,7 @@ React.useEffect(() => {
          className="p-1 hover:bg-violet-500/20 text-violet-300 rounded-lg border border-violet-500/20 transition-all cursor-pointer"
         >
          <Receipt className="w-3.5 h-3.5" />
-        </button>
+        <span>Conceptos</span></button>
 
         <button
          onClick={() => handleDownloadInvoiceHtml(inv)}
@@ -4906,7 +4898,7 @@ React.useEffect(() => {
          className="p-1 hover:bg-slate-800 text-slate-300 rounded-lg border border-white/5 transition-all cursor-pointer"
         >
          <Download className="w-3.5 h-3.5" />
-        </button>
+        <span>Descargar PDF</span></button>
 
         <button
          type="button"
@@ -4918,7 +4910,7 @@ React.useEffect(() => {
          {deletingInvoiceId === inv.id
           ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border border-rose-300 border-t-transparent" />
           : <Trash2 className="w-3.5 h-3.5" />}
-        </button>
+        <span>Eliminar factura</span></button>
         </div>
        </div>
        );
@@ -4941,32 +4933,37 @@ React.useEffect(() => {
       </button>
       </div>
 
-      {clientTransactions.length === 0 ? (
+      <div className="finance-filters" role="group" aria-label="Filtrar cobros">
+       {[['all', 'Todos'], ['paid', 'Pagados'], ['pending', 'Pendientes'], ['failed', 'Por revisar']].map(([value, label]) => <button key={value} type="button" aria-pressed={financeHistoryFilter === value} onClick={() => setFinanceHistoryFilter(value)}>{label} ({clientTransactions.filter(tx => value === 'all' || tx.status === value).length})</button>)}
+       <input aria-label="Buscar cobro o factura" placeholder="Buscar cobro o factura…" value={financeHistorySearch} onChange={event => setFinanceHistorySearch(event.target.value)} className="rounded-lg border border-slate-500/30 bg-transparent px-3 py-3 text-sm" />
+      </div>
+      {visiblePayments.length === 0 ? (
       <div className="bg-[#030305] p-3.5 rounded-xl border border-white/5 text-center">
-       <p className="text-[10px] text-slate-500 font-sans">No hay cobros registrados para este cliente.</p>
+       <p className="text-[10px] text-slate-500 font-sans">No hay cobros que coincidan con estos filtros.</p>
       </div>
       ) : (
-      <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-       {clientTransactions.map(tx => {
+      <div className="finance-payments space-y-3">
+       {visiblePayments.map(tx => {
        const isPending = tx.status === 'pending';
        const isFailed = tx.status === 'failed';
        const stripeDashboardUrl = getStripeDashboardUrl(tx.stripeCheckoutSessionId, tx.stripeInvoiceId);
 
        return (
         <div key={tx.id} className="rounded-lg border border-white/[0.06] bg-[#05070c]/80 px-2.5 py-2 transition-all hover:border-violet-400/15 hover:bg-[#080b12]">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        <div className="finance-payment-layout">
          <div className="min-w-0 space-y-1">
-         <p className="flex min-w-0 items-center gap-1.5 truncate text-[9.5px] font-semibold text-slate-200">
+         <p className="flex min-w-0 items-center gap-1.5 flex-wrap text-[9.5px] font-semibold text-slate-200">
           {tx.status === 'paid' ? tx.description.replace(/\s*\(Pendiente\)/gi, '').trim() : tx.description}
           {tx.excludedFromLedger && <span className="text-emerald-500">Pagado · fuera de bitácora</span>}
           {isPending && (
           <span className="shrink-0 rounded border border-amber-500/15 bg-amber-500/[0.08] px-1 py-0.5 font-mono text-[6.5px] font-bold uppercase text-amber-400">Pendiente</span>
           )}
+          {tx.status === 'paid' && <span className="finance-status finance-status-open">Pagado</span>}
           {isFailed && (
-          <span className="shrink-0 rounded border border-rose-500/15 bg-rose-500/[0.08] px-1 py-0.5 font-mono text-[6.5px] font-bold uppercase text-rose-400">Denegado</span>
+          <span className="shrink-0 rounded border border-rose-500/15 bg-rose-500/[0.08] px-1 py-0.5 font-mono text-[6.5px] font-bold uppercase text-rose-400">Revisar cobro</span>
           )}
          </p>
-         <div className="flex items-center gap-1.5 truncate font-mono text-[7.5px] text-slate-600">
+         <div className="flex items-center gap-1.5 flex-wrap font-mono text-[7.5px] text-slate-600">
           <span><strong className="font-medium text-slate-500">{tx.date}</strong></span>
           <span className="text-slate-700">·</span>
           <span className="uppercase">{tx.paymentMethod || 'transfer'}</span>
@@ -4976,10 +4973,10 @@ React.useEffect(() => {
          </div>
          </div>
 
-         <div className="flex shrink-0 items-center gap-1">
-         {tx.recurrenceSourceId && <button type="button" title="Editar importe de esta cuota" onClick={() => editRegisteredRecurrence(tx)} className="p-1 text-blue-400"><Edit className="h-3 w-3" /></button>}
-         {!tx.invoiceId && !clientInvoices.some(inv => inv.items.some(item => item.pendingTxId === tx.id || item.id === tx.id)) && <button type="button" title="Añadir a factura existente" onClick={() => { setChargeToAttach(tx); setChargeInvoiceId(''); }} className="p-1 text-blue-400"><LinkIcon className="h-3 w-3" /></button>}
-         {isPending && <button type="button" title="Marcar pagado sin sumar a bitácora" onClick={() => setHistoricalPayment(tx)} className="p-1 text-emerald-400"><Check className="h-3 w-3" /></button>}
+         <div className="finance-actions">
+         {tx.recurrenceSourceId && <button type="button" title="Editar importe de esta cuota" onClick={() => editRegisteredRecurrence(tx)} className="p-1 text-blue-400"><Edit className="h-3 w-3" /><span>Editar importe de esta cuota</span></button>}
+         {!tx.invoiceId && !clientInvoices.some(inv => inv.items.some(item => item.pendingTxId === tx.id || item.id === tx.id)) && <button type="button" title="Añadir a factura existente" onClick={() => { setChargeToAttach(tx); setChargeInvoiceId(''); }} className="p-1 text-blue-400"><LinkIcon className="h-3 w-3" /><span>Añadir a factura existente</span></button>}
+         {isPending && <button type="button" title="Marcar pagado sin sumar a bitácora" onClick={() => setHistoricalPayment(tx)} className="p-1 text-emerald-400"><Check className="h-3 w-3" /><span>Pago fuera de bitácora</span></button>}
          {/* Amount */}
          <span className={`mr-1 text-[10px] font-mono font-black ${isFailed ? 'text-rose-400' : isPending ? 'text-amber-400' : 'text-emerald-400'}`}>
           {isPending || isFailed ? '' : '+'}{tx.amount.toFixed(2)} €
@@ -5001,7 +4998,7 @@ React.useEffect(() => {
           title="Volver a marcar como pendiente"
          >
           <Check className="h-3 w-3" />
-         </button>}
+         <span>Marcar pendiente</span></button>}
 
          <button
           type="button"
@@ -5009,7 +5006,7 @@ React.useEffect(() => {
           className="grid h-6 w-6 place-items-center rounded-md border border-blue-500/15 bg-blue-500/[0.07] text-blue-400 transition-all hover:bg-blue-500/15 hover:text-blue-300"
           title={tx.recurrenceSourceId ? "Generar factura de esta cuota" : "Generar factura con este pago y los importes pendientes"}
          >
-          <Receipt className="h-3 w-3" />
+          <Receipt className="h-3 w-3" /><span>Crear factura</span>
          </button>
 
          {/* Delete Button */}
@@ -5021,7 +5018,7 @@ React.useEffect(() => {
           className="grid h-6 w-6 place-items-center rounded-md border border-transparent text-indigo-400 transition-all hover:border-indigo-500/15 hover:bg-indigo-500/[0.08]"
           title="Ver pago en Stripe"
           >
-          <ExternalLink className="h-3 w-3" />
+          <ExternalLink className="h-3 w-3" /><span>Ver en Stripe</span>
           </a>
          )}
 
@@ -5032,7 +5029,7 @@ React.useEffect(() => {
           title="Eliminar cobro"
          >
           <Trash2 className="h-3 w-3" />
-         </button>
+         <span>Eliminar cobro</span></button>
          </div>
         </div>
 

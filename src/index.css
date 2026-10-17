@@ -1890,3 +1890,42 @@ body.admin-theme-light button.crm-payment-confirm-button:hover:not(:disabled) {
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.055), 0 8px 18px rgba(15, 23, 42, 0.04);
   }
 }
+
+/* Client finance: readable records and explicit, keyboard-accessible actions. */
+.client-finance-hub { --finance-muted: #94a3b8; --finance-border: #ffffff20; }
+.client-finance-hub h4 { font-size: 17px; font-weight: 700; }
+.client-finance-hub h5 { font-size: 15px; font-weight: 650; margin: 8px 0; }
+.client-finance-hub p, .client-finance-hub [class*="text-[9"], .client-finance-hub [class*="text-[7"] { font-size: 13px; line-height: 1.6; }
+.client-finance-hub [class*="text-[10"], .client-finance-hub [class*="text-[11"] { font-size: 14px; }
+.client-finance-hub [class*="text-[8"], .client-finance-hub [class*="text-[6"] { font-size: 12px; }
+.client-finance-hub button, .client-finance-hub a { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; height: auto; width: auto; padding: 8px 12px; font-size: 13px; line-height: 1.3; border-radius: 10px; }
+.client-finance-hub button:focus-visible, .client-finance-hub a:focus-visible { outline: 3px solid #818cf8; outline-offset: 3px; }
+.client-finance-hub button:disabled { opacity: .55; cursor: wait; }
+.client-finance-hub svg { flex-shrink: 0; }
+.finance-summary > div { padding: 20px; }
+.finance-summary > div > span:last-child { font-size: 26px; margin-top: 8px; }
+.finance-note, .finance-stripe p { color: var(--finance-muted); }
+.finance-stripe { padding-block: 24px; border-block: 1px solid var(--finance-border); }
+.finance-filters, .finance-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.finance-filters button, .finance-stripe button, .finance-stripe a { border: 1px solid var(--finance-border); }
+.finance-filters button[aria-pressed="true"] { background: #4f46e5; color: white; border-color: #6366f1; }
+.finance-filters button span { opacity: .8; }
+.finance-link-list { display: grid; gap: 12px; }
+.finance-activity-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 18px; border: 1px solid var(--finance-border); border-radius: 14px; }
+.finance-status { display: inline-block; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 700; background: #64748b20; }
+.finance-status-open { color: #059669; background: #10b98115; }
+.finance-status-expired { color: #b45309; background: #f59e0b18; }
+.finance-status-complete { color: #818cf8; background: #6366f118; }
+.finance-empty { display: flex; align-items: center; gap: 12px; padding: 20px; background: #64748b08; border-radius: 12px; }
+.finance-payment-layout { display: grid; gap: 16px; }
+.finance-payments > div { padding: 18px; border-radius: 14px; }
+.finance-payments .finance-actions { padding-top: 12px; border-top: 1px solid var(--finance-border); }
+.finance-payments .finance-actions > span { font-size: 20px; margin-right: auto; }
+.finance-invoices > div { flex-wrap: wrap; padding: 18px; }
+.finance-invoices > div > div:last-child { flex-wrap: wrap; }
+body.admin-theme-light .client-finance-hub { --finance-muted: #52647c; --finance-border: #cbd5e1; }
+body.admin-theme-light .client-finance-hub .finance-filters button[aria-pressed="true"] { background: #4f46e5 !important; color: white !important; }
+@media (max-width: 640px) { .client-finance-hub { padding: 14px; } .client-finance-hub > div:first-child { flex-wrap: wrap; gap: 12px; } .finance-actions { gap: 6px; } }
+body.admin-theme-light .client-finance-hub .finance-status-complete { color: #4338ca; }
+.client-finance-hub .finance-actions > button[title="Eliminar cobro"] { color: #e11d48; }
+.client-finance-hub .finance-actions > span { order: -1; }
