@@ -7,6 +7,7 @@ import dotenv from "dotenv";
 import { createHmac, randomBytes } from "crypto";
 
 import fs from "fs";
+import { registerWebOffers } from "./api/webOffers";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -173,7 +174,7 @@ function redactHeaders(headers: express.Request["headers"]) {
 
 // Request logging middleware for debugging API calls
 app.use((req, res, next) => {
-  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.path} - Headers: ${JSON.stringify(redactHeaders(req.headers))}\n`;
+  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.path.replace(/(\/web-offers\/demo\/)[a-f0-9]+/, '$1[private]')} - Headers: ${JSON.stringify(redactHeaders(req.headers))}\n`;
   console.log(logMsg.trim());
   try {
     fs.appendFileSync(path.join(process.cwd(), "server.log"), logMsg);
@@ -1069,6 +1070,8 @@ async function markStripeCheckoutSessionAsExpired(session: Stripe.Checkout.Sessi
   return { updated: targetTx.status !== "failed", txId: pendingTxId };
 }
 
+const webOffers = registerWebOffers(app, { db: supabaseAdmin, stripe: getStripe, admin: requireAdminAuth, origin: "https://altherasolutions.com" });
+
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const stripe = getStripe();
@@ -1093,6 +1096,8 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       event = await stripe.events.retrieve(unverifiedEvent.id);
       console.warn("STRIPE_WEBHOOK_SECRET is not set. Event verified through the Stripe Events API.");
     }
+
+    if (await webOffers.handleEvent(event)) return res.json({ received: true });
 
     if (event.type === "invoice.paid" || event.type === "invoice.payment_succeeded") {
       const paidInvoice = event.data.object as Stripe.Invoice;

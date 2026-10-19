@@ -102,6 +102,7 @@ export default function LandingScreen({ onNavigate, projects = [], partners = []
     <header className={`lp-header${headerCompact ? ' is-compact' : ' is-expanded'}`}><div className="lp-container lp-header-inner">
       <a className="lp-brand" href={legalPage ? home : '#inicio'} aria-label="Althera Solutions"><Brand /></a>
       <nav className="lp-nav" aria-label={language === 'es' ? 'Navegación principal' : 'Main navigation'}>
+        <a href="/webs">{language === 'es' ? 'Tu web desde 49 USD' : 'Your website from $49'}</a>
         {['servicios', 'proyectos', 'nosotros'].map((id, index) => <a key={id} href={section(id)}>{t.nav[index]}</a>)}
       </nav>
       <div className="lp-language" aria-label={t.language}>{(['es', 'en'] as const).map(lang => <a key={lang} href={`/${lang}${legalPage ? `/${legalPage}` : ''}`} onClick={() => saveLanguagePreference(lang)} lang={lang} aria-label={lang === 'es' ? 'Español' : 'English'} aria-current={language === lang ? 'true' : undefined}>{lang.toUpperCase()}</a>)}</div>

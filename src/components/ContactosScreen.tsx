@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import WebOffersAdmin from './webOffers/WebOffersAdmin';
 import { db } from '../supabaseClient';
 import { InquiryMessage } from '../types';
 import { 
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 
 export default function ContactosScreen() {
+ const [section, setSection] = useState<'webs' | 'messages'>('webs');
  const [inquiries, setInquiries] = useState<InquiryMessage[]>([]);
  const [isLoading, setIsLoading] = useState(false);
  const [searchQuery, setSearchQuery] = useState('');
@@ -102,6 +104,8 @@ export default function ContactosScreen() {
  <div className="w-full h-full overflow-y-auto p-8 scrollbar-thin">
   <div className="space-y-6 max-w-7xl mx-auto pb-12">
   
+  <div className="flex gap-3 mb-6"><button className={`px-5 py-3 rounded-xl border text-sm font-semibold ${section === 'webs' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-500/20 text-slate-400'}`} onClick={() => setSection('webs')}>Solicitudes de webs</button><button className={`px-5 py-3 rounded-xl border text-sm font-semibold ${section === 'messages' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-500/20 text-slate-400'}`} onClick={() => setSection('messages')}>Mensajes de contacto</button></div>
+  {section === 'webs' ? <WebOffersAdmin /> : <>
   {/* Page Header */}
   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-5">
   <div>
@@ -419,6 +423,7 @@ export default function ContactosScreen() {
   </div>
   )}
 
+  </>}
   </div>
  </div>
  );

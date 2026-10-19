@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import LandingScreen from './components/LandingScreen';
 import type { PartnerCompany } from './types';
+
+const WebOffers = lazy(() => import('./components/webOffers/WebOffers'));
 
 export default function PublicApp() {
   const [partners, setPartners] = useState<PartnerCompany[]>([]);
@@ -20,5 +22,6 @@ export default function PublicApp() {
     observer.observe(portfolio);
     return () => { active = false; observer.disconnect(); };
   }, []);
+  if (/\/webs\/?$/.test(location.pathname) || location.pathname.startsWith('/business/')) return <Suspense fallback={<div style={{minHeight:'100vh',background:'#0b100e',color:'#d7bf86',display:'grid',placeItems:'center'}}>althera</div>}><WebOffers /></Suspense>;
   return <LandingScreen partners={partners} onNavigate={() => window.location.assign('/portal')} />;
 }
