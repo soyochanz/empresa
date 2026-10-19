@@ -25,6 +25,16 @@ await new Promise<void>(resolve => gateway.once('listening', resolve));
 const base = `http://127.0.0.1:${(gateway.address() as any).port}`;
 try {
   for (const route of ['/', '/es', '/en/privacy']) assert.match(await (await fetch(base + route)).text(), /https:\/\/altherasolutions.com public/);
+  for (const route of ['/', '/es', '/en']) {
+    const response = await fetch(base + route);
+    assert.equal(response.headers.get('x-frame-options'), 'SAMEORIGIN');
+    assert.equal(response.headers.get('content-security-policy'), "frame-ancestors 'self'");
+  }
+  for (const route of ['/business/account', '/business/' + 'a'.repeat(48), '/webs', '/en/privacy', '/?example=1']) {
+    const response = await fetch(base + route);
+    assert.equal(response.headers.get('x-frame-options'), 'DENY');
+    assert.equal(response.headers.get('content-security-policy'), "frame-ancestors 'none'");
+  }
   assert.equal(await (await fetch(base + '/assets/app.js')).text(), 'public asset');
   for (const route of ['/server.cjs', '/server.cjs.map', '/gateway.cjs', '/%73erver.cjs']) assert.equal((await fetch(base + route)).status, 404);
   for (const route of ['/admin', '/api/health', '/pago-confirmado?stripe_session_id=test', '/?stripe_connect=success']) {

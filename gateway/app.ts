@@ -22,7 +22,10 @@ export function createPublicGateway(options: { dist: string; backend: string; pu
     const url = new URL(req.originalUrl, publicOrigin);
     if (isPublicEntry(url.pathname, url.search)) {
       res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('X-Frame-Options', 'DENY');
+      // Only the public marketing homepage can be previewed by our own site.
+      const previewable = /^\/(?:es|en)?\/?$/.test(url.pathname) && !url.search;
+      res.setHeader('X-Frame-Options', previewable ? 'SAMEORIGIN' : 'DENY');
+      res.setHeader('Content-Security-Policy', `frame-ancestors ${previewable ? "'self'" : "'none'"}`);
       res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
       return res.type('html').send(html);
     }
