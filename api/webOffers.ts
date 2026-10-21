@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getWebOfferPlan, webOfferPlans } from '../src/utils/webOfferPlans';
 
 type Dependencies = { db: SupabaseClient; stripe: () => Stripe; admin: express.RequestHandler; origin: string };
-const OFFER_TERMS = 'Cobro mensual en USD. Permanencia de 12 meses desde la activación. Sin cobro hasta aprobar la demo y completar Stripe. No se añaden impuestos en esta oferta. El SEO incluido corresponde solo al primer mes.';
+const OFFER_TERMS = 'Cobro mensual en USD. Permanencia de 12 meses desde la activación. Sin cobro hasta aprobar la demo y completar Stripe. No se añaden impuestos en esta oferta. SEO incluido: Essential, básico el primer mes; Business, básico durante toda la suscripción; Professional, avanzado durante toda la suscripción.';
 const BUCKET = 'web-offer-assets';
 const text = (value: unknown, max = 200) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const fail = (message: string, status = 400) => Object.assign(new Error(message), { status });
