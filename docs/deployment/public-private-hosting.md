@@ -52,3 +52,7 @@ Pendiente a las 09:06 UTC: el certificado nuevo cubre solo `altherasolutions.com
 ## Migración cerrada (19/10/2026, 10:27 UTC)
 
 HTTPS de raíz y www verificado con validación TLS normal, tanto por DNS como contra 147.79.103.56 con SNI. Certificado ahora incluye SAN DNS:altherasolutions.com y DNS:www.altherasolutions.com. Ambos devuelven 200. Panel /admin y /api/health 200; health en www 200; enlace existente /p/8ebc75a1 devuelve 302; webhook sin firma rechaza con 400. Sin cargos ni eventos financieros reales. Confirmada resolución a Augustinas y pausado el seguimiento automático. Render, secretos, correo y endpoints Stripe intactos.
+
+## Enlaces de marca independientes (26/10/2026)
+
+`docs/branded-web-links-schema.sql` crea `branded_web_links` en Althera (RLS activado, sin permisos anon/authenticated, acceso service_role). Aplicado y verificado en el SQL Editor del proyecto `czyrolmczcwtexxgxzrg`. El administrador crea y revoca enlaces desde Contactos → Web Studio → Enlaces de marca. Se comparten como `/business/<token aleatorio de 48 caracteres>`; el endpoint público solo devuelve nombre y URL de enlaces activos, sin datos de contacto ni funciones de contratación. No modifica solicitudes, clientes, Stripe o webhooks. Ejecutar `scripts/test-branded-links.ts` y `scripts/test-web-offers.ts` antes de desplegar backend Render y frontend Hostinger.

@@ -54,6 +54,21 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     }).catch(() => res.status(401).json({error:'No se pudo verificar tu sesión.'}));
   };
   const owned = async(id:string,email:string) => { const row=await checked(db.from('web_offer_requests').select('*').eq('id',id).eq('email',email).maybeSingle()); if(!row) throw fail('Proyecto no encontrado.',404); return row; };
+  router.get('/admin/links',admin,run(async(_req,res)=>res.json(await checked(db.from('branded_web_links').select('*').order('created_at',{ascending:false}).limit(500)))));
+  router.post('/admin/links',admin,run(async(req,res)=>{
+    const name=text(req.body.name); if(!name)throw fail('Indica el nombre de la web.');
+    const url=validDemoUrl(req.body.url);
+    const row=await checked(db.from('branded_web_links').insert({id:randomUUID(),token:randomBytes(24).toString('hex'),name,url}).select('*').single());
+    res.status(201).json(row);
+  }));
+  router.patch('/admin/links/:id',admin,run(async(req,res)=>{
+    const patch:any={updated_at:new Date().toISOString()};
+    if(req.body.active!==undefined){if(typeof req.body.active!=='boolean')throw fail('Estado no válido.');patch.active=req.body.active;}
+    if(req.body.url!==undefined)patch.url=validDemoUrl(req.body.url);
+    if(req.body.name!==undefined){patch.name=text(req.body.name);if(!patch.name)throw fail('Indica el nombre de la web.');}
+    const row=await checked(db.from('branded_web_links').update(patch).eq('id',req.params.id).select('*').maybeSingle());
+    if(!row)throw fail('Enlace no encontrado.',404);res.json(row);
+  }));
   router.get('/plans', (_req,res) => res.json({plans:webOfferPlans,currency:'usd',billingEnabled:true,terms:OFFER_TERMS}));
   router.post('/requests',rate,run(async(req,res) => {
     const b=req.body; if(b.websiteTrap) throw fail('Solicitud no válida.');
@@ -82,7 +97,14 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     const data=await checked(db.from('web_offer_requests').update(patch).eq('id',req.params.id).in('status',['requested','designing','review','changes']).select('*').maybeSingle());
     if(!data)throw fail('No se puede modificar una propuesta ya aprobada.',409);res.json(data);
   }));
-  router.get('/demo/:token',run(async(req,res)=>{const row=await requestByToken(req.params.token);res.json({businessName:row.business_name,plan:row.plan,status:row.status,demoUrl:row.demo_url,feedback:row.feedback,billingEnabled:true,terms:OFFER_TERMS});}));
+  router.get('/demo/:token',run(async(req,res)=>{
+    if(!/^[a-f0-9]{48}$/.test(req.params.token))throw fail('Demo no encontrada.',404);
+    const row=await checked(db.from('web_offer_requests').select('*').eq('demo_token',req.params.token).maybeSingle());
+    if(row)return res.json({businessName:row.business_name,plan:row.plan,status:row.status,demoUrl:row.demo_url,feedback:row.feedback,billingEnabled:true,terms:OFFER_TERMS});
+    const link=await checked(db.from('branded_web_links').select('name,url').eq('token',req.params.token).eq('active',true).maybeSingle());
+    if(!link)throw fail('Enlace no disponible.',404);
+    res.json({businessName:link.name,demoUrl:link.url,standalone:true,billingEnabled:false});
+  }));
   router.post('/demo/:token/feedback',rate,run(async(req,res)=>{
     const row=await requestByToken(req.params.token);if(!['review','changes'].includes(row.status))throw fail('Esta propuesta no admite cambios ahora.',409);
     const feedback=text(req.body.feedback,4000);if(feedback.length<15)throw fail('Cuéntanos qué cambiarías (al menos 15 caracteres).');

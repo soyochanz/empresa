@@ -48,7 +48,7 @@ function Demo(){const token=location.pathname.split('/')[2];const [demo,setDemo]
  const load=()=>offerApi(`/demo/${token}`).then(setDemo).catch(e=>setError(e.message));useEffect(()=>{load();},[token]);
  async function checkout(){setBusy(true);setError('');try{const result=await offerApi(`/demo/${token}/checkout`,{acceptTerms:accepted});location.assign(result.url);}catch(e:any){setError(e.message);}finally{setBusy(false);}}
  async function revise(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{await offerApi(`/demo/${token}/feedback`,{feedback});setSaved(true);setEditing(false);await load();}catch(e:any){setError(e.message);}finally{setBusy(false);}}
- const decision=demo&&<>
+ const decision=demo&&!demo.standalone&&<>
   <div className="wo-review-bar">
    <div className="wo-review-price"><strong>{getWebOfferPlan(demo.plan)?.price} USD<small>/mes</small></strong><span>{getWebOfferPlan(demo.plan)?.name} · 12 meses al contratar</span></div>
    {['review','approved'].includes(demo.status)&&<div className="wo-actions wo-review-actions"><button className="wo-outline wo-revise" disabled={busy} onClick={()=>setEditing(!editing)}><X size={18}/> No me gusta</button><button className="wo-btn wo-approve" disabled={busy||!accepted||!demo.billingEnabled} onClick={checkout}><CheckCircle2 size={18}/> Me gusta <ArrowRight size={18}/></button></div>}
@@ -59,7 +59,7 @@ function Demo(){const token=location.pathname.split('/')[2];const [demo,setDemo]
   {saved&&<p role="status">Comentarios enviados.</p>}
   {editing&&<form className="wo-form wo-review-feedback" onSubmit={revise}><label>¿Qué cambiarías?<textarea autoFocus required minLength={15} maxLength={4000} rows={3} value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Cuéntanos qué te gustaría mejorar…"/></label><div><button type="button" className="wo-outline" onClick={()=>setEditing(false)}>Cancelar</button><button disabled={busy} className="wo-btn">Enviar cambios <ArrowRight size={16}/></button></div></form>}
  </>;
- return <><Header/><main className="wo-wrap wo-demo"><h1>{demo?.businessName||'Tu próxima web.'}</h1>{error&&<p className="wo-error" role="alert">{error}</p>}{demo&&(demo.demoUrl?<DemoPreview url={demo.demoUrl} name={demo.businessName} status={webOfferStatuses[demo.status]}>{decision}</DemoPreview>:<div className="wo-empty"><Sparkles/><h2>Estamos preparando tu propuesta.</h2></div>)}</main><Footer/></>;
+ return <><Header/><main className="wo-wrap wo-demo"><h1>{demo?.businessName||'Tu próxima web.'}</h1>{error&&<p className="wo-error" role="alert">{error}</p>}{demo&&(demo.demoUrl?<DemoPreview url={demo.demoUrl} name={demo.businessName} status={demo.standalone?'Presentado por Althera':webOfferStatuses[demo.status]}>{decision}</DemoPreview>:<div className="wo-empty"><Sparkles/><h2>Estamos preparando tu propuesta.</h2></div>)}</main><Footer/></>;
 
 }
 export function CustomerProject({project:p}:{project:any;key?:string}){

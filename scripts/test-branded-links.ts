@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import express from 'express';
+import { registerWebOffers } from '../api/webOffers';
+const rows:any[]=[];
+const db:any={from(table:string){let filters:any[]=[];let payload:any;let mode='read';let single=false;
+ const q:any={select(){return q},order(){return q},limit(){return q},eq(k:string,v:any){filters.push([k,v]);return q},insert(p:any){mode='insert';payload=p;return q},update(p:any){mode='update';payload=p;return q},single(){single=true;return q},maybeSingle(){single=true;return q},then(resolve:any){let found=table==='branded_web_links'?rows.filter(r=>filters.every(([k,v])=>r[k]===v)):[];
+ if(mode==='insert'){const row={...payload,active:true};rows.push(row);found=[row];}
+ if(mode==='update')found.forEach(r=>Object.assign(r,payload));
+ return Promise.resolve({data:single?(found[0]||null):found,error:null}).then(resolve);}};return q;}};
+const app=express();registerWebOffers(app,{db,stripe:()=>{throw new Error('Standalone links must never call Stripe');},admin:(req,res,next)=>req.headers.authorization==='Bearer admin'?next():void res.sendStatus(401),origin:'https://altherasolutions.com'});
+const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.on('listening',r));
+const base=`http://127.0.0.1:${(server.address() as any).port}/api/web-offers`;
+const call=(path:string,method='GET',body?:any,admin=false)=>fetch(base+path,{method,headers:{'Content-Type':'application/json',...(admin?{Authorization:'Bearer admin'}:{})},body:body?JSON.stringify(body):undefined});
+try{
+ assert.equal((await call('/admin/links')).status,401);
+ assert.equal((await call('/admin/links','POST',{name:'Demo',url:'https://example.com'})).status,401);
+ for(const url of ['http://example.com','javascript:alert(1)','https://127.0.0.1'])assert.equal((await call('/admin/links','POST',{name:'Demo',url},true)).status,400);
+ assert.equal((await call('/admin/links','POST',{name:'',url:'https://example.com'},true)).status,400);
+ const created=await call('/admin/links','POST',{name:'External demo',url:'https://example.com'},true);assert.equal(created.status,201);const link=await created.json();assert.match(link.token,/^[a-f0-9]{48}$/);
+ const preview=await (await call(`/demo/${link.token}`)).json();assert.equal(preview.standalone,true);assert.equal(preview.billingEnabled,false);assert.equal(preview.demoUrl,'https://example.com/');assert.equal(preview.plan,undefined);
+ assert.equal((await call(`/demo/${link.token}/checkout`,'POST',{acceptTerms:true})).status,404);
+ assert.equal((await call(`/demo/${link.token}/feedback`,'POST',{feedback:'Change this external demo please'})).status,404);
+ assert.equal((await call(`/admin/links/${link.id}`,'PATCH',{active:false})).status,401);
+ assert.equal((await call(`/admin/links/${link.id}`,'PATCH',{active:false},true)).status,200);
+ assert.equal((await call(`/demo/${link.token}`)).status,404);
+ await call(`/admin/links/${link.id}`,'PATCH',{active:true},true);
+ assert.equal((await call(`/demo/${link.token}`)).status,200);
+ assert.equal((await call('/demo/not-a-token')).status,404);
+ assert.equal((await call(`/demo/${'f'.repeat(48)}`)).status,404);
+ console.log('Branded links verified: admin-only creation/update, valid HTTPS, token preview, revoke/reactivate, no checkout or financial events.');
+}finally{server.close();}
