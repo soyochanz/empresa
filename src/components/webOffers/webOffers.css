@@ -108,3 +108,13 @@
 .wo-offer-saving{display:flex;align-items:flex-start;flex-direction:column;gap:9px;margin:22px 0 12px;font-size:12px}.wo-offer-saving>span{opacity:.75}.wo-offer-saving b{display:inline-block;background:#d6bd8320;color:#e6d29e;border:1px solid #d6bd8330;border-radius:20px;padding:7px 12px}.wo-plan-featured .wo-offer-saving b{background:#152019;color:#f6ebce;border-color:transparent}
 @media(max-width:800px){.wo.wo-premium .wo-lead-gate{grid-template-columns:1fr;padding-top:36px;gap:32px}.wo-lead-art{display:none}.wo.wo-premium .wo-lead-pitch h1{font-size:52px}.wo-lead-price strong{font-size:76px}.wo-lead-pitch>p{font-size:16px}.wo-lead-benefits{font-size:12px}.wo.wo-premium .wo-lead-card{padding:25px}}
 .wo-lead-form label{position:relative}.wo-lead-form .wo-optional{position:static;display:inline;font-size:11px;color:#b5bcad}
+
+/* Independent links present the actual website, without the sales preview UI. */
+.wo .wo-branded-preview{position:fixed;inset:0;z-index:1000;width:100%;height:100dvh;background:#f0f1f4;overflow:hidden;display:grid;place-items:center}
+.wo .wo-branded-device{width:100%;height:100%;min-width:0;overflow:hidden;background:white}
+.wo .wo-branded-device iframe{display:block;width:100%;height:100%;border:0;background:white}
+.wo .wo-branded-preview.is-mobile{padding:22px 16px 76px}
+.wo .wo-branded-preview.is-mobile .wo-branded-device{width:min(393px,100%);height:100%;max-height:852px;border:9px solid #18191d;border-radius:42px;box-shadow:0 24px 64px #16192226,0 0 0 1px #53545b;overflow:hidden}
+.wo .wo-branded-toggle{position:absolute;bottom:max(18px,env(safe-area-inset-bottom));right:max(18px,env(safe-area-inset-right));display:flex;align-items:center;gap:8px;border:1px solid #ffffff45;border-radius:50px;padding:12px 18px;background:#191b20;color:#fff;font-family:inherit;font-size:13px;font-weight:500;line-height:1.2;cursor:pointer;box-shadow:0 4px 18px #0003;z-index:1}
+.wo .wo-branded-toggle:focus-visible{outline:3px solid #b69bed;outline-offset:3px}
+.wo-branded-loading{position:fixed;inset:0;background:#fff}

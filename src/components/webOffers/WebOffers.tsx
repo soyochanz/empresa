@@ -4,6 +4,7 @@ import { webOfferPlans, getWebOfferPlan, webOfferStatuses } from '../../utils/we
 import './webOffers.css';
 import BriefWizard from './BriefWizard';
 import DemoPreview from './DemoPreview';
+import BrandedPreview from './BrandedPreview';
 import LeadGate, { type OfferLead } from './LeadGate';
 import { readApiResponse } from '../../utils/readApiResponse';
 
@@ -59,6 +60,8 @@ function Demo(){const token=location.pathname.split('/')[2];const [demo,setDemo]
   {saved&&<p role="status">Comentarios enviados.</p>}
   {editing&&<form className="wo-form wo-review-feedback" onSubmit={revise}><label>¿Qué cambiarías?<textarea autoFocus required minLength={15} maxLength={4000} rows={3} value={feedback} onChange={e=>setFeedback(e.target.value)} placeholder="Cuéntanos qué te gustaría mejorar…"/></label><div><button type="button" className="wo-outline" onClick={()=>setEditing(false)}>Cancelar</button><button disabled={busy} className="wo-btn">Enviar cambios <ArrowRight size={16}/></button></div></form>}
  </>;
+ if(demo?.standalone&&demo.demoUrl)return <BrandedPreview url={demo.demoUrl} name={demo.businessName}/>;
+ if(!demo&&!error)return <div className="wo-branded-loading" role="status" aria-label="Cargando web"/>;
  return <><Header/><main className="wo-wrap wo-demo"><h1>{demo?.businessName||'Tu próxima web.'}</h1>{error&&<p className="wo-error" role="alert">{error}</p>}{demo&&(demo.demoUrl?<DemoPreview url={demo.demoUrl} name={demo.businessName} status={demo.standalone?'Presentado por Althera':webOfferStatuses[demo.status]}>{decision}</DemoPreview>:<div className="wo-empty"><Sparkles/><h2>Estamos preparando tu propuesta.</h2></div>)}</main><Footer/></>;
 
 }
