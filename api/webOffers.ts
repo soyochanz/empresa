@@ -58,7 +58,7 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
   router.post('/admin/links',admin,run(async(req,res)=>{
     const name=text(req.body.name); if(!name)throw fail('Indica el nombre de la web.');
     const url=validDemoUrl(req.body.url);
-    const row=await checked(db.from('branded_web_links').insert({id:randomUUID(),token:randomBytes(24).toString('hex'),name,url}).select('*').single());
+    const row=await checked(db.from('branded_web_links').insert({id:randomUUID(),token:randomBytes(10).toString('hex'),name,url}).select('*').single());
     res.status(201).json(row);
   }));
   router.patch('/admin/links/:id',admin,run(async(req,res)=>{
@@ -68,6 +68,12 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     if(req.body.name!==undefined){patch.name=text(req.body.name);if(!patch.name)throw fail('Indica el nombre de la web.');}
     const row=await checked(db.from('branded_web_links').update(patch).eq('id',req.params.id).select('*').maybeSingle());
     if(!row)throw fail('Enlace no encontrado.',404);res.json(row);
+  }));
+  router.delete('/admin/links/:id',admin,run(async(req,res)=>{
+    if(req.body.confirm!==true)throw fail('Confirma la eliminación del enlace.');
+    const row=await checked(db.from('branded_web_links').delete().eq('id',req.params.id).eq('active',false).select('id').maybeSingle());
+    if(!row)throw fail('Desactiva el enlace antes de eliminarlo, o comprueba que todavía existe.',409);
+    res.json({ok:true});
   }));
   router.get('/plans', (_req,res) => res.json({plans:webOfferPlans,currency:'usd',billingEnabled:true,terms:OFFER_TERMS}));
   router.post('/requests',rate,run(async(req,res) => {
@@ -124,11 +130,15 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     res.json({ok:true,warning});
   }));
   router.get('/demo/:token',run(async(req,res)=>{
-    if(!/^[a-f0-9]{48}$/.test(req.params.token))throw fail('Demo no encontrada.',404);
-    const row=await checked(db.from('web_offer_requests').select('*').eq('demo_token',req.params.token).maybeSingle());
+    const token=req.params.token;
+    if(!/^(?:[a-f0-9]{20}|[a-f0-9]{48})$/.test(token))throw fail('Demo no encontrada.',404);
+    const row=token.length===48?await checked(db.from('web_offer_requests').select('*').eq('demo_token',token).maybeSingle()):null;
     if(row)return res.json({businessName:row.business_name,plan:row.plan,status:row.status,demoUrl:row.demo_url,feedback:row.feedback,billingEnabled:true,terms:OFFER_TERMS});
-    const link=await checked(db.from('branded_web_links').select('name,url').eq('token',req.params.token).eq('active',true).maybeSingle());
-    if(!link)throw fail('Enlace no disponible.',404);
+    // Prefix aliases keep previously shared long links valid without modifying stored tokens.
+    const links=await checked(db.from('branded_web_links').select('name,url,active').like('token',token.length===20?`${token}%`:token).limit(2));
+    if(links.length!==1)throw fail('Enlace no disponible.',404);
+    const link=links[0];
+    if(!link.active)return res.json({businessName:link.name,standalone:true,unavailable:true,billingEnabled:false});
     res.json({businessName:link.name,demoUrl:link.url,standalone:true,billingEnabled:false});
   }));
   router.post('/demo/:token/feedback',rate,run(async(req,res)=>{

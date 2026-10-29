@@ -125,3 +125,7 @@
   .wo .wo-branded-preview.is-mobile .wo-branded-device{width:100%;height:100%;max-height:none;border:0;border-radius:0;box-shadow:none}
   .wo .wo-branded-toggle{display:none}
 }
+
+.wo .wo-renewal{min-height:82dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:70px 24px 90px;background:radial-gradient(ellipse at 50% 25%,#d8bf7d19,transparent 60%),#0b100e;color:#f5f3e9}
+.wo .wo-renewal h1{font-size:clamp(42px,6.5vw,88px);line-height:1.04;letter-spacing:-.055em;margin:24px 0}.wo .wo-renewal em{color:#d8bf86;font-style:normal}.wo .wo-renewal p{color:#bac4ba;font-size:17px;line-height:1.7;margin-bottom:30px}.wo .wo-renewal small{color:#aab5ab;margin-top:18px}.wo .wo-renewal .wo-reassurance{margin-top:24px;color:#d8daca}.wo-renewal-orbit{position:relative;width:100px;height:100px;display:grid;place-items:center;margin-bottom:32px;border:1px solid #d8bf8666;border-radius:50%;box-shadow:0 0 80px #d8bf8622}.wo-renewal-orbit>svg{width:48px;height:48px;color:#d8bf86}.wo-renewal-orbit span{position:absolute;inset:-15px;border:1px solid #d8bf8622;border-radius:50%}.wo-renewal-orbit span:last-child{inset:-30px;border-color:#d8bf8611}
+.wa-branded-list .wa-delete-confirm{max-width:340px}
