@@ -99,6 +99,33 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
   const editableRequest = (query:any) => query.in('status',['requested','designing','review','changes','approved'])
     .is('checkout_session_id',null).is('stripe_subscription_id',null)
     .or(`checkout_lock_until.is.null,checkout_lock_until.lt.${new Date().toISOString()}`);
+  async function releaseUnpaidCheckout(row:any){
+    if(!row.checkout_session_id)return;
+    if(row.stripe_subscription_id||!['requested','designing','review','changes','approved'].includes(row.status))throw fail('Esta solicitud tiene una suscripción vinculada. Conservamos su historial.',409);
+    const lease=new Date(Date.now()+120000).toISOString();
+    const locked=await checked(db.from('web_offer_requests').update({checkout_lock_until:lease}).eq('id',row.id)
+      .eq('checkout_session_id',row.checkout_session_id).is('stripe_subscription_id',null)
+      .in('status',['requested','designing','review','changes','approved'])
+      .or(`checkout_lock_until.is.null,checkout_lock_until.lt.${new Date().toISOString()}`).select('*').maybeSingle());
+    if(!locked)throw fail('Hay otra operación en curso. Espera unos segundos y vuelve a intentarlo.',409);
+    try{
+      const sessions=stripe().checkout.sessions;
+      let session=await sessions.retrieve(locked.checkout_session_id,{}, {timeout:20000,maxNetworkRetries:0});
+      const unpaid=(value:any)=>value.payment_status==='unpaid'&&!value.subscription;
+      if(!unpaid(session)||!['open','expired'].includes(session.status||''))throw fail('Stripe confirma un checkout completado o una suscripción. No se puede modificar ni eliminar esta solicitud.',409);
+      if(session.status==='open'){
+        try{session=await sessions.expire(session.id,{}, {timeout:20000,maxNetworkRetries:0});}
+        catch{throw fail('No se pudo cerrar el enlace pendiente en Stripe. No se ha modificado la solicitud; vuelve a intentarlo.',409);}
+      }
+      if(session.status!=='expired'||!unpaid(session))throw fail('No se ha podido verificar el cierre del checkout. La solicitud se conserva.',409);
+      const cleared=await checked(db.from('web_offer_requests').update({checkout_session_id:null,checkout_generation:(locked.checkout_generation||0)+1,approved_at:null,approved_terms:null})
+        .eq('id',row.id).eq('checkout_session_id',locked.checkout_session_id).eq('checkout_lock_until',lease).is('stripe_subscription_id',null)
+        .in('status',['requested','designing','review','changes','approved']).select('id').maybeSingle());
+      if(!cleared)throw fail('La solicitud ha cambiado durante la comprobación. Actualiza el panel.',409);
+    }finally{
+      await checked(db.from('web_offer_requests').update({checkout_lock_until:null}).eq('id',row.id).eq('checkout_lock_until',lease));
+    }
+  }
   router.patch('/admin/requests/:id',admin,run(async(req,res)=>{
     const row=await checked(db.from('web_offer_requests').select('*').eq('id',req.params.id).maybeSingle());
     if(!row)throw fail('Solicitud no encontrada.',404);
@@ -110,6 +137,7 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     }
     if(!patch.status)throw fail('Selecciona un estado o una URL de demo.');
     if(['review','changes'].includes(patch.status)&&!(patch.demo_url||row.demo_url))throw fail('Guarda una URL de demo antes de usar este estado.');
+    await releaseUnpaidCheckout(row);
     patch.approved_at=null;patch.approved_terms=null;
     const data=await checked(editableRequest(db.from('web_offer_requests').update(patch).eq('id',req.params.id)).select('*').maybeSingle());
     if(!data)throw fail('Solicitud vinculada a Stripe o con un pago en curso. Su estado de cobro se gestiona desde Stripe.',409);
@@ -121,6 +149,7 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     if(!row)throw fail('Solicitud no encontrada.',404);
     const tickets=await checked(db.from('web_offer_tickets').select('id').eq('request_id',row.id).limit(1));
     if(tickets.length)throw fail('Esta solicitud tiene tickets de soporte. Se conserva para mantener su historial.',409);
+    await releaseUnpaidCheckout(row);
     const deleted=await checked(editableRequest(db.from('web_offer_requests').delete().eq('id',row.id)).select('id,assets').maybeSingle());
     if(!deleted)throw fail('No se puede eliminar una solicitud con checkout, suscripción o pago en curso.',409);
     // The FK also prevents deletion if a support ticket is created concurrently.

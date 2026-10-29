@@ -8,7 +8,7 @@ export default function RequestActions({ request, onSaved }: { key?: string; req
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const locked = !!(request.checkout_session_id || request.stripe_subscription_id || ['active', 'past_due', 'canceled'].includes(request.status));
+  const locked = !!(request.stripe_subscription_id || ['active', 'past_due', 'canceled'].includes(request.status));
   async function submit(remove = false) {
     setBusy(true); setMessage('');
     try {
@@ -24,7 +24,7 @@ export default function RequestActions({ request, onSaved }: { key?: string; req
     } catch (error: any) { setMessage(error.message); } finally { setBusy(false); }
   }
   return <section className="wa-request-actions" aria-label="Gestionar solicitud">
-    <div><h4>Gestionar solicitud</h4><p>{locked ? 'El cobro está vinculado a Stripe. Conservamos la solicitud y su historial.' : 'Actualiza en qué punto está la web. El cliente verá este estado en su panel.'}</p></div>
+    <div><h4>Gestionar solicitud</h4><p>{locked ? 'El cobro está vinculado a Stripe. Conservamos la solicitud y su historial.' : request.checkout_session_id ? 'Al guardar o eliminar, comprobaremos Stripe y cerraremos el enlace de pago pendiente. Si ya se completó, conservaremos la solicitud.' : 'Actualiza en qué punto está la web. El cliente verá este estado en su panel.'}</p></div>
     <div className="wa-request-controls">
       <label>Estado de la solicitud<select value={status} disabled={busy || locked} onChange={e => setStatus(e.target.value)}>
         {!['requested','designing','review','changes'].includes(status) && <option value={status}>{webOfferStatuses[status]}</option>}
