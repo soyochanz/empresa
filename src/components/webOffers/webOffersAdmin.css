@@ -39,3 +39,10 @@
 .wa-branded-links{margin:28px 0;padding:28px;border:1px solid var(--wa-border);border-radius:24px;background:var(--wa-surface);color:var(--wa-text)}
 .wa-branded-heading{display:flex;gap:14px;align-items:flex-start}.wa-branded-heading>svg{color:var(--wa-accent);margin-top:5px;flex-shrink:0}.wa-branded-heading h3{margin:0 0 8px;font-size:23px}.wa-branded-heading p,.wa-branded-links>small{color:var(--wa-muted);line-height:1.6}.wa-link-form{display:grid;grid-template-columns:1fr 1.4fr auto;align-items:end;gap:16px;margin:24px 0}.wa-link-form label{display:grid;gap:8px;font-size:13px}.wa-link-form button{min-height:48px;background:var(--wa-accent);color:#17221e;font-weight:700}.wa-branded-list{display:grid;gap:12px;margin:20px 0}.wa-branded-list article{padding:20px;border:1px solid var(--wa-border);border-radius:16px;display:flex;gap:20px;align-items:center;justify-content:space-between}.wa-branded-list article>div:first-child{min-width:0;flex:1}.wa-branded-list strong{margin-right:12px}.wa-branded-list p{margin:10px 0;color:var(--wa-muted);overflow-wrap:anywhere;font-size:13px}.wa-branded-list code{display:block;overflow-wrap:anywhere;font-size:12px;color:var(--wa-text)}.wa-branded-list .wa-editor-actions{flex-wrap:wrap;flex-shrink:0}.wa-branded-links button:disabled{opacity:.5}
 @media(max-width:1000px){.wa-link-form{grid-template-columns:1fr}.wa-branded-list article{align-items:stretch;flex-direction:column}.wa-branded-links{padding:20px}}
+
+.wa-request-actions{margin-top:24px;padding:20px;border:1px solid var(--wa-border);border-radius:14px;background:var(--wa-control)}
+.wa-request-actions p{font-size:12px;line-height:1.6;color:var(--wa-muted);margin:8px 0}
+.wa-request-controls{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-top:16px}
+.wa-request-controls label{flex:1;min-width:200px;font-size:12px}.wa-request-controls select{display:block;margin:8px 0 0}
+.wa button.wa-delete{color:var(--wa-error);border-color:var(--wa-error);background:transparent}
+.wa-delete-confirm{margin-top:18px;padding:18px;border:1px solid var(--wa-error);border-radius:12px}.wa-delete-confirm .wa-tools{margin-top:14px}

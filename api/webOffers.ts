@@ -89,13 +89,39 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     const row=await checked(db.from('web_offer_requests').select('assets').eq('id',req.params.id).single());
     const files=await Promise.all(row.assets.map(async(a:any)=>{const {data,error}=await db.storage.from(BUCKET).createSignedUrl(a.path,300);if(error)throw error;return {...a,url:data.signedUrl};}));res.json(files);
   }));
+  // These predicates are applied on the mutation itself, so a concurrent checkout wins safely.
+  const editableRequest = (query:any) => query.in('status',['requested','designing','review','changes','approved'])
+    .is('checkout_session_id',null).is('stripe_subscription_id',null)
+    .or(`checkout_lock_until.is.null,checkout_lock_until.lt.${new Date().toISOString()}`);
   router.patch('/admin/requests/:id',admin,run(async(req,res)=>{
+    const row=await checked(db.from('web_offer_requests').select('*').eq('id',req.params.id).maybeSingle());
+    if(!row)throw fail('Solicitud no encontrada.',404);
     const patch:any={updated_at:new Date().toISOString()};
-    if(req.body.demoUrl!==undefined) {patch.demo_url=validDemoUrl(req.body.demoUrl);patch.status='review';}
-    if(req.body.status && ['requested','designing','review','changes'].includes(req.body.status)) patch.status=req.body.status;
-    // Paid or approved projects cannot silently change the approved preview.
-    const data=await checked(db.from('web_offer_requests').update(patch).eq('id',req.params.id).in('status',['requested','designing','review','changes']).select('*').maybeSingle());
-    if(!data)throw fail('No se puede modificar una propuesta ya aprobada.',409);res.json(data);
+    if(req.body.demoUrl!==undefined){patch.demo_url=validDemoUrl(req.body.demoUrl);patch.status='review';}
+    if(req.body.status!==undefined){
+      if(!['requested','designing','review','changes'].includes(req.body.status))throw fail('Los estados de pago los actualiza Stripe. Selecciona un estado de preparación.');
+      patch.status=req.body.status;
+    }
+    if(!patch.status)throw fail('Selecciona un estado o una URL de demo.');
+    if(['review','changes'].includes(patch.status)&&!(patch.demo_url||row.demo_url))throw fail('Guarda una URL de demo antes de usar este estado.');
+    patch.approved_at=null;patch.approved_terms=null;
+    const data=await checked(editableRequest(db.from('web_offer_requests').update(patch).eq('id',req.params.id)).select('*').maybeSingle());
+    if(!data)throw fail('Solicitud vinculada a Stripe o con un pago en curso. Su estado de cobro se gestiona desde Stripe.',409);
+    res.json(data);
+  }));
+  router.delete('/admin/requests/:id',admin,run(async(req,res)=>{
+    if(req.body.confirm!==true)throw fail('Confirma la eliminación de la solicitud.');
+    const row=await checked(db.from('web_offer_requests').select('*').eq('id',req.params.id).maybeSingle());
+    if(!row)throw fail('Solicitud no encontrada.',404);
+    const tickets=await checked(db.from('web_offer_tickets').select('id').eq('request_id',row.id).limit(1));
+    if(tickets.length)throw fail('Esta solicitud tiene tickets de soporte. Se conserva para mantener su historial.',409);
+    const deleted=await checked(editableRequest(db.from('web_offer_requests').delete().eq('id',row.id)).select('id,assets').maybeSingle());
+    if(!deleted)throw fail('No se puede eliminar una solicitud con checkout, suscripción o pago en curso.',409);
+    // The FK also prevents deletion if a support ticket is created concurrently.
+    let warning='';
+    const paths=(deleted.assets||[]).map((a:any)=>a.path).filter((p:any)=>typeof p==='string'&&p.startsWith(`${row.id}/`));
+    if(paths.length){try{const {error}=await db.storage.from(BUCKET).remove(paths);if(error)throw error;}catch{warning='Solicitud eliminada. Queda pendiente limpiar sus archivos adjuntos.';}}
+    res.json({ok:true,warning});
   }));
   router.get('/demo/:token',run(async(req,res)=>{
     if(!/^[a-f0-9]{48}$/.test(req.params.token))throw fail('Demo no encontrada.',404);
