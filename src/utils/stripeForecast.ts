@@ -7,8 +7,8 @@ export interface ForecastSubscription {
  paymentLimit: number | null; paymentCount: number;
 }
 
-export function getStripeForecastOccurrences(plan: ForecastSubscription, monthKey: string, today = new Date()): Date[] {
- if (!['active', 'trialing', 'past_due'].includes(plan.status) || plan.currency.toLowerCase() !== 'eur' || plan.amount <= 0) return [];
+export function getStripeForecastOccurrences(plan: ForecastSubscription, monthKey: string, today = new Date(), allCurrencies = false): Date[] {
+ if (!['active', 'trialing', 'past_due'].includes(plan.status) || (!allCurrencies && plan.currency.toLowerCase() !== 'eur') || plan.amount <= 0) return [];
  const anchorValue = plan.nextPaymentAt || plan.lastPaidAt;
  if (!anchorValue) return [];
  const anchor = new Date(anchorValue);

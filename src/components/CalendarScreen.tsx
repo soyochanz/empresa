@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { CalendarEvent, ClientContact, Screen, Note } from '../types';
 import { PanelUser } from '../mockData';
+import {PaymentRows} from './UpcomingPayments';
+import {paymentMoney,type ScheduledPayment} from '../utils/paymentSchedule';
 import ProductNeedsSummary from './ProductNeedsSummary';
 import {
  Plus, 
@@ -51,6 +53,7 @@ const normalizeExternalUrl = (url?: string) => {
 };
 
 interface CalendarScreenProps {
+ payments?: ScheduledPayment[];
  events: CalendarEvent[];
  contacts: ClientContact[];
  notes: Note[];
@@ -64,6 +67,7 @@ interface CalendarScreenProps {
 }
 
 export default function CalendarScreen({ 
+ payments = [],
  events, 
  contacts, 
  notes,
@@ -433,11 +437,12 @@ export default function CalendarScreen({
  };
 
  return (
- <div className="flex-1 p-8 flex gap-8 overflow-hidden h-[calc(100vh-80px)] bg-transparent text-slate-150">
+ <div className="flex-1 p-8 flex gap-8 overflow-hidden h-full min-h-0 bg-transparent text-slate-150">
   
   {/* Left Area: Calendar Month View */}
   <div className="flex-1 flex flex-col gap-6 min-w-0">
   
+  <section className="pay-calendar"><h3>Cobros del {new Date(selectedDayStr+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}</h3><PaymentRows payments={payments.filter(p=>p.date===selectedDayStr)}/></section>
   {/* Calendar Title & Filters Bar */}
   <div className="flex items-center justify-between">
    <div>
@@ -584,6 +589,7 @@ export default function CalendarScreen({
       {isToday && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping" />}
      </div>
 
+     {payments.filter(p=>p.date===formattedDayStr).map(p=><button type="button" key={p.id} className={`pay-chip ${p.source}`} onClick={e=>{e.stopPropagation();setCurrentDay(day);}}>{paymentMoney(p)} · {p.customer}<span>{p.method}{p.overdue?' · Vencido':p.estimated?' · Previsión':''}</span></button>)}
      {/* Event Chips */}
      <div className="space-y-1 overflow-hidden">
       {dayEvents.map((ev) => {

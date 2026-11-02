@@ -8,6 +8,8 @@ import LandingScreen from './components/LandingScreen';
 import PortalAccessScreen from './components/PortalAccessScreen';
 import DashboardScreen from './components/DashboardScreen';
 import CalendarScreen from './components/CalendarScreen';
+import UpcomingPayments from './components/UpcomingPayments';
+import {usePaymentSchedule} from './hooks/usePaymentSchedule';
 import CrmScreen from './components/CrmScreen';
 import NotesScreen from './components/NotesScreen';
 import ProjectsScreen, { AgencyProject } from './components/ProjectsScreen';
@@ -754,6 +756,7 @@ export default function App() {
 
  // Sync finance transactions to compute upcoming alerts
  const [finTransactions, setFinTransactions] = useState<any[]>([]);
+ const paymentSchedule = usePaymentSchedule(Boolean(currentUser), finTransactions, contacts);
 
  const handleRefreshFinance = useCallback(async () => {
  try {
@@ -1936,6 +1939,7 @@ export default function App() {
   case 'calendar':
   return (
    <CalendarScreen 
+   payments={paymentSchedule.payments}
    events={globalSearch ? filteredSearchEvents.filter(event => adminVisibleEventIds.has(event.id)) : adminVisibleEvents}
    contacts={contacts}
    notes={globalSearch ? filteredSearchNotes : notes}
@@ -2294,6 +2298,7 @@ export default function App() {
    </div>
   )}
 
+  <UpcomingPayments {...paymentSchedule} onRefresh={()=>{paymentSchedule.refresh();void handleRefreshFinance();}} onCalendar={()=>navigateTo('calendar','none')}/>
   {/* Dynamic Screen viewport frames with slide/none transitions */}
   <div className="flex-1 relative overflow-hidden font-sans">
    <AnimatePresence mode="wait" initial={false}>
