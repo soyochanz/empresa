@@ -45,3 +45,8 @@
 #finance-module-root .finance-invoice-cards h4{font-size:17px;color:var(--fw-text)}
 #finance-module-root .finance-invoice-cards p{font-size:12px;color:var(--fw-muted)}
 #finance-module-root .finance-invoices>details>div{padding-top:20px}
+#finance-module-root[data-workspace="simple"] .finance-tabs-shell{background:#0d171d}
+.admin-theme-light #finance-module-root[data-workspace="simple"] .finance-tabs-shell{background:#f4f7f9}
+#finance-transactions-log th{font-size:12px;font-family:inherit;font-weight:600}
+#finance-transactions-log td:nth-child(4){font-size:12px;font-family:inherit}
+#finance-transactions-log td:nth-child(6) button,#finance-transactions-log td:nth-child(6)>span{font-family:inherit;font-size:11px;letter-spacing:0;text-transform:none}
