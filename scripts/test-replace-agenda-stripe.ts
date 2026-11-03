@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {retireAgendaStripe} from '../api/replaceAgendaStripe';
+const make=()=>{
+ const old:any={id:'sub_old',status:'active',metadata:{clientId:'c1'}};
+ const previous:any={id:'cs_old',status:'open',metadata:{clientId:'c1'}};
+ const next:any={id:'cs_new',status:'open',mode:'subscription',metadata:{clientId:'c1',pendingTxId:'agenda_new'}};
+ const calls:any[]=[];
+ const stripe:any={subscriptions:{retrieve:async()=>old,update:async(_:any,p:any)=>{calls.push(['update-sub',p]);Object.assign(old.metadata,p.metadata);return old;},cancel:async(_:any,p:any)=>{calls.push(['cancel',p]);old.status='canceled';return old;}},checkout:{sessions:{retrieve:async(id:string)=>id==='cs_new'?next:previous,update:async(_:any,p:any)=>{calls.push(['update-link',p]);Object.assign(previous.metadata,p.metadata);return previous;},expire:async()=>{calls.push(['expire']);previous.status='expired';return previous;}}}};
+ return {old,previous,next,calls,stripe};
+};
+let f=make();const input={clientId:'c1',newSessionId:'cs_new',subscriptionId:'sub_old'};
+await retireAgendaStripe(f.stripe,input);assert.equal(f.old.status,'canceled');assert.deepEqual(f.calls.find(c=>c[0]==='cancel')[1],{invoice_now:false,prorate:false});
+await retireAgendaStripe(f.stripe,input);assert.equal(f.calls.filter(c=>c[0]==='cancel').length,1);
+f=make();await retireAgendaStripe(f.stripe,{clientId:'c1',newSessionId:'cs_new',sessionId:'cs_old'});assert.equal(f.previous.status,'expired');
+f=make();f.next.status='expired';await assert.rejects(()=>retireAgendaStripe(f.stripe,input));assert.equal(f.calls.length,0);
+f=make();f.old.metadata.clientId='other';await assert.rejects(()=>retireAgendaStripe(f.stripe,input));assert.equal(f.calls.length,0);
+f=make();f.old.metadata.agenda_replacement='cs_another';await assert.rejects(()=>retireAgendaStripe(f.stripe,input));assert.equal(f.calls.length,0);
+f=make();f.previous.status='complete';await assert.rejects(()=>retireAgendaStripe(f.stripe,{clientId:'c1',newSessionId:'cs_new',sessionId:'cs_old'}));assert.equal(f.calls.length,0);
+f=make();f.stripe.subscriptions.cancel=async()=>{throw Error('Stripe unavailable');};await assert.rejects(()=>retireAgendaStripe(f.stripe,input));assert.equal(f.old.status,'active');
+console.log('Stripe replacement: ownership, prepared link, retry, prior replacement, completed session, failure and no proration passed.');

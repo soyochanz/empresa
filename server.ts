@@ -1,4 +1,5 @@
 import express from "express";
+import {retireAgendaStripe} from "./api/replaceAgendaStripe";
 import path from "path";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
@@ -1674,6 +1675,8 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
 
       return {
         id: subscription.id,
+        clientId: subscription.metadata?.clientId || null,
+        concept: subscription.metadata?.concept || firstItem?.price.nickname || "Suscripción Stripe",
         customerId: typeof subscription.customer === "string" ? subscription.customer : customer?.id || "",
         customerName: customer?.name || subscription.metadata?.clientName || customer?.email || "Cliente Stripe",
         customerEmail: customer?.email || subscription.metadata?.clientEmail || "",
@@ -2186,6 +2189,17 @@ app.post("/api/stripe/customer-overview", requireAdminAuth, async (req, res) => 
     console.error("Error retrieving Stripe customer overview:", error);
     res.status(500).json({ error: error?.message || "Internal Server Error" });
   }
+});
+
+const agendaReplacementLocks = new Set<string>();
+app.post("/api/stripe/replace-agenda-recurrence", requireAdminAuth, async (req, res) => {
+ const key = req.body?.subscriptionId || req.body?.sessionId;
+ if (typeof key !== "string" || !key) return res.status(400).json({error:"Falta la recurrencia anterior."});
+ if (agendaReplacementLocks.has(key)) return res.status(409).json({error:"Hay otra modificación en curso. Reintenta en unos segundos."});
+ agendaReplacementLocks.add(key);
+ try { return res.json(await retireAgendaStripe(getStripe(), req.body)); }
+ catch(error:any) { return res.status(409).json({error:error.message || "No se pudo retirar la recurrencia anterior. El nuevo enlace no se ha mostrado; reintenta la operación."}); }
+ finally { agendaReplacementLocks.delete(key); }
 });
 
 app.post("/api/stripe/cancel-subscription", requireAdminAuth, async (req, res) => {
