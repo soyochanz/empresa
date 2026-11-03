@@ -13,3 +13,5 @@ assert.equal(buildMonthlyPaymentActivity([{...tx[0],stripeInvoiceId:undefined,st
 console.log('Monthly activity: business identity, email resolution, paid/failed/pending, month boundary and Stripe deduplication passed.');
 
 assert.equal(buildMonthlyPaymentActivity([{...tx[1],id:'tx_stripe_payout_123',category:'Transferencia interna'}],[],contacts,plans,now).length,0);
+
+assert.equal(buildMonthlyPaymentActivity([{...tx[1],id:'unlinked',clientId:undefined}],[],contacts,plans,now).length,0);

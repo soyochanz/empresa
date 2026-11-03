@@ -6,6 +6,7 @@ export type PaymentPlan = ForecastSubscription & { dashboardUrl?:string; stripeP
 export function buildPaymentSchedule(transactions:FinanceTransaction[],plans:PaymentPlan[],contacts:ClientContact[],today=new Date()):ScheduledPayment[]{
  const now=toFinanceDateKey(today);const end=new Date(today.getFullYear(),today.getMonth()+12,0,12);const endKey=toFinanceDateKey(end);const result:ScheduledPayment[]=[];
  for(const source of transactions.filter(t=>t.type==='income'&&t.isRecurring&&t.paymentMethod!=='stripe')){
+  if(!contacts.some(c=>c.id===source.clientId))continue;
   const anchor=new Date(`${source.date.slice(0,10)}T12:00:00`);if(!Number.isFinite(anchor.getTime()))continue;
   for(let i=0;i<10000;i++){
    const date=getFinanceRecurrenceDate(anchor,source.recurrencePeriod,i);const key=toFinanceDateKey(date);
@@ -57,6 +58,7 @@ export function buildMonthlyPaymentActivity(transactions:FinanceTransaction[],in
  }
  for(const tx of transactions){
   if(tx.type!=='income'||!['paid','failed','pending'].includes(tx.status)||tx.category?.trim().toLocaleLowerCase('es-ES')==='transferencia interna'||tx.id.startsWith('tx_stripe_payout_'))continue;
+  if(!contacts.some(c=>c.id===tx.clientId))continue;
   if(tx.isRecurring&&tx.paymentMethod==='stripe')continue;
   const date=(tx.paidAt||tx.date).slice(0,10);if(date.slice(0,7)!==month||date>now)continue;
   if(tx.isRecurring&&transactions.some(t=>t.recurrenceSourceId===tx.id&&(t.recurrenceScheduledDate||t.date).slice(0,10)===tx.date.slice(0,10)))continue;
