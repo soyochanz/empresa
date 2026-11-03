@@ -16,3 +16,9 @@ assert.equal(count({...plan,nextPaymentAt:null}),1);
 assert.equal(count({...plan,nextPaymentAt:'2026-10-31T12:00:00'}),1);
 assert.equal(count(plan,'2026-09'),0);
 console.log('Previsión Stripe: suscripciones, intervalos, fin de mes, límite de cuotas y cancelación verificados.');
+// Finite split plans must project exactly their remaining installments.
+const split = {...plan, amount:320, paymentLimit:3, paymentCount:1};
+assert.equal(['2026-10','2026-11','2026-12'].reduce((sum,month)=>sum+getStripeForecastOccurrences(split,month,today).length*split.amount,0),640);
+assert.equal(count({...split,paymentCount:3}),0);
+assert.equal(count({...split,currency:'usd'}),0, 'Never add USD installments to EUR totals');
+console.log('Splits: cuotas restantes, fin del plan y separación de divisas verificados.');

@@ -1,3 +1,6 @@
+import './financeWorkspace.css';
+import UpcomingPayments from './UpcomingPayments';
+import { usePaymentSchedule } from '../hooks/usePaymentSchedule';
 import { calculateInvoiceTotals } from '../utils/invoiceTotals';
 import { CASH_OPENING_BALANCE, isCashAfterOpening } from '../utils/cashOpening';
 import { exportSources, matchesExportSource, exportTotals, createMovementPdf, type ExportSource } from '../utils/financeExport';
@@ -559,13 +562,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const recurrenceRegistrationInFlight = useRef(new Set<string>());
  const [registeringRecurrences, setRegisteringRecurrences] = useState<Set<string>>(new Set());
  // Navigation tabs: 'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
- const [activeTab, setActiveTab] = useState<'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'>('transactions');
+ const [activeTab, setActiveTab] = useState<'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales' | 'upcoming'>('transactions');
+ const [recurringGroup, setRecurringGroup] = useState<'subscriptions' | 'installments' | 'manual' | 'pending'>('subscriptions');
  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
  const [quickServiceClientId, setQuickServiceClientId] = useState('');
  const [forecastMonth, setForecastMonth] = useState(() => {
   const nextMonth = new Date();
   nextMonth.setDate(1);
-  nextMonth.setMonth(nextMonth.getMonth() + 1);
+  nextMonth.setMonth(nextMonth.getMonth());
   return getMonthKey(nextMonth);
  });
 
@@ -1008,7 +1012,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  }, []);
 
  useEffect(() => {
-  if (activeTab !== 'stripe' && activeTab !== 'recurring' && activeTab !== 'transactions') return;
+  if (activeTab !== 'stripe' && activeTab !== 'recurring' && activeTab !== 'transactions' && activeTab !== 'forecast') return;
   void refreshStripeFinanceOverview();
   const stripeOverviewTimer = window.setInterval(() => void refreshStripeFinanceOverview(), 5 * 60_000);
   return () => window.clearInterval(stripeOverviewTimer);
@@ -3340,7 +3344,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const filteredTxs = ledgerTransactions.filter(t => {
  const matchesSearch = t.description.toLowerCase().includes(txSearch.toLowerCase()) || 
        t.category.toLowerCase().includes(txSearch.toLowerCase()) ||
-       t.id.toLowerCase().includes(txSearch.toLowerCase());
+       t.id.toLowerCase().includes(txSearch.toLowerCase()) || contacts.some(c => c.id === t.clientId && `${c.company || ''} ${c.name || ''}`.toLowerCase().includes(txSearch.toLowerCase()));
  const matchesType = txTypeFilter === 'all' || t.type === txTypeFilter;
  const matchesCategory = txCategoryFilter === 'All' || t.category === txCategoryFilter;
  const matchesDateRange = matchesTxDateRange(t, txDateRangeFilter);
@@ -3480,7 +3484,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     date,
     amount: Number(toFinanceDateKey(date) === transaction.date.slice(0, 10) ? transaction.firstAmount ?? transaction.amount ?? 0 : transaction.nextAmount ?? transaction.amount ?? 0)
    })));
-  for (const plan of stripeSubscriptions) {
+  for (const plan of stripePlans) {
    for (const date of getStripeForecastOccurrences(plan, key)) {
     // A scheduled ledger entry already represents this cycle in the monthly total.
     const represented = transactions.some(transaction => !transaction.isRecurring
@@ -3490,8 +3494,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     if (represented) continue;
     recurringItems.push({
      transaction: {
-      id: `forecast_${plan.id}`, type: 'income', status: 'pending', category: 'Suscripción Stripe',
-      description: `Suscripción · ${plan.customerName}`, amount: plan.amount,
+      id: `forecast_${plan.id}`, type: 'income', status: 'pending', category: plan.billingType === 'installment' ? 'Pago fraccionado Stripe' : 'Suscripción Stripe',
+      description: `${plan.billingType === 'installment' ? 'Cuota' : 'Suscripción'} · ${plan.customerName}`, amount: plan.amount,
       date: getFinanceDateKey(date.toISOString()), paymentMethod: 'stripe', isRecurring: true,
       recurrencePeriod: plan.interval === 'year' ? 'yearly' : plan.interval === 'week' ? 'weekly' : 'monthly'
      }, date, amount: plan.amount
@@ -3526,8 +3530,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   onNavigate('crm', 'push');
  };
 
+ const paymentAgenda = usePaymentSchedule(activeTab === 'upcoming', transactions, contacts);
  return (
- <div className="w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin @container" id="finance-module-root">
+ <div className="w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin @container" id="finance-module-root" data-workspace="simple">
   <div className="space-y-6 max-w-7xl mx-auto pb-12">
   
   {/* Page Header */}
@@ -3535,9 +3540,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   <div className="text-left">
    <div className="flex flex-wrap items-center gap-2.5">
    <div>
-    <span className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Administración · Tesorería</span>
+    <span className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Tu negocio, en orden</span>
     <h2 className="mt-0.5 text-2xl font-black tracking-tight text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text">
-     Control de caja
+     Finanzas
     </h2>
    </div>
    
@@ -3615,152 +3620,575 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   </div>
   </div>
 
-  {/* Cashflow command center: make the two primary jobs unmistakable. */}
-  <section className="finance-command-center relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.11] via-[#0b1329]/75 to-violet-400/[0.06] p-4 sm:p-5">
-   <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-cyan-300/10 blur-3xl" />
-   <div className="relative grid gap-4 xl:grid-cols-[1.05fr_1.25fr_0.9fr]">
-    <div className="flex flex-col justify-between">
-     <div>
-      <div className="flex items-center gap-2 text-cyan-200">
-       <Sparkles className="h-4 w-4" />
-       <span className="text-[9px] font-black uppercase tracking-[.2em]">Tu día financiero</span>
-      </div>
-      <h3 className="mt-2 text-lg font-black text-white">Cobros, pagos y decisiones claras.</h3>
-      <p className="mt-1 max-w-sm text-[11px] leading-relaxed text-slate-400">Registra una operación en segundos y prioriza lo que realmente mueve la caja.</p>
-     </div>
-     <div className="mt-4 flex flex-wrap gap-2">
-      <button type="button" onClick={() => { resetTxForm(); setTxType('income'); setTxCategory('Facturado'); setTxStatus('paid'); setIsTxModalOpen(true); }} className="inline-flex items-center gap-2 rounded-xl bg-emerald-400 px-4 py-2.5 text-[11px] font-black text-slate-950 transition hover:bg-emerald-300">
-       <ArrowUpRight className="h-4 w-4" /> Registrar cobro
-      </button>
-      <button type="button" onClick={() => { resetTxForm(); setTxType('expense'); setTxStatus('paid'); setIsTxModalOpen(true); }} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-400/[0.09] px-4 py-2.5 text-[11px] font-black text-rose-200 transition hover:bg-rose-400/[0.15]">
-       <ArrowDownLeft className="h-4 w-4" /> Registrar pago
-      </button>
-     </div>
-    </div>
-
-    <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
-     <button type="button" onClick={() => { setActiveTab('transactions'); setTxTypeFilter('income'); setTxDateRangeFilter('all'); setTxCurrentPage(1); }} className="finance-command-card finance-command-card--income group relative min-h-[154px] overflow-hidden rounded-[24px] border border-amber-300/20 bg-gradient-to-br from-amber-300/[0.13] via-[#13161a] to-[#0b0e13] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,.22)] transition duration-300 hover:-translate-y-1 hover:border-amber-300/40 hover:shadow-amber-950/25">
-      <div className="finance-command-card-glow absolute -right-8 -top-8 h-28 w-28 rounded-full bg-amber-300/10 blur-2xl transition group-hover:bg-amber-300/20" />
-      <div className="relative flex items-center justify-between"><span className="finance-command-card-icon flex h-9 w-9 items-center justify-center rounded-2xl border border-amber-300/20 bg-amber-300/10"><Clock className="h-4 w-4 text-amber-300" /></span><span className="finance-command-card-badge rounded-full border border-amber-300/15 bg-amber-300/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[.16em] text-amber-200">Por cobrar</span></div>
-      <strong className="relative mt-4 block text-2xl font-black tracking-tight text-white">{pendingIncomes.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong>
-      <div className="relative mt-1 flex items-center justify-between gap-2"><span className="text-[9px] font-bold uppercase tracking-wider text-amber-200/80">Pendiente de cobro</span><span className="text-[9px] text-slate-500">{pendingIncomeItems.length} operaciones</span></div>
-      <div className="finance-command-card-progress relative mt-3 h-1 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full w-2/3 rounded-full bg-gradient-to-r from-amber-400 to-yellow-200" /></div>
-     </button>
-     <button type="button" onClick={() => { setActiveTab('transactions'); setTxTypeFilter('expense'); setTxDateRangeFilter('all'); setTxCurrentPage(1); }} className="finance-command-card finance-command-card--expense group relative min-h-[154px] overflow-hidden rounded-[24px] border border-rose-300/20 bg-gradient-to-br from-rose-400/[0.15] via-[#161116] to-[#0b0e13] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,.22)] transition duration-300 hover:-translate-y-1 hover:border-rose-300/40 hover:shadow-rose-950/25">
-      <div className="finance-command-card-glow absolute -right-8 -top-8 h-28 w-28 rounded-full bg-rose-400/10 blur-2xl transition group-hover:bg-rose-400/20" />
-      <div className="relative flex items-center justify-between"><span className="finance-command-card-icon flex h-9 w-9 items-center justify-center rounded-2xl border border-rose-300/20 bg-rose-300/10"><WalletCards className="h-4 w-4 text-rose-300" /></span><span className="finance-command-card-badge rounded-full border border-rose-300/15 bg-rose-300/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[.16em] text-rose-200">Por pagar</span></div>
-      <strong className="relative mt-4 block text-2xl font-black tracking-tight text-white">{pendingExpenses.toLocaleString('es-ES', { maximumFractionDigits: 0 })} €</strong>
-      <div className="relative mt-1 flex items-center justify-between gap-2"><span className="text-[9px] font-bold uppercase tracking-wider text-rose-200/80">Pendiente de pago</span><span className="text-[9px] text-slate-500">{pendingExpenseItems.length} operaciones</span></div>
-      <div className="finance-command-card-progress relative mt-3 h-1 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-gradient-to-r from-rose-400 to-pink-300" style={{ width: pendingExpenses > 0 ? '58%' : '0%' }} /></div>
-     </button>
-     <button type="button" onClick={() => setActiveTab('forecast')} className="finance-command-card finance-command-card--forecast group relative min-h-[154px] overflow-hidden rounded-[24px] border border-cyan-300/20 bg-gradient-to-br from-violet-400/[0.15] via-[#111523] to-cyan-400/[0.08] p-4 text-left shadow-[0_18px_50px_rgba(0,0,0,.22)] transition duration-300 hover:-translate-y-1 hover:border-cyan-300/40 hover:shadow-cyan-950/25">
-      <div className="finance-command-card-glow absolute -right-8 -top-8 h-28 w-28 rounded-full bg-cyan-300/10 blur-2xl transition group-hover:bg-cyan-300/20" />
-      <div className="relative flex items-center justify-between"><span className="finance-command-card-icon flex h-9 w-9 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10"><ReceiptText className="h-4 w-4 text-cyan-200" /></span><span className="finance-command-card-badge rounded-full border border-cyan-300/15 bg-cyan-300/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[.16em] text-cyan-100">Próximo</span></div>
-      <strong className="relative mt-4 block truncate text-sm font-black text-white">{nextCollection ? getTransactionDisplayConcept(nextCollection.description) : 'Sin cobros próximos'}</strong>
-      <span className="relative mt-1.5 block text-[10px] font-bold text-cyan-100/80">{nextCollection ? `${nextCollection.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € · ${parseFinanceDate(nextCollection.date)?.toLocaleDateString('es-ES')}` : 'La previsión está al día'}</span>
-      <div className="relative mt-3 flex items-center gap-2 text-[8px] uppercase tracking-wider text-slate-500"><CalendarDays className="h-3 w-3 text-violet-300" /> Abrir previsión financiera</div>
-     </button>
-    </div>
-
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-     <div className="flex items-center justify-between"><span className="text-[9px] font-black uppercase tracking-[.18em] text-slate-400">Salud de cobro</span><span className="text-sm font-black text-emerald-300">{collectionRate}%</span></div>
-     <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.08]"><div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-300 transition-all" style={{ width: `${collectionRate}%` }} /></div>
-     <p className="mt-3 text-[10px] leading-relaxed text-slate-400">{overdueCollections.length > 0 ? `${overdueCollections.length} cobro${overdueCollections.length === 1 ? '' : 's'} vencido${overdueCollections.length === 1 ? '' : 's'} requieren seguimiento.` : 'No tienes cobros vencidos registrados.'}</p>
-     <button type="button" onClick={() => { setActiveTab('invoices'); setInvoiceStatusFilter('sent'); }} className="mt-3 text-[10px] font-black text-cyan-300 transition hover:text-cyan-100">Abrir seguimiento de facturas →</button>
-    </div>
-   </div>
+  <section className="finance-simple-summary" aria-label="Resumen de este mes">
+   <button onClick={() => { setForecastMonth(forecastMonths[0].key); setActiveTab('forecast'); }}><span>Cobrado este mes</span><strong>{forecastMonths[0].paidTotal.toLocaleString('es-ES', {style:'currency',currency:'EUR'})}</strong><small>Ingresos confirmados</small></button>
+   <button onClick={() => { setForecastMonth(forecastMonths[0].key); setActiveTab('forecast'); }}><span>Por cobrar este mes</span><strong>{(forecastMonths[0].pendingTotal + forecastMonths[0].recurringTotal).toLocaleString('es-ES', {style:'currency',currency:'EUR'})}</strong><small>Pendientes + cuotas previstas</small></button>
+   <button onClick={() => setActiveTab('forecast')}><span>Previsión del mes</span><strong>{forecastMonths[0].total.toLocaleString('es-ES', {style:'currency',currency:'EUR'})}</strong><small>Cobrado + previsto · EUR</small></button>
   </section>
+  {syncStatus === 'error' && <p role="alert" className="rounded-xl border border-rose-400/30 p-4 text-sm text-rose-400">No se han podido sincronizar las finanzas. Comprueba la conexión antes de registrar cambios.</p>}
+  {/* Navigation Inside Finance Module */}
+  <div className="finance-tabs-shell flex flex-col gap-3 border-b border-white/5 pb-3 pt-2 lg:flex-row lg:items-center lg:justify-between">
+  <div className="finance-tab-scroll min-w-0 flex-1 overflow-x-auto pb-1">
+  <div role="tablist" aria-label="Secciones de finanzas" className="finance-tab-list flex min-w-max items-center gap-1.5 rounded-2xl border border-white/[0.07] bg-[#0b1329]/70 p-1.5">
+   <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'transactions'}
+   data-tone="emerald"
+   onClick={() => setActiveTab('transactions')}
+   className={`finance-tab ${activeTab === 'transactions' ? 'is-active' : ''}`}
+   >
+   Bitácora
+   </button>
+   <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'recurring'}
+   data-tone="violet"
+   onClick={() => setActiveTab('recurring')}
+   className={`finance-tab ${activeTab === 'recurring' ? 'is-active' : ''}`}
+   >
+   <span>Recurrencias y splits</span>
+   <span className="finance-tab-badge">
+    {stripePlans.length + manualRecurring.length + unpaidStripeRecurrences.length}
+   </span>
+   </button>
+   <button type="button" role="tab" aria-selected={activeTab === 'upcoming'} onClick={() => setActiveTab('upcoming')} className={`finance-tab ${activeTab === 'upcoming' ? 'is-active' : ''}`}>Próximos pagos</button>
+   <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'forecast'}
+   data-tone="cyan"
+   onClick={() => setActiveTab('forecast')}
+   className={`finance-tab ${activeTab === 'forecast' ? 'is-active' : ''}`}
+   >
+   <CalendarDays className="w-3.5 h-3.5" />
+   <span>Previsión</span>
+   </button>
+   <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'invoices'}
+   data-tone="blue"
+   onClick={() => setActiveTab('invoices')}
+   className={`finance-tab ${activeTab === 'invoices' ? 'is-active' : ''}`}
+   >
+   <LayoutDashboard className="w-3.5 h-3.5" />
+   <span>Facturas</span>
+   <span className="finance-tab-badge">
+    {invoices.length}
+   </span>
+   </button>
+   <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'stripe'}
+   data-tone="stripe"
+   onClick={() => setActiveTab('stripe')}
+   className={`finance-tab ${activeTab === 'stripe' ? 'is-active' : ''}`}
+   >
+   <img src="/stripe-mark.png" alt="" className="h-4 w-4 rounded-[4px]" />
+   <span>Stripe</span>
+   </button>
+   <button
+   type="button"
+   role="tab"
+   aria-selected={activeTab === 'comerciales'}
+   data-tone="amber"
+   onClick={() => setActiveTab('comerciales')}
+   className={`finance-tab ${activeTab === 'comerciales' ? 'is-active' : ''}`}
+   >
+   <User className="w-3.5 h-3.5" />
+   <span>Equipo</span>
+   </button>
+  </div>
+  </div>
 
-  {syncStatus === 'error' && (
-  <div className="bg-gradient-to-r from-rose-500/5 to-amber-500/20 border border-rose-500/20 p-5 rounded-3xl text-left space-y-3 relative overflow-hidden">
-   <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-3xl pointer-events-none" />
-   <div className="flex flex-col md:flex-row md:items-start gap-3 justify-between relative z-10">
-   <div className="flex items-start gap-3.5">
-    <div className="p-2.5 bg-rose-500/10 rounded-xl text-rose-450 mt-0.5 border border-rose-500/20">
-    <SlidersHorizontal className="w-5 h-5" />
+  {/* Dynamic Context Helpers */}
+  <span className="finance-tab-context shrink-0 text-left font-mono text-[10px] text-slate-500 lg:max-w-[330px] lg:text-right">
+   {activeTab === 'transactions'  ?
+   `${filteredTxs.length} movimientos visibles` 
+   : activeTab === 'forecast' ?
+    `${selectedForecast?.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0,00'} € previstos`
+   : activeTab === 'recurring'  ?
+    `${stripePlans.length} planes Stripe · ${unpaidStripeRecurrences.length} pendientes sin contabilizar · ${manualRecurring.length} manuales`
+    : activeTab === 'stripe' ?
+    `Pasarela Stripe Integrada & Activa`
+    : activeTab === 'invoices' ? `${invoices.length} facturas` : activeTab === 'upcoming' ? 'Cobros de clientes' : `${comercialesList.length} representantes comerciales`}
+  </span>
+  </div>
+
+  {activeTab === 'upcoming' && <UpcomingPayments inline {...paymentAgenda} contacts={contacts} onRefresh={() => {paymentAgenda.refresh(); void onRefreshFinance?.();}} onCalendar={() => onNavigate?.('calendar', 'push')} />}
+  {/* Monthly income forecast */}
+  {activeTab === 'forecast' && selectedForecast && (
+  <div className="space-y-5">
+   {stripeFinanceError && <p role="status" className="rounded-xl border border-amber-400/20 p-3 text-xs text-amber-400">No se ha podido actualizar Stripe. La previsión puede estar incompleta. {stripeFinanceError}</p>}
+   {stripeFinanceLoading && !stripeFinanceOverview && <p role="status" className="text-xs text-slate-400">Cargando suscripciones de Stripe para completar la previsión…</p>}
+   <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-[#08111d]/80 to-emerald-400/[0.04] p-5 sm:p-6">
+    <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl pointer-events-none" />
+    <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+     <div>
+      <span className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Planificación de cobros</span>
+      <h3 className="mt-1 text-xl font-black capitalize text-white">{selectedForecast.label}</h3>
+      <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Ingresos en EUR: cobrado + pendiente + recurrencias y cuotas. Es una estimación, no un cobro garantizado.</p>
+     </div>
+     <div className="rounded-2xl border border-cyan-300/15 bg-black/25 px-5 py-3 text-right">
+      <span className="block text-[8px] font-black uppercase tracking-widest text-cyan-300">Total del mes · cobrado + previsto</span>
+      <strong className="mt-1 block text-3xl font-black text-white">{selectedForecast.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+     </div>
     </div>
-    <div className="space-y-1">
-    <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
-     <span>Modo Local: Tablas no encontradas en tu Supabase</span>
-    </h4>
-    <p className="text-xs text-slate-300 leading-relaxed font-light">
-     Para habilitar la persistencia multiusuario real, copia el script SQL preparado a continuación de forma directa e insértalo en el <span className="font-semibold text-white">SQL Editor</span> de Supabase. El sistema sincronizará automáticamente todos los datos.
-    </p>
+    <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
+     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pendientes del mes</span><strong className="mt-2 block text-xl text-white">{selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.pendingItems.length} cobro{selectedForecast.pendingItems.length === 1 ? '' : 's'} pendiente{selectedForecast.pendingItems.length === 1 ? '' : 's'}</small></div>
+     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Cuotas previstas por cobrar</span><strong className="mt-2 block text-xl text-white">{selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.recurringItems.length} cuota{selectedForecast.recurringItems.length === 1 ? '' : 's'} prevista{selectedForecast.recurringItems.length === 1 ? '' : 's'}</small></div>
+     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Ya cobrado</span><strong className="mt-2 block text-xl text-white">{selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.paidItems.length} cobros registrados en el mes</small></div>
+    </div>
+   </section>
+
+   <section className="rounded-3xl border border-white/[0.06] bg-[#0b1329]/25 p-4 sm:p-5">
+    <div className="mb-4 flex items-center justify-between gap-3"><div><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Próximos 12 meses</span><h4 className="mt-1 text-sm font-bold text-white">Selecciona un mes para ver el desglose</h4></div><CalendarDays className="h-5 w-5 text-cyan-300" /></div>
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+     {forecastMonths.map((month, index) => (
+      <button key={month.key} type="button" onClick={() => setForecastMonth(month.key)} className={`rounded-2xl border p-3 text-left transition ${forecastMonth === month.key ? 'border-cyan-300/35 bg-cyan-300/10 shadow-lg shadow-cyan-400/5' : 'border-white/[0.06] bg-black/20 hover:border-white/15 hover:bg-white/[0.025]'}`}>
+       <span className={`block text-[8px] font-black uppercase tracking-wider ${forecastMonth === month.key ? 'text-cyan-300' : 'text-slate-500'}`}>{index === 0 ? 'Este mes' : month.shortLabel}</span>
+       <strong className="mt-2 block text-sm text-white">{month.total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} €</strong>
+       <span className="mt-1 block text-[8px] text-slate-600">{month.paidItems.length + month.pendingItems.length + month.recurringItems.length} movimientos</span>
+      </button>
+     ))}
+    </div>
+   </section>
+
+   <div className="grid gap-5 xl:grid-cols-2">
+    <section className="overflow-hidden rounded-3xl border border-amber-300/10 bg-[#0b1329]/20">
+     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-amber-300">Pendientes con fecha en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.pendingItems.length} cobros · {selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
+     {selectedForecast.pendingItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos pendientes fechados para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.pendingItems.sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div><strong className="shrink-0 font-mono text-sm text-amber-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+    </section>
+    <section className="overflow-hidden rounded-3xl border border-violet-300/10 bg-[#0b1329]/20">
+     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-violet-300">Cuotas recurrentes previstas</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.recurringItems.length} cuotas · {selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
+     {selectedForecast.recurringItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos recurrentes previstos para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.recurringItems.sort((a, b) => a.date.getTime() - b.date.getTime()).map((item, index) => <div key={`${item.transaction.id}_${item.date.toISOString()}_${index}`} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(item.transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(item.transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{item.date.toLocaleDateString('es-ES')} · {item.transaction.recurrencePeriod === 'weekly' ? 'Semanal' : item.transaction.recurrencePeriod === 'yearly' ? 'Anual' : 'Mensual'}</p></div><strong className="shrink-0 font-mono text-sm text-violet-300">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+    </section>
+   </div>
+   <section className="overflow-hidden rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.04]">
+    <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-emerald-300">Ya cobrado en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.paidItems.length} cobros · {selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
+    {selectedForecast.paidItems.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Todavía no hay ingresos cobrados registrados para este mes.</p> : <div className="divide-y divide-white/[0.05]">{[...selectedForecast.paidItems].sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4">
+     <div className="min-w-0"><p className="break-words text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div>
+     <div className="shrink-0 text-right"><span className="mb-1 block text-[9px] font-bold text-emerald-300">Cobrado</span><strong className="font-mono text-sm text-emerald-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+    </div>)}</div>}
+   </section>
+  </div>
+  )}
+
+  {/* Tab Content 1: Transactions list */}
+  {activeTab === 'transactions' && (
+  <div className="space-y-4">
+   {/* Filtering bar */}
+   <div className="bg-[#0b1329]/20 backdrop-blur-md border border-white/5 p-4 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center gap-4 justify-between">
+   <div className="flex flex-wrap items-center gap-2">
+     <button
+     onClick={() => {
+      setTxTypeFilter('all');
+      setTxDateRangeFilter('all');
+      setTxCurrentPage(1);
+     }}
+    className={`text-[10px] uppercase font-mono tracking-wider font-extrabold px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
+     txTypeFilter === 'all' ?
+     'bg-white/10 border-white/20 text-white shadow-md'
+     : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
+    }`}
+    >
+    Todos
+    </button>
+     <button
+     onClick={() => {
+      setTxTypeFilter('income');
+      setTxDateRangeFilter('all');
+      setTxCurrentPage(1);
+     }}
+    className={`text-[10px] uppercase font-mono tracking-wider font-extrabold px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
+     txTypeFilter === 'income' ?
+     'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-md shadow-emerald-500/5'
+     : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
+    }`}
+    >
+    Ingresos
+    </button>
+     <button
+     onClick={() => {
+      setTxTypeFilter('expense');
+      setTxDateRangeFilter('all');
+      setTxCurrentPage(1);
+     }}
+    className={`text-[10px] uppercase font-mono tracking-wider font-extrabold px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
+     txTypeFilter === 'expense' ?
+     'bg-rose-500/10 border-rose-500/30 text-rose-455 shadow-md shadow-rose-500/5'
+     : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
+    }`}
+    >
+    Gastos
+    </button>
+
+    <div className="h-5 w-px bg-white/10 mx-2 hidden sm:block" />
+
+    <div className="flex items-center gap-2">
+    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+    <select
+     value={txCategoryFilter}
+     onChange={(e) => setTxCategoryFilter(e.target.value)}
+     className="bg-slate-950 border border-white/10 text-xs text-slate-200 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+    >
+     {categories.map(cat => (
+     <option key={cat} value={cat}>
+      {cat === 'All' ? 'Todas las Categorías' : cat}
+     </option>
+     ))}
+    </select>
     </div>
    </div>
-   <button
-    onClick={() => {
-    const sql = `-- Copia y pega esto en tu consola SQL de Supabase para habilitar las finanzas reales:
 
-CREATE TABLE IF NOT EXISTS finance_transactions (
- id TEXT PRIMARY KEY,
- user_id TEXT,
- type TEXT NOT NULL,
- category TEXT NOT NULL,
- amount NUMERIC NOT NULL,
- date TEXT NOT NULL,
- description TEXT,
- "isRecurring" BOOLEAN DEFAULT false,
- "recurrencePeriod" TEXT,
- status TEXT,
- created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+   <div className="relative w-full lg:w-80">
+    <input
+    type="text"
+    value={txSearch}
+    onChange={(e) => setTxSearch(e.target.value)}
+    placeholder="Buscar concepto o categoría..."
+    className="w-full bg-slate-950 border border-white/10 text-xs rounded-xl pl-3 pr-10 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all font-light"
+    />
+    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-[10px]">
+    🔍
+    </div>
+   </div>
+   </div>
 
-ALTER TABLE finance_transactions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public Read Access" ON finance_transactions FOR SELECT USING (true);
-CREATE POLICY "Public Insert Access" ON finance_transactions FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public Update Access" ON finance_transactions FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Public Delete Access" ON finance_transactions FOR DELETE USING (true);
+   <div className="flex justify-end">
+    <button
+     type="button"
+     onClick={() => setShowExportPanel(previous => !previous)}
+     className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300 transition hover:bg-emerald-400/15"
+    >
+     <FileSpreadsheet className="h-4 w-4" />
+     Exportar movimientos
+    </button>
+   </div>
 
-CREATE TABLE IF NOT EXISTS finance_invoices (
- id TEXT PRIMARY KEY,
- user_id TEXT,
- "clientId" TEXT,
- "clientName" TEXT,
- "clientEmail" TEXT,
- date TEXT NOT NULL,
- "dueDate" TEXT NOT NULL,
- status TEXT,
- items JSONB,
- subtotal NUMERIC,
- "taxPercentage" NUMERIC,
- "taxAmount" NUMERIC,
- total NUMERIC,
- notes TEXT,
- alias TEXT,
- color TEXT,
- created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+   {showExportPanel && (
+    <section id="finance-export-panel" className="rounded-3xl border border-emerald-300/15 bg-gradient-to-br from-emerald-300/[0.07] via-[#0b1329]/70 to-cyan-300/[0.03] p-4 sm:p-5">
+     <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div>
+       <span className="text-[9px] font-black uppercase tracking-[.2em] text-emerald-300">Exportación profesional</span>
+       <h3 className="mt-1 text-sm font-bold text-white">Informes de tarjeta, Revolut y Stripe</h3>
+       <p className="mt-1 text-[10px] text-slate-500">Elige un origen y descarga su PDF o Excel. Incluye todo el histórico registrado en Althera, con resumen, detalle y pendientes separados.</p>
+       <p className="mt-1 text-[10px] text-slate-500">Las operaciones con tarjeta de Revolut aparecen en ambos informes.</p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[170px_170px_180px_auto]">
+       <label className="block">
+        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Movimientos</span>
+        <select value={exportType} onChange={event => setExportType(event.target.value as typeof exportType)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
+         <option value="all">Todos</option>
+         <option value="income">Solo ingresos</option>
+         <option value="expense">Solo gastos</option>
+        </select>
+       </label>
+       <label className="block">
+        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Cuenta / origen</span>
+        <select value={exportSource} onChange={event => setExportSource(event.target.value as typeof exportSource)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
+         {Object.entries(exportSources).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+       </label>
+       <label className="block">
+        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Periodo</span>
+        <select value={exportPeriod} onChange={event => setExportPeriod(event.target.value as typeof exportPeriod)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
+         <option value="all">Todo</option>
+         <option value="month">Un mes</option>
+         <option value="date">Fecha concreta</option>
+        </select>
+       </label>
+       {exportPeriod === 'month' ? (
+        <label className="block">
+         <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Mes</span>
+         <input type="month" value={exportMonth} onChange={event => setExportMonth(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40" />
+        </label>
+       ) : exportPeriod === 'date' ? (
+        <label className="block">
+         <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Fecha</span>
+         <input type="date" value={exportDate} onChange={event => setExportDate(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40" />
+        </label>
+       ) : <div className="hidden xl:block" />}
+       <button type="button" onClick={() => void handleExportTransactions()} disabled={exportLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-slate-950 transition hover:bg-emerald-300 disabled:opacity-60">
+        {exportLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        {exportLoading ? 'Generando...' : 'Descargar .xlsx'}
+       </button>
+       <button type="button" onClick={() => void handleExportTransactions('pdf')} disabled={exportLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-emerald-400/30 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-400/10 disabled:opacity-60">
+        <FileText className="h-4 w-4" /> Descargar PDF
+       </button>
+      </div>
+     </div>
+    </section>
+   )}
 
-ALTER TABLE finance_invoices ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public Read Access" ON finance_invoices FOR SELECT USING (true);
-CREATE POLICY "Public Insert Access" ON finance_invoices FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public Update Access" ON finance_invoices FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Public Delete Access" ON finance_invoices FOR DELETE USING (true);
+    {txDateRangeFilter !== 'all' && (
+    <div id="finance-transactions-log" className="bg-cyan-500/5 border border-cyan-400/20 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+     <div className="flex items-center gap-2 text-xs text-cyan-100">
+     {txDateRangeFilter === 'today' ? <Calendar className="w-4 h-4 text-cyan-300" /> : <Clock className="w-4 h-4 text-violet-300" />}
+     <span className="font-bold">
+      Mostrando ingresos de {txDateRangeFilter === 'today' ? 'hoy' : 'esta semana'} en la bitácora de transacciones
+     </span>
+     <span className="text-[10px] font-mono text-slate-400">
+      {filteredTxs.length} registros
+     </span>
+     </div>
+     <button
+     type="button"
+     onClick={() => {
+      setTxDateRangeFilter('all');
+      setTxCurrentPage(1);
+     }}
+     className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-slate-300 font-bold uppercase tracking-wider"
+     >
+     Limpiar filtro
+     </button>
+    </div>
+    )}
 
--- Si la tabla ya existía, añadimos las nuevas columnas alias y color
-ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS alias TEXT;
-ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
-    navigator.clipboard.writeText(sql);
-    const toast = document.getElementById('toast-msg');
-    if (toast) {
-     const label = toast.querySelector('span');
-     if (label) label.textContent = '¡Script SQL Copiado al portapapeles!';
-     toast.className = toast.className.replace('opacity-0 pointer-events-none', 'opacity-100');
-     setTimeout(() => {
-     toast.className = toast.className.replace('opacity-100', 'opacity-0 pointer-events-none');
-     }, 3000);
-    }
-    }}
-    className="bg-white/10 hover:bg-white/20 text-white text-xs py-2 px-4 rounded-xl border border-white/10 transition-all font-bold cursor-pointer active:scale-95 flex-shrink-0 flex items-center justify-center gap-1.5"
-   >
-    <span>Copiar Script SQL</span>
-   </button>
+    {/* Table list */}
+    <div id={txDateRangeFilter === 'all' ? 'finance-transactions-log' : undefined} className="bg-[#0b1329]/10 backdrop-blur-md border border-white/5 rounded-3xl overflow-hidden shadow-xl">
+   <div className="overflow-x-auto font-sans">
+    <table className="w-full text-left border-collapse">
+    <thead>
+     <tr className="border-b border-white/5 bg-[#0b1329]/40 text-[9px] font-mono text-slate-500 uppercase tracking-widest">
+     <th className="p-3 font-bold">Operación</th>
+     <th className="p-3 font-bold">Método</th>
+     <th className="p-3 font-bold finance-category">Categoría</th>
+     <th className="min-w-[96px] whitespace-nowrap p-3 font-bold">Fecha</th>
+     <th className="min-w-[112px] whitespace-nowrap p-3 font-bold">Importe</th>
+     <th className="p-3 font-bold">Estado</th>
+     <th className="p-3 font-bold text-right">Acciones</th>
+     </tr>
+    </thead>
+    <tbody className="divide-y divide-white/5">
+     {currentTxs.length === 0 ? (
+     <tr>
+      <td colSpan={7} className="p-16 text-center text-slate-500 text-xs font-light">
+      No se encontraron registros de transacciones.
+      </td>
+     </tr>
+     ) : (
+     currentTxs.map(t => {
+      // Custom aesthetic colors for categories
+      const catColors: Record<string, string> = {
+      'Desarrollo': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+      'Consultoría': 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+      'Infraestructura': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      'Software Herramientas': 'bg-purple-500/10 text-purple-300 border-purple-500/20',
+      'Dominios': 'bg-slate-500/10 text-slate-300 border-slate-500/20',
+      'Marketing': 'bg-pink-500/10 text-pink-400 border-pink-500/20',
+      'Facturado': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      };
+      const tagStyle = catColors[t.category] || 'bg-white/5 text-slate-300 border-white/10';
+      const linkedInv = getLinkedInvoice(t);
+      const stripeDashboardUrl = getStripeDashboardUrl(t.stripeCheckoutSessionId, t.stripeInvoiceId);
+      const installment = getTransactionInstallment(t);
+      const transactionDescription = (t.description || '').toLocaleLowerCase('es');
+      const transactionClient = contacts.find(contact => contact.id === t.clientId)
+       || contacts.find(contact => contact.id === linkedInv?.clientId)
+       || contacts.find(contact => {
+        const company = (contact.company || '').trim().toLocaleLowerCase('es');
+        return company.length > 2 && company !== 'independent' && transactionDescription.includes(company);
+       });
+      const businessName = getFinanceBusinessName(transactionClient) || linkedInv?.clientName || '';
+
+      return (
+      <tr 
+       key={t.id} 
+       className={`text-xs transition-colors group relative ${
+       linkedInv  ?
+        'bg-blue-500/[0.035] hover:bg-blue-500/[0.065] border-l-2 border-l-blue-500/70'
+        : 'hover:bg-white/[0.018]'
+       }`}
+      >
+       <td className="p-3 text-left align-middle">
+       <div className="max-w-xs sm:max-w-md text-left">
+        <span className="sr-only">
+        {t.id}
+        </span>
+        {businessName && (
+         <span className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-cyan-400/15 bg-gradient-to-r from-cyan-400/[0.09] to-blue-400/[0.04] px-2 py-1 text-[9.5px] font-black leading-none text-cyan-100 shadow-[inset_0_1px_rgba(255,255,255,.03)]" title={`Negocio: ${businessName}`}>
+          <Briefcase className="h-3 w-3 shrink-0 text-cyan-300" />
+          <span className="truncate">{businessName}</span>
+         </span>
+        )}
+        <span className={`${businessName ? 'mt-2 text-[12px] font-extrabold text-white' : 'text-[12px] font-extrabold text-white'} block leading-snug tracking-tight transition-colors group-hover:text-emerald-300`}>
+         {getTransactionDisplayConcept(t.description)}
+        </span>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        {installment ? (
+         <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/20 bg-amber-400/[0.08] px-1.5 py-0.5 font-mono text-[7.5px] font-black uppercase tracking-wide text-amber-300">
+          <span className="grid h-3.5 min-w-3.5 place-items-center rounded bg-amber-300/10 px-0.5">{installment.index}</span>
+          Cuota {installment.index}/{installment.total}
+         </span>
+        ) : null}
+        {linkedInv && (
+         <span className="inline-flex items-center gap-1 rounded-md border border-blue-500/15 bg-blue-500/[0.07] px-1.5 py-0.5 font-mono text-[7.5px] font-bold text-blue-300">
+         <FileText className="h-2.5 w-2.5" />
+         <span>{linkedInv.id}</span>
+         <span className={`w-1.5 h-1.5 rounded-full ${linkedInv.status === 'paid' ? 'bg-emerald-400' : 'bg-amber-400'}`} title={linkedInv.status === 'paid' ? 'Factura Pagada' : 'Factura Pendiente / Borrador'} />
+         </span>
+        )}
+        </div>
+       </div>
+       </td>
+       <td className="p-3 align-middle">
+        <span className="finance-method">{t.paymentMethod === 'stripe' ? 'Stripe' : t.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span>
+       </td>
+       <td className="p-3 text-left align-middle finance-category">
+       <span className={`text-[8px] font-mono border px-2 py-0.5 rounded-md uppercase tracking-wider font-bold ${tagStyle}`}>
+        {t.category}
+       </span>
+       </td>
+       <td className="min-w-[96px] whitespace-nowrap p-3 text-left align-middle font-mono text-[9px] text-slate-400">
+       {t.date}
+       </td>
+       <td className="min-w-[112px] whitespace-nowrap p-3 text-left align-middle">
+       <span className={`whitespace-nowrap font-mono text-[11px] font-black tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
+        {t.type === 'income' ? '+' : '-'}{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
+       </span>
+       </td>
+       <td className="p-3 text-left align-middle">
+       {t.status === 'paid' ? (
+       <button
+        onClick={() => handleToggleTransactionStatus(t)}
+        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-emerald-300 transition hover:border-amber-400/20 hover:bg-amber-400/[0.07] hover:text-amber-300"
+        title="Haga clic para revertir / desmarcar de Bitácora (cambiará a Pendiente)"
+        >
+        <CheckCircle2 className="h-3 w-3" />
+        <span>{t.type === 'income' ? 'Cobrado' : 'Pagado'}</span>
+        </button>
+       ) : t.status === 'failed' ? (
+        <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-rose-400/20 bg-rose-400/[0.08] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-rose-300" title="Stripe ha rechazado el cobro o el enlace de pago ha caducado">
+         <XCircle className="h-3 w-3" />
+         Denegado
+        </span>
+       ) : (
+        <div className="flex items-center gap-1.5">
+        <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-amber-400/20 bg-amber-400/[0.07] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-amber-300">
+         <Clock className="h-3 w-3" />
+         {t.type === 'income' ? 'Por cobrar' : 'Por pagar'}
+        </span>
+        <button
+         onClick={() => handleToggleTransactionStatus(t)}
+         className="inline-flex h-7 items-center gap-1 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 text-[8px] font-black uppercase tracking-wide text-emerald-300 transition hover:bg-emerald-400/[0.15]"
+         title={t.type === 'income' ? 'Marcar como cobrado y sincronizar facturas/conceptos' : 'Marcar como pagado'}
+        >
+         <Check className="h-3 w-3" />
+         <span>{t.type === 'income' ? 'Marcar cobrado' : 'Marcar pagado'}</span>
+        </button>
+        </div>
+       )}
+       </td>
+       <td className="p-3 text-right align-middle">
+       <div className="finance-action-cluster inline-flex items-center justify-end gap-1.5 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.055] to-black/25 p-1.5 shadow-[inset_0_1px_rgba(255,255,255,.04),0_8px_24px_rgba(0,0,0,.18)]">
+        {linkedInv ? (
+        <button
+         onClick={() => setPreviewInvoice(linkedInv)}
+         className="finance-action-button finance-action-button--invoice grid h-8 w-8 place-items-center rounded-xl border border-blue-300/20 bg-gradient-to-br from-blue-300/[0.18] to-cyan-400/[0.07] text-blue-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-300/40 hover:brightness-125"
+         title={`Ver Factura Vinculada (${linkedInv.id})`}
+        >
+         <FileText className="h-3.5 w-3.5 stroke-[2.5]" />
+        </button>
+        ) : (
+        t.type === 'income' && (
+         <button
+         onClick={() => handleCreateInvoiceFromTransaction(t)}
+         className="finance-action-button finance-action-button--invoice grid h-8 w-8 place-items-center rounded-xl border border-amber-300/20 bg-gradient-to-br from-amber-200/[0.2] to-amber-500/[0.07] text-amber-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-amber-300/40 hover:brightness-125"
+         title="Facturar este cobro (Generar y editar factura)"
+         >
+         <FileText className="h-3.5 w-3.5" />
+         </button>
+        )
+        )}
+        <button
+        onClick={() => handleEditTx(t)}
+        className="finance-action-button finance-action-button--edit grid h-8 w-8 place-items-center rounded-xl border border-sky-300/15 bg-gradient-to-br from-sky-300/[0.12] to-blue-500/[0.04] text-sky-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-sky-300/35 hover:brightness-125"
+        title="Editar transacción"
+        >
+        <Edit className="h-3.5 w-3.5" />
+        </button>
+        {!t.isRecurring && (
+        <button
+         onClick={() => handleMakeTransactionRecurring(t)}
+         className="finance-action-button finance-action-button--recurring grid h-8 w-8 place-items-center rounded-xl border border-teal-300/20 bg-gradient-to-br from-teal-200/[0.18] to-emerald-500/[0.06] text-teal-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-300/40 hover:brightness-125"
+         title={`Convertir este ${t.type === 'income' ? 'cobro' : 'pago'} en recurrencia`}
+        >
+         <Repeat className="h-3.5 w-3.5" />
+        </button>
+        )}
+        <button
+        onClick={() => handleDeleteTx(t.id)}
+        className="finance-action-button finance-action-button--delete grid h-8 w-8 place-items-center rounded-xl border border-rose-300/20 bg-gradient-to-br from-rose-300/[0.17] to-red-600/[0.07] text-rose-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-rose-300/45 hover:brightness-125"
+        title="Eliminar registro"
+        >
+        <Trash2 className="h-3.5 w-3.5" />
+        </button>
+       </div>
+       </td>
+      </tr>
+      );
+     })
+     )}
+    </tbody>
+    </table>
+   </div>
+
+   {/* Pagination Controls */}
+   {totalTxPages > 1 && (
+    <div className="finance-pagination flex flex-col sm:flex-row items-center justify-between gap-4 py-4 px-6 border-t border-white/5 bg-[#0b1329]/15 text-xs">
+    <span className="text-slate-400 font-sans">
+     Mostrando registros <strong className="text-slate-200">{(safeCurrentPage - 1) * txItemsPerPage + 1}</strong> - <strong className="text-slate-200">{Math.min(safeCurrentPage * txItemsPerPage, filteredTxs.length)}</strong> de <strong className="text-slate-300 font-bold">{filteredTxs.length}</strong>
+    </span>
+    <div className="flex items-center gap-1.5 font-mono" aria-label="Paginación de movimientos">
+     <button
+     onClick={() => {
+      setTxCurrentPage(prev => Math.max(1, prev - 1));
+      document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
+     }}
+     disabled={safeCurrentPage === 1}
+     className="finance-pagination-button finance-pagination-button--edge px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
+     >
+     ← Anterior
+     </button>
+     {Array.from({ length: totalTxPages }, (_, i) => i + 1).map(pageNum => (
+     <button
+      key={pageNum}
+     onClick={() => {
+      setTxCurrentPage(pageNum);
+      document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
+      }}
+      aria-current={pageNum === safeCurrentPage ? 'page' : undefined}
+      className={`finance-pagination-button finance-pagination-button--page w-7 h-7 flex items-center justify-center rounded-xl font-bold text-[11px] transition cursor-pointer border ${
+      pageNum === safeCurrentPage ?
+       'bg-purple-600/10 text-purple-400 border-purple-500/30'
+       : 'bg-transparent border-transparent hover:border-white/5 hover:bg-white/[0.02] text-slate-400 hover:text-slate-200'
+      }`}
+     >
+      {pageNum}
+     </button>
+     ))}
+     <button
+     onClick={() => {
+      setTxCurrentPage(prev => Math.min(totalTxPages, prev + 1));
+      document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
+     }}
+     disabled={safeCurrentPage === totalTxPages}
+     className="finance-pagination-button finance-pagination-button--edge px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
+     >
+     Siguiente →
+     </button>
+    </div>
+    </div>
+   )}
    </div>
   </div>
   )}
 
-  {/* Treasury balances */}
+  {activeTab === 'transactions' && <details className="finance-advanced"><summary>Saldos, tesorería e informes</summary><div className="space-y-6 pt-5">  {/* Treasury balances */}
   <div className="grid items-stretch gap-4 xl:grid-cols-3">
    <section className="finance-stripe-card relative flex min-w-0 flex-col overflow-hidden rounded-3xl border border-indigo-300/15 bg-gradient-to-br from-indigo-400/[0.09] via-[#0b1329]/70 to-cyan-400/[0.04] p-5">
     <div className="absolute -right-12 -top-12 h-36 w-36 rounded-full bg-indigo-400/10 blur-3xl" />
@@ -3998,601 +4426,18 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
    </article>
   </section>
 
-  {/* Navigation Inside Finance Module */}
-  <div className="finance-tabs-shell flex flex-col gap-3 border-b border-white/5 pb-3 pt-2 lg:flex-row lg:items-center lg:justify-between">
-  <div className="finance-tab-scroll min-w-0 flex-1 overflow-x-auto pb-1">
-  <div role="tablist" aria-label="Secciones de finanzas" className="finance-tab-list flex min-w-max items-center gap-1.5 rounded-2xl border border-white/[0.07] bg-[#0b1329]/70 p-1.5">
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'transactions'}
-   data-tone="emerald"
-   onClick={() => setActiveTab('transactions')}
-   className={`finance-tab ${activeTab === 'transactions' ? 'is-active' : ''}`}
-   >
-   Actividad
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'recurring'}
-   data-tone="violet"
-   onClick={() => setActiveTab('recurring')}
-   className={`finance-tab ${activeTab === 'recurring' ? 'is-active' : ''}`}
-   >
-   <span>Planes y recurrencias</span>
-   <span className="finance-tab-badge">
-    {stripePlans.length + manualRecurring.length + unpaidStripeRecurrences.length}
-   </span>
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'forecast'}
-   data-tone="cyan"
-   onClick={() => setActiveTab('forecast')}
-   className={`finance-tab ${activeTab === 'forecast' ? 'is-active' : ''}`}
-   >
-   <CalendarDays className="w-3.5 h-3.5" />
-   <span>Previsión</span>
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'invoices'}
-   data-tone="blue"
-   onClick={() => setActiveTab('invoices')}
-   className={`finance-tab ${activeTab === 'invoices' ? 'is-active' : ''}`}
-   >
-   <LayoutDashboard className="w-3.5 h-3.5" />
-   <span>Facturas</span>
-   <span className="finance-tab-badge">
-    {invoices.length}
-   </span>
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'stripe'}
-   data-tone="stripe"
-   onClick={() => setActiveTab('stripe')}
-   className={`finance-tab ${activeTab === 'stripe' ? 'is-active' : ''}`}
-   >
-   <img src="/stripe-mark.png" alt="" className="h-4 w-4 rounded-[4px]" />
-   <span>Stripe</span>
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'comerciales'}
-   data-tone="amber"
-   onClick={() => setActiveTab('comerciales')}
-   className={`finance-tab ${activeTab === 'comerciales' ? 'is-active' : ''}`}
-   >
-   <User className="w-3.5 h-3.5" />
-   <span>Equipo</span>
-   </button>
-  </div>
-  </div>
-
-  {/* Dynamic Context Helpers */}
-  <span className="finance-tab-context shrink-0 text-left font-mono text-[10px] text-slate-500 lg:max-w-[330px] lg:text-right">
-   {activeTab === 'transactions'  ?
-   `${filteredTxs.length} movimientos visibles` 
-   : activeTab === 'forecast' ?
-    `${selectedForecast?.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0,00'} € previstos`
-   : activeTab === 'recurring'  ?
-    `${stripePlans.length} planes Stripe · ${unpaidStripeRecurrences.length} pendientes sin contabilizar · ${manualRecurring.length} manuales`
-    : activeTab === 'stripe' ?
-    `Pasarela Stripe Integrada & Activa`
-    : `${comercialesList.length} representantes comerciales`}
-  </span>
-  </div>
-
-  {/* Monthly income forecast */}
-  {activeTab === 'forecast' && selectedForecast && (
-  <div className="space-y-5">
-   {stripeFinanceError && <p role="status" className="rounded-xl border border-amber-400/20 p-3 text-xs text-amber-400">No se ha podido actualizar Stripe. La previsión puede estar incompleta. {stripeFinanceError}</p>}
-   {stripeFinanceLoading && !stripeFinanceOverview && <p role="status" className="text-xs text-slate-400">Cargando suscripciones de Stripe para completar la previsión…</p>}
-   <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-[#08111d]/80 to-emerald-400/[0.04] p-5 sm:p-6">
-    <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl pointer-events-none" />
-    <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-     <div>
-      <span className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Planificación de cobros</span>
-      <h3 className="mt-1 text-xl font-black capitalize text-white">{selectedForecast.label}</h3>
-      <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Total del mes: ingresos ya cobrados + cobros pendientes + cuotas recurrentes previstas. Cada cuota se cuenta una sola vez, según su fecha registrada.</p>
-     </div>
-     <div className="rounded-2xl border border-cyan-300/15 bg-black/25 px-5 py-3 text-right">
-      <span className="block text-[8px] font-black uppercase tracking-widest text-cyan-300">Total del mes · cobrado + previsto</span>
-      <strong className="mt-1 block text-3xl font-black text-white">{selectedForecast.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
-     </div>
-    </div>
-    <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
-     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pendientes del mes</span><strong className="mt-2 block text-xl text-white">{selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.pendingItems.length} cobro{selectedForecast.pendingItems.length === 1 ? '' : 's'} pendiente{selectedForecast.pendingItems.length === 1 ? '' : 's'}</small></div>
-     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Cuotas previstas por cobrar</span><strong className="mt-2 block text-xl text-white">{selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.recurringItems.length} cuota{selectedForecast.recurringItems.length === 1 ? '' : 's'} prevista{selectedForecast.recurringItems.length === 1 ? '' : 's'}</small></div>
-     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Ya cobrado</span><strong className="mt-2 block text-xl text-white">{selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.paidItems.length} cobros registrados en el mes</small></div>
-    </div>
-   </section>
-
-   <section className="rounded-3xl border border-white/[0.06] bg-[#0b1329]/25 p-4 sm:p-5">
-    <div className="mb-4 flex items-center justify-between gap-3"><div><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Próximos 12 meses</span><h4 className="mt-1 text-sm font-bold text-white">Selecciona un mes para ver el desglose</h4></div><CalendarDays className="h-5 w-5 text-cyan-300" /></div>
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-     {forecastMonths.map((month, index) => (
-      <button key={month.key} type="button" onClick={() => setForecastMonth(month.key)} className={`rounded-2xl border p-3 text-left transition ${forecastMonth === month.key ? 'border-cyan-300/35 bg-cyan-300/10 shadow-lg shadow-cyan-400/5' : 'border-white/[0.06] bg-black/20 hover:border-white/15 hover:bg-white/[0.025]'}`}>
-       <span className={`block text-[8px] font-black uppercase tracking-wider ${forecastMonth === month.key ? 'text-cyan-300' : 'text-slate-500'}`}>{index === 0 ? 'Este mes' : month.shortLabel}</span>
-       <strong className="mt-2 block text-sm text-white">{month.total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} €</strong>
-       <span className="mt-1 block text-[8px] text-slate-600">{month.paidItems.length + month.pendingItems.length + month.recurringItems.length} movimientos</span>
-      </button>
-     ))}
-    </div>
-   </section>
-
-   <div className="grid gap-5 xl:grid-cols-2">
-    <section className="overflow-hidden rounded-3xl border border-amber-300/10 bg-[#0b1329]/20">
-     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-amber-300">Pendientes con fecha en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.pendingItems.length} cobros · {selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
-     {selectedForecast.pendingItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos pendientes fechados para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.pendingItems.sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div><strong className="shrink-0 font-mono text-sm text-amber-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
-    </section>
-    <section className="overflow-hidden rounded-3xl border border-violet-300/10 bg-[#0b1329]/20">
-     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-violet-300">Cuotas recurrentes previstas</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.recurringItems.length} cuotas · {selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
-     {selectedForecast.recurringItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos recurrentes previstos para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.recurringItems.sort((a, b) => a.date.getTime() - b.date.getTime()).map((item, index) => <div key={`${item.transaction.id}_${item.date.toISOString()}_${index}`} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(item.transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(item.transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{item.date.toLocaleDateString('es-ES')} · {item.transaction.recurrencePeriod === 'weekly' ? 'Semanal' : item.transaction.recurrencePeriod === 'yearly' ? 'Anual' : 'Mensual'}</p></div><strong className="shrink-0 font-mono text-sm text-violet-300">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
-    </section>
-   </div>
-   <section className="overflow-hidden rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.04]">
-    <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-emerald-300">Ya cobrado en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.paidItems.length} cobros · {selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
-    {selectedForecast.paidItems.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Todavía no hay ingresos cobrados registrados para este mes.</p> : <div className="divide-y divide-white/[0.05]">{[...selectedForecast.paidItems].sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4">
-     <div className="min-w-0"><p className="break-words text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div>
-     <div className="shrink-0 text-right"><span className="mb-1 block text-[9px] font-bold text-emerald-300">Cobrado</span><strong className="font-mono text-sm text-emerald-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
-    </div>)}</div>}
-   </section>
-  </div>
-  )}
-
-  {/* Tab Content 1: Transactions list */}
-  {activeTab === 'transactions' && (
-  <div className="space-y-4">
-   {/* Filtering bar */}
-   <div className="bg-[#0b1329]/20 backdrop-blur-md border border-white/5 p-4 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center gap-4 justify-between">
-   <div className="flex flex-wrap items-center gap-2">
-     <button
-     onClick={() => {
-      setTxTypeFilter('all');
-      setTxDateRangeFilter('all');
-      setTxCurrentPage(1);
-     }}
-    className={`text-[10px] uppercase font-mono tracking-wider font-extrabold px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
-     txTypeFilter === 'all' ?
-     'bg-white/10 border-white/20 text-white shadow-md'
-     : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
-    }`}
-    >
-    Todos
-    </button>
-     <button
-     onClick={() => {
-      setTxTypeFilter('income');
-      setTxDateRangeFilter('all');
-      setTxCurrentPage(1);
-     }}
-    className={`text-[10px] uppercase font-mono tracking-wider font-extrabold px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
-     txTypeFilter === 'income' ?
-     'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-md shadow-emerald-500/5'
-     : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
-    }`}
-    >
-    Ingresos
-    </button>
-     <button
-     onClick={() => {
-      setTxTypeFilter('expense');
-      setTxDateRangeFilter('all');
-      setTxCurrentPage(1);
-     }}
-    className={`text-[10px] uppercase font-mono tracking-wider font-extrabold px-3.5 py-2 rounded-xl border transition-all cursor-pointer ${
-     txTypeFilter === 'expense' ?
-     'bg-rose-500/10 border-rose-500/30 text-rose-455 shadow-md shadow-rose-500/5'
-     : 'bg-transparent border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5'
-    }`}
-    >
-    Gastos
-    </button>
-
-    <div className="h-5 w-px bg-white/10 mx-2 hidden sm:block" />
-
-    <div className="flex items-center gap-2">
-    <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-    <select
-     value={txCategoryFilter}
-     onChange={(e) => setTxCategoryFilter(e.target.value)}
-     className="bg-slate-950 border border-white/10 text-xs text-slate-200 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-    >
-     {categories.map(cat => (
-     <option key={cat} value={cat}>
-      {cat === 'All' ? 'Todas las Categorías' : cat}
-     </option>
-     ))}
-    </select>
-    </div>
-   </div>
-
-   <div className="relative w-full lg:w-80">
-    <input
-    type="text"
-    value={txSearch}
-    onChange={(e) => setTxSearch(e.target.value)}
-    placeholder="Buscar concepto o categoría..."
-    className="w-full bg-slate-950 border border-white/10 text-xs rounded-xl pl-3 pr-10 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all font-light"
-    />
-    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-[10px]">
-    🔍
-    </div>
-   </div>
-   </div>
-
-   <div className="flex justify-end">
-    <button
-     type="button"
-     onClick={() => setShowExportPanel(previous => !previous)}
-     className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300 transition hover:bg-emerald-400/15"
-    >
-     <FileSpreadsheet className="h-4 w-4" />
-     Exportar movimientos
-    </button>
-   </div>
-
-   {showExportPanel && (
-    <section id="finance-export-panel" className="rounded-3xl border border-emerald-300/15 bg-gradient-to-br from-emerald-300/[0.07] via-[#0b1329]/70 to-cyan-300/[0.03] p-4 sm:p-5">
-     <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-      <div>
-       <span className="text-[9px] font-black uppercase tracking-[.2em] text-emerald-300">Exportación profesional</span>
-       <h3 className="mt-1 text-sm font-bold text-white">Informes de tarjeta, Revolut y Stripe</h3>
-       <p className="mt-1 text-[10px] text-slate-500">Elige un origen y descarga su PDF o Excel. Incluye todo el histórico registrado en Althera, con resumen, detalle y pendientes separados.</p>
-       <p className="mt-1 text-[10px] text-slate-500">Las operaciones con tarjeta de Revolut aparecen en ambos informes.</p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[170px_170px_180px_auto]">
-       <label className="block">
-        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Movimientos</span>
-        <select value={exportType} onChange={event => setExportType(event.target.value as typeof exportType)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
-         <option value="all">Todos</option>
-         <option value="income">Solo ingresos</option>
-         <option value="expense">Solo gastos</option>
-        </select>
-       </label>
-       <label className="block">
-        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Cuenta / origen</span>
-        <select value={exportSource} onChange={event => setExportSource(event.target.value as typeof exportSource)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
-         {Object.entries(exportSources).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-        </select>
-       </label>
-       <label className="block">
-        <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Periodo</span>
-        <select value={exportPeriod} onChange={event => setExportPeriod(event.target.value as typeof exportPeriod)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40">
-         <option value="all">Todo</option>
-         <option value="month">Un mes</option>
-         <option value="date">Fecha concreta</option>
-        </select>
-       </label>
-       {exportPeriod === 'month' ? (
-        <label className="block">
-         <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Mes</span>
-         <input type="month" value={exportMonth} onChange={event => setExportMonth(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40" />
-        </label>
-       ) : exportPeriod === 'date' ? (
-        <label className="block">
-         <span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-slate-500">Fecha</span>
-         <input type="date" value={exportDate} onChange={event => setExportDate(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400/40" />
-        </label>
-       ) : <div className="hidden xl:block" />}
-       <button type="button" onClick={() => void handleExportTransactions()} disabled={exportLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-slate-950 transition hover:bg-emerald-300 disabled:opacity-60">
-        {exportLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-        {exportLoading ? 'Generando...' : 'Descargar .xlsx'}
-       </button>
-       <button type="button" onClick={() => void handleExportTransactions('pdf')} disabled={exportLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-emerald-400/30 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-300 hover:bg-emerald-400/10 disabled:opacity-60">
-        <FileText className="h-4 w-4" /> Descargar PDF
-       </button>
-      </div>
-     </div>
-    </section>
-   )}
-
-    {txDateRangeFilter !== 'all' && (
-    <div id="finance-transactions-log" className="bg-cyan-500/5 border border-cyan-400/20 rounded-2xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-     <div className="flex items-center gap-2 text-xs text-cyan-100">
-     {txDateRangeFilter === 'today' ? <Calendar className="w-4 h-4 text-cyan-300" /> : <Clock className="w-4 h-4 text-violet-300" />}
-     <span className="font-bold">
-      Mostrando ingresos de {txDateRangeFilter === 'today' ? 'hoy' : 'esta semana'} en la bitácora de transacciones
-     </span>
-     <span className="text-[10px] font-mono text-slate-400">
-      {filteredTxs.length} registros
-     </span>
-     </div>
-     <button
-     type="button"
-     onClick={() => {
-      setTxDateRangeFilter('all');
-      setTxCurrentPage(1);
-     }}
-     className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] text-slate-300 font-bold uppercase tracking-wider"
-     >
-     Limpiar filtro
-     </button>
-    </div>
-    )}
-
-    {/* Table list */}
-    <div id={txDateRangeFilter === 'all' ? 'finance-transactions-log' : undefined} className="bg-[#0b1329]/10 backdrop-blur-md border border-white/5 rounded-3xl overflow-hidden shadow-xl">
-   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.05] bg-black/10 px-4 py-2.5">
-    <span className="text-[8px] font-black uppercase tracking-[0.18em] text-slate-600">Código visual</span>
-    <div className="flex flex-wrap items-center gap-2.5 text-[8px] font-semibold text-slate-500" aria-label="Leyenda de señales de transacción">
-     <span className="inline-flex items-center gap-1"><Briefcase className="h-3 w-3 text-amber-300" /> Comercial</span>
-     <span className="inline-flex items-center gap-1"><Repeat className="h-3 w-3 text-violet-300" /> Recurrente</span>
-     <span className="inline-flex items-center gap-1"><img src="/stripe-mark.png" alt="" className="h-3 w-3 rounded-[3px]" /> Stripe</span>
-     <span className="inline-flex items-center gap-1"><Banknote className="h-3 w-3 text-emerald-300" /> Efectivo</span>
-     <span className="inline-flex items-center gap-1"><Landmark className="h-3 w-3 text-cyan-300" /> Transferencia</span>
-    </div>
-   </div>
-   <div className="overflow-x-auto font-sans">
-    <table className="w-full text-left border-collapse">
-    <thead>
-     <tr className="border-b border-white/5 bg-[#0b1329]/40 text-[9px] font-mono text-slate-500 uppercase tracking-widest">
-     <th className="p-3 font-bold">Operación</th>
-     <th className="p-3 font-bold">Señales</th>
-     <th className="p-3 font-bold">Categoría</th>
-     <th className="min-w-[96px] whitespace-nowrap p-3 font-bold">Fecha</th>
-     <th className="min-w-[112px] whitespace-nowrap p-3 font-bold">Importe</th>
-     <th className="p-3 font-bold">Estado</th>
-     <th className="p-3 font-bold text-right">Acciones</th>
-     </tr>
-    </thead>
-    <tbody className="divide-y divide-white/5">
-     {currentTxs.length === 0 ? (
-     <tr>
-      <td colSpan={7} className="p-16 text-center text-slate-500 text-xs font-light">
-      No se encontraron registros de transacciones.
-      </td>
-     </tr>
-     ) : (
-     currentTxs.map(t => {
-      // Custom aesthetic colors for categories
-      const catColors: Record<string, string> = {
-      'Desarrollo': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-      'Consultoría': 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
-      'Infraestructura': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-      'Software Herramientas': 'bg-purple-500/10 text-purple-300 border-purple-500/20',
-      'Dominios': 'bg-slate-500/10 text-slate-300 border-slate-500/20',
-      'Marketing': 'bg-pink-500/10 text-pink-400 border-pink-500/20',
-      'Facturado': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-      };
-      const tagStyle = catColors[t.category] || 'bg-white/5 text-slate-300 border-white/10';
-      const linkedInv = getLinkedInvoice(t);
-      const stripeDashboardUrl = getStripeDashboardUrl(t.stripeCheckoutSessionId, t.stripeInvoiceId);
-      const installment = getTransactionInstallment(t);
-      const transactionDescription = (t.description || '').toLocaleLowerCase('es');
-      const transactionClient = contacts.find(contact => contact.id === t.clientId)
-       || contacts.find(contact => contact.id === linkedInv?.clientId)
-       || contacts.find(contact => {
-        const company = (contact.company || '').trim().toLocaleLowerCase('es');
-        return company.length > 2 && company !== 'independent' && transactionDescription.includes(company);
-       });
-      const businessName = getFinanceBusinessName(transactionClient) || linkedInv?.clientName || '';
-
-      return (
-      <tr 
-       key={t.id} 
-       className={`text-xs transition-colors group relative ${
-       linkedInv  ?
-        'bg-blue-500/[0.035] hover:bg-blue-500/[0.065] border-l-2 border-l-blue-500/70'
-        : 'hover:bg-white/[0.018]'
-       }`}
-      >
-       <td className="p-3 text-left align-middle">
-       <div className="max-w-xs sm:max-w-md text-left">
-        <span className="mb-1 block font-mono text-[7.5px] uppercase leading-none tracking-wider text-slate-600 select-all">
-        {t.id}
-        </span>
-        {businessName && (
-         <span className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-cyan-400/15 bg-gradient-to-r from-cyan-400/[0.09] to-blue-400/[0.04] px-2 py-1 text-[9.5px] font-black leading-none text-cyan-100 shadow-[inset_0_1px_rgba(255,255,255,.03)]" title={`Negocio: ${businessName}`}>
-          <Briefcase className="h-3 w-3 shrink-0 text-cyan-300" />
-          <span className="truncate">{businessName}</span>
-         </span>
-        )}
-        <span className={`${businessName ? 'mt-2 text-[12px] font-extrabold text-white' : 'text-[12px] font-extrabold text-white'} block leading-snug tracking-tight transition-colors group-hover:text-emerald-300`}>
-         {getTransactionDisplayConcept(t.description)}
-        </span>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1">
-        {installment ? (
-         <span className="inline-flex items-center gap-1 rounded-md border border-amber-400/20 bg-amber-400/[0.08] px-1.5 py-0.5 font-mono text-[7.5px] font-black uppercase tracking-wide text-amber-300">
-          <span className="grid h-3.5 min-w-3.5 place-items-center rounded bg-amber-300/10 px-0.5">{installment.index}</span>
-          Cuota {installment.index}/{installment.total}
-         </span>
-        ) : null}
-        {linkedInv && (
-         <span className="inline-flex items-center gap-1 rounded-md border border-blue-500/15 bg-blue-500/[0.07] px-1.5 py-0.5 font-mono text-[7.5px] font-bold text-blue-300">
-         <FileText className="h-2.5 w-2.5" />
-         <span>{linkedInv.id}</span>
-         <span className={`w-1.5 h-1.5 rounded-full ${linkedInv.status === 'paid' ? 'bg-emerald-400' : 'bg-amber-400'}`} title={linkedInv.status === 'paid' ? 'Factura Pagada' : 'Factura Pendiente / Borrador'} />
-         </span>
-        )}
-        </div>
-       </div>
-       </td>
-       <td className="p-3 align-middle">
-        <TransactionOriginSignals transaction={t} stripeDashboardUrl={stripeDashboardUrl} />
-       </td>
-       <td className="p-3 text-left align-middle">
-       <span className={`text-[8px] font-mono border px-2 py-0.5 rounded-md uppercase tracking-wider font-bold ${tagStyle}`}>
-        {t.category}
-       </span>
-       </td>
-       <td className="min-w-[96px] whitespace-nowrap p-3 text-left align-middle font-mono text-[9px] text-slate-400">
-       {t.date}
-       </td>
-       <td className="min-w-[112px] whitespace-nowrap p-3 text-left align-middle">
-       <span className={`whitespace-nowrap font-mono text-[11px] font-black tracking-tight ${linkedInv ? 'text-blue-400' : t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
-        {t.type === 'income' ? '+' : '-'}{t.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €
-       </span>
-       </td>
-       <td className="p-3 text-left align-middle">
-       {t.status === 'paid' ? (
-       <button
-        onClick={() => handleToggleTransactionStatus(t)}
-        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-emerald-300 transition hover:border-amber-400/20 hover:bg-amber-400/[0.07] hover:text-amber-300"
-        title="Haga clic para revertir / desmarcar de Bitácora (cambiará a Pendiente)"
-        >
-        <CheckCircle2 className="h-3 w-3" />
-        <span>{t.type === 'income' ? 'Cobrado' : 'Pagado'}</span>
-        </button>
-       ) : t.status === 'failed' ? (
-        <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-rose-400/20 bg-rose-400/[0.08] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-rose-300" title="Stripe ha rechazado el cobro o el enlace de pago ha caducado">
-         <XCircle className="h-3 w-3" />
-         Denegado
-        </span>
-       ) : (
-        <div className="flex items-center gap-1.5">
-        <span className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-amber-400/20 bg-amber-400/[0.07] px-2.5 font-mono text-[8px] font-black uppercase tracking-wide text-amber-300">
-         <Clock className="h-3 w-3" />
-         {t.type === 'income' ? 'Por cobrar' : 'Por pagar'}
-        </span>
-        <button
-         onClick={() => handleToggleTransactionStatus(t)}
-         className="inline-flex h-7 items-center gap-1 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 text-[8px] font-black uppercase tracking-wide text-emerald-300 transition hover:bg-emerald-400/[0.15]"
-         title={t.type === 'income' ? 'Marcar como cobrado y sincronizar facturas/conceptos' : 'Marcar como pagado'}
-        >
-         <Check className="h-3 w-3" />
-         <span>{t.type === 'income' ? 'Marcar cobrado' : 'Marcar pagado'}</span>
-        </button>
-        </div>
-       )}
-       </td>
-       <td className="p-3 text-right align-middle">
-       <div className="finance-action-cluster inline-flex items-center justify-end gap-1.5 rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.055] to-black/25 p-1.5 shadow-[inset_0_1px_rgba(255,255,255,.04),0_8px_24px_rgba(0,0,0,.18)]">
-        {linkedInv ? (
-        <button
-         onClick={() => setPreviewInvoice(linkedInv)}
-         className="finance-action-button finance-action-button--invoice grid h-8 w-8 place-items-center rounded-xl border border-blue-300/20 bg-gradient-to-br from-blue-300/[0.18] to-cyan-400/[0.07] text-blue-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-blue-300/40 hover:brightness-125"
-         title={`Ver Factura Vinculada (${linkedInv.id})`}
-        >
-         <FileText className="h-3.5 w-3.5 stroke-[2.5]" />
-        </button>
-        ) : (
-        t.type === 'income' && (
-         <button
-         onClick={() => handleCreateInvoiceFromTransaction(t)}
-         className="finance-action-button finance-action-button--invoice grid h-8 w-8 place-items-center rounded-xl border border-amber-300/20 bg-gradient-to-br from-amber-200/[0.2] to-amber-500/[0.07] text-amber-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-amber-300/40 hover:brightness-125"
-         title="Facturar este cobro (Generar y editar factura)"
-         >
-         <FileText className="h-3.5 w-3.5" />
-         </button>
-        )
-        )}
-        <button
-        onClick={() => handleEditTx(t)}
-        className="finance-action-button finance-action-button--edit grid h-8 w-8 place-items-center rounded-xl border border-sky-300/15 bg-gradient-to-br from-sky-300/[0.12] to-blue-500/[0.04] text-sky-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-sky-300/35 hover:brightness-125"
-        title="Editar transacción"
-        >
-        <Edit className="h-3.5 w-3.5" />
-        </button>
-        {!t.isRecurring && (
-        <button
-         onClick={() => handleMakeTransactionRecurring(t)}
-         className="finance-action-button finance-action-button--recurring grid h-8 w-8 place-items-center rounded-xl border border-teal-300/20 bg-gradient-to-br from-teal-200/[0.18] to-emerald-500/[0.06] text-teal-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-teal-300/40 hover:brightness-125"
-         title={`Convertir este ${t.type === 'income' ? 'cobro' : 'pago'} en recurrencia`}
-        >
-         <Repeat className="h-3.5 w-3.5" />
-        </button>
-        )}
-        <button
-        onClick={() => handleDeleteTx(t.id)}
-        className="finance-action-button finance-action-button--delete grid h-8 w-8 place-items-center rounded-xl border border-rose-300/20 bg-gradient-to-br from-rose-300/[0.17] to-red-600/[0.07] text-rose-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-rose-300/45 hover:brightness-125"
-        title="Eliminar registro"
-        >
-        <Trash2 className="h-3.5 w-3.5" />
-        </button>
-       </div>
-       </td>
-      </tr>
-      );
-     })
-     )}
-    </tbody>
-    </table>
-   </div>
-
-   {/* Pagination Controls */}
-   {totalTxPages > 1 && (
-    <div className="finance-pagination flex flex-col sm:flex-row items-center justify-between gap-4 py-4 px-6 border-t border-white/5 bg-[#0b1329]/15 text-xs">
-    <span className="text-slate-400 font-sans">
-     Mostrando registros <strong className="text-slate-200">{(safeCurrentPage - 1) * txItemsPerPage + 1}</strong> - <strong className="text-slate-200">{Math.min(safeCurrentPage * txItemsPerPage, filteredTxs.length)}</strong> de <strong className="text-slate-300 font-bold">{filteredTxs.length}</strong>
-    </span>
-    <div className="flex items-center gap-1.5 font-mono" aria-label="Paginación de movimientos">
-     <button
-     onClick={() => {
-      setTxCurrentPage(prev => Math.max(1, prev - 1));
-      document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
-     }}
-     disabled={safeCurrentPage === 1}
-     className="finance-pagination-button finance-pagination-button--edge px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
-     >
-     ← Anterior
-     </button>
-     {Array.from({ length: totalTxPages }, (_, i) => i + 1).map(pageNum => (
-     <button
-      key={pageNum}
-     onClick={() => {
-      setTxCurrentPage(pageNum);
-      document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
-      }}
-      aria-current={pageNum === safeCurrentPage ? 'page' : undefined}
-      className={`finance-pagination-button finance-pagination-button--page w-7 h-7 flex items-center justify-center rounded-xl font-bold text-[11px] transition cursor-pointer border ${
-      pageNum === safeCurrentPage ?
-       'bg-purple-600/10 text-purple-400 border-purple-500/30'
-       : 'bg-transparent border-transparent hover:border-white/5 hover:bg-white/[0.02] text-slate-400 hover:text-slate-200'
-      }`}
-     >
-      {pageNum}
-     </button>
-     ))}
-     <button
-     onClick={() => {
-      setTxCurrentPage(prev => Math.min(totalTxPages, prev + 1));
-      document.getElementById('finance-module-root')?.scrollTo({ top: 0, behavior: 'smooth' });
-     }}
-     disabled={safeCurrentPage === totalTxPages}
-     className="finance-pagination-button finance-pagination-button--edge px-3 py-1.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 text-slate-300 hover:text-white transition cursor-pointer disabled:opacity-30 disabled:pointer-events-none text-[11px] font-bold"
-     >
-     Siguiente →
-     </button>
-    </div>
-    </div>
-   )}
-   </div>
-  </div>
-  )}
-
+</div></details>}
   {/* Tab Content 2: plans and non-Stripe recurrences */}
   {activeTab === 'recurring' && (
-   <div className="space-y-5">
-    <section className="relative overflow-hidden rounded-3xl border border-violet-300/15 bg-gradient-to-br from-violet-400/[0.1] via-[#0b1329]/75 to-cyan-400/[0.04] p-5 sm:p-6">
-     <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-violet-400/10 blur-3xl" />
-     <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-      <div>
-       <span className="text-[9px] font-black uppercase tracking-[.22em] text-violet-300">Cobros programados</span>
-       <h3 className="mt-1 text-xl font-black text-white">Planes y recurrencias</h3>
-       <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-400">Stripe se lee automáticamente y separa las suscripciones de los pagos fraccionados. Las recurrencias manuales se registran por efectivo o transferencia, sin mezclarlas con la pasarela.</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-       <button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setTxPaymentMethod('transfer'); setIsTxModalOpen(true); }} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/[0.1] px-3.5 py-2.5 text-[10px] font-black text-cyan-200 transition hover:bg-cyan-300/[0.17]"><Landmark className="h-4 w-4" /> Añadir transferencia</button>
-       <button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setTxPaymentMethod('cash'); setIsTxModalOpen(true); }} className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/[0.1] px-3.5 py-2.5 text-[10px] font-black text-emerald-200 transition hover:bg-emerald-300/[0.17]"><Banknote className="h-4 w-4" /> Añadir efectivo</button>
-      </div>
-     </div>
-     <div className="relative mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <div className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Suscripciones Stripe</span><strong className="mt-1 block text-2xl text-white">{stripeSubscriptions.length}</strong><span className="text-[9px] text-slate-500">cobro automático recurrente</span></div>
-      <div className="rounded-2xl border border-rose-300/15 bg-rose-300/[0.06] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-rose-300">Pendientes de pago</span><strong className="mt-1 block text-2xl text-white">{unpaidStripeRecurrences.length}</strong><span className="text-[9px] text-slate-500">visibles, sin sumar a finanzas</span></div>
-      <div className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pagos fraccionados</span><strong className="mt-1 block text-2xl text-white">{stripeInstallments.length}</strong><span className="text-[9px] text-slate-500">planes con cuotas pendientes</span></div>
-      <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.07] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-cyan-300">Recurrencias manuales</span><strong className="mt-1 block text-2xl text-white">{manualRecurring.length}</strong><span className="text-[9px] text-slate-500">efectivo o transferencia</span></div>
-     </div>
-    </section>
+   <div className="space-y-5 finance-plans">
+    <header className="finance-plans-header"><div><h3>Recurrencias y pagos fraccionados</h3><p>Elige qué quieres gestionar.</p></div><button type="button" onClick={() => setActiveTab('upcoming')}><Plus size={16}/> Crear o editar un cobro</button></header>
+    <div className="finance-plan-filters" aria-label="Tipo de plan">{([
+     ['subscriptions','Suscripciones',stripeSubscriptions.length],['installments','Splits',stripeInstallments.length],['manual','Manuales',manualRecurring.length],['pending','Sin activar',unpaidStripeRecurrences.length]
+    ] as const).map(([key,label,count])=><button key={key} aria-pressed={recurringGroup===key} onClick={()=>setRecurringGroup(key)}>{label}<span>{count}</span></button>)}</div>
 
-    <section className="rounded-3xl border border-rose-300/12 bg-[#0b1329]/25 p-4 sm:p-5">
+
+    {recurringGroup === 'pending' && (
+   <section className="rounded-3xl border border-rose-300/12 bg-[#0b1329]/25 p-4 sm:p-5">
      <div className="mb-4 flex items-start justify-between gap-3">
       <div><span className="text-[9px] font-black uppercase tracking-[.18em] text-rose-300">Pendientes · no contabilizadas</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias esperando el primer pago</h4><p className="mt-1 text-[10px] text-slate-500">Se muestran para seguimiento, pero no suman en ingresos, caja, analíticas ni objetivo hasta que Stripe confirme el cobro.</p></div>
       <span className="shrink-0 rounded-xl border border-rose-300/15 bg-rose-300/[0.07] px-3 py-2 font-mono text-sm font-black text-rose-200">{unpaidStripeRecurrences.length}</span>
@@ -4621,23 +4466,30 @@ ALTER TABLE finance_invoices ADD COLUMN IF NOT EXISTS color TEXT;`;
       })}
      </div>
     </section>
+    )}
 
-    <section className="rounded-3xl border border-white/[0.06] bg-[#0b1329]/25 p-4 sm:p-5">
+    {recurringGroup === 'subscriptions' && (
+   <section className="rounded-3xl border border-white/[0.06] bg-[#0b1329]/25 p-4 sm:p-5">
      <div className="mb-4 flex items-center justify-between gap-3"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-violet-300">Stripe · sincronizado</span><h4 className="mt-1 text-sm font-bold text-white">Suscripciones recurrentes</h4></div><button type="button" onClick={() => void refreshStripeFinanceOverview({ reconcile: true })} disabled={stripeFinanceLoading} className="rounded-xl border border-white/10 bg-black/20 p-2 text-slate-400 hover:text-white"><RefreshCw className={`h-4 w-4 ${stripeFinanceLoading ? 'animate-spin' : ''}`} /></button></div>
      {stripeFinanceError ? <p className="mb-3 text-[10px] text-rose-300">{stripeFinanceError}</p> : null}
      <div className="grid gap-3 lg:grid-cols-2">
       {stripeFinanceLoading && !stripeFinanceOverview ? <div className="col-span-full py-10 text-center text-xs text-slate-500"><RefreshCw className="mx-auto mb-2 h-4 w-4 animate-spin" />Consultando Stripe…</div> : stripeSubscriptions.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay suscripciones recurrentes activas en Stripe.</div> : stripeSubscriptions.map(plan => <article key={plan.id} className="rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] p-4 transition hover:border-violet-300/30"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-violet-300/20 bg-violet-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-violet-200">{plan.paymentLimit ? `${plan.paymentLimit} cobros · temporal` : 'Suscripción'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 truncate text-[10px] text-slate-500">{plan.customerEmail || 'Cliente Stripe'}</p></div><strong className="shrink-0 text-right font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}<small className="block text-[8px] font-normal text-violet-300">/ {formatStripeInterval(plan.interval, plan.intervalCount)}</small></strong></div><div className="mt-4 flex items-center justify-between border-t border-violet-300/10 pt-3 text-[9px]"><span className="text-slate-400">{plan.paymentCount}/{plan.paymentLimit || '∞'} cobrados · {plan.paymentLimit ? `último pago ${plan.endsAt ? new Date(plan.endsAt).toLocaleDateString('es-ES') : 'programado'}` : `último ${plan.lastPaidAt ? new Date(plan.lastPaidAt).toLocaleDateString('es-ES') : 'sin pagos'}`}</span><span className="flex items-center gap-3"><button type="button" onClick={() => void handleSetStripeFinalChargeDate(plan)} className="font-black text-amber-300 hover:text-amber-100">Definir último cobro</button><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="font-black text-violet-300 hover:text-violet-100">Ver Stripe →</a></span></div></article>)}
      </div>
     </section>
+    )}
 
-    <section className="rounded-3xl border border-amber-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4"><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Stripe · financiación</span><h4 className="mt-1 text-sm font-bold text-white">Pagos split / fraccionados</h4><p className="mt-1 text-[10px] text-slate-500">Planes con un número limitado de cuotas; no se tratan como una suscripción abierta.</p></div><div className="grid gap-3 lg:grid-cols-2">{stripeInstallments.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay pagos fraccionados activos.</div> : stripeInstallments.map(plan => <article key={plan.id} className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.045] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-amber-300/20 bg-amber-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-amber-200">{plan.installmentCount || '?'} cuotas</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 text-[10px] text-amber-200">{plan.paymentCount}/{plan.paymentLimit || plan.installmentCount || '?'} cobradas · quedan {formatStripeCurrency(plan.openAmount, plan.currency)}</p>{plan.endsAt && <p className="mt-1 text-[9px] text-slate-500">Última cuota: {new Date(plan.endsAt).toLocaleDateString('es-ES')}</p>}</div><strong className="shrink-0 font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}</strong></div><div className="mt-4 flex justify-end border-t border-amber-300/10 pt-3"><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="text-[9px] font-black text-amber-300 hover:text-amber-100">Abrir plan en Stripe →</a></div></article>)}</div></section>
+    {recurringGroup === 'installments' && (
+   <section className="rounded-3xl border border-amber-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4"><span className="text-[9px] font-black uppercase tracking-[.18em] text-amber-300">Stripe · financiación</span><h4 className="mt-1 text-sm font-bold text-white">Pagos split / fraccionados</h4><p className="mt-1 text-[10px] text-slate-500">Planes con un número limitado de cuotas; no se tratan como una suscripción abierta.</p></div><div className="grid gap-3 lg:grid-cols-2">{stripeInstallments.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">No hay pagos fraccionados activos.</div> : stripeInstallments.map(plan => <article key={plan.id} className="rounded-2xl border border-amber-300/15 bg-amber-300/[0.045] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className="inline-flex rounded-full border border-amber-300/20 bg-amber-300/[0.1] px-2 py-1 text-[8px] font-black uppercase tracking-wider text-amber-200">{plan.installmentCount || '?'} cuotas</span><h5 className="mt-3 truncate text-sm font-black text-white">{plan.customerName}</h5><p className="mt-1 text-[10px] text-amber-200">{plan.paymentCount}/{plan.paymentLimit || plan.installmentCount || '?'} cobradas · quedan {formatStripeCurrency(plan.openAmount, plan.currency)}</p>{plan.endsAt && <p className="mt-1 text-[9px] text-slate-500">Última cuota: {new Date(plan.endsAt).toLocaleDateString('es-ES')}</p>}</div><strong className="shrink-0 font-mono text-sm text-white">{formatStripeCurrency(plan.amount, plan.currency)}</strong></div><div className="mt-4 flex justify-end border-t border-amber-300/10 pt-3"><a href={plan.dashboardUrl} target="_blank" rel="noreferrer" className="text-[9px] font-black text-amber-300 hover:text-amber-100">Abrir plan en Stripe →</a></div></article>)}</div></section>
+    )}
 
-    <section className="rounded-3xl border border-cyan-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Fuera de Stripe</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias manuales</h4><p className="mt-1 text-[10px] text-slate-500">Los cobros y pagos en efectivo o transferencia quedan pendientes hasta que pulses Registrar.</p></div><button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setIsTxModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-[10px] font-black text-slate-950"><Plus className="h-4 w-4" /> Nueva recurrencia</button></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{manualRecurring.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Añade una recurrencia manual para controlar los cobros y pagos no procesados por Stripe.</div> : manualRecurring.map(item => {
+    {recurringGroup === 'manual' && (
+   <section className="rounded-3xl border border-cyan-300/12 bg-[#0b1329]/25 p-4 sm:p-5"><div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><span className="text-[9px] font-black uppercase tracking-[.18em] text-cyan-300">Fuera de Stripe</span><h4 className="mt-1 text-sm font-bold text-white">Recurrencias manuales</h4><p className="mt-1 text-[10px] text-slate-500">Los cobros y pagos en efectivo o transferencia quedan pendientes hasta que pulses Registrar.</p></div><button type="button" onClick={() => { resetTxForm(); setTxIsRecurring(true); setIsTxModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-[10px] font-black text-slate-950"><Plus className="h-4 w-4" /> Nueva recurrencia</button></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{manualRecurring.length === 0 ? <div className="col-span-full rounded-2xl border border-dashed border-white/10 p-8 text-center text-xs text-slate-500">Añade una recurrencia manual para controlar los cobros y pagos no procesados por Stripe.</div> : manualRecurring.map(item => {
  const pending = getPendingManualRecurrences(item, transactions);
  const due = pending[0];
  const isManual = isManualFinanceRecurrence(item);
  const amount = due?.existing?.amount ?? (due && toFinanceDateKey(due.date) === item.date.slice(0, 10) ? item.firstAmount ?? item.amount : item.nextAmount ?? item.amount);
  return <article key={item.id} className="rounded-2xl border border-cyan-300/12 bg-cyan-300/[0.04] p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wider ${item.paymentMethod === 'cash' ? 'border-emerald-300/20 bg-emerald-300/[0.1] text-emerald-200' : 'border-cyan-300/20 bg-cyan-300/[0.1] text-cyan-200'}`}>{item.paymentMethod === 'cash' ? <Banknote className="h-3 w-3" /> : <Landmark className="h-3 w-3" />}{item.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span><h5 className="mt-3 truncate text-sm font-black text-white">{getTransactionDisplayConcept(item.description)}</h5><p className="mt-1 text-[10px] text-slate-500">{item.type === 'income' ? 'Cobro' : 'Pago'} · {item.recurrencePeriod === 'weekly' ? 'semanal' : item.recurrencePeriod === 'yearly' ? 'anual' : 'mensual'}</p></div><strong className={item.type === 'income' ? 'font-mono text-sm text-emerald-300' : 'font-mono text-sm text-rose-300'}>{item.type === 'income' ? '+' : '-'}{amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div><div className="mt-4 flex items-center justify-between border-t border-cyan-300/10 pt-3"><span className="text-[9px] text-slate-400">{due ? `Pendiente: ${due.date.toLocaleDateString('es-ES')} · ${pending.length} cuota${pending.length === 1 ? '' : 's'}` : isManual ? 'Sin cuotas vencidas pendientes' : 'Registro automático'}</span><div className="flex gap-2"><button type="button" onClick={() => handleEditTx(item)} className="text-[9px] font-black text-cyan-300">Editar</button><button type="button" disabled={!due || registeringRecurrences.has(item.id)} onClick={() => void handleProcessRecurring(item)} className="text-[9px] font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{registeringRecurrences.has(item.id) ? 'Registrando…' : 'Registrar'}</button></div></div></article>; })}</div></section>
+    )}
    </div>
   )}
 
