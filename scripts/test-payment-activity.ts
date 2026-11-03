@@ -11,3 +11,5 @@ const activity=buildMonthlyPaymentActivity(tx,invoices,contacts,plans,now);
 assert.equal(activity.length,4);assert.equal(activity[0].state,'failed');assert.equal(activity.filter(p=>p.state==='paid').length,2);assert.equal(activity.every(p=>p.date.startsWith('2026-11')),true);assert.equal(activity.find(p=>p.id==='invoice:in1')?.customer,'El Negocio');
 assert.equal(buildMonthlyPaymentActivity([{...tx[0],stripeInvoiceId:undefined,stripePlanId:'plan1'}],invoices,contacts,plans,now).length,2);
 console.log('Monthly activity: business identity, email resolution, paid/failed/pending, month boundary and Stripe deduplication passed.');
+
+assert.equal(buildMonthlyPaymentActivity([{...tx[1],id:'tx_stripe_payout_123',category:'Transferencia interna'}],[],contacts,plans,now).length,0);

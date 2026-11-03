@@ -56,7 +56,7 @@ export function buildMonthlyPaymentActivity(transactions:FinanceTransaction[],in
   result.push({id:`invoice:${invoice.id}`,subscriptionId:invoice.subscriptionId,date,customer:client?.company||client?.name||invoice.customerName,person:client?.name||invoice.customerName,logo:client?.avatarUrl,clientId:client?.id,description:invoice.description,amount:invoice.amount,currency:invoice.currency.toUpperCase(),source:'stripe',method:'Stripe',overdue:invoice.status!=='paid'&&date<now,estimated:false,state:invoice.status,historical:true,url:invoice.url});
  }
  for(const tx of transactions){
-  if(tx.type!=='income'||!['paid','failed','pending'].includes(tx.status))continue;
+  if(tx.type!=='income'||!['paid','failed','pending'].includes(tx.status)||tx.category?.trim().toLocaleLowerCase('es-ES')==='transferencia interna'||tx.id.startsWith('tx_stripe_payout_'))continue;
   if(tx.isRecurring&&tx.paymentMethod==='stripe')continue;
   const date=(tx.paidAt||tx.date).slice(0,10);if(date.slice(0,7)!==month||date>now)continue;
   if(tx.isRecurring&&transactions.some(t=>t.recurrenceSourceId===tx.id&&(t.recurrenceScheduledDate||t.date).slice(0,10)===tx.date.slice(0,10)))continue;
