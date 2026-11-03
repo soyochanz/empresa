@@ -4670,7 +4670,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
   {/* Tab Content 3: Invoices Screen */}
   {activeTab === 'invoices' && (
-  <div className="space-y-5">
+  <div className="space-y-5 finance-invoices">
+   <details className="finance-advanced"><summary>Resumen y calendario de facturación</summary>
    <div className="grid grid-cols-1 xl:grid-cols-[220px_minmax(0,1fr)] gap-5">
    <aside className="bg-[#080b16]/90 border border-white/7 rounded-3xl p-3 h-fit xl:sticky xl:top-3">
     <div className="p-3 border-b border-white/5 mb-2">
@@ -4834,6 +4835,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    </div>
    </div>
 
+   </details>
    {/* Top filter and search for invoices */}
    <div id="invoice-admin-list" className="bg-[#0b1329]/20 backdrop-blur-md border border-white/5 p-4 rounded-3xl flex flex-col lg:flex-row items-stretch lg:items-center gap-4 justify-between scroll-mt-5">
    <div className="flex flex-wrap items-center gap-2">
@@ -4914,7 +4916,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    </div>
 
    {/* Large layout bento or grid of Invoices */}
-   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-sans">
+   <div className="finance-invoice-cards grid grid-cols-1 md:grid-cols-2 gap-4 font-sans">
    {filteredInvoices.length === 0 ? (
     <div className="col-span-full py-16 text-center text-slate-500 text-xs bg-slate-900/10 rounded-3xl border border-white/5 font-light">
     No se encontraron facturas registradas.

@@ -41,3 +41,7 @@
 #finance-module-root .finance-plans article button,#finance-module-root .finance-plans article a{font-size:12px}
 #finance-module-root .finance-plans section h4{font-size:16px;color:var(--fw-text)}
 @media(max-width:700px){.finance-plans-header{align-items:start;flex-direction:column}}
+#finance-module-root .finance-invoice-cards>div{background:var(--fw-surface);border:1px solid var(--fw-line);border-radius:16px;box-shadow:none}
+#finance-module-root .finance-invoice-cards h4{font-size:17px;color:var(--fw-text)}
+#finance-module-root .finance-invoice-cards p{font-size:12px;color:var(--fw-muted)}
+#finance-module-root .finance-invoices>details>div{padding-top:20px}
