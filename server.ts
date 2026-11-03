@@ -1766,7 +1766,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
 app.post(
   "/api/stripe/create-checkout-session",
   async (req, res, next) => {
-    if (req.body?.replaceExisting !== true) return next();
+    if (req.body?.replaceExisting !== true && !req.body?.agendaRequestId) return next();
     return requireAdminAuth(req, res, next);
   },
   async (req, res) => {
@@ -1787,6 +1787,10 @@ app.post(
       return res.status(400).json({ error: "El concepto no puede superar los 180 caracteres." });
     }
 
+    const agendaRequestId = req.body.agendaRequestId;
+    if (agendaRequestId && (!/^agenda_[0-9a-f-]{36}$/.test(agendaRequestId) || agendaRequestId !== pendingTxId)) {
+      return res.status(400).json({ error: "Identificador de agenda no válido." });
+    }
     const stripe = getStripe();
     let effectiveAmountNumber = amountNumber;
     let effectiveInterval = interval || "month";
@@ -1918,7 +1922,7 @@ app.post(
     }
 
     // Create a checkout session
-    const session = await stripe.checkout.sessions.create(sessionConfig);
+    const session = await stripe.checkout.sessions.create(sessionConfig, agendaRequestId ? { idempotencyKey: `agenda:${agendaRequestId}` } : undefined);
     if (!session.url) {
       throw new Error("Stripe no devolvió una URL para la sesión de pago.");
     }

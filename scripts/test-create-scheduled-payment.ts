@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {prepareScheduledPayment,type PaymentDraft} from '../src/utils/createScheduledPayment';
+import {buildPaymentSchedule} from '../src/utils/paymentSchedule';
+const now=new Date('2026-11-03T08:00:00Z');
+const clients=[{id:'c1',name:'Cliente',company:'Negocio',email:'cliente@example.com'}] as any;
+const d:PaymentDraft={clientId:'c1',concept:'SEO',amount:'150.50',date:'2026-11-07',method:'transfer',period:'monthly',count:'3',scheduled:true};
+const manual=prepareScheduledPayment(d,clients,'agenda_test',now);
+assert.equal(manual.transaction.clientId,'c1');assert.equal(manual.transaction.status,'pending');assert.equal(manual.transaction.isRecurring,true);assert.equal(manual.checkout,undefined);
+assert.equal(buildPaymentSchedule([manual.transaction],[],clients,now).length,3);
+const stripe=prepareScheduledPayment({...d,method:'stripe'},clients,'agenda_test',now);
+assert.equal(stripe.transaction.isRecurring,false);assert.equal(stripe.transaction.status,'pending');assert.equal(stripe.checkout?.firstPaymentDate,'2026-11-07');assert.equal(stripe.checkout?.amount,'150.50');assert.equal(stripe.checkout?.clientEmail,'cliente@example.com');
+assert.equal(buildPaymentSchedule([stripe.transaction],[],clients,now)[0].awaitingActivation,true);
+assert.equal(prepareScheduledPayment({...d,method:'stripe',scheduled:false},clients,'x',now).checkout?.firstPaymentDate,'');
+for(const change of [{amount:'NaN'},{amount:'0'},{amount:'1.001'},{clientId:'no'},{count:'1.5'},{date:'2026-02-30'},{method:'stripe',period:'weekly'},{method:'stripe',date:'2026-11-04'}])assert.throws(()=>prepareScheduledPayment({...d,...change} as PaymentDraft,clients,'x',now));
+assert.throws(()=>prepareScheduledPayment({...d,method:'stripe'},[{...clients[0],email:''}],'x',now));
+console.log('Scheduled creation validation, CRM association, pending state and dates: passed');

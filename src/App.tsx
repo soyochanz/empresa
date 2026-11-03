@@ -2298,7 +2298,7 @@ export default function App() {
    </div>
   )}
 
-  <UpcomingPayments {...paymentSchedule} onRefresh={()=>{paymentSchedule.refresh();void handleRefreshFinance();}} onCalendar={()=>navigateTo('calendar','none')}/>
+  <UpcomingPayments contacts={contacts} {...paymentSchedule} onRefresh={()=>{paymentSchedule.refresh();void handleRefreshFinance();}} onCalendar={()=>navigateTo('calendar','none')}/>
   {/* Dynamic Screen viewport frames with slide/none transitions */}
   <div className="flex-1 relative overflow-hidden font-sans">
    <AnimatePresence mode="wait" initial={false}>

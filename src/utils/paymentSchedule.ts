@@ -1,7 +1,7 @@
 import type { FinanceTransaction, ClientContact } from '../types';
 import { findRecurringOccurrence, getFinanceRecurrenceDate, isFinanceRecurrenceOccurrenceAllowed, toFinanceDateKey } from './financeRecurrence';
 import { getStripeForecastOccurrences, type ForecastSubscription } from './stripeForecast';
-export interface ScheduledPayment { id:string; date:string; customer:string; description:string; amount:number; currency:string; source:'stripe'|'manual'; method:string; overdue:boolean; estimated:boolean; url?:string }
+export interface ScheduledPayment { id:string; date:string; customer:string; description:string; amount:number; currency:string; source:'stripe'|'manual'; method:string; overdue:boolean; estimated:boolean; url?:string; awaitingActivation?:boolean }
 export type PaymentPlan = ForecastSubscription & { dashboardUrl?:string; stripePlanId?:string; billingType?:string };
 export function buildPaymentSchedule(transactions:FinanceTransaction[],plans:PaymentPlan[],contacts:ClientContact[],today=new Date()):ScheduledPayment[]{
  const now=toFinanceDateKey(today);const end=new Date(today.getFullYear(),today.getMonth()+12,0,12);const endKey=toFinanceDateKey(end);const result:ScheduledPayment[]=[];
@@ -16,6 +16,11 @@ export function buildPaymentSchedule(transactions:FinanceTransaction[],plans:Pay
    const customer=contacts.find(c=>c.id===source.clientId);
    result.push({id:`manual:${source.id}:${key}`,date:key,customer:customer?.company||customer?.name||'Sin cliente vinculado',description:source.description,amount,currency:'EUR',source:'manual',method:source.paymentMethod==='cash'?'Efectivo':source.paymentMethod==='transfer'?'Transferencia':'Cobro manual',overdue:key<now,estimated:false});
   }
+ }
+ for(const tx of transactions.filter(t=>t.id.startsWith('agenda_')&&t.type==='income'&&t.paymentMethod==='stripe'&&t.status==='pending'&&!t.isRecurring)){
+  if(plans.some(p=>p.id===tx.stripePlanId||!!p.stripePlanId&&p.stripePlanId===tx.stripePlanId))continue;
+  const customer=contacts.find(c=>c.id===tx.clientId);
+  result.push({id:`pending:${tx.id}`,date:tx.date.slice(0,10),customer:customer?.company||customer?.name||'Cliente',description:tx.description,amount:tx.amount,currency:'EUR',source:'stripe',method:'Stripe · pendiente de activar',overdue:false,estimated:true,awaitingActivation:true,url:tx.stripeCheckoutUrl});
  }
  for(const plan of plans){
   if(!['active','trialing','past_due'].includes(plan.status))continue;
