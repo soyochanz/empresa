@@ -1746,6 +1746,19 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
     res.json({
       activeSubscriptions,
       paymentHistory,
+      agendaInvoices: [...paidInvoices, ...openInvoices].map(invoice => ({
+        id: invoice.id,
+        subscriptionId: getStripeInvoiceSubscriptionId(invoice),
+        clientId: invoice.metadata?.clientId || (invoice as any).parent?.subscription_details?.metadata?.clientId || (invoice as any).subscription_details?.metadata?.clientId || null,
+        customerName: invoice.customer_name || "Cliente Stripe",
+        customerEmail: invoice.customer_email || "",
+        description: invoice.lines?.data?.[0]?.description || "Cobro Stripe",
+        date: new Date(Number(invoice.status === "paid" ? invoice.status_transitions?.paid_at || invoice.created : invoice.due_date || invoice.created) * 1000).toISOString(),
+        amount: Number(invoice.status === "paid" ? invoice.amount_paid : invoice.amount_remaining) / 100,
+        currency: invoice.currency,
+        status: invoice.status === "paid" ? "paid" : invoice.attempted && invoice.attempt_count > 0 ? "failed" : "pending",
+        url: `https://dashboard.stripe.com${invoice.livemode ? "" : "/test"}/invoices/${invoice.id}`,
+      })),
       totals: {
         activeSubscriptions: recurringMembershipSubscriptions.length,
         activeInstallmentPlans: subscriptions.length - recurringMembershipSubscriptions.length,
