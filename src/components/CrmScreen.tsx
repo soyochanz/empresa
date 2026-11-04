@@ -630,7 +630,7 @@ export default function CrmScreen({
   }));
 
   try {
-  const response = await fetch(`/api/stripe/retrieve-session?sessionId=${encodeURIComponent(tx.stripeCheckoutSessionId)}`);
+  const response = await authenticatedFetch(`/api/stripe/retrieve-session?sessionId=${encodeURIComponent(tx.stripeCheckoutSessionId)}`);
   const data = await readStripeJson(response);
   if (!response.ok) throw new Error(data.error || 'No se pudo comprobar el enlace en Stripe.');
 
@@ -1240,7 +1240,7 @@ React.useEffect(() => {
  if (convPaymentMethod === 'stripe') {
   const firstTx = createdTransactions[0];
   try {
-  const response = await fetch('/api/stripe/create-checkout-session', {
+  const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
    method: 'POST',
    headers: { 'Content-Type': 'application/json' },
    body: JSON.stringify({

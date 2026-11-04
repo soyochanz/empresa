@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../utils/authenticatedFetch';
 import React, { useEffect, useState } from 'react';
 import { 
  Users, 
@@ -681,7 +682,7 @@ const nachoAdmin = findAdminByName('nacho');
 
   if (convPaymentMethod === 'stripe') {
    try {
-   const response = await fetch('/api/stripe/create-checkout-session', {
+   const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

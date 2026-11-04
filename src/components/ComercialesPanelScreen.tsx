@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../utils/authenticatedFetch';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
  Users, 
@@ -499,7 +500,7 @@ export default function ComercialesPanelScreen({
  setStripeConnectLoading(true);
  setStripeConnectError('');
  try {
-  const response = await fetch('/api/stripe/create-connect-account', {
+  const response = await authenticatedFetch('/api/stripe/create-connect-account', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -534,7 +535,7 @@ export default function ComercialesPanelScreen({
  setStripeConnectLoading(true);
  setStripeConnectError('');
  try {
-  const response = await fetch('/api/stripe/connect-account-status', {
+  const response = await authenticatedFetch('/api/stripe/connect-account-status', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ stripeConnectAccountId: comercial.stripeConnectAccountId }),

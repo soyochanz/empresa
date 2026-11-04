@@ -2517,9 +2517,9 @@ const dbImplementation = {
   archived: inquiry.archived ?? false,
   created_at: inquiry.created_at || new Date().toISOString()
  };
- const { data, error } = await supabase.from('inquiries').insert(payload).select('id').maybeSingle();
+ // Public submissions must never require SELECT access to other inquiries.
+ const { error } = await supabase.from('inquiries').insert(payload);
  if (error) throw error;
- if (!data) throw new Error(`No se pudo crear el contacto recibido ${inquiry.id}: Supabase no confirmó la fila.`);
  invalidateCache('inquiries');
  },
 

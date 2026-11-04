@@ -587,7 +587,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   (c.company && descLower.includes(c.company.toLowerCase()))
   ) || contacts[0];
 
-  const response = await fetch('/api/stripe/create-checkout-session', {
+  const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
   method: 'POST',
   headers: {
    'Content-Type': 'application/json',
@@ -667,7 +667,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  setStripeGenUrl('');
  setStripeGenCopied(false);
  try {
-  const response = await fetch('/api/stripe/create-checkout-session', {
+  const response = await authenticatedFetch('/api/stripe/create-checkout-session', {
   method: 'POST',
   headers: {
    'Content-Type': 'application/json',

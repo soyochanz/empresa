@@ -1,3 +1,4 @@
+import {adminAuth, stripeAccess, denyServerArtifacts} from './api/security/access';
 import {queuePaymentAlert} from './api/calendar/paymentAlerts';
 import {registerCalendarPush} from './api/calendar/push';
 import express from "express";
@@ -135,23 +136,16 @@ const authorizedAdminEmails = new Set([
     .filter(Boolean),
 ]);
 const authorizedAdminIds = new Set([
-  "c2eef079-4ab8-4711-8641-45f0fd4a14e",
+  "c2eef079-4ab8-4711-8641-4a5f0fd4a14e",
   "711ab85b-db59-447c-93df-1951d24b133f",
 ]);
 
-async function requireAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const authorization = req.get("authorization") || "";
-  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-  if (!token) return res.status(401).json({ error: "Sesión administrativa requerida." });
+const requireAdminAuth = adminAuth(async token => {
+  const {data:{user},error}=await supabaseAdmin.auth.getUser(token);
+  return error ? null : user;
+}, authorizedAdminIds, authorizedAdminEmails);
 
-  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-  const authorized = Boolean(user && (
-    authorizedAdminIds.has(user.id) || authorizedAdminEmails.has(normalizeAdminEmail(user.email))
-  ));
-  if (error || !authorized) return res.status(403).json({ error: "Acceso administrativo no autorizado." });
-  res.locals.adminUserId = user!.id;
-  next();
-}
+app.use('/api/stripe', stripeAccess(requireAdminAuth));
 
 app.disable("x-powered-by");
 
@@ -167,23 +161,10 @@ app.use((req, res, next) => {
   next();
 });
 
-function redactHeaders(headers: express.Request["headers"]) {
-  const safeHeaders = { ...headers };
-  for (const key of ["authorization", "cookie", "set-cookie", "x-supabase-auth", "stripe-signature"]) {
-    if (safeHeaders[key]) safeHeaders[key] = "[redacted]";
-  }
-  return safeHeaders;
-}
-
-// Request logging middleware for debugging API calls
-app.use((req, res, next) => {
-  const logMsg = `[${new Date().toISOString()}] ${req.method} ${req.path.replace(/(\/web-offers\/demo\/)[a-f0-9]+/, '$1[private]')} - Headers: ${JSON.stringify(redactHeaders(req.headers))}\n`;
-  console.log(logMsg.trim());
-  try {
-    fs.appendFileSync(path.join(process.cwd(), "server.log"), logMsg);
-  } catch (err) {
-    // ignore logging errors
-  }
+// Do not retain bearer links, query strings, referrers or request headers in logs.
+app.use((req, _res, next) => {
+  const route = req.path.replace(/(\/(?:demo|business|p)\/)[^/]+/g, '$1[private]');
+  console.log(`[${new Date().toISOString()}] ${req.method} ${route}`);
   next();
 });
 
@@ -239,19 +220,7 @@ function getAppUrl(req: express.Request): string {
     return configuredUrl.replace(/\/$/, "");
   }
 
-  const forwardedProto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim();
-  const forwardedHost = (req.headers["x-forwarded-host"] as string | undefined)?.split(",")[0]?.trim();
-  const host = req.get("host") || "localhost:3000";
-  const origin = req.headers.origin;
-
-  if (origin && !(process.env.NODE_ENV === "production" && /localhost|127\.0\.0\.1/i.test(origin))) {
-    return origin.replace(/\/$/, "");
-  }
-  if (forwardedHost) return `${forwardedProto || req.protocol}://${forwardedHost}`.replace(/\/$/, "");
-  if (process.env.NODE_ENV === "production" && host.includes("onrender.com")) {
-    return `https://${host}`.replace(/\/$/, "");
-  }
-  return `${req.protocol}://${host}`.replace(/\/$/, "");
+  return process.env.NODE_ENV === "production" ? "https://altherasolutions.com" : `http://localhost:${PORT}`;
 }
 
 const STRIPE_SHORT_LINK_CODE_PATTERN = /^[a-f0-9]{8}$/;
@@ -1082,23 +1051,9 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     const signature = req.headers["stripe-signature"] as string | undefined;
     let event: Stripe.Event;
 
-    if (webhookSecret) {
-      if (!signature) {
-        return res.status(400).json({ error: "Missing Stripe signature" });
-      }
-      event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
-    } else {
-      const unverifiedEvent = JSON.parse(req.body.toString("utf8")) as Stripe.Event;
-      if (!unverifiedEvent?.id || !String(unverifiedEvent.id).startsWith("evt_")) {
-        return res.status(400).json({ error: "Invalid Stripe event" });
-      }
-      // Some deployments don't expose the endpoint signing secret. In that
-      // case, verify the event against Stripe's API instead of trusting the
-      // submitted payload. Replays remain safe because invoice processing is
-      // idempotent by Stripe invoice id.
-      event = await stripe.events.retrieve(unverifiedEvent.id);
-      console.warn("STRIPE_WEBHOOK_SECRET is not set. Event verified through the Stripe Events API.");
-    }
+    if (!webhookSecret) return res.status(503).json({error:"Webhook no configurado."});
+    if (!signature) return res.status(400).json({error:"Missing Stripe signature"});
+    event = stripe.webhooks.constructEvent(req.body, signature, webhookSecret);
 
     await queuePaymentAlert(supabaseAdmin, event, stripe);
 
@@ -1781,15 +1736,10 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
   }
 });
 
-// Create subscription or single payment checkout session. Creating a first
-// link remains available to the existing public flows; replacing an existing
-// Stripe session is an administrative mutation and therefore requires auth.
+// Administrative pricing and link generation; public offers use server-owned prices.
 app.post(
   "/api/stripe/create-checkout-session",
-  async (req, res, next) => {
-    if (req.body?.replaceExisting !== true && !req.body?.previousSessionId && !req.body?.agendaRequestId) return next();
-    return requireAdminAuth(req, res, next);
-  },
+  requireAdminAuth,
   async (req, res) => {
   try {
     const { clientId, clientName, clientEmail, amount, interval, installments, recurrenceCount, billingType, concept, pendingTxId, stripePlanId, installmentIndex, previousSessionId, firstPaymentDate, replaceExisting } = req.body;
@@ -2354,6 +2304,17 @@ app.post("/api/stripe/create-comercial-transfer", async (req, res) => {
   }
 });
 
+// Customer return page: read-only and minimal. No CRM IDs, invoices or mutations.
+app.get('/api/stripe/payment-status', async(req,res)=>{
+  res.setHeader('Cache-Control','private, no-store');
+  const id=String(req.query.sessionId||'');
+  if(!/^cs_(?:live|test)_[A-Za-z0-9]{20,}$/.test(id)) return res.status(400).json({error:'Referencia no válida.'});
+  try {
+    const session=await getStripe().checkout.sessions.retrieve(id);
+    res.json({paymentStatus:session.payment_status,firstPaymentDate:session.metadata?.firstPaymentDate||'',amount:session.amount_total,currency:session.currency});
+  } catch {res.status(404).json({error:'No se pudo verificar el pago.'});}
+});
+
 // Retrieve details of a checkout session
 app.get("/api/stripe/retrieve-session", async (req, res) => {
   try {
@@ -2415,7 +2376,8 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath, { index: false }));
+    app.use(denyServerArtifacts);
+    app.use(express.static(distPath, { index: false, dotfiles: "deny" }));
     app.get("*", (req, res) => {
       const indexPath = path.join(distPath, "index.html");
       const safeAppUrl = getAppUrl(req).replace(/[<>"']/g, "");

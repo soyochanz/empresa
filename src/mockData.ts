@@ -239,6 +239,6 @@ export interface PanelUser {
 }
 
 export const REGISTERED_USERS: PanelUser[] = [
- { id: 'c2eef079-4ab8-4711-8641-45f0fd4a14e', name: 'Carlos Ronco', email: 'carlosronco14@gmail.com' },
+ { id: 'c2eef079-4ab8-4711-8641-4a5f0fd4a14e', name: 'Carlos Ronco', email: 'carlosronco14@gmail.com' },
  { id: '711ab85b-db59-447c-93df-1951d24b133f', name: 'Nacho Martin', email: 'mgnacho96@gmail.com' }
 ];

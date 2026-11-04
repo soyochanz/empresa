@@ -1,3 +1,4 @@
+import { authenticatedFetch } from '../utils/authenticatedFetch';
 import ManualCommissionForm from './ManualCommissionForm';
 import CommercialCommissionBreakdown from './CommercialCommissionBreakdown';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -252,7 +253,7 @@ export default function ComercialesAdminScreen({
  const handleConnectComercialStripe = async (comercial: ComercialAccount) => {
  setStripeConnectLoading(true);
  try {
-  const response = await fetch('/api/stripe/create-connect-account', {
+  const response = await authenticatedFetch('/api/stripe/create-connect-account', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -289,7 +290,7 @@ export default function ComercialesAdminScreen({
  let createdTransferId = '';
  setStripePayoutLoading(true);
  try {
-  const response = await fetch('/api/stripe/create-comercial-transfer', {
+  const response = await authenticatedFetch('/api/stripe/create-comercial-transfer', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({

@@ -154,14 +154,16 @@ export const downloadInvoicePdf = async (html: string, filename: string): Promis
    })
   ));
   await document.fonts.ready;
-  await html2pdf().set({
+  const pdfOptions = { unit: 'mm', format: 'a4', orientation: 'portrait' as const, compress: true };
+  const exportOptions = {
    margin: 0,
    filename: filename.replace(/\.html?$/i, '.pdf'),
-   image: { type: 'jpeg', quality: 0.98 },
+   image: { type: 'jpeg' as const, quality: 0.98 },
    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
-   jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+   jsPDF: pdfOptions,
    pagebreak: { mode: ['css'] }
-  }).from(host.querySelector('.invoice') || host).save();
+  };
+  await html2pdf().set(exportOptions).from(host.querySelector<HTMLElement>('.invoice') || host).save();
  } finally {
   host.remove();
  }

@@ -1,3 +1,4 @@
+import { authenticatedFetch } from './utils/authenticatedFetch';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead, Invoice, FinanceTransaction, PartnerCompany } from './types';
 import { PanelUser } from './mockData';
@@ -514,18 +515,15 @@ export default function App() {
   if (stripeStatus === 'success' && sessionId && clientId) {
   try {
    // Retrieve Stripe details from backend to get customerId and subscriptionId
-   let customerId = 'cus_mock_123';
-    let subscriptionId = 'sub_mock_123';
-    let paymentConfirmed = sessionId.startsWith('cs_test_mock_');
+   let customerId = '';
+    let subscriptionId = '';
+    let paymentConfirmed = false;
     let confirmedPaidDate = '';
     let scheduledFirstPaymentDate = '';
     let scheduledSetupConfirmed = false;
    
-   if (sessionId && sessionId.startsWith('cs_test_mock_')) {
-   // Simulated mock payment session
-   console.log("Processing simulated mock payment...");
-   } else {
-   const res = await fetch(`/api/stripe/retrieve-session?sessionId=${sessionId}`);
+   {
+   const res = await authenticatedFetch(`/api/stripe/retrieve-session?sessionId=${sessionId}`);
    const sessionData = await res.json();
    if (!res.ok) throw new Error(sessionData.error || 'No se pudo verificar el pago con Stripe.');
     confirmedPaidDate = sessionData.paidDate || '';
@@ -579,7 +577,7 @@ export default function App() {
     }
 
    const allTxsBeforePayment = await db.getFinanceTransactions();
-   const todayStr = confirmedPaidDate || (sessionId.startsWith('cs_test_mock_') ? new Date().toISOString().split('T')[0] : '');
+   const todayStr = confirmedPaidDate || '';
    if (!todayStr) throw new Error('No se pudo confirmar la fecha real del pago en Stripe.');
    const baseConcept = customConcept ? decodeURIComponent(customConcept) : (isSubscription
     ? `Mensualidad Stripe Automática - ${client.name}`

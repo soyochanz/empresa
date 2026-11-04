@@ -6,7 +6,7 @@ type ConfirmationState = 'checking' | 'confirmed' | 'scheduled' | 'error';
 export default function PaymentConfirmationScreen() {
  const initialParams = useMemo(() => new URLSearchParams(window.location.search), []);
  const sessionId = initialParams.get('stripe_session_id') || '';
- const amount = initialParams.get('amount') || '';
+ const [amount,setAmount] = useState('');
  const [state, setState] = useState<ConfirmationState>('checking');
  const [error, setError] = useState('');
 
@@ -21,7 +21,7 @@ export default function PaymentConfirmationScreen() {
    }
 
    try {
-    const response = await fetch(`/api/stripe/retrieve-session?sessionId=${encodeURIComponent(sessionId)}`, {
+    const response = await fetch(`/api/stripe/payment-status?sessionId=${encodeURIComponent(sessionId)}`, {
      headers: { Accept: 'application/json' },
     });
     const data = await response.json();
@@ -29,6 +29,7 @@ export default function PaymentConfirmationScreen() {
     if (cancelled) return;
 
     if (data.paymentStatus === 'paid') {
+     setAmount(new Intl.NumberFormat('es-ES',{style:'currency',currency:data.currency||'eur'}).format(Number(data.amount||0)/100));
      setState('confirmed');
     } else if (data.paymentStatus === 'no_payment_required' && data.firstPaymentDate) {
      setState('scheduled');
@@ -84,7 +85,7 @@ export default function PaymentConfirmationScreen() {
     {isConfirmed && amount && (
      <div className="mx-auto mt-7 flex max-w-xs items-center justify-between rounded-2xl border border-white/[0.07] bg-black/20 px-5 py-4 text-left">
       <span className="text-[9px] font-semibold uppercase tracking-[.2em] text-white/35">Pago confirmado</span>
-      <span className="text-base font-semibold text-emerald-300">{amount} €</span>
+      <span className="text-base font-semibold text-emerald-300">{amount}</span>
      </div>
     )}
 
