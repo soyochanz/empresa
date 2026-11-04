@@ -1,3 +1,6 @@
+import ServicePlanner from './ServicePlanner';
+import CalendarMobile from './CalendarMobile';
+import './calendarMobile.css';
 import React, { useState } from 'react';
 import { CalendarEvent, ClientContact, Screen, Note } from '../types';
 import { PanelUser } from '../mockData';
@@ -225,7 +228,7 @@ export default function CalendarScreen({
  };
 
  const generatedEvent: CalendarEvent = {
-  id: 'e_' + Date.now().toString().slice(-6),
+  id: 'e_' + crypto.randomUUID(),
   title: newTitle,
   date: newDate,
   time: newTime,
@@ -437,11 +440,13 @@ export default function CalendarScreen({
  };
 
  return (
- <div className="flex-1 p-8 flex gap-8 overflow-hidden h-full min-h-0 bg-transparent text-slate-150">
+ <div className="calendar-workspace flex-1 p-8 flex gap-8 overflow-hidden h-full min-h-0 bg-transparent text-slate-150">
   
   {/* Left Area: Calendar Month View */}
   <div className="flex-1 flex flex-col gap-6 min-w-0">
   
+  <CalendarMobile />
+  <ServicePlanner contacts={contacts} onPlan={(service,ids)=>{setNewTitle(`${service} · ${ids.length===1 ? (contacts.find(c=>c.id===ids[0])?.company||contacts.find(c=>c.id===ids[0])?.name) : `${ids.length} negocios`}`);setSelectedContactIds(ids);setNewType('Other');setNewRecurrence('weekly');setNewRecurrenceCount(12);setNewDate(selectedDayStr);setNewDescription(`Trabajo de ${service}. Clientes incluidos al crear este bloque.`);setShowAddModal(true);}} />
   <section className="pay-calendar"><h3>Cobros del {new Date(selectedDayStr+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}</h3><PaymentRows payments={payments.filter(p=>p.date===selectedDayStr)}/></section>
   {/* Calendar Title & Filters Bar */}
   <div className="flex items-center justify-between">
@@ -1133,7 +1138,7 @@ export default function CalendarScreen({
     {/* Linked CRM Contacts */}
     <div>
      <label className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block mb-2 font-bold">
-     CRM Clients Associated
+     Clientes y webs de este bloque
      </label>
      
      {(() => {
@@ -1167,10 +1172,11 @@ export default function CalendarScreen({
          {c.name}
          </div>
          <div className="text-[10px] text-slate-500 uppercase truncate">
-         {c.company || 'Independent'}
+         {c.company || 'Independiente'}
          </div>
         </div>
         </div>
+        {(c.customWebsiteUrl||c.website)&&<a href={normalizeExternalUrl(c.customWebsiteUrl||c.website)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} className="text-xs text-cyan-400">Ver web ↗</a>}
         <ExternalLink className="w-3.5 h-3.5 text-slate-500 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0" />
        </div>
        ))}

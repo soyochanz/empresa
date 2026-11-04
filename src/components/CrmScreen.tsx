@@ -1,3 +1,4 @@
+import {SERVICE_CATALOG, type ServiceProduct} from '../utils/serviceCatalog';
 import ClientStripeActivity from './ClientStripeActivity';
 import { repriceInvoiceTax, splitInstallmentAmounts } from '../utils/invoiceTotals';
 import { attachChargeToInvoice, acknowledgeHistoricalPayment, reconcileInvoicePayments } from '../utils/invoiceAttachment';
@@ -92,14 +93,7 @@ const getMinimumScheduledStripeDate = (): string => {
 type ClientChargePlan = 'once' | 'installments_2' | 'installments_3' | 'installments_4' | 'month' | 'year';
 type ClientChargeMethod = 'cash' | 'transfer' | 'stripe';
 type ServiceBillingStructure = 'upfront' | 'recurring' | 'upfront_recurring';
-type ServiceProduct = 'Web' | 'IA' | 'RRSS' | 'Bitesmenus';
-
-const SERVICE_PRODUCTS: Array<{ value: ServiceProduct; label: string; description: string; accent: string }> = [
- { value: 'Web', label: 'Web', description: 'Diseño y desarrollo', accent: 'border-cyan-400/25 bg-cyan-400/[0.07] text-cyan-200' },
- { value: 'IA', label: 'IA', description: 'Automatización inteligente', accent: 'border-violet-400/25 bg-violet-400/[0.07] text-violet-200' },
- { value: 'RRSS', label: 'RRSS', description: 'Gestión de redes', accent: 'border-rose-400/25 bg-rose-400/[0.07] text-rose-200' },
- { value: 'Bitesmenus', label: 'Bitesmenus', description: 'Carta digital', accent: 'border-amber-400/25 bg-amber-400/[0.07] text-amber-200' },
-];
+const SERVICE_PRODUCTS = SERVICE_CATALOG.map(service => ({...service, accent: 'border-cyan-400/25 bg-cyan-400/[0.07] text-cyan-200'}));
 
 const CLIENT_CHARGE_PLAN_OPTIONS: Array<{ value: ClientChargePlan; label: string }> = [
  { value: 'once', label: 'Pago único' },

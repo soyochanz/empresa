@@ -1,3 +1,4 @@
+import {registerCalendarPush} from './api/calendar/push';
 import express from "express";
 import {retireAgendaStripe} from "./api/replaceAgendaStripe";
 import path from "path";
@@ -1155,6 +1156,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 });
 
 app.use(express.json());
+registerCalendarPush(app, supabaseAdmin, requireAdminAuth, (id,email)=>authorizedAdminIds.has(id)||authorizedAdminEmails.has(normalizeAdminEmail(email)));
 
 // Country-only language selection: no external geolocation service or precise location.
 app.get('/api/locale', (req, res) => {

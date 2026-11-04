@@ -56,3 +56,13 @@ HTTPS de raíz y www verificado con validación TLS normal, tanto por DNS como c
 ## Enlaces de marca independientes (26/10/2026)
 
 `docs/branded-web-links-schema.sql` crea `branded_web_links` en Althera (RLS activado, sin permisos anon/authenticated, acceso service_role). Aplicado y verificado en el SQL Editor del proyecto `czyrolmczcwtexxgxzrg`. El administrador crea y revoca enlaces desde Contactos → Web Studio → Enlaces de marca. Se comparten como `/business/<token aleatorio de 48 caracteres>`; el endpoint público solo devuelve nombre y URL de enlaces activos, sin datos de contacto ni funciones de contratación. No modifica solicitudes, clientes, Stripe o webhooks. Ejecutar `scripts/test-branded-links.ts` y `scripts/test-web-offers.ts` antes de desplegar backend Render y frontend Hostinger.
+
+## Calendario instalable y avisos (04/11/2026)
+
+`/admin/calendar` selecciona `calendar.webmanifest` con inicio directo al calendario. `calendar-sw.js` se sirve desde Hostinger y no intercepta peticiones ni almacena datos del CRM. iPhone requiere instalar desde Safari en pantalla de inicio (iOS 16.4+) y pulsar Activar avisos desde la app instalada. El usuario elige hora y zona IANA; hay prueba y baja por dispositivo.
+
+`docs/calendar-push.sql` crea tres tablas con RLS y acceso exclusivo service_role, más dos trabajos independientes de pg_cron. El backend registra dispositivos usando el allowlist administrativo existente. Claves VAPID y secreto cron se generan una sola vez en el servidor y se guardan en la tabla privada. Cron llama a Render cada cinco minutos cuando hay dispositivos registrados. Resume tareas pendientes de hoy en la zona elegida, respeta asignaciones, excluye privadas/finalizadas y deduplica por dispositivo y fecha. La ventana de recuperación es una hora; entrega sujeta a conectividad, servicio push y ajustes del dispositivo. No es un mecanismo de cobros ni modifica Stripe.
+
+Pruebas: `scripts/test-calendar-mobile.ts`, TypeScript y build (incluye regresión financiera). La recepción en un iPhone real requiere permiso e instalación del usuario; no se sustituye por una notificación en pestaña abierta.
+
+Se amplía catálogo de servicios y se añade planificación semanal por servicio/cliente en calendario. Los grupos usan los clientes no archivados con servicio registrado y conservan la selección de clientes al crear el bloque; no reclasifican retrospectivamente RRSS como SEO ni generan cobros.

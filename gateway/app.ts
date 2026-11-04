@@ -34,6 +34,11 @@ export function createPublicGateway(options: { dist: string; backend: string; pu
       res.setHeader('Cache-Control', 'private, no-store');
       return res.json({ country: /^[A-Z]{2}$/i.test(raw) && raw !== 'XX' ? raw.toUpperCase() : null });
     }
+    if (url.pathname === '/calendar-sw.js') {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Service-Worker-Allowed', '/');
+      return staticFiles(req, res, next);
+    }
     // Only public frontend files. Never expose bundled backend code or source maps.
     if (!url.pathname.endsWith('.map') && (/^\/(assets|landing|fonts)\//.test(url.pathname) || /^\/[^/]+\.(png|webp|jpg|jpeg|svg|ico|txt|xml|webmanifest)$/.test(url.pathname))) {
       return staticFiles(req, res, next);
