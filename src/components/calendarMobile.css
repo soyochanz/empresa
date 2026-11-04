@@ -4,3 +4,10 @@
 
 .calendar-workspace>div:first-child{overflow-y:auto;padding-right:4px}.calendar-workspace>div:first-child>details{flex-shrink:0}
 @media(max-width:767px){.calendar-workspace>div:first-child{overflow:visible}.calendar-workspace>div:first-child>.flex.items-center.justify-between{display:block}.calendar-workspace>div:first-child>.flex.items-center.justify-between>div{margin-bottom:10px;flex-wrap:wrap}}
+
+/* Each desktop column owns its scroll; the month must keep its natural height. */
+.calendar-main{overscroll-behavior-y:contain;scrollbar-gutter:stable}
+.calendar-main>details,.calendar-main>section,.calendar-main>.flex,.calendar-main>.grid{flex-shrink:0}
+.calendar-workspace #detailPanel{overscroll-behavior-y:contain;scrollbar-gutter:stable}
+.calendar-workspace #detailPanel>div{flex-shrink:0}
+@media(max-width:767px){.calendar-main{scrollbar-gutter:auto;overscroll-behavior-y:auto}.calendar-workspace #detailPanel{overflow:visible;scrollbar-gutter:auto}}

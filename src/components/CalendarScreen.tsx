@@ -443,7 +443,7 @@ export default function CalendarScreen({
  <div className="calendar-workspace flex-1 p-8 flex gap-8 overflow-hidden h-full min-h-0 bg-transparent text-slate-150">
   
   {/* Left Area: Calendar Month View */}
-  <div className="flex-1 flex flex-col gap-6 min-w-0">
+  <div className="calendar-main flex-1 flex flex-col gap-6 min-w-0 min-h-0">
   
   <CalendarMobile />
   <ServicePlanner contacts={contacts} onPlan={(service,ids)=>{setNewTitle(`${service} · ${ids.length===1 ? (contacts.find(c=>c.id===ids[0])?.company||contacts.find(c=>c.id===ids[0])?.name) : `${ids.length} negocios`}`);setSelectedContactIds(ids);setNewType('Other');setNewRecurrence('weekly');setNewRecurrenceCount(12);setNewDate(selectedDayStr);setNewDescription(`Trabajo de ${service}. Clientes incluidos al crear este bloque.`);setShowAddModal(true);}} />
@@ -545,7 +545,7 @@ export default function CalendarScreen({
    </div>
 
    {/* Calendar Day Grid */}
-   <div className="grid grid-cols-7 flex-1 overflow-y-auto min-h-0 border-l border-t border-slate-900/40 divide-x divide-y divide-white/5">
+   <div className="calendar-month-grid grid grid-cols-7 shrink-0 border-l border-t border-slate-900/40 divide-x divide-y divide-white/5">
     
     {/* Empty placeholders to align weekday of the 1st of monthly */}
     {emptySlots.map((slot) => (
@@ -857,10 +857,10 @@ export default function CalendarScreen({
   {/* Right Side Panel: Day Details Panel Inspector */}
   <aside 
   id="detailPanel" 
-  className="h-full w-[340px] overflow-y-auto bg-white/5 backdrop-blur-xl rounded-3xl p-6 flex flex-col border border-white/10 transition-all duration-300 shadow-2xl shadow-black/10 scrollbar-thin"
+  className="h-full min-h-0 shrink-0 w-[340px] overflow-y-auto bg-white/5 backdrop-blur-xl rounded-3xl p-6 flex flex-col border border-white/10 transition-all duration-300 shadow-2xl shadow-black/10 scrollbar-thin"
   >
   {selectedEvent ? (
-   <div className="flex-1 flex flex-col justify-between">
+   <div className="flex-1 shrink-0 flex flex-col justify-between">
    <div className="space-y-6">
     
     {/* Badge & Options */}
