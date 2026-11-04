@@ -15,3 +15,11 @@ console.log('Monthly activity: business identity, email resolution, paid/failed/
 assert.equal(buildMonthlyPaymentActivity([{...tx[1],id:'tx_stripe_payout_123',category:'Transferencia interna'}],[],contacts,plans,now).length,0);
 
 assert.equal(buildMonthlyPaymentActivity([{...tx[1],id:'unlinked',clientId:undefined}],[],contacts,plans,now).length,0);
+const expired:any={id:'expired',type:'income',date:'2026-11-02',status:'failed',amount:97,paymentMethod:'stripe',stripeCheckoutSessionId:'cs_expired',clientId:'c',description:'SEO (Enlace de pago caducado)'};
+const renewedCandidate=buildMonthlyPaymentActivity([expired],[],contacts,plans,now)[0];
+assert.equal(renewedCandidate.renewable,true);
+assert.equal(renewedCandidate.sessionId,'cs_expired');
+for(const patch of [{status:'paid'},{stripeCheckoutSessionId:undefined},{stripeInvoiceId:'in_failed'},{stripePlanId:'plan1'}]){
+ assert.equal(Boolean(buildMonthlyPaymentActivity([{...expired,...patch}],[],contacts,plans,now)[0]?.renewable),false);
+}
+console.log('Renewal: expired checkout eligible; paid receipts, invoice failures, active subscriptions and missing sessions excluded.');

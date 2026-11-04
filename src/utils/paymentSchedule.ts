@@ -1,7 +1,7 @@
 import type { FinanceTransaction, ClientContact } from '../types';
 import { findRecurringOccurrence, getFinanceRecurrenceDate, isFinanceRecurrenceOccurrenceAllowed, toFinanceDateKey } from './financeRecurrence';
 import { getStripeForecastOccurrences, type ForecastSubscription } from './stripeForecast';
-export interface ScheduledPayment { id:string; date:string; customer:string; description:string; amount:number; currency:string; source:'stripe'|'manual'; method:string; overdue:boolean; estimated:boolean; url?:string; awaitingActivation?:boolean; transactionId?:string; subscriptionId?:string; sessionId?:string; clientId?:string; period?:string; count?:number; paymentMethod?:string; person?:string; logo?:string; state?:'paid'|'failed'|'pending'; historical?:boolean }
+export interface ScheduledPayment { id:string; date:string; customer:string; description:string; amount:number; currency:string; source:'stripe'|'manual'; method:string; overdue:boolean; estimated:boolean; url?:string; awaitingActivation?:boolean; transactionId?:string; subscriptionId?:string; sessionId?:string; clientId?:string; period?:string; count?:number; paymentMethod?:string; person?:string; logo?:string; state?:'paid'|'failed'|'pending'; historical?:boolean; renewable?:boolean }
 export type PaymentPlan = ForecastSubscription & { dashboardUrl?:string; stripePlanId?:string; billingType?:string; clientId?:string; concept?:string; customerEmail?:string };
 export function buildPaymentSchedule(transactions:FinanceTransaction[],plans:PaymentPlan[],contacts:ClientContact[],today=new Date()):ScheduledPayment[]{
  const now=toFinanceDateKey(today);const end=new Date(today.getFullYear(),today.getMonth()+12,0,12);const endKey=toFinanceDateKey(end);const result:ScheduledPayment[]=[];
@@ -66,7 +66,7 @@ export function buildMonthlyPaymentActivity(transactions:FinanceTransaction[],in
   const matchingPlan=plans.find(p=>p.id===tx.stripePlanId||!!p.stripePlanId&&p.stripePlanId===tx.stripePlanId);
   if(tx.paymentMethod==='stripe'&&result.some(p=>p.date===date&&p.amount===tx.amount&&(!!matchingPlan&&p.subscriptionId===matchingPlan.id)))continue;
   const client=resolvePaymentClient(contacts,tx.clientId);
-  result.push({id:`activity:${tx.id}`,date,customer:client?.company||client?.name||'Sin cliente vinculado',person:client?.name,logo:client?.avatarUrl,clientId:tx.clientId,description:tx.description,amount:tx.amount,currency:'EUR',source:tx.paymentMethod==='stripe'?'stripe':'manual',method:tx.paymentMethod==='stripe'?'Stripe':tx.paymentMethod==='cash'?'Efectivo':'Transferencia',overdue:tx.status!=='paid'&&date<now,estimated:false,state:tx.status,historical:true,transactionId:tx.recurrenceSourceId||tx.id,subscriptionId:matchingPlan?.id});
+  result.push({id:`activity:${tx.id}`,date,customer:client?.company||client?.name||'Sin cliente vinculado',person:client?.name,logo:client?.avatarUrl,clientId:tx.clientId,description:tx.description,amount:tx.amount,currency:'EUR',source:tx.paymentMethod==='stripe'?'stripe':'manual',method:tx.paymentMethod==='stripe'?'Stripe':tx.paymentMethod==='cash'?'Efectivo':'Transferencia',overdue:tx.status!=='paid'&&date<now,estimated:false,state:tx.status,historical:true,transactionId:tx.recurrenceSourceId||tx.id,subscriptionId:matchingPlan?.id,sessionId:tx.stripeCheckoutSessionId,renewable:tx.status==='failed'&&tx.paymentMethod==='stripe'&&!!tx.stripeCheckoutSessionId&&!tx.stripeInvoiceId&&!matchingPlan});
  }
  return result.sort((a,b)=>(a.state==='paid'?1:0)-(b.state==='paid'?1:0)||a.date.localeCompare(b.date));
 }

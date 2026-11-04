@@ -1782,7 +1782,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
 app.post(
   "/api/stripe/create-checkout-session",
   async (req, res, next) => {
-    if (req.body?.replaceExisting !== true && !req.body?.agendaRequestId) return next();
+    if (req.body?.replaceExisting !== true && !req.body?.previousSessionId && !req.body?.agendaRequestId) return next();
     return requireAdminAuth(req, res, next);
   },
   async (req, res) => {
@@ -1822,6 +1822,9 @@ app.post(
 
     if (previousSessionId) {
       const previousSession = await stripe.checkout.sessions.retrieve(previousSessionId);
+      if (previousSession.currency && previousSession.currency.toLowerCase() !== "eur") {
+        return res.status(409).json({ error: "Renueva este enlace desde Stripe para conservar su moneda original." });
+      }
       const previousPendingTxId = previousSession.metadata?.pendingTxId || "";
       const previousStripePlanId = previousSession.metadata?.stripePlanId || "";
       const belongsToSameClient = !previousSession.metadata?.clientId || previousSession.metadata.clientId === clientId;
@@ -1844,7 +1847,7 @@ app.post(
       effectiveAmountNumber = previousSession.amount_total
         ? previousSession.amount_total / 100
         : amountNumber;
-      effectiveInterval = previousSession.metadata?.interval || effectiveInterval;
+      effectiveInterval = previousSession.metadata?.interval || (previousSession.mode === "payment" ? "once" : effectiveInterval);
       effectiveInstallments = previousSession.metadata?.installments || effectiveInstallments;
       effectiveRecurrenceCount = previousSession.metadata?.recurrenceCount || effectiveRecurrenceCount;
       effectiveBillingType = previousSession.metadata?.billingType || effectiveBillingType;
@@ -1853,6 +1856,7 @@ app.post(
       effectiveStripePlanId = previousStripePlanId || effectiveStripePlanId;
       effectiveInstallmentIndex = previousSession.metadata?.installmentIndex || effectiveInstallmentIndex;
       effectiveFirstPaymentDate = previousSession.metadata?.firstPaymentDate || effectiveFirstPaymentDate;
+      if (effectiveFirstPaymentDate && Date.parse(`${effectiveFirstPaymentDate}T12:00:00Z`) < Date.now() + 48 * 60 * 60 * 1000) effectiveFirstPaymentDate = "";
     }
     let scheduledFirstPaymentAt: number | undefined;
     if (effectiveFirstPaymentDate) {
@@ -1938,7 +1942,7 @@ app.post(
     }
 
     // Create a checkout session
-    const session = await stripe.checkout.sessions.create(sessionConfig, agendaRequestId ? { idempotencyKey: `agenda:${agendaRequestId}` } : undefined);
+    const session = await stripe.checkout.sessions.create(sessionConfig, previousSessionId ? { idempotencyKey: `renew:${previousSessionId}` } : agendaRequestId ? { idempotencyKey: `agenda:${agendaRequestId}` } : undefined);
     if (!session.url) {
       throw new Error("Stripe no devolvió una URL para la sesión de pago.");
     }
