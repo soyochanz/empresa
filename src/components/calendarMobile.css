@@ -11,3 +11,42 @@
 .calendar-workspace #detailPanel{overscroll-behavior-y:contain;scrollbar-gutter:stable}
 .calendar-workspace #detailPanel>div{flex-shrink:0}
 @media(max-width:767px){.calendar-main{scrollbar-gutter:auto;overscroll-behavior-y:auto}.calendar-workspace #detailPanel{overflow:visible;scrollbar-gutter:auto}}
+
+.calendar-day-dots,.calendar-mobile-agenda{display:none}
+@media(max-width:767px){
+.calendar-workspace{padding:16px 14px 32px!important}
+.calendar-workspace .calendar-main{display:flex!important;gap:0!important}
+.calendar-main>.calendar-toolbar{order:0;margin-bottom:20px!important;display:block!important}
+.calendar-toolbar h2{font-size:25px;letter-spacing:-1px}.calendar-toolbar h2 span{color:inherit}
+.calendar-toolbar p{display:none}.calendar-toolbar>div:last-child{margin-top:14px;display:flex;justify-content:space-between;gap:7px!important}
+.calendar-toolbar button{min-height:40px;min-width:40px;border-radius:12px}
+.calendar-main>.calendar-weekdays{order:1;border:0;padding:0 0 10px;font-size:10px;letter-spacing:1px}
+.calendar-main>.calendar-weekdays>div{min-height:0!important}
+.calendar-main>.calendar-month-grid{order:2;gap:5px;border:0;border-radius:18px;padding:8px;background:rgba(148,163,184,.055)}
+.calendar-month-grid>div{min-height:49px!important;height:49px;border:0!important;border-radius:12px;background:transparent;padding:7px 2px!important;box-shadow:none!important}
+.calendar-month-grid .calendar-date>div:first-child{justify-content:center;margin:0;height:22px}
+.calendar-date>div:first-child>span{font-size:13px;padding:0;background:none}
+.calendar-date>div:first-child>span:last-child:not(:first-child){display:none}
+.calendar-month-grid .calendar-date-selected{background:linear-gradient(135deg,#6078e8,#8770da)!important;color:white;box-shadow:0 4px 16px #6366f133!important}
+.calendar-date-selected>div:first-child>span{color:#fff!important}
+.calendar-date:focus-visible{outline:2px solid #a5b4fc;outline-offset:1px}
+.calendar-month-grid .pay-chip,.calendar-month-grid .calendar-event-chips{display:none}
+.calendar-day-dots{display:flex;justify-content:center;gap:4px;margin-top:4px}
+.calendar-day-dots i,.calendar-legend i{width:5px;height:5px;border-radius:50%;display:inline-block}
+.task-dot{background:#a5b4fc}.payment-dot{background:#2dd4bf}
+.calendar-workspace[data-view="month"] .calendar-main>.pay-calendar{display:none}
+.calendar-mobile-agenda{display:block;order:3;margin-top:23px;margin-bottom:20px}
+.calendar-mobile-agenda header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.calendar-mobile-agenda header span{font:600 9px monospace;letter-spacing:2px;color:#818cf8}
+.calendar-mobile-agenda h3{font-size:17px;font-weight:650;margin-top:5px;text-transform:capitalize}
+.calendar-mobile-agenda header button{height:40px;width:40px;border:1px solid #818cf840;border-radius:13px;background:#818cf818;display:grid;place-items:center;color:#818cf8}
+.calendar-legend{display:flex;gap:16px;margin:16px 0;font-size:11px;color:#94a3b8}.calendar-legend i{margin-right:4px}
+.calendar-agenda-event{display:flex;align-items:center;gap:12px;width:100%;padding:15px 12px;margin-bottom:8px;border:1px solid #94a3b825;border-radius:16px;background:#94a3b809;text-align:left}
+.calendar-agenda-event time{font-size:11px;color:#a5b4fc;min-width:42px}.calendar-agenda-event>div{flex:1;min-width:0}.calendar-agenda-event strong{display:block;font-size:13px;overflow-wrap:anywhere}.calendar-agenda-event span{display:block;font-size:10px;color:#94a3b8;margin-top:5px}
+.calendar-agenda-empty{font-size:12px;color:#94a3b8;padding:20px 14px;border:1px dashed #94a3b830;border-radius:16px}
+.calendar-mobile-agenda .pay-rows article{padding:14px!important;border:1px solid #94a3b830;border-radius:16px;margin-top:10px;gap:10px;background:#2dd4bf06}
+.calendar-main>details{order:5;margin-top:10px;padding:14px!important;border-radius:16px}.calendar-main>details summary{font-size:12px}
+.calendar-workspace #detailPanel[data-has-event="false"]{display:none}
+.calendar-workspace #detailPanel{padding:18px;scroll-margin-top:12px}
+.admin-shell:has(.calendar-workspace) .pay-bar{margin:8px 14px 0;padding:12px 14px;gap:6px 10px;border-radius:16px;font-size:11px}.admin-shell:has(.calendar-workspace) .pay-bar strong{font-size:12px}.admin-shell:has(.calendar-workspace) .pay-bar>span{font-size:11px}
+}

@@ -392,8 +392,8 @@ export default function CalendarScreen({
 
  // Build dynamic monthly grid arrays
  const monthNames = [
- "January", "February", "March", "April", "May", "June", 
- "July", "August", "September", "October", "November", "December"
+ "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+ "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
  ];
 
  const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
@@ -440,7 +440,7 @@ export default function CalendarScreen({
  };
 
  return (
- <div className="calendar-workspace flex-1 p-8 flex gap-8 overflow-hidden h-full min-h-0 bg-transparent text-slate-150">
+ <div data-view={currentView} className="calendar-workspace flex-1 p-8 flex gap-8 overflow-hidden h-full min-h-0 bg-transparent text-slate-150">
   
   {/* Left Area: Calendar Month View */}
   <div className="calendar-main flex-1 flex flex-col gap-6 min-w-0 min-h-0">
@@ -449,7 +449,7 @@ export default function CalendarScreen({
   <ServicePlanner contacts={contacts} onPlan={(service,ids)=>{setNewTitle(`${service} · ${ids.length===1 ? (contacts.find(c=>c.id===ids[0])?.company||contacts.find(c=>c.id===ids[0])?.name) : `${ids.length} negocios`}`);setSelectedContactIds(ids);setNewType('Other');setNewRecurrence('weekly');setNewRecurrenceCount(12);setNewDate(selectedDayStr);setNewDescription(`Trabajo de ${service}. Clientes incluidos al crear este bloque.`);setShowAddModal(true);}} />
   <section className="pay-calendar"><h3>Cobros del {new Date(selectedDayStr+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}</h3><PaymentRows payments={payments.filter(p=>p.date===selectedDayStr)}/></section>
   {/* Calendar Title & Filters Bar */}
-  <div className="flex items-center justify-between">
+  <div className="calendar-toolbar flex items-center justify-between">
    <div>
    <h2 className="text-2xl font-bold tracking-tight text-white font-sans flex items-center gap-2">
     {currentView === 'month' ? (
@@ -534,14 +534,14 @@ export default function CalendarScreen({
   {currentView === 'month' ? (
    <>
    {/* Days of the Week Headings */}
-   <div className="grid grid-cols-7 border-b border-white/5 py-2 text-center text-xs font-mono font-medium uppercase tracking-wider text-slate-500">
-    <div>Sun</div>
-    <div>Mon</div>
-    <div>Tue</div>
-    <div>Wed</div>
-    <div>Thu</div>
-    <div>Fri</div>
-    <div>Sat</div>
+   <div className="calendar-weekdays grid grid-cols-7 border-b border-white/5 py-2 text-center text-xs font-mono font-medium uppercase tracking-wider text-slate-500">
+    <div>D</div>
+    <div>L</div>
+    <div>M</div>
+    <div>X</div>
+    <div>J</div>
+    <div>V</div>
+    <div>S</div>
    </div>
 
    {/* Calendar Day Grid */}
@@ -572,6 +572,8 @@ export default function CalendarScreen({
     return (
      <div 
      key={day}
+     role="button" tabIndex={0} aria-label={`${day} ${monthNames[currentMonth]}, ${dayEvents.length} actividades, ${payments.filter(p=>p.date===formattedDayStr).length} cobros`} aria-pressed={currentDay===day}
+     onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setCurrentDay(day);setSelectedEventId('');}}}
      onClick={() => {
       setSelectedEventId(dayEvents[0]?.id || '');
       setCurrentDay(day);
@@ -580,7 +582,7 @@ export default function CalendarScreen({
       setCurrentDay(day);
       setCurrentView('day');
      }}
-     className={`min-h-[105px] p-2 hover:bg-slate-900/30 transition-all cursor-pointer relative group ${
+     className={`calendar-date ${currentDay===day?'calendar-date-selected':''} min-h-[105px] p-2 hover:bg-slate-900/30 transition-all cursor-pointer relative group ${
       isToday ? 'bg-blue-600/[0.04] border border-blue-500/20 shadow-inner' : 'bg-slate-950/20'
      }`}
      >
@@ -595,8 +597,9 @@ export default function CalendarScreen({
      </div>
 
      {payments.filter(p=>p.date===formattedDayStr).map(p=><button type="button" key={p.id} className={`pay-chip ${p.source}`} onClick={e=>{e.stopPropagation();setCurrentDay(day);}}>{paymentMoney(p)} · {p.customer}<span>{p.method}{p.overdue?' · Vencido':p.estimated?' · Previsión':''}</span></button>)}
+     <div className="calendar-day-dots" aria-hidden="true">{dayEvents.length>0&&<i className="task-dot"/>}{payments.some(p=>p.date===formattedDayStr)&&<i className="payment-dot"/>}</div>
      {/* Event Chips */}
-     <div className="space-y-1 overflow-hidden">
+     <div className="calendar-event-chips space-y-1 overflow-hidden">
       {dayEvents.map((ev) => {
       let chipColor = "bg-blue-500/10 text-blue-400 hover:bg-blue-500/20";
       if (ev.status === "done") {
@@ -631,6 +634,13 @@ export default function CalendarScreen({
     );
     })}
    </div>
+   <section className="calendar-mobile-agenda">
+    <header><div><span>TU AGENDA</span><h3>{new Date(selectedDayStr+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</h3></div><button type="button" aria-label="Añadir evento este día" onClick={()=>{setNewDate(selectedDayStr);setShowAddModal(true);}}><Plus size={20}/></button></header>
+    <div className="calendar-legend"><span><i className="task-dot"/> Actividades · {rawDayEvents.length}</span><span><i className="payment-dot"/> Cobros · {payments.filter(p=>p.date===selectedDayStr).length}</span></div>
+    {rawDayEvents.map(ev=><button type="button" className="calendar-agenda-event" key={ev.id} onClick={()=>{setSelectedEventId(ev.id);requestAnimationFrame(()=>document.getElementById('detailPanel')?.scrollIntoView({behavior:'smooth',block:'start'}));}}><time>{ev.time||'Todo el día'}</time><div><strong>{ev.title}</strong><span>{ev.status==='done'?'Completada':ev.status==='postponed'?'Pospuesta':'Pendiente'}</span></div><ChevronRight size={17}/></button>)}
+    {!rawDayEvents.length&&<p className="calendar-agenda-empty">Día despejado. Planifica tu siguiente paso.</p>}
+    {payments.some(p=>p.date===selectedDayStr)&&<PaymentRows payments={payments.filter(p=>p.date===selectedDayStr)}/>}
+   </section>
    </>
   ) : (
    /* Detailed High-Fidelity Day View sorted by hours in big sizing */
@@ -856,7 +866,7 @@ export default function CalendarScreen({
 
   {/* Right Side Panel: Day Details Panel Inspector */}
   <aside 
-  id="detailPanel" 
+  id="detailPanel" data-has-event={Boolean(selectedEvent)} 
   className="h-full min-h-0 shrink-0 w-[340px] overflow-y-auto bg-white/5 backdrop-blur-xl rounded-3xl p-6 flex flex-col border border-white/10 transition-all duration-300 shadow-2xl shadow-black/10 scrollbar-thin"
   >
   {selectedEvent ? (
