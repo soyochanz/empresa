@@ -516,7 +516,7 @@ export default function CalendarScreen({
     <ChevronRight className="w-4 h-4" />
    </button>
    
-   <button
+   <button aria-label="Añadir evento"
     onClick={() => {
     if (currentView === 'day') {
      setNewDate(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`);
@@ -638,7 +638,7 @@ export default function CalendarScreen({
     <header><div><span>TU AGENDA</span><h3>{new Date(selectedDayStr+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'})}</h3></div><button type="button" aria-label="Añadir evento este día" onClick={()=>{setNewDate(selectedDayStr);setShowAddModal(true);}}><Plus size={20}/></button></header>
     <div className="calendar-legend"><span><i className="task-dot"/> Actividades · {rawDayEvents.length}</span><span><i className="payment-dot"/> Cobros · {payments.filter(p=>p.date===selectedDayStr).length}</span></div>
     {rawDayEvents.map(ev=><button type="button" className="calendar-agenda-event" key={ev.id} onClick={()=>{setSelectedEventId(ev.id);requestAnimationFrame(()=>document.getElementById('detailPanel')?.scrollIntoView({behavior:'smooth',block:'start'}));}}><time>{ev.time||'Todo el día'}</time><div><strong>{ev.title}</strong><span>{ev.status==='done'?'Completada':ev.status==='postponed'?'Pospuesta':'Pendiente'}</span></div><ChevronRight size={17}/></button>)}
-    {!rawDayEvents.length&&<p className="calendar-agenda-empty">Día despejado. Planifica tu siguiente paso.</p>}
+    {!rawDayEvents.length&&<p className="calendar-agenda-empty">Sin actividades programadas para este día.</p>}
     {payments.some(p=>p.date===selectedDayStr)&&<PaymentRows payments={payments.filter(p=>p.date===selectedDayStr)}/>}
    </section>
    </>
@@ -866,7 +866,7 @@ export default function CalendarScreen({
 
   {/* Right Side Panel: Day Details Panel Inspector */}
   <aside 
-  id="detailPanel" data-has-event={Boolean(selectedEvent)} 
+  id="detailPanel" data-has-event={Boolean(selectedEventId && selectedEvent)} 
   className="h-full min-h-0 shrink-0 w-[340px] overflow-y-auto bg-white/5 backdrop-blur-xl rounded-3xl p-6 flex flex-col border border-white/10 transition-all duration-300 shadow-2xl shadow-black/10 scrollbar-thin"
   >
   {selectedEvent ? (
