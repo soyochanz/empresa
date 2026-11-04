@@ -1,3 +1,4 @@
+import PaymentClientPicker from './PaymentClientPicker';
 import React,{useRef,useState} from 'react';
 import type {ScheduledPayment} from '../utils/paymentSchedule';
 import type {ClientContact} from '../types';
@@ -6,6 +7,9 @@ import {authenticatedFetch} from '../utils/authenticatedFetch';
 import {prepareScheduledPayment,type PaymentDraft} from '../utils/createScheduledPayment';
 import {toFinanceDateKey} from '../utils/financeRecurrence';
 export default function NewScheduledPayment({contacts,onSaved,onClose,editing}:{key?:string;editing?:ScheduledPayment;contacts:ClientContact[];onSaved:()=>void;onClose:()=>void}){
+ const [clientCreating,setClientCreating]=useState(false);
+ const [addedContacts,setAddedContacts]=useState<ClientContact[]>([]);
+ const availableContacts=[...contacts,...addedContacts.filter(c=>!contacts.some(existing=>existing.id===c.id))];
  const [draft,setDraft]=useState<PaymentDraft>({clientId:editing?.clientId||'',concept:editing?.description||'',amount:editing?String(editing.amount):'',date:editing?.date||toFinanceDateKey(new Date()),method:editing?.source==='stripe'?'stripe':editing?.paymentMethod==='cash'?'cash':'transfer',period:editing?.period==='yearly'?'yearly':editing?.period==='weekly'?'weekly':'monthly',count:editing?.count?String(editing.count):'',scheduled:!!editing&&editing.date>toFinanceDateKey(new Date())});
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[done,setDone]=useState(false),[copied,setCopied]=useState(false);
  const request=useRef<ReturnType<typeof prepareScheduledPayment>|null>(null),session=useRef<{url:string;sessionId:string}|null>(null),running=useRef(false);
@@ -15,7 +19,7 @@ export default function NewScheduledPayment({contacts,onSaved,onClose,editing}:{
   if(editing?.currency&&editing.currency!=='EUR')throw Error('Esta edición admite EUR. Gestiona esta moneda desde Stripe para conservar su importe original.');
   if(editing?.source==='stripe'&&!confirmed)throw Error('Confirma la sustitución de la recurrencia Stripe anterior.');
   if(editing?.source==='manual'&&draft.date<toFinanceDateKey(new Date()))throw Error('La edición se aplica desde hoy o una fecha futura para conservar el historial.');
-  if(!request.current)request.current=prepareScheduledPayment(draft,contacts,`agenda_${crypto.randomUUID()}`);
+  if(!request.current)request.current=prepareScheduledPayment(draft,availableContacts,`agenda_${crypto.randomUUID()}`);
   const {transaction,checkout}=request.current;
   const existing=await db.getFinanceTransactions();
   if(editing?.source==='manual'&&!existing.some(t=>t.id===editing.transactionId))throw Error('No se encuentra la recurrencia original.');
@@ -39,12 +43,13 @@ export default function NewScheduledPayment({contacts,onSaved,onClose,editing}:{
   setDone(true);onSaved();
  }catch(err){setError(err instanceof Error?err.message:'No se pudo guardar el cobro.');}finally{running.current=false;setBusy(false);}};
  if(done)return <section className="pay-create"><h3>{editing?'Recurrencia actualizada':url?'Enlace Stripe listo':'Recurrencia creada'}</h3><p>Vinculado al cliente del CRM. El cobro permanece pendiente.</p>{url&&<><label>Enlace para el cliente<input readOnly value={url}/></label><button onClick={async()=>{try{await navigator.clipboard.writeText(url);setCopied(true);}catch{setError('Selecciona y copia el enlace manualmente.');}}}>{copied?'Copiado':'Copiar enlace'}</button><p>La suscripción se activa cuando el cliente completa Stripe. No se ha realizado ningún cargo.</p></>}{error&&<p role="alert">{error}</p>}<button onClick={onClose}>Volver a la agenda</button></section>;
- return <form className="pay-create" onSubmit={submit}><h3>{editing?"Editar recurrencia":"Nueva recurrencia"}</h3><p>Cliente, fecha y forma de cobro, en un solo lugar.</p><fieldset disabled={busy||!!request.current}>
- <label>Cliente del CRM<select disabled={!!editing?.clientId} required value={draft.clientId} onChange={e=>update('clientId',e.target.value)}><option value="">Seleccionar cliente</option>{contacts.map(c=><option key={c.id} value={c.id}>{c.company||c.name} · {c.email||'Sin email'}</option>)}</select></label>
+ return <form className="pay-create" onSubmit={e=>{if(clientCreating){e.preventDefault();return;}void submit(e);}}><h3>{editing?"Editar recurrencia":"Nueva recurrencia"}</h3><p>Cliente, fecha y forma de cobro, en un solo lugar.</p><fieldset disabled={busy||!!request.current}>
+ <PaymentClientPicker onEditingChange={setClientCreating} contacts={availableContacts} value={draft.clientId} disabled={!!editing?.clientId} onSelect={id=>update('clientId',id)} onCreated={client=>setAddedContacts(current=>[...current.filter(c=>c.id!==client.id),client])}/>
+
  <label>Concepto<input required maxLength={180} placeholder="Ej. Posicionamiento SEO" value={draft.concept} onChange={e=>update('concept',e.target.value)}/></label>
  <div className="pay-create-grid"><label>Importe por cobro (EUR)<input required type="number" min="0.01" max="1000000" step="0.01" value={draft.amount} onChange={e=>update('amount',e.target.value)}/></label><label>Método<select disabled={!!editing} value={draft.method} onChange={e=>update('method',e.target.value)}><option value="transfer">Transferencia</option><option value="cash">Efectivo</option><option value="stripe">Stripe · generar enlace</option></select></label><label>Frecuencia<select value={draft.period} onChange={e=>update('period',e.target.value)}>{draft.method!=='stripe'&&<option value="weekly">Semanal</option>}<option value="monthly">Mensual</option><option value="yearly">Anual</option></select></label><label>{editing?"Cuotas de la nueva recurrencia":"Número de cuotas"}<input type="number" min="1" max="120" placeholder="Sin límite" value={draft.count} onChange={e=>update('count',e.target.value)}/></label></div>
  {draft.method==='stripe'&&<label>Primer cargo<select value={draft.scheduled?'scheduled':'now'} onChange={e=>update('scheduled',e.target.value==='scheduled')}><option value="now">Al completar el enlace</option><option value="scheduled">Programar una fecha</option></select></label>}
  {(draft.method!=='stripe'||draft.scheduled)&&<label>Fecha del primer cobro<input required type="date" value={draft.date} onChange={e=>update('date',e.target.value)}/></label>}
  <p>{draft.method==='stripe'?(draft.scheduled?'Primer cargo a las 12:00 UTC del día elegido, con al menos 48 horas de antelación. El cliente debe completar antes el enlace.':'El primer cargo se realiza cuando el cliente completa Stripe; a partir de ahí se calcula la recurrencia.'):'Los cobros manuales quedan pendientes hasta que los registres en Finanzas.'}</p>{editing&&<p>Los cobros y facturas anteriores se conservan. Los cambios se aplican a la nueva recurrencia.</p>}</fieldset>{editing?.source==='stripe'&&<label className="pay-replace-confirm"><input type="checkbox" checked={confirmed} disabled={busy||!!request.current} onChange={e=>setConfirmed(e.target.checked)}/>Confirmo que se anulará ahora la suscripción o enlace anterior. El cliente debe completar el nuevo enlace; hasta entonces no habrá una nueva suscripción activa. No se reembolsan cobros anteriores.</label>}
- {error&&<p className="pay-warning" role="alert">{error}{request.current&&' Los datos quedan bloqueados para reintentar la misma operación.'}</p>}<div className="pay-toolbar"><button className="pay-create-submit" disabled={busy} type="submit">{busy?'Guardando…':request.current?'Reintentar':editing?'Guardar y sustituir':draft.method==='stripe'?'Crear y generar enlace':'Crear recurrencia'}</button><button type="button" disabled={busy} onClick={onClose}>Volver</button></div></form>;
+ {error&&<p className="pay-warning" role="alert">{error}{request.current&&' Los datos quedan bloqueados para reintentar la misma operación.'}</p>}<div className="pay-toolbar"><button className="pay-create-submit" disabled={busy||clientCreating} type="submit">{busy?'Guardando…':request.current?'Reintentar':editing?'Guardar y sustituir':draft.method==='stripe'?'Crear y generar enlace':'Crear recurrencia'}</button><button type="button" disabled={busy} onClick={onClose}>Volver</button></div></form>;
 }
