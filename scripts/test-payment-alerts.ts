@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {paymentAlert,queuePaymentAlert,dispatchPaymentAlerts} from '../api/calendar/paymentAlerts';
+const event=(type:string,object:any)=>({id:'evt_1',created:100,type,data:{object}} as any);
+const session={id:'cs_1',amount_total:15000,currency:'eur',metadata:{clientId:'crm1',clientName:'La Encina'},invoice:'in_1'};
+assert.equal(paymentAlert(event('checkout.session.completed',{...session,payment_status:'unpaid'})),null);
+const paid=paymentAlert(event('checkout.session.async_payment_succeeded',{...session,payment_status:'paid'}));
+assert.equal(paid?.key,'paid:in_1');
+assert.equal(paymentAlert(event('invoice.paid',{id:'in_1',status:'paid',amount_paid:15000,currency:'eur'}))?.key,paid?.key);
+assert.equal(paymentAlert(event('invoice.paid',{id:'in_1',status:'paid',amount_paid:0})),null);
+assert.equal(paymentAlert(event('checkout.session.expired',{...session,status:'expired',metadata:{althera_replaced:'true'}})),null);
+assert.equal(paymentAlert(event('checkout.session.expired',{...session,status:'expired'}))?.title,'Althera · Enlace caducado');
+assert.equal(paymentAlert(event('invoice.payment_failed',{id:'in_1',attempt_count:2,amount_due:15000,currency:'eur'}))?.key,'failed:in_1:2');
+assert.equal(paymentAlert(event('payout.paid',{amount:100})),null);
+let inserted:any[]=[];
+const db:any={from:(table:string)=>table==='calendar_push_subscriptions'?{select:()=>({eq:async()=>({data:[{endpoint:'new',user_id:'u',payments_since:new Date(101000).toISOString()},{endpoint:'old',user_id:'u',payments_since:new Date(99000).toISOString()}]})})}:{upsert:async(rows:any[],options:any)=>{assert.equal(options.ignoreDuplicates,true);inserted=rows;return {};}}};
+await queuePaymentAlert(db,event('checkout.session.completed',{...session,payment_status:'paid'}),{} as any);
+assert.deepEqual(inserted.map(r=>r.endpoint),['old']);
+inserted=[];await queuePaymentAlert(db,event('checkout.session.completed',{...session,metadata:{product:'other_app'},payment_status:'paid'}),{} as any);assert.equal(inserted.length,0);
+let sent=0,ack=0;
+const worker:any={rpc:async()=>({data:[{id:1,endpoint:'x',user_id:'u',payload:paid}]}),auth:{admin:{getUserById:async()=>({data:{user:{id:'u',email:'admin@test.test'}}})}},from:()=>({select:()=>({eq:()=>({eq:()=>({maybeSingle:async()=>({data:{payments_enabled:false}})})})}),update:()=>({eq:async()=>{ack++;return {};}})})};
+await dispatchPaymentAlerts(worker,async()=>{sent++;},()=>true);assert.equal(sent,0);assert.equal(ack,1);
+console.log('Payment alerts: confirmed-only, deduplication, opt-in timing, opt-out, replacements and product isolation passed.');
+// PostgREST JSONB containment must receive JSON, not PostgreSQL's array encoding.
+const {createClient}=await import('@supabase/supabase-js');
+let requestUrl='';
+const client=createClient('https://example.supabase.co','test-key',{global:{fetch:async(input:any)=>{requestUrl=String(input);return new Response('[]',{status:200,headers:{'Content-Type':'application/json'}});}}});
+await client.from('finance_invoices').select('id').contains('items',JSON.stringify([{stripeInvoiceId:'in_test'}]));
+assert.equal(new URL(requestUrl).searchParams.get('items'),'cs.[{"stripeInvoiceId":"in_test"}]');

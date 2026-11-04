@@ -1,3 +1,4 @@
+import {queuePaymentAlert} from './api/calendar/paymentAlerts';
 import {registerCalendarPush} from './api/calendar/push';
 import express from "express";
 import {retireAgendaStripe} from "./api/replaceAgendaStripe";
@@ -434,7 +435,7 @@ async function ensureInternalInvoiceForPaidStripeRecurrence(
       supabaseAdmin
         .from("finance_invoices")
         .select("id")
-        .contains("items", [{ stripeInvoiceId }])
+        .contains("items", JSON.stringify([{ stripeInvoiceId }]))
         .limit(1),
       supabaseAdmin
       .from("finance_invoices")
@@ -864,7 +865,7 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
   const { data: invoices, error: invError } = await supabaseAdmin
     .from("finance_invoices")
     .select("id,items")
-    .contains("items", [{ pendingTxId: targetTx.id }]);
+    .contains("items", JSON.stringify([{ pendingTxId: targetTx.id }]));
 
   if (invError) throw invError;
 
@@ -1017,7 +1018,7 @@ async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session)
   const { data: invoices, error: invoiceReadError } = await supabaseAdmin
     .from("finance_invoices")
     .select("id,items")
-    .contains("items", [{ pendingTxId }]);
+    .contains("items", JSON.stringify([{ pendingTxId }]));
 
   if (invoiceReadError) throw invoiceReadError;
 
@@ -1098,6 +1099,8 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       event = await stripe.events.retrieve(unverifiedEvent.id);
       console.warn("STRIPE_WEBHOOK_SECRET is not set. Event verified through the Stripe Events API.");
     }
+
+    await queuePaymentAlert(supabaseAdmin, event, stripe);
 
     if (await webOffers.handleEvent(event)) return res.json({ received: true });
 

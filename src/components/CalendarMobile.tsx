@@ -7,7 +7,8 @@ async function request(path:string,body?:unknown) {
  if(!response.ok) throw new Error(result.error||'No se pudo guardar.');
  return result;
 }
-export default function CalendarMobile(){
+export default function CalendarMobile({mode='calendar'}:{mode?:'calendar'|'payments'}){
+ const [calendarEnabled,setCalendarEnabled]=useState(mode==='calendar');const [paymentsEnabled,setPaymentsEnabled]=useState(mode==='payments');
  const [time,setTime]=useState('08:00');
  const [zone,setZone]=useState(()=>Intl.DateTimeFormat().resolvedOptions().timeZone);
  const [key,setKey]=useState('');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const [active,setActive]=useState(false);
@@ -15,7 +16,7 @@ export default function CalendarMobile(){
  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent);
  useEffect(()=>{
   const manifest=document.querySelector<HTMLLinkElement>('link[rel="manifest"]');const previous=manifest?.getAttribute('href');if(manifest)manifest.href='/calendar.webmanifest';
-  request('config').then(async config=>{setKey(config.publicKey);if('serviceWorker' in navigator){const reg=await navigator.serviceWorker.register('/calendar-sw.js',{scope:'/'});const sub=await reg.pushManager.getSubscription();if(sub){const settings=await request('settings',{endpoint:sub.endpoint});setActive(!!settings.active);if(settings.time)setTime(settings.time);if(settings.timezone)setZone(settings.timezone);}}}).catch(e=>setMessage(e.message));
+  request('config').then(async config=>{setKey(config.publicKey);if('serviceWorker' in navigator){const reg=await navigator.serviceWorker.register('/calendar-sw.js',{scope:'/'});const sub=await reg.pushManager.getSubscription();if(sub){const settings=await request('settings',{endpoint:sub.endpoint});setActive(!!settings.active);if(settings.active){setCalendarEnabled(settings.calendarEnabled!==false);setPaymentsEnabled(!!settings.paymentsEnabled);}if(settings.time)setTime(settings.time);if(settings.timezone)setZone(settings.timezone);}}}).catch(e=>setMessage(e.message));
   return()=>{if(manifest&&previous)manifest.href=previous;};
  },[]);
  async function enable(){
@@ -25,17 +26,18 @@ export default function CalendarMobile(){
    const reg=await navigator.serviceWorker.ready;
    const bytes=Uint8Array.from(atob(key.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
    const existing=await reg.pushManager.getSubscription();const sub=existing||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
-   await request('subscribe',{subscription:sub.toJSON(),time,timezone:zone});setActive(true);setMessage('Avisos guardados. Recibirás las tareas pendientes del día a la hora elegida.');
+   await request('subscribe',{subscription:sub.toJSON(),time,timezone:zone,calendarEnabled,paymentsEnabled});setActive(true);setMessage('Preferencias guardadas para este dispositivo.');
   }catch(e){setMessage((e as Error).message);}finally{setBusy(false);}
  }
  async function disable(){setBusy(true);try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();if(sub){await request('unsubscribe',{endpoint:sub.endpoint});await sub.unsubscribe();}setActive(false);setMessage('Avisos desactivados en este dispositivo.');}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}}
  async function test(){setBusy(true);try{const reg=await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription();await request('test',{endpoint:sub?.endpoint});setMessage('Aviso de prueba enviado.');}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}}
- return <details className="calendar-mobile"><summary>Calendario en tu iPhone · {active?'Avisos activados':'Instalar y configurar avisos'}</summary>
+ return <details className="calendar-mobile"><summary>{mode==='payments'?'Avisos de cobros en tu móvil':'Calendario en tu iPhone'} · {active&&(mode==='payments'?paymentsEnabled:calendarEnabled)?'Avisos activados':'Instalar y configurar avisos'}</summary>
  {!standalone&&<p>En Safari, abre este calendario, pulsa <strong>Compartir → Añadir a pantalla de inicio → Añadir</strong>. Después abre Althera desde su icono e inicia sesión. Para los avisos necesitas iOS 16.4 o posterior.</p>}
- <div className="mobile-controls"><label>Resumen de la mañana<input type="time" value={time} onChange={e=>setTime(e.target.value)}/></label><label>Zona horaria<input value={zone} onChange={e=>setZone(e.target.value)} aria-label="Zona horaria IANA"/></label>
- <button type="button" disabled={busy||!key||!('Notification' in window)||!('PushManager' in window)||(ios&&!standalone)} onClick={enable}>{busy?'Guardando…':active?'Guardar hora':'Activar avisos'}</button>
- {active&&<><button type="button" disabled={busy} onClick={test}>Probar aviso</button><button type="button" disabled={busy} onClick={disable}>Desactivar</button></>}</div>
- <p>Solo te avisamos si tienes tareas pendientes ese día. Toca el aviso para abrir el calendario. La entrega puede variar según la conexión y los modos de concentración del iPhone.</p>
+ <div className="push-preferences"><label><input type="checkbox" checked={paymentsEnabled} onChange={e=>setPaymentsEnabled(e.target.checked)}/><span><strong>Pagos y enlaces de Stripe</strong><small>Pago recibido, pago fallido o enlace caducado.</small></span></label><label><input type="checkbox" checked={calendarEnabled} onChange={e=>setCalendarEnabled(e.target.checked)}/><span><strong>Mi agenda por la mañana</strong><small>Resumen de tus tareas pendientes.</small></span></label></div>
+ <div className="mobile-controls">{calendarEnabled&&<><label>Resumen de la mañana<input type="time" value={time} onChange={e=>setTime(e.target.value)}/></label><label>Zona horaria<input value={zone} onChange={e=>setZone(e.target.value)} aria-label="Zona horaria IANA"/></label></>}
+ <button type="button" disabled={busy||!key||!('Notification' in window)||!('PushManager' in window)||(ios&&!standalone)} onClick={enable}>{busy?'Guardando…':active?'Guardar preferencias':'Activar avisos'}</button>
+ {active&&<><button type="button" disabled={busy} onClick={test}>Probar aviso</button><button type="button" disabled={busy} onClick={disable}>Desactivar todos</button></>}</div>
+ <p>Los avisos de cobros abren tu agenda de cobros. Solo se notifican cambios nuevos de Stripe, no previsiones ni traspasos a tu banco. La entrega puede variar según la conexión y los modos de concentración del iPhone.</p>
  {message&&<p role="status">{message}</p>}
  </details>;
 }

@@ -50,3 +50,4 @@
 .calendar-workspace #detailPanel{padding:18px;scroll-margin-top:12px}
 .admin-shell:has(.calendar-workspace) .pay-bar{margin:8px 14px 0;padding:12px 14px;gap:6px 10px;border-radius:16px;font-size:11px}.admin-shell:has(.calendar-workspace) .pay-bar strong{font-size:12px}.admin-shell:has(.calendar-workspace) .pay-bar>span{font-size:11px}
 }
+.push-preferences{display:grid;gap:10px;margin-top:16px}.push-preferences label{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #94a3b830;border-radius:14px;cursor:pointer}.push-preferences input{width:19px;height:19px;accent-color:#818cf8}.push-preferences strong{display:block;font-size:13px}.push-preferences small{display:block;font-size:11px;color:#94a3b8;margin-top:4px}.pay-panel>.calendar-mobile{margin:18px 0}.pay-rows button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
