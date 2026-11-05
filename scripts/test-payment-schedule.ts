@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {buildPaymentSchedule} from '../src/utils/paymentSchedule';
+import {buildMonthlyPaymentActivity,buildPaymentSchedule} from '../src/utils/paymentSchedule';
 const today=new Date(2026,10,3,12);
 const contacts:any=[{id:'client',name:'Ana',company:'Negocio'}];
 const source:any={clientId:'client',id:'manual',type:'income',category:'SEO',description:'SEO mensual',date:'2026-10-31',amount:80,firstAmount:40,nextAmount:80,isRecurring:true,status:'paid',paymentMethod:'transfer',recurrenceOccurrenceCount:3};
@@ -18,3 +18,11 @@ assert.equal(buildPaymentSchedule([{...paid,stripePlanId:'sub',date:'2026-11-05'
 console.log('Payment schedule: manual cycles, overdue, end-of-month, paid deduplication, Stripe cancellation, installment limits and USD preserved.');
 
 assert.equal(buildPaymentSchedule([{...source,clientId:undefined}],[],contacts,today).length,0);
+
+const checkout = {...source,id:'agenda_open',status:'pending',date:'2026-11-03',isRecurring:false,paymentMethod:'stripe',stripeCheckoutSessionId:'cs_open'};
+assert.equal(buildPaymentSchedule([checkout],[],contacts,today)[0].renewable,true);
+for(const status of ['pending','failed','paid']){
+ const [row]=buildMonthlyPaymentActivity([{...checkout,status}],[],contacts,[],today);
+ assert.equal(row.renewable,status!=='paid');
+}
+assert.equal(buildPaymentSchedule([{...checkout,stripeInvoiceId:'in_existing'}],[],contacts,today)[0].renewable,false);

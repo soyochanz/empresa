@@ -1018,6 +1018,7 @@ async function markStripeCheckoutSessionAsFailed(session: Stripe.Checkout.Sessio
   if (cause === "bank_declined" && (session.status !== "complete" || session.payment_status !== "unpaid")) return { updated: false, reason: "payment_not_failed" };
   if (cause === "expired" && session.status !== "expired") return { updated: false, reason: "session_not_expired" };
   if (session.metadata?.althera_deleted === "true") return { updated: false, reason: "intentionally_deleted" };
+  if (cause === "expired" && session.metadata?.althera_replaced === "true") return { updated: false, reason: "session_superseded" };
   const pendingTxId = session.metadata?.pendingTxId || "";
   if (!pendingTxId) return { updated: false, reason: "missing_pending_transaction" };
   const { data: targetTx, error } = await supabaseAdmin
