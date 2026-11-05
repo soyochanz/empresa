@@ -14,7 +14,7 @@ assert.equal(await getDate({payment_status:'paid',payment_intent:'pi_original'})
 assert.equal(await getDate({payment_status:'unpaid',invoice}), undefined);
 assert.equal(await getDate({payment_status:'paid'}), undefined);
 assert.equal(await getDate({payment_status:'paid',invoice}), await getDate({payment_status:'paid',invoice}));
-const checkout = extract('async function markStripeCheckoutSessionAsPaid(', 'async function markStripeCheckoutSessionAsExpired(');
+const checkout = extract('async function markStripeCheckoutSessionAsPaid(', 'async function markStripeCheckoutSessionAsFailed(');
 assert.ok(!checkout.includes('new Date()'));
 assert.ok(source.includes('reason: "payment_date_repaired"'));
 console.log('Stripe: fecha real, repetición de sincronización, cambio de mes y ausencia de fecha verificados.');

@@ -1014,8 +1014,9 @@ async function markStripeCheckoutSessionAsPaid(session: Stripe.Checkout.Session)
   return { updated: targetTx.status !== "paid" || Boolean(paidDate && targetTx.date !== paidDate), txId: pendingTxId, paidDate };
 }
 
-async function markStripeCheckoutSessionAsExpired(session: Stripe.Checkout.Session): Promise<{ updated: boolean; reason?: string; txId?: string }> {
-  if (session.status !== "expired") return { updated: false, reason: "session_not_expired" };
+async function markStripeCheckoutSessionAsFailed(session: Stripe.Checkout.Session, cause: "expired" | "bank_declined"): Promise<{ updated: boolean; reason?: string; txId?: string }> {
+  if (cause === "bank_declined" && (session.status !== "complete" || session.payment_status !== "unpaid")) return { updated: false, reason: "payment_not_failed" };
+  if (cause === "expired" && session.status !== "expired") return { updated: false, reason: "session_not_expired" };
   if (session.metadata?.althera_deleted === "true") return { updated: false, reason: "intentionally_deleted" };
   const pendingTxId = session.metadata?.pendingTxId || "";
   if (!pendingTxId) return { updated: false, reason: "missing_pending_transaction" };
@@ -1035,9 +1036,10 @@ async function markStripeCheckoutSessionAsExpired(session: Stripe.Checkout.Sessi
     .replace(/\s*\(Pendiente\)/gi, "")
     .replace(/\s*\(Enlace de pago caducado\)/gi, "")
     .trim();
-  description = `${description} (Enlace de pago caducado)`;
+  description = description.replace(/\s*\(Cobro denegado Stripe\)/gi, "").trim();
+  description += cause === "expired" ? " (Enlace de pago caducado)" : " (Cobro denegado Stripe)";
   description = writeTag(description, "STRIPESESSION", session.id);
-  const { error: updateError } = await supabaseAdmin.from("finance_transactions").update({ status: "failed", description }).eq("id", pendingTxId);
+  const { error: updateError } = await supabaseAdmin.from("finance_transactions").update({ status: "failed", description }).eq("id", pendingTxId).eq("description", targetTx.description).neq("status", "paid");
   if (updateError) throw updateError;
   return { updated: targetTx.status !== "failed", txId: pendingTxId };
 }
@@ -1096,9 +1098,13 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       console.warn("Processed Stripe invoice.payment_failed webhook:", result);
     }
 
-    if (event.type === "checkout.session.expired") {
-      const result = await markStripeCheckoutSessionAsExpired(event.data.object as Stripe.Checkout.Session);
-      console.warn("Processed Stripe checkout.session.expired webhook:", result);
+    if (event.type === "checkout.session.async_payment_succeeded") {
+      await markStripeCheckoutSessionAsPaid(event.data.object as Stripe.Checkout.Session);
+    }
+
+    if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+      const result = await markStripeCheckoutSessionAsFailed(event.data.object as Stripe.Checkout.Session, event.type === "checkout.session.expired" ? "expired" : "bank_declined");
+      console.warn(`Processed Stripe ${event.type} webhook:`, result);
     }
 
     if (event.type === "payout.paid") {
@@ -1196,7 +1202,7 @@ async function reconcileRecentStripeFinance(): Promise<{ checked: number; update
     }
     for (const session of expiredSessions) {
       try {
-        const result = await markStripeCheckoutSessionAsExpired(session);
+        const result = await markStripeCheckoutSessionAsFailed(session, "expired");
         if (result.updated) updated += 1;
         else skipped += 1;
       } catch (error: any) {
@@ -1854,7 +1860,7 @@ app.post(
     }
 
     const sessionConfig: Stripe.Checkout.SessionCreateParams = {
-      payment_method_types: ["card"],
+      payment_method_types: ["card", "sepa_debit"],
       line_items: [lineItem],
       mode: isSubscription ? "subscription" : "payment",
       customer_email: clientEmail,
