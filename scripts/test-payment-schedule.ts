@@ -26,3 +26,11 @@ for(const status of ['pending','failed','paid']){
  assert.equal(row.renewable,status!=='paid');
 }
 assert.equal(buildPaymentSchedule([{...checkout,stripeInvoiceId:'in_existing'}],[],contacts,today)[0].renewable,false);
+
+const debit={id:'in_sepa',transactionId:checkout.id,clientId:'client',customerName:'Negocio',description:'SEO',date:'2026-10-31T12:00:00Z',amount:80,currency:'eur',status:'pending' as const,processing:true,method:'sepa_debit'};
+const [processing,...duplicates]=buildMonthlyPaymentActivity([checkout],[debit],contacts,[],today);
+assert.equal(processing.method,'Stripe · Domiciliación SEPA');
+assert.equal(processing.processing,true);
+assert.equal(processing.overdue,false);
+assert.equal(duplicates.length,0);
+assert.equal(buildMonthlyPaymentActivity([],[{...debit,date:'2026-11-03',method:'card',processing:false,status:'paid'}],contacts,[],today)[0].method,'Stripe · Tarjeta');

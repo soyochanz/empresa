@@ -1553,7 +1553,7 @@ app.post("/api/stripe/invalidate-checkout-sessions", requireAdminAuth, async (re
 app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
   try {
     const stripe = getStripe();
-    const [subscriptions, paidInvoices, openInvoices, charges] = await Promise.all([
+    const [subscriptions, paidInvoices, openInvoices, charges, invoicePayments, completedSessions] = await Promise.all([
       stripe.subscriptions
         .list({ status: "active", limit: 100, expand: ["data.customer"] })
         .autoPagingToArray({ limit: 1_000 }),
@@ -1570,6 +1570,8 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
           expand: ["data.customer"],
         })
         .autoPagingToArray({ limit: 10_000 }),
+      stripe.invoicePayments.list({limit:100, created:{gte:STRIPE_FINANCE_TRACKING_START_UNIX}}).autoPagingToArray({limit:10_000}),
+      stripe.checkout.sessions.list({status:'complete', limit:100, created:{gte:STRIPE_FINANCE_TRACKING_START_UNIX}}).autoPagingToArray({limit:10_000}),
     ]);
 
     const addCurrencyAmount = (totals: Map<string, number>, currency: string, amount: number) => {
@@ -1605,7 +1607,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
       });
     });
 
-    const successfulCharges = charges.filter(charge => charge.paid && Number(charge.amount || 0) > 0);
+    const successfulCharges = charges.filter(charge => charge.status === "succeeded" && charge.paid && Number(charge.amount || 0) > 0);
     successfulCharges.forEach(charge => {
       const netCaptured = Math.max(0, Number(charge.amount || 0) - Number(charge.amount_refunded || 0)) / 100;
       addCurrencyAmount(chargedVolumeTotals, charge.currency, netCaptured);
@@ -1682,6 +1684,23 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
       };
     });
 
+    const objectId = (value: string | {id:string} | null | undefined) => typeof value === 'string' ? value : value?.id || '';
+    const invoiceByPayment = new Map(invoicePayments.map(row => [objectId(row.payment.payment_intent) || objectId(row.payment.charge),objectId(row.invoice)]));
+    const sessionByPayment = new Map(completedSessions.filter(row=>row.payment_intent).map(row=>[objectId(row.payment_intent),row]));
+    const sessionByInvoice = new Map(completedSessions.filter(row=>row.invoice).map(row=>[objectId(row.invoice),row]));
+    const details = charges.map(charge => {
+      const intentId = objectId(charge.payment_intent);
+      const invoiceId = invoiceByPayment.get(intentId || charge.id) || '';
+      const session = sessionByPayment.get(intentId) || sessionByInvoice.get(invoiceId);
+      return {chargeId:charge.id,intentId,invoiceId,sessionId:session?.id || '',transactionId:session?.metadata?.pendingTxId || '',
+        method:charge.payment_method_details?.card?.wallet?.type || charge.payment_method_details?.type || '',
+        amount:charge.amount/100,currency:charge.currency,status:charge.status,created:charge.created};
+    });
+    const latestByInvoice = new Map<string,typeof details[number]>();
+    for (const detail of details) {
+      if (detail.invoiceId && !latestByInvoice.has(detail.invoiceId)) latestByInvoice.set(detail.invoiceId,detail);
+    }
+
     const paymentHistory = successfulCharges
       .sort((a, b) => b.created - a.created)
       .slice(0, 100)
@@ -1713,6 +1732,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
     res.json({
       activeSubscriptions,
       paymentHistory,
+      paymentDetails: details,
       agendaInvoices: [...paidInvoices, ...openInvoices].map(invoice => ({
         id: invoice.id,
         subscriptionId: getStripeInvoiceSubscriptionId(invoice),
@@ -1723,9 +1743,26 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         date: new Date(Number(invoice.status === "paid" ? invoice.status_transitions?.paid_at || invoice.created : invoice.due_date || invoice.created) * 1000).toISOString(),
         amount: Number(invoice.status === "paid" ? invoice.amount_paid : invoice.amount_remaining) / 100,
         currency: invoice.currency,
-        status: invoice.status === "paid" ? "paid" : invoice.attempted && invoice.attempt_count > 0 ? "failed" : "pending",
+        method: latestByInvoice.get(invoice.id)?.method,
+        transactionId: latestByInvoice.get(invoice.id)?.transactionId,
+        processing: invoice.status !== 'paid' && latestByInvoice.get(invoice.id)?.status === 'pending',
+        status: invoice.status === "paid" ? "paid" : latestByInvoice.get(invoice.id)?.status === 'failed' ? "failed" : "pending",
         url: `https://dashboard.stripe.com${invoice.livemode ? "" : "/test"}/invoices/${invoice.id}`,
       })),
+      standaloneActivity: charges.flatMap((charge,index) => {
+        const detail = details[index];
+        if(detail.invoiceId) return [];
+        const customer = typeof charge.customer === 'object' && charge.customer && 'name' in charge.customer ? charge.customer : null;
+        const session = sessionByPayment.get(detail.intentId);
+        return [{id:detail.chargeId,transactionId:detail.transactionId,clientId:session?.metadata?.clientId,
+          customerName:customer?.name || charge.billing_details?.name || 'Cliente Stripe',
+          customerEmail:customer?.email || charge.billing_details?.email,
+          description:session?.metadata?.concept || charge.description || 'Cobro Stripe',
+          amount:charge.amount/100,currency:charge.currency,date:new Date(charge.created*1000).toISOString(),
+          method:detail.method,processing:detail.status==='pending',
+          status:detail.status==='pending'?'pending':detail.status==='failed'?'failed':'paid',
+          url:`https://dashboard.stripe.com${charge.livemode?'':'/test'}/payments/${detail.intentId||detail.chargeId}` }];
+      }),
       totals: {
         activeSubscriptions: recurringMembershipSubscriptions.length,
         activeInstallmentPlans: subscriptions.length - recurringMembershipSubscriptions.length,

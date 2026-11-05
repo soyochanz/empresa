@@ -1,7 +1,8 @@
+import {stripeMethodLabel} from './stripePaymentDetails';
 import type { FinanceTransaction, ClientContact } from '../types';
 import { findRecurringOccurrence, getFinanceRecurrenceDate, isFinanceRecurrenceOccurrenceAllowed, toFinanceDateKey } from './financeRecurrence';
 import { getStripeForecastOccurrences, type ForecastSubscription } from './stripeForecast';
-export interface ScheduledPayment { id:string; date:string; customer:string; description:string; amount:number; currency:string; source:'stripe'|'manual'; method:string; overdue:boolean; estimated:boolean; url?:string; awaitingActivation?:boolean; transactionId?:string; subscriptionId?:string; sessionId?:string; clientId?:string; period?:string; count?:number; paymentMethod?:string; person?:string; logo?:string; state?:'paid'|'failed'|'pending'; historical?:boolean; renewable?:boolean }
+export interface ScheduledPayment { id:string; date:string; customer:string; description:string; amount:number; currency:string; source:'stripe'|'manual'; method:string; overdue:boolean; estimated:boolean; url?:string; awaitingActivation?:boolean; transactionId?:string; subscriptionId?:string; sessionId?:string; clientId?:string; period?:string; count?:number; paymentMethod?:string; person?:string; logo?:string; state?:'paid'|'failed'|'pending'; processing?:boolean; historical?:boolean; renewable?:boolean }
 export type PaymentPlan = ForecastSubscription & { dashboardUrl?:string; stripePlanId?:string; billingType?:string; clientId?:string; concept?:string; customerEmail?:string };
 function canRenewCheckout(tx: FinanceTransaction) {
  return tx.paymentMethod === 'stripe' && (tx.status === 'pending' || tx.status === 'failed') && Boolean(tx.stripeCheckoutSessionId) && !tx.stripeInvoiceId;
@@ -50,14 +51,14 @@ export function resolvePaymentClient(contacts:ClientContact[],id?:string,email?:
  const matches=email?contacts.filter(c=>c.email?.trim().toLowerCase()===email.trim().toLowerCase()):[];
  return matches.length===1?matches[0]:undefined;
 }
-export interface AgendaInvoice {id:string;subscriptionId?:string;clientId?:string;customerName:string;customerEmail?:string;description:string;date:string;amount:number;currency:string;status:'paid'|'failed'|'pending';url?:string}
+export interface AgendaInvoice {id:string;method?:string;processing?:boolean;transactionId?:string;subscriptionId?:string;clientId?:string;customerName:string;customerEmail?:string;description:string;date:string;amount:number;currency:string;status:'paid'|'failed'|'pending';url?:string}
 export function buildMonthlyPaymentActivity(transactions:FinanceTransaction[],invoices:AgendaInvoice[],contacts:ClientContact[],plans:PaymentPlan[],today=new Date()):ScheduledPayment[]{
  const now=toFinanceDateKey(today),month=now.slice(0,7),result:ScheduledPayment[]=[];
  for(const invoice of invoices){
-  const date=toFinanceDateKey(new Date(invoice.date));if(date.slice(0,7)!==month||date>now||invoice.amount<=0)continue;
+  const date=toFinanceDateKey(new Date(invoice.date));if((date.slice(0,7)!==month&&!invoice.processing)||date>now||invoice.amount<=0)continue;
   const plan=plans.find(p=>p.id===invoice.subscriptionId);
   const client=resolvePaymentClient(contacts,invoice.clientId||plan?.clientId,invoice.customerEmail||plan?.customerEmail);
-  result.push({id:`invoice:${invoice.id}`,subscriptionId:invoice.subscriptionId,date,customer:client?.company||client?.name||invoice.customerName,person:client?.name||invoice.customerName,logo:client?.avatarUrl,clientId:client?.id,description:invoice.description,amount:invoice.amount,currency:invoice.currency.toUpperCase(),source:'stripe',method:'Stripe',overdue:invoice.status!=='paid'&&date<now,estimated:false,state:invoice.status,historical:true,url:invoice.url});
+  result.push({id:`invoice:${invoice.id}`,subscriptionId:invoice.subscriptionId,date,customer:client?.company||client?.name||invoice.customerName,person:client?.name||invoice.customerName,logo:client?.avatarUrl,clientId:client?.id,description:invoice.description,amount:invoice.amount,currency:invoice.currency.toUpperCase(),source:'stripe',method:stripeMethodLabel(invoice.method),transactionId:invoice.transactionId,processing:invoice.processing,overdue:!invoice.processing&&invoice.status!=='paid'&&date<now,estimated:false,state:invoice.status,historical:true,url:invoice.url});
  }
  for(const tx of transactions){
   if(tx.type!=='income'||!['paid','failed','pending'].includes(tx.status)||tx.category?.trim().toLocaleLowerCase('es-ES')==='transferencia interna'||tx.id.startsWith('tx_stripe_payout_'))continue;
@@ -65,7 +66,7 @@ export function buildMonthlyPaymentActivity(transactions:FinanceTransaction[],in
   if(tx.isRecurring&&tx.paymentMethod==='stripe')continue;
   const date=(tx.paidAt||tx.date).slice(0,10);if(date.slice(0,7)!==month||date>now)continue;
   if(tx.isRecurring&&transactions.some(t=>t.recurrenceSourceId===tx.id&&(t.recurrenceScheduledDate||t.date).slice(0,10)===tx.date.slice(0,10)))continue;
-  if(tx.paymentMethod==='stripe'&&invoices.some(i=>i.id===tx.stripeInvoiceId))continue;
+  if(tx.paymentMethod==='stripe'&&invoices.some(i=>i.id===tx.stripeInvoiceId||i.transactionId===tx.id))continue;
   const matchingPlan=plans.find(p=>p.id===tx.stripePlanId||!!p.stripePlanId&&p.stripePlanId===tx.stripePlanId);
   if(tx.paymentMethod==='stripe'&&result.some(p=>p.date===date&&p.amount===tx.amount&&(!!matchingPlan&&p.subscriptionId===matchingPlan.id)))continue;
   const client=resolvePaymentClient(contacts,tx.clientId);

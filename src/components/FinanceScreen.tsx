@@ -1,3 +1,4 @@
+import {indexStripePayments,stripeMethodLabel,type StripePaymentDetail} from '../utils/stripePaymentDetails';
 import './financeWorkspace.css';
 import UpcomingPayments from './UpcomingPayments';
 import { usePaymentSchedule } from '../hooks/usePaymentSchedule';
@@ -139,6 +140,7 @@ type StripeAccountPayment = {
 type StripeFinanceOverview = {
  activeSubscriptions: StripeAccountSubscription[];
  paymentHistory: StripeAccountPayment[];
+ paymentDetails?: StripePaymentDetail[];
  totals: {
   activeSubscriptions: number;
   activeInstallmentPlans: number;
@@ -3341,8 +3343,14 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  };
 
  // Transaction selection and calculations
- const filteredTxs = ledgerTransactions.filter(t => {
- const matchesSearch = t.description.toLowerCase().includes(txSearch.toLowerCase()) || 
+ const stripeIndex = React.useMemo(()=>indexStripePayments(stripeFinanceOverview?.paymentDetails || []),[stripeFinanceOverview]);
+ const stripeDetailsFor = (t:FinanceTransaction) => stripeIndex.get(t.stripeInvoiceId || '') || stripeIndex.get(t.stripeCheckoutSessionId || '') || stripeIndex.get(t.id) || [];
+ const stripeQuery = txSearch.trim().toLowerCase();
+ const searchingStripeId = /^(pi_|ch_|py_|cs_|in_)/.test(stripeQuery);
+ const exactStripePayment = searchingStripeId ? stripeFinanceOverview?.paymentDetails?.find(d=>[d.intentId,d.chargeId].some(id=>id && id.toLowerCase()===stripeQuery)) : undefined;
+ const filteredTxs = (searchingStripeId ? nonRecurringTransactions : ledgerTransactions).filter(t => {
+ const matchesStripe = searchingStripeId && [t.stripeInvoiceId,t.stripeCheckoutSessionId,...stripeDetailsFor(t).flatMap(d=>[d.intentId,d.chargeId,d.invoiceId,d.sessionId])].some(id=>id?.toLowerCase().includes(stripeQuery));
+ const matchesSearch = matchesStripe || t.description.toLowerCase().includes(txSearch.toLowerCase()) ||
        t.category.toLowerCase().includes(txSearch.toLowerCase()) ||
        t.id.toLowerCase().includes(txSearch.toLowerCase()) || contacts.some(c => c.id === t.clientId && `${c.company || ''} ${c.name || ''}`.toLowerCase().includes(txSearch.toLowerCase()));
  const matchesType = txTypeFilter === 'all' || t.type === txTypeFilter;
@@ -3849,7 +3857,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     type="text"
     value={txSearch}
     onChange={(e) => setTxSearch(e.target.value)}
-    placeholder="Buscar concepto o categoría..."
+    placeholder="Buscar cliente, concepto o ID de Stripe…"
     className="w-full bg-slate-950 border border-white/10 text-xs rounded-xl pl-3 pr-10 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all font-light"
     />
     <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-[10px]">
@@ -3857,6 +3865,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     </div>
    </div>
    </div>
+
+   {exactStripePayment && <div role="status" className="rounded-xl border p-3 text-sm">
+    <strong>{stripeMethodLabel(exactStripePayment.method)}</strong> · {new Intl.NumberFormat('es-ES',{style:'currency',currency:exactStripePayment.currency}).format(exactStripePayment.amount)} · {exactStripePayment.status==='pending'?'Iniciado · pendiente de confirmación':exactStripePayment.status==='failed'?'Fallido':'Cobrado'}
+    <div className="break-all text-xs">{exactStripePayment.intentId} · {exactStripePayment.chargeId}</div>
+   </div>}
 
    <div className="flex justify-end">
     <button
@@ -4036,7 +4049,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
        </div>
        </td>
        <td className="p-3 align-middle">
-        <span className="finance-method">{t.paymentMethod === 'stripe' ? 'Stripe' : t.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span>
+        <span className="finance-method">{t.paymentMethod === 'stripe' ? stripeMethodLabel(stripeDetailsFor(t)[0]?.method) : t.paymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}</span>
        </td>
        <td className="p-3 text-left align-middle finance-category">
        <span className={`text-[8px] font-mono border px-2 py-0.5 rounded-md uppercase tracking-wider font-bold ${tagStyle}`}>
