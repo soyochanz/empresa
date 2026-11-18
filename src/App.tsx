@@ -1968,6 +1968,7 @@ export default function App() {
   case 'crm':
   return (
    <CrmScreen 
+   collectionAgenda={paymentSchedule}
    contacts={globalSearch ? filteredSearchContacts : contacts}
    events={adminVisibleEvents}
    onAddContact={handleAddContact}

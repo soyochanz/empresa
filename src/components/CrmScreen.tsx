@@ -241,6 +241,7 @@ interface CrmScreenProps {
  comercialesList?: ComercialAccount[];
  onUpdateComercial?: (account: ComercialAccount) => void | Promise<void>;
  onRefreshFinance?: () => void | Promise<void>;
+ collectionAgenda: ReturnType<typeof usePaymentSchedule>;
 }
 
 export default function CrmScreen({ 
@@ -255,7 +256,8 @@ export default function CrmScreen({
  onAddEvent,
  comercialesList = [],
  onUpdateComercial,
- onRefreshFinance
+ onRefreshFinance,
+ collectionAgenda
 }: CrmScreenProps) {
  const [selectedContactId, setSelectedContactId] = useState<string>('');
  const selectedContact = contacts.find(c => c.id === selectedContactId);
@@ -303,8 +305,12 @@ export default function CrmScreen({
  const [contractContactId, setContractContactId] = useState<string | null>(null);
  const [clientContracts, setClientContracts] = useState<any[]>([]);
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
- const collectionAgenda=usePaymentSchedule(true,transactions,contacts);
- const dueClientCharges=(id:string)=>collectionAgenda.master.filter(p=>p.clientId===id&&!p.excluded&&p.state!=='paid'&&p.date<=new Date().toLocaleDateString('sv-SE'));
+ const dueClientCharges=(id:string)=>collectionAgenda.master.filter(p=>{
+  if(p.clientId!==id||p.excluded||p.state==='paid'||p.date>new Date().toLocaleDateString('sv-SE'))return false;
+  const tx=transactions.find(t=>t.id===p.transactionId);
+  // Keep generated occurrences; reconcile actual receipts before showing debt.
+  return !tx||tx.isRecurring||isOpenClientCharge(tx,transactions,invoices);
+ });
 
  const [chargeToAttach, setChargeToAttach] = useState<FinanceTransaction | null>(null);
  const [chargeInvoiceId, setChargeInvoiceId] = useState('');
