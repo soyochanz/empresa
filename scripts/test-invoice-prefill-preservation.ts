@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {resolveInvoiceClientData} from '../src/utils/invoicePrefill';
+import type {ClientContact,Invoice} from '../src/types';
+const contact={id:'client-test',name:'Contact',fiscalName:'New fiscal name',taxId:'NEW',fiscalAddress:'New address'} as ClientContact;
+const invoice={clientId:'client-test',clientName:'Original fiscal name',clientTaxId:'ORIGINAL',clientAddress:'Original address'} as Invoice;
+const result=resolveInvoiceClientData(invoice,[contact]);
+assert.equal(result.clientName,'Original fiscal name');
+assert.equal(result.clientTaxId,'ORIGINAL');
+assert.equal(result.clientAddress,'Original address');
+assert.equal(resolveInvoiceClientData({clientId:'client-test'} as Invoice,[contact]).clientName,'New fiscal name');
+console.log('Existing invoice fiscal snapshots preserved; missing fields use CRM defaults.');

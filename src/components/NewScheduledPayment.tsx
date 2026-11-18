@@ -1,3 +1,5 @@
+import ChargeConceptPicker from './ChargeConceptPicker';
+import './clientInvoices.css';
 import PaymentClientPicker from './PaymentClientPicker';
 import React,{useRef,useState} from 'react';
 import type {ScheduledPayment} from '../utils/paymentSchedule';
@@ -46,6 +48,7 @@ export default function NewScheduledPayment({contacts,onSaved,onClose,editing}:{
  return <form className="pay-create" onSubmit={e=>{if(clientCreating){e.preventDefault();return;}void submit(e);}}><h3>{editing?"Editar recurrencia":"Nueva recurrencia"}</h3><p>Cliente, fecha y forma de cobro, en un solo lugar.</p><fieldset disabled={busy||!!request.current}>
  <PaymentClientPicker onEditingChange={setClientCreating} contacts={availableContacts} value={draft.clientId} disabled={!!editing?.clientId} onSelect={id=>update('clientId',id)} onCreated={client=>setAddedContacts(current=>[...current.filter(c=>c.id!==client.id),client])}/>
 
+ <ChargeConceptPicker onSelect={value=>update('concept',value)}/>
  <label>Concepto<input required maxLength={180} placeholder="Ej. Posicionamiento SEO" value={draft.concept} onChange={e=>update('concept',e.target.value)}/></label>
  <div className="pay-create-grid"><label>Importe por cobro (EUR)<input required type="number" min="0.01" max="1000000" step="0.01" value={draft.amount} onChange={e=>update('amount',e.target.value)}/></label><label>Método<select disabled={!!editing} value={draft.method} onChange={e=>update('method',e.target.value)}><option value="transfer">Transferencia</option><option value="cash">Efectivo</option><option value="stripe">Stripe · generar enlace</option></select></label><label>Frecuencia<select value={draft.period} onChange={e=>update('period',e.target.value)}>{draft.method!=='stripe'&&<option value="weekly">Semanal</option>}<option value="monthly">Mensual</option><option value="yearly">Anual</option></select></label><label>{editing?"Cuotas de la nueva recurrencia":"Número de cuotas"}<input type="number" min="1" max="120" placeholder="Sin límite" value={draft.count} onChange={e=>update('count',e.target.value)}/></label></div>
  {draft.method==='stripe'&&<label>Primer cargo<select value={draft.scheduled?'scheduled':'now'} onChange={e=>update('scheduled',e.target.value==='scheduled')}><option value="now">Al completar el enlace</option><option value="scheduled">Programar una fecha</option></select></label>}

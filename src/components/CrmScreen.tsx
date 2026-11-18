@@ -1,3 +1,5 @@
+import ClientInvoicesModal from './ClientInvoicesModal';
+import ChargeConceptPicker from './ChargeConceptPicker';
 import ClientQuickLinks,{clientLink} from './ClientQuickLinks';
 import {businessCountries,countryName} from '../utils/businessCountry';
 import {SERVICE_CATALOG, type ServiceProduct} from '../utils/serviceCatalog';
@@ -298,6 +300,7 @@ export default function CrmScreen({
 
  // Connected Accounting & Invoice state definitions
  const [invoices, setInvoices] = useState<Invoice[]>([]);
+ const [invoiceContactId,setInvoiceContactId]=useState<string | null>(null);
  const [clientContracts, setClientContracts] = useState<any[]>([]);
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
  const [chargeToAttach, setChargeToAttach] = useState<FinanceTransaction | null>(null);
@@ -2802,7 +2805,7 @@ React.useEffect(() => {
  const hasStripeLink = contactTransactions.some(transaction =>
   transaction.paymentMethod === 'stripe' && Boolean(transaction.stripeCheckoutUrl || transaction.stripeCheckoutSessionId)
  );
- const signalBaseClass = 'grid h-6 w-6 place-items-center rounded-md border transition-colors';
+ const signalBaseClass = 'inline-flex h-8 items-center gap-1.5 px-2.5 rounded-xl border text-[10px] font-semibold transition-colors';
  const signalInactiveClass = 'border-white/[0.045] bg-white/[0.018] text-slate-700';
 
  let cardBorderClass = 'border-white/[0.065] hover:border-cyan-400/25 bg-gradient-to-br from-white/[0.045] to-white/[0.015] hover:from-white/[0.07] hover:to-cyan-500/[0.025]';
@@ -2864,17 +2867,9 @@ React.useEffect(() => {
    
    <p className="mt-0.5 truncate text-[10px] text-slate-400"><span className="text-slate-300">{contact.name}</span> <span className="font-mono text-[9px] text-slate-500">· {contact.role || 'Contacto'}</span></p>
    <p className="text-[9px] text-slate-505 truncate font-mono mt-1">{contact.email}</p>
-   <ClientQuickLinks contact={contact}/>
+   <ClientQuickLinks contact={contact} onInvoices={()=>setInvoiceContactId(contact.id)}/>
 
    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-    <span className={`px-1.5 py-0.2 rounded-[4px] text-[7.5px] font-mono font-bold uppercase tracking-wider border ${
-    contact.status === 'Client' ?
-     'bg-emerald-500/10 text-emerald-400 border-emerald-500/15'
-     : 'bg-blue-500/10 text-blue-400 border-blue-500/15'
-    }`}>
-    {contact.status}
-    </span>
-
     {!contactHasAssignedWebsite(contact) && (
     <span className="px-1.5 py-0.2 bg-rose-500/10 text-[7.5px] font-bold text-rose-455 border border-rose-500/15 rounded uppercase tracking-wider font-mono">
      Le Falta Web
@@ -2903,13 +2898,13 @@ React.useEffect(() => {
   </div>
 
   <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-white/[0.04] pt-2">
-   <div className="inline-grid grid-cols-6 gap-1 rounded-lg border border-white/[0.04] bg-black/15 p-1" aria-label="Señales del cliente">
-    <span className={`${signalBaseClass} ${hasCommercialOrigin ? 'border-amber-400/20 bg-amber-400/10 text-amber-300' : signalInactiveClass}`} title={hasCommercialOrigin ? 'Procede de un comercial' : 'Sin comercial vinculado'}><BriefcaseBusiness className="h-3 w-3" /></span>
-    <span className={`${signalBaseClass} ${hasWebsite ? 'border-blue-400/20 bg-blue-400/10 text-blue-300' : signalInactiveClass}`} title={hasWebsite ? 'Web realizada o vinculada' : 'Sin web vinculada'}><Globe className="h-3 w-3" /></span>
-    <span className={`${signalBaseClass} ${hasPendingBalance ? 'border-amber-400/20 bg-amber-400/10 text-amber-300' : signalInactiveClass}`} title={hasPendingBalance ? 'Tiene saldo pendiente' : 'Sin saldo pendiente'}><Clock3 className="h-3 w-3" /></span>
-    <span className={`${signalBaseClass} ${isFullyPaid ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : signalInactiveClass}`} title={isFullyPaid ? 'Todos los pagos están liquidados' : 'No consta como totalmente pagado'}><Check className="h-3 w-3" /></span>
-    <span className={`${signalBaseClass} ${hasRecurrence ? 'border-violet-400/20 bg-violet-400/10 text-violet-300' : signalInactiveClass}`} title={hasRecurrence ? 'Tiene una suscripción mensual o anual' : 'Sin suscripción recurrente'}><RefreshCw className="h-3 w-3" /></span>
-    <span className={`${signalBaseClass} ${hasStripeLink ? 'border-[#635bff]/30 bg-[#635bff]/15' : signalInactiveClass}`} title={hasStripeLink ? 'Tiene enlace generado con Stripe' : 'Sin enlace de Stripe'}><img src="/stripe-mark.png" alt="" className={`h-3.5 w-3.5 rounded-[3px] ${hasStripeLink ? '' : 'grayscale opacity-20'}`} /></span>
+   <div className="flex flex-wrap gap-1.5" aria-label="Señales del cliente">
+    {hasCommercialOrigin && <span className={`${signalBaseClass} ${hasCommercialOrigin ? 'border-amber-400/20 bg-amber-400/10 text-amber-300' : signalInactiveClass}`} title={hasCommercialOrigin ? 'Procede de un comercial' : 'Sin comercial vinculado'}><BriefcaseBusiness className="h-3 w-3" />Comercial</span>}
+    {hasWebsite && <span className={`${signalBaseClass} ${hasWebsite ? 'border-blue-400/20 bg-blue-400/10 text-blue-300' : signalInactiveClass}`} title={hasWebsite ? 'Web realizada o vinculada' : 'Sin web vinculada'}><Globe className="h-3 w-3" />Web</span>}
+    {hasPendingBalance && <span className={`${signalBaseClass} ${hasPendingBalance ? 'border-amber-400/20 bg-amber-400/10 text-amber-300' : signalInactiveClass}`} title={hasPendingBalance ? 'Tiene saldo pendiente' : 'Sin saldo pendiente'}><Clock3 className="h-3 w-3" />Pendiente</span>}
+    {isFullyPaid && <span className={`${signalBaseClass} ${isFullyPaid ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : signalInactiveClass}`} title={isFullyPaid ? 'Todos los pagos están liquidados' : 'No consta como totalmente pagado'}><Check className="h-3 w-3" />Al día</span>}
+    {hasRecurrence && <span className={`${signalBaseClass} ${hasRecurrence ? 'border-violet-400/20 bg-violet-400/10 text-violet-300' : signalInactiveClass}`} title={hasRecurrence ? 'Tiene una suscripción mensual o anual' : 'Sin suscripción recurrente'}><RefreshCw className="h-3 w-3" />Recurrente</span>}
+    {hasStripeLink && <span className={`${signalBaseClass} ${hasStripeLink ? 'border-[#635bff]/30 bg-[#635bff]/15' : signalInactiveClass}`} title={hasStripeLink ? 'Tiene enlace generado con Stripe' : 'Sin enlace de Stripe'}><img src="/stripe-mark.png" alt="" className={`h-3.5 w-3.5 rounded-[3px] ${hasStripeLink ? '' : 'grayscale opacity-20'}`} />Stripe</span>}
    </div>
    <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition duration-150">
    <span className="text-[8px] uppercase tracking-widest font-bold">Mover</span>
@@ -3211,6 +3206,7 @@ React.useEffect(() => {
  return (
  <div className="flex-1 min-h-[calc(100vh-80px)] xl:h-[calc(100vh-80px)] overflow-y-auto xl:overflow-hidden p-4 sm:p-5 lg:p-6 xl:p-7 flex flex-col xl:flex-row gap-5 xl:gap-6 bg-[radial-gradient(circle_at_15%_0%,rgba(59,130,246,.07),transparent_30%),radial-gradient(circle_at_100%_20%,rgba(16,185,129,.05),transparent_28%)] text-slate-100">
   
+  {invoiceContactId && (()=>{const client=contacts.find(c=>c.id===invoiceContactId);return client?<ClientInvoicesModal key={client.id} contact={client} invoices={invoices.filter(inv=>invoiceBelongsToContact(inv,client))} transactions={transactions} onClose={()=>setInvoiceContactId(null)} onSave={onUpdateContact}/>:null;})()}
   {/* Contact List Column */}
   <section className="flex-1 flex flex-col gap-4 min-w-0">
   
@@ -3525,7 +3521,7 @@ React.useEffect(() => {
      <h3 className="max-w-full truncate text-lg font-black tracking-tight text-white" title={getContactBusinessName(selectedContact)}>{getContactBusinessName(selectedContact)}</h3>
      <p className="text-xs text-slate-400">{selectedContact.name} · {selectedContact.role || 'Contacto principal'}</p>
      
-     <ClientQuickLinks contact={selectedContact}/>
+     <ClientQuickLinks contact={selectedContact} onInvoices={()=>setInvoiceContactId(selectedContact.id)}/>
      {/* Copy Client ID Button */}
      <button 
      onClick={() => {
@@ -4201,7 +4197,8 @@ React.useEffect(() => {
      </div>
 
      <div className="mt-3 grid grid-cols-[1fr_92px] gap-2">
-      <input
+      <ChargeConceptPicker onSelect={value=>{setStripeConcept(value);setGeneratedCheckoutUrl('');}}/>
+    <input
        type="text"
        value={stripeConcept}
        onChange={(event) => {
@@ -4353,7 +4350,8 @@ React.useEffect(() => {
 
      <div>
       <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1">Concepto del cobro</label>
-      <input
+      <ChargeConceptPicker onSelect={value=>{setStripeConcept(value);setGeneratedCheckoutUrl('');}}/>
+    <input
        type="text"
        value={stripeConcept}
        onChange={(e) => {
@@ -4534,7 +4532,8 @@ React.useEffect(() => {
      <label className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mb-1 font-sans">
       Concepto del Cobro
      </label>
-     <input
+     <ChargeConceptPicker onSelect={value=>{setInstConcept(value);setInstGeneratedUrl('');}}/>
+    <input
       type="text"
       value={instConcept}
       onChange={(e) => {
@@ -6077,6 +6076,7 @@ React.useEffect(() => {
     {/* Payment Description */}
     <div className="space-y-1.5">
     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Concepto / Notas de Pago</label>
+    <ChargeConceptPicker onSelect={value=>{setPaymentDesc(value);}}/>
     <input
      type="text"
      required
@@ -6173,6 +6173,7 @@ React.useEffect(() => {
     {/* Servicio / Concepto */}
     <div className="space-y-1.5">
     <label className="text-[10px] font-mono text-slate-400 uppercase font-bold">Servicio / Concepto de Contrato</label>
+    <ChargeConceptPicker onSelect={value=>{setConvConcept(value);}}/>
     <input
      type="text"
      required

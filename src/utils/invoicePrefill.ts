@@ -37,7 +37,7 @@ export const resolveInvoiceClientData = (invoice: Invoice, contacts: ClientConta
 
  return {
   ...invoice,
-  clientName: contact.fiscalName || invoice.clientName || contact.name,
+  clientName: invoice.clientName || contact.fiscalName || contact.name,
   clientEmail: invoice.clientEmail || contact.email,
   clientTaxId: invoice.clientTaxId || contact.taxId,
   clientAddress: invoice.clientAddress || contact.fiscalAddress || contact.location,
