@@ -13,3 +13,21 @@
 .pay-icon-editor input {max-width:210px;font-size:11px}
 .pay-create fieldset {border:0;padding:0;display:grid;gap:16px}
 .pay-create label {display:grid;gap:7px}
+/* Company context and historical revenue */
+.pay-group-brand{flex-wrap:wrap;gap:12px!important;flex:1;min-width:0}
+.pay-company-place{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:500;color:var(--pay-muted,#8da5ac)}
+.pay-company-place img{width:23px;height:17px;object-fit:cover;border-radius:4px;box-shadow:0 0 0 1px #84979d30}
+.pay-lifetime{display:flex;flex-direction:column;gap:3px;padding:8px 14px;border-left:1px solid #84979d35;margin-left:4px}
+.pay-lifetime small{font-size:10px;letter-spacing:.06em;font-weight:500;text-transform:uppercase;opacity:.7}
+.pay-lifetime b{font-size:16px;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.pay-badges{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+.pay-badge{display:inline-flex;align-items:center;gap:7px;min-height:29px;padding:5px 9px;border-radius:8px;font-size:11px;line-height:1.2;font-weight:600;border:1px solid #84979d35;background:#84979d0c;color:inherit}
+.pay-badge img{width:17px;height:17px;border-radius:4px}
+.pay-badge i{width:1px;height:13px;background:currentColor;opacity:.2;margin:0 2px}
+.pay-badge.recurrence{color:#32b9ab;background:#14b8a60d;border-color:#14b8a62b}
+.pay-badge-hint{font-size:10px;font-weight:400;opacity:.75}
+.pay-badge.stripe{color:#9e8aff;background:#8b5cf60a;border-color:#8b5cf62b}
+.pay-badge.discount{color:#20a980;border-color:#20a98035}
+[data-theme="light"] .pay-badge.recurrence,.light .pay-badge.recurrence{color:#087c70}
+[data-theme="light"] .pay-badge.stripe,.light .pay-badge.stripe{color:#6246c8}
+@media(max-width:640px){.pay-group-brand{gap:9px!important}.pay-group-brand>strong{font-size:16px}.pay-company-place{flex-basis:100%}.pay-lifetime{margin:0;border:0;padding:5px 0;flex-basis:100%}.pay-badge-hint{display:none}}

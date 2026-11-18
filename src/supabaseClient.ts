@@ -949,6 +949,8 @@ const dbImplementation = {
  let fiscalName: string | undefined = undefined;
  let taxId: string | undefined = undefined;
  let fiscalAddress: string | undefined = undefined;
+ let businessCity: string | undefined;
+ let countryCode: string | undefined;
  let currency: ClientContact['currency'] = undefined;
  let language: ClientContact['language'] = undefined;
  let taxPercentage: number | undefined = undefined;
@@ -1074,6 +1076,8 @@ const dbImplementation = {
    if (key === 'devChecklist') devChecklist = decodeURIComponent(val) || undefined;
    if (key === 'devNotes') devNotes = decodeURIComponent(val) || undefined;
    if (key === 'devWebsiteConfig') devWebsiteConfig = decodeURIComponent(val) || undefined;
+   if (key === 'businessCity') businessCity = decodeURIComponent(val);
+   if (key === 'countryCode') countryCode = /^[A-Z]{2}$/.test(val)?val:undefined;
    if (key === 'customWebsiteUrl') customWebsiteUrl = decodeURIComponent(val) || undefined;
    if (key === 'websiteType') websiteType = decodeURIComponent(val) || undefined;
    if (key === 'websiteCredentials') websiteCredentials = decodeURIComponent(val) || undefined;
@@ -1094,6 +1098,8 @@ const dbImplementation = {
    if (key === 'devChecklist') devChecklist = val || undefined;
    if (key === 'devNotes') devNotes = val || undefined;
    if (key === 'devWebsiteConfig') devWebsiteConfig = val || undefined;
+   if (key === 'businessCity') businessCity = val || undefined;
+   if (key === 'countryCode') countryCode = /^[A-Z]{2}$/.test(val)?val:undefined;
    if (key === 'customWebsiteUrl') customWebsiteUrl = val || undefined;
    if (key === 'websiteType') websiteType = val || undefined;
    if (key === 'websiteCredentials') websiteCredentials = val || undefined;
@@ -1109,6 +1115,8 @@ const dbImplementation = {
  
  return {
   ...contact,
+  businessCity,
+  countryCode,
   color,
   assignedUserId,
   assignedUserEmail,
@@ -1205,6 +1213,7 @@ const dbImplementation = {
   contact.devNotes ||
   contact.devWebsiteConfig ||
   contact.demoWebsiteId ||
+  contact.businessCity || contact.countryCode ||
   contact.customWebsiteUrl ||
   contact.websiteType ||
   contact.websiteCredentials ||
@@ -1258,6 +1267,8 @@ const dbImplementation = {
   if (contact.devNotes) metadataStr += `\ndevNotes: ${encodeURIComponent(contact.devNotes)}`;
   if (contact.devWebsiteConfig) metadataStr += `\ndevWebsiteConfig: ${encodeURIComponent(contact.devWebsiteConfig)}`;
   if (contact.demoWebsiteId) metadataStr += `\ndemoWebsiteId: ${contact.demoWebsiteId}`;
+  if (contact.businessCity) metadataStr += `\nbusinessCity: ${encodeURIComponent(contact.businessCity)}`;
+  if (contact.countryCode) metadataStr += `\ncountryCode: ${contact.countryCode}`;
   if (contact.customWebsiteUrl) metadataStr += `\ncustomWebsiteUrl: ${encodeURIComponent(contact.customWebsiteUrl)}`;
   if (contact.websiteType) metadataStr += `\nwebsiteType: ${encodeURIComponent(contact.websiteType)}`;
   if (contact.websiteCredentials) metadataStr += `\nwebsiteCredentials: ${encodeURIComponent(contact.websiteCredentials)}`;

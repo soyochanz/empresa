@@ -44,6 +44,8 @@ export interface ClientContact {
  priority?: boolean;
  avatarUrl?: string;
  location?: string;
+ businessCity?: string;
+ countryCode?: string;
  fiscalName?: string;
  taxId?: string;
  fiscalAddress?: string;

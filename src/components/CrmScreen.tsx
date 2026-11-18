@@ -1,3 +1,4 @@
+import {businessCountries,countryName} from '../utils/businessCountry';
 import {SERVICE_CATALOG, type ServiceProduct} from '../utils/serviceCatalog';
 import ClientStripeActivity from './ClientStripeActivity';
 import { repriceInvoiceTax, splitInstallmentAmounts } from '../utils/invoiceTotals';
@@ -2963,7 +2964,9 @@ React.useEffect(() => {
  const [newCompany, setNewCompany] = useState('');
  const [newStatus, setNewStatus] = useState<'Client' | 'Lead'>('Lead');
  const [newRole, setNewRole] = useState('');
- const [newLocation, setNewLocation] = useState('San Francisco, CA');
+ const [newLocation, setNewLocation] = useState('');
+ const [newBusinessCity,setNewBusinessCity]=useState('');
+ const [newCountryCode,setNewCountryCode]=useState('');
  const [newFiscalName, setNewFiscalName] = useState('');
  const [newTaxId, setNewTaxId] = useState('');
  const [newFiscalAddress, setNewFiscalAddress] = useState('');
@@ -2986,7 +2989,7 @@ React.useEffect(() => {
  setNewCompany('');
  setNewStatus('Lead');
  setNewRole('');
- setNewLocation('San Francisco, CA');
+ setNewLocation(''); setNewBusinessCity(''); setNewCountryCode('');
  setNewFiscalName('');
  setNewTaxId('');
  setNewFiscalAddress('');
@@ -3077,6 +3080,8 @@ React.useEffect(() => {
   status: newStatus,
   role: newRole || 'Product Manager',
   location: newLocation,
+  businessCity: newBusinessCity.trim()||undefined,
+  countryCode: newCountryCode||undefined,
   fiscalName: newFiscalName || undefined,
   taxId: newTaxId || undefined,
   fiscalAddress: newFiscalAddress || newLocation || undefined,
@@ -3137,6 +3142,8 @@ React.useEffect(() => {
   lastContacted: 'Just now',
   role: newRole || 'Product Manager',
   location: newLocation,
+  businessCity: newBusinessCity.trim()||undefined,
+  countryCode: newCountryCode||undefined,
   fiscalName: newFiscalName || undefined,
   taxId: newTaxId || undefined,
   fiscalAddress: newFiscalAddress || newLocation || undefined,
@@ -3462,7 +3469,7 @@ React.useEffect(() => {
      setNewCompany(selectedContact.company || '');
      setNewStatus(selectedContact.status || 'Lead');
      setNewRole(selectedContact.role || '');
-     setNewLocation(selectedContact.location || 'San Francisco, CA');
+     setNewLocation(selectedContact.location || ''); setNewBusinessCity(selectedContact.businessCity||''); setNewCountryCode(selectedContact.countryCode||'');
      setNewFiscalName(selectedContact.fiscalName || '');
      setNewTaxId(selectedContact.taxId || '');
      setNewFiscalAddress(selectedContact.fiscalAddress || selectedContact.location || '');
@@ -4661,7 +4668,7 @@ React.useEffect(() => {
     <div className="bg-slate-950/40 p-4 rounded-xl space-y-3 border border-white/5">
      <div className="flex items-center gap-3">
      <MapPin className="text-slate-500 w-4 h-4 flex-shrink-0" />
-     <span className="text-xs text-slate-300">{selectedContact.location || 'Not Specified'}</span>
+     <span className="text-xs text-slate-300">{[selectedContact.businessCity,countryName(selectedContact.countryCode)].filter(Boolean).join(', ') || selectedContact.location || 'Sin especificar'}</span>
      </div>
      {(selectedContact.fiscalName || selectedContact.taxId || selectedContact.fiscalAddress || selectedContact.currency || selectedContact.language || selectedContact.taxPercentage !== undefined) && (
      <div className="rounded-lg border border-emerald-500/10 bg-emerald-500/[0.03] p-2.5 text-[10px] text-slate-300">
@@ -5451,6 +5458,8 @@ React.useEffect(() => {
      className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
      />
     </div>
+    <div className="space-y-1"><label className="text-xs text-slate-400" htmlFor="business-city">Ciudad de la empresa</label><input id="business-city" value={newBusinessCity} onChange={e=>setNewBusinessCity(e.target.value)} placeholder="Ej. Ibiza" className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100"/></div>
+    <div className="space-y-1"><label className="text-xs text-slate-400" htmlFor="business-country">País de la empresa</label><select id="business-country" value={newCountryCode} onChange={e=>setNewCountryCode(e.target.value)} className="w-full bg-[#060e20] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-100"><option value="">Sin especificar</option>{businessCountries.map(c=><option key={c.code} value={c.code}>{c.name}</option>)}</select></div>
     </div>
 
     <div className="grid grid-cols-1 gap-4 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.03] p-3 sm:grid-cols-2">

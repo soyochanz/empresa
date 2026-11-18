@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const tests = [
+ 'test-customer-revenue.ts',
  'test-cobros-pagos.ts', 'test-payment-master.ts', 'test-payment-activity.ts', 'test-payment-schedule.ts',
  'test-invoice-totals.ts', 'test-invoice-attachment.ts', 'test-finance-recurrence.ts',
  'test-pending-finance.ts', 'test-stripe-forecast.ts', 'test-installment-commission.ts',
