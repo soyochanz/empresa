@@ -58,7 +58,7 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
   concept: 'Description', quantity: 'Qty.', unitPrice: 'Unit price', total: 'Total',
   subtotal: 'Subtotal', tax: 'Tax', invoiceTotal: 'Invoice total',
   thanks: 'Thank you for your trust and collaboration!',
-  terms: 'This invoice is governed by the agreed terms. If you have any questions, please contact contacto@altherasolutions.com',
+  terms: 'This invoice is governed by the agreed terms. If you have any questions, please contact the issuer.',
   notProvided: 'Not provided'
  } : {
   invoice: 'FACTURA', issued: 'Emisión', due: 'Vence', paid: 'PAGADA', pending: 'PENDIENTE',
@@ -66,7 +66,7 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
   concept: 'Concepto / Descripción', quantity: 'Cant.', unitPrice: 'Precio unit.', total: 'Total',
   subtotal: 'Subtotal', tax: 'IVA', invoiceTotal: 'Total factura',
   thanks: '¡Gracias por tu confianza y colaboración!',
-  terms: 'Esta factura se rige bajo los términos acordados. Ante cualquier duda, ponte en contacto con contacto@altherasolutions.com',
+  terms: 'Esta factura se rige bajo los términos acordados. Ante cualquier duda, ponte en contacto con el emisor.',
   notProvided: 'No indicado'
  };
  const issuer = {
@@ -114,7 +114,7 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
    </div>
   </header>
   <section class="parties">
-   <div class="box"><div class="box-title">${t.issuer}</div><div class="box-name">${escapeHtml(issuer.name)}</div><div class="box-detail">${t.taxId}: ${escapeHtml(issuer.taxId)}<br>${escapeHtml(issuer.address)}<br>${escapeHtml(issuer.email)}</div></div>
+   <div class="box"><div class="box-title">${t.issuer}</div><div class="box-name">${escapeHtml(issuer.name)}</div><div class="box-detail">${issuer.taxId.startsWith('Licencia') ? '' : t.taxId + ': '}${escapeHtml(issuer.taxId)}<br>${escapeHtml(issuer.address)}<br>${escapeHtml(issuer.email)}</div></div>
    <div class="box"><div class="box-title">${t.client}</div><div class="box-name">${escapeHtml(invoice.clientName)}</div><div class="box-detail">Email: ${escapeHtml(invoice.clientEmail)}<br>${t.taxId}: ${escapeHtml(invoice.clientTaxId || t.notProvided)}<br>${t.fiscalAddress}: ${escapeHtml(invoice.clientAddress || t.notProvided)}</div></div>
   </section>
   <table class="items"><thead><tr><th>${t.concept}</th><th class="qty">${t.quantity}</th><th class="num">${t.unitPrice}</th><th class="num">${t.total}</th></tr></thead><tbody>

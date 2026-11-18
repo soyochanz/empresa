@@ -1,3 +1,4 @@
+import { generateReceiptInvoice } from '../utils/receiptInvoice';
 import React, { useRef, useState } from 'react';
 import type { FinanceTransaction } from '../types';
 import { isStripeManagedTransaction } from '../utils/pendingFinance';
@@ -40,6 +41,7 @@ export default function MarkScheduledPaymentPaid({ payment, onSaved, onClose }: 
     ? { ...source, stripePlanId: undefined } : source;
    if (isStripeManagedTransaction(manualSource)) throw new Error('Este cobro está vinculado a Stripe y debe confirmarse desde Stripe.');
    const paymentDetails = { paymentMethod: method, paymentAccount: method === 'cash' ? undefined : account };
+   let receiptId = source.id;
    if (source.isRecurring) {
     const contacts = await db.getContacts();
     const scheduled = buildPaymentSchedule(transactions, [], contacts, new Date(), source.type).find(row => row.transactionId === source.id && row.date === payment.date);
@@ -47,8 +49,12 @@ export default function MarkScheduledPaymentPaid({ payment, onSaved, onClose }: 
     const existing = findRecurringOccurrence(source, payment.date, transactions);
     const receipt = buildManualRecurringTransaction({ ...manualSource, ...paymentDetails }, new Date(payment.date + 'T12:00:00'), paidAt);
     await db.registerManualFinanceRecurrence(receipt, existing);
+    receiptId = existing?.id || receipt.id;
    } else {
     await db.registerPendingFinanceTransaction({ ...source, ...paymentDetails, status: 'paid', paidAt: paidAt.toISOString() }, source);
+   }
+   if (source.type === 'income' && source.clientId) {
+    try { await generateReceiptInvoice(receiptId); } catch { window.alert('Cobro registrado. La factura está pendiente de generar; puedes reintentarlo desde Facturas en el CRM.'); }
    }
    onSaved();
    onClose();

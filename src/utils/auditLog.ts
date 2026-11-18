@@ -38,7 +38,7 @@ export type AuditLogFilters = {
  search?: string;
  actorType?: AuditActorType | 'all';
  actorEmail?: string;
- source?: AuditSource | 'all';
+ source?: AuditSource | 'all' | 'important';
 };
 
 let context: AuditContext = {
@@ -203,7 +203,8 @@ const localPage = (filters: AuditLogFilters) => {
  const filtered = readPending().filter(log => {
   if (filters.actorType && filters.actorType !== 'all' && log.actorType !== filters.actorType) return false;
   if (filters.actorEmail && log.actorEmail !== filters.actorEmail) return false;
-  if (filters.source && filters.source !== 'all' && log.source !== filters.source) return false;
+  if (filters.source === 'important' && !['auth', 'data', 'system'].includes(log.source)) return false;
+  if (filters.source && !['all', 'important'].includes(filters.source) && log.source !== filters.source) return false;
   if (search && !`${log.action} ${log.description} ${log.actorName} ${log.actorEmail || ''} ${log.screen || ''}`.toLowerCase().includes(search)) return false;
   return true;
  }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -216,7 +217,8 @@ export const getAuditLogs = async (filters: AuditLogFilters): Promise<{ logs: Au
  if (filters.search?.trim()) query = query.textSearch('search_document', filters.search.trim(), { type: 'websearch', config: 'simple' });
  if (filters.actorType && filters.actorType !== 'all') query = query.eq('actor_type', filters.actorType);
  if (filters.actorEmail) query = query.eq('actor_email', filters.actorEmail);
- if (filters.source && filters.source !== 'all') query = query.eq('source', filters.source);
+ if (filters.source === 'important') query = query.in('source', ['auth', 'data', 'system']);
+ else if (filters.source && filters.source !== 'all') query = query.eq('source', filters.source);
  const from = (filters.page - 1) * filters.pageSize;
  const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, from + filters.pageSize - 1);
  if (error) {

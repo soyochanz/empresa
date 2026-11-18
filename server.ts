@@ -1,3 +1,5 @@
+import { registerManualReceiptInvoices } from './api/manualReceiptInvoices';
+import { DEFAULT_INVOICE_ISSUER } from './src/utils/invoiceIssuer';
 import {registerFinanceIcons} from './api/financeIcons';
 import { registerForecastExclusions } from './api/forecastExclusions';
 import { buildInstaremoveReceipt, isInstaremoveSubscription } from './api/instaremoveLedger';
@@ -393,11 +395,11 @@ async function ensureInternalInvoiceForPaidStripeRecurrence(
     "Factura generada automáticamente tras la confirmación del cobro recurrente por Stripe.",
     clientTaxId ? `[CLIENT_TAX_ID:${encodeURIComponent(clientTaxId)}]` : "",
     clientAddress ? `[CLIENT_ADDRESS:${encodeURIComponent(clientAddress)}]` : "",
-    `[ISSUER_NAME:${encodeURIComponent("Carlos Ronco Meneses")}]`,
-    `[ISSUER_TAX_ID:${encodeURIComponent("09104663K")}]`,
-    `[ISSUER_ADDRESS:${encodeURIComponent("Carrer dels Tamarells 1, 07800 - Ibiza, España")}]`,
+    `[ISSUER_NAME:${encodeURIComponent(DEFAULT_INVOICE_ISSUER.name)}]`,
+    `[ISSUER_TAX_ID:${encodeURIComponent(DEFAULT_INVOICE_ISSUER.taxId)}]`,
+    `[ISSUER_ADDRESS:${encodeURIComponent(DEFAULT_INVOICE_ISSUER.address)}]`,
     `[ISSUER_BRAND:${encodeURIComponent("Althera Solutions")}]`,
-    `[ISSUER_EMAIL:${encodeURIComponent("contacto@altherasolutions.com")}]`,
+    `[ISSUER_EMAIL:${encodeURIComponent(DEFAULT_INVOICE_ISSUER.email)}]`,
     `[INVOICE_CURRENCY:${supportedCurrency}]`,
     `[INVOICE_LANGUAGE:${getContactMetadataValue(contact?.hostingCredentials, "language") || "es"}]`,
   ].filter(Boolean).join("\n");
@@ -1147,6 +1149,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 app.use(express.json());
 registerForecastExclusions(app, supabaseAdmin, requireAdminAuth);
 registerFinanceIcons(app, supabaseAdmin, requireAdminAuth);
+registerManualReceiptInvoices(app, supabaseAdmin, requireAdminAuth);
 registerCalendarPush(app, supabaseAdmin, requireAdminAuth, (id,email)=>authorizedAdminIds.has(id)||authorizedAdminEmails.has(normalizeAdminEmail(email)));
 
 // Country-only language selection: no external geolocation service or precise location.

@@ -32,12 +32,10 @@ const groups: { label: string; items: NavItem[] }[] = [
   { screen: 'bites', label: 'Bites', icon: Utensils, hint: 'SaaS' },
   { screen: 'developer_hub', label: 'Dev Section', icon: Code2, hint: 'Demos' },
   { screen: 'projects', label: 'Proyectos', icon: FolderKanban },
-  { screen: 'activity_log', label: 'Registro de actividad', icon: ScrollText, hint: 'Todo' }
+  { screen: 'activity_log', label: 'Registro de actividad', icon: ScrollText, hint: 'Actividad' }
  ]},
  { label: 'Operaciones', items: [
-  { screen: 'citas', label: 'Control de citas', icon: CalendarDays },
   { screen: 'calendar', label: 'Calendario', icon: CalendarDays },
-  { screen: 'contratos', label: 'Contratos y facturas', icon: FileText },
   { screen: 'finanzas', label: 'Finanzas', icon: Receipt },
   { screen: 'contactos', label: 'Contactos web', icon: Mail },
   { screen: 'notes', label: 'Notas internas', icon: NotebookPen }

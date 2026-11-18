@@ -1,3 +1,4 @@
+import './salesWorkspace.css';
 import { authenticatedFetch } from '../utils/authenticatedFetch';
 import React, { useEffect, useState } from 'react';
 import { 
@@ -2184,7 +2185,7 @@ const nachoAdmin = findAdminByName('nacho');
  };
 
  return (
- <div className={`${isAdmin ? 'h-full overflow-y-auto' : 'h-auto overflow-visible'} relative space-y-4 p-3 text-left font-sans sm:space-y-6 sm:p-6 md:p-8`}>
+ <div className={`${isAdmin ? 'h-full overflow-y-auto' : 'h-auto overflow-visible'} sales-workspace relative space-y-4 p-3 text-left font-sans sm:space-y-6 sm:p-6 md:p-8`}>
   
   {/* Decorative localized glows */}
   <div className="absolute top-[5%] right-[10%] w-[40%] h-[40%] rounded-full bg-violet-600/10 blur-[130px] pointer-events-none" />
@@ -2194,19 +2195,11 @@ const nachoAdmin = findAdminByName('nacho');
   {isAdmin && (
   <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-white/5 pb-4 relative z-10">
   <div>
-   <div className="flex items-center gap-2 mb-1.5">
-   <span className="text-[10px] bg-violet-500/15 text-violet-400 font-mono font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full border border-violet-500/25">
-    Módulo de Ventas
-   </span>
-   <span className="text-[10px] bg-slate-800 text-slate-400 font-mono px-2 py-0.5 rounded-full">
-    {isAdmin ? 'Modo: Administrador 👑' : 'Modo: Comercial 📞'}
-   </span>
-   </div>
    <h2 className="text-2xl font-bold tracking-tight text-white uppercase font-display flex items-center gap-2">
-   Seguimiento y Métricas Cold Calling
+   <Phone className="sales-heading-icon" /> Cold Calling
    </h2>
    <p className="text-xs text-slate-400 mt-1 max-w-xl">
-   Gestiona la lista de futuros clientes, completa las métricas de contacto cara al dueño y programa rellamadas calendadas del día.
+   Contactos, llamadas y próximos pasos.
    </p>
   </div>
   

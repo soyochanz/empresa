@@ -37,7 +37,7 @@ export default function ActivityLogScreen() {
  const [search, setSearch] = useState('');
  const [actorType, setActorType] = useState<AuditActorType | 'all'>('all');
  const [actorEmail, setActorEmail] = useState('');
- const [source, setSource] = useState<AuditSource | 'all'>('all');
+ const [source, setSource] = useState<AuditSource | 'all' | 'important'>('important');
  const [loading, setLoading] = useState(true);
  const [refreshing, setRefreshing] = useState(false);
  const [localOnly, setLocalOnly] = useState(false);
@@ -87,14 +87,14 @@ export default function ActivityLogScreen() {
  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
  return (
-  <div className="space-y-5" data-audit-ignore>
+  <div className="h-full min-h-0 overflow-y-auto overscroll-contain space-y-5 pb-8" data-audit-ignore>
    <section className="relative overflow-hidden rounded-3xl border border-cyan-400/15 bg-[#070b10]/90 p-5 shadow-2xl shadow-black/25 sm:p-7">
     <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/[0.08] blur-[90px]" />
     <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
      <div>
       <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-cyan-300"><Activity className="h-4 w-4" />Producto y tecnología</div>
-      <h2 className="mt-3 text-2xl font-black text-white sm:text-3xl">Registro total de Althera</h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Trazabilidad de navegación, acciones, sesiones, datos y eventos automáticos, sin guardar contraseñas ni contenido de formularios.</p>
+      <h2 className="mt-3 text-2xl font-black text-white sm:text-3xl">Actividad importante</h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">Cambios de datos, accesos y avisos del sistema.</p>
      </div>
      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       <div className="rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3"><p className="text-[9px] uppercase tracking-wider text-slate-500">Coincidencias</p><p className="mt-1 text-xl font-black text-white">{total.toLocaleString('es-ES')}</p></div>
@@ -126,8 +126,8 @@ export default function ActivityLogScreen() {
      </label>
      <label>
       <span className="sr-only">Filtrar por origen</span>
-      <select value={source} onChange={event => { setSource(event.target.value as AuditSource | 'all'); setPage(1); }} className="h-11 w-full rounded-xl border border-white/[0.09] bg-[#090c11] px-3 text-xs text-slate-300 outline-none focus:border-cyan-400/40">
-       <option value="all">Todos los orígenes</option>{Object.entries(sourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      <select value={source} onChange={event => { setSource(event.target.value as AuditSource | 'all' | 'important'); setPage(1); }} className="h-11 w-full rounded-xl border border-white/[0.09] bg-[#090c11] px-3 text-xs text-slate-300 outline-none focus:border-cyan-400/40">
+       <option value="important">Solo acciones importantes</option><option value="all">Todos los orígenes</option>{Object.entries(sourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
      </label>
      <button onClick={() => void loadLogs(true)} disabled={refreshing} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.07] px-4 text-xs font-black text-cyan-300 transition hover:bg-cyan-400/[0.12] disabled:opacity-50" aria-label="Actualizar registro"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Actualizar</button>

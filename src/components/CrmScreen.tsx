@@ -1,3 +1,4 @@
+import { DEFAULT_INVOICE_ISSUER } from '../utils/invoiceIssuer';
 import ClientInvoicesModal from './ClientInvoicesModal';
 import ChargeConceptPicker from './ChargeConceptPicker';
 import ClientQuickLinks,{clientLink} from './ClientQuickLinks';
@@ -152,13 +153,7 @@ const formatCrmRecurrenceDate = (date?: string): string => {
  return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString('es-ES');
 };
 
-const DEFAULT_INVOICE_ISSUER = {
- name: 'Carlos Ronco Meneses',
- taxId: '09104663K',
- address: 'Carrer dels Tamarells 1, 07800 - Ibiza, España',
- brand: 'Althera Solutions',
- email: 'contacto@altherasolutions.com'
-};
+
 
 export const AESTHETIC_COLORS = [
  { val: 'indigo', label: 'Indigo', hex: '#6366f1', activeStyle: 'bg-indigo-500/25 border-indigo-500 text-indigo-300 shadow-[0_0_12px_rgba(99,102,241,0.15)]', badgeStyle: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
@@ -2362,7 +2357,7 @@ React.useEffect(() => {
    <h1 class="company-title">${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}</h1>
    <div class="company-sub">
    ${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}<br>
-   NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
+   ${(inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId).startsWith('Licencia') ? '' : 'NIF/DNI: '}${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
    ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br>
    ${inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
    </div>
@@ -2387,7 +2382,7 @@ React.useEffect(() => {
    <div class="box-title">EMISOR</div>
    <div class="box-name">${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}</div>
    <div class="box-detail">
-   NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
+   ${(inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId).startsWith('Licencia') ? '' : 'NIF/DNI: '}${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
    ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br>
    ${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}<br>
    ${inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email}

@@ -1,3 +1,4 @@
+import { DEFAULT_INVOICE_ISSUER } from '../utils/invoiceIssuer';
 import CompanyPayments from './CompanyPayments';
 import {paymentsForMonth} from '../utils/paymentSchedule';
 import {indexStripePayments,stripeMethodLabel,type StripePaymentDetail} from '../utils/stripePaymentDetails';
@@ -488,13 +489,7 @@ const getRecurringIncomeOccurrences = (transaction: FinanceTransaction, monthKey
 
 const INITIAL_INVOICES: Invoice[] = [];
 
-const DEFAULT_INVOICE_ISSUER = {
- name: 'Carlos Ronco Meneses',
- taxId: '09104663K',
- address: 'Carrer dels Tamarells 1, 07800 - Ibiza, España',
- brand: 'Althera Solutions',
- email: 'contacto@altherasolutions.com'
-};
+
 
 const isConfirmedStripePayment = (transaction: FinanceTransaction) => {
  const transactionId = String(transaction.id || '').toLowerCase();
@@ -3193,7 +3188,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    <h1 class="company-title">${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}</h1>
    <div class="company-sub">
    ${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}<br>
-   NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
+   ${(inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId).startsWith('Licencia') ? '' : 'NIF/DNI: '}${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
    ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}
    <br>${inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
    </div>
@@ -3215,7 +3210,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    <div class="box-title">Emisor (Proveedor)</div>
    <div class="box-name">${inv.issuerName || DEFAULT_INVOICE_ISSUER.name}</div>
    <div class="box-detail">
-   NIF/DNI: ${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
+   ${(inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId).startsWith('Licencia') ? '' : 'NIF/DNI: '}${inv.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br>
    ${inv.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br>
    ${inv.issuerBrand || DEFAULT_INVOICE_ISSUER.brand}<br>
    ${inv.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
@@ -6609,7 +6604,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
        <div className="border-l-2 border-[#D4AF37]/50 pl-2 text-left">
         <p className="text-[11px] font-bold text-slate-900">{previewInvoice.issuerName || DEFAULT_INVOICE_ISSUER.name}</p>
         <p className="mt-0.5 text-[10px] leading-normal text-slate-500">
-         CIF/NIF/DNI: {previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
+         {(previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId).startsWith('Licencia') ? '' : 'CIF/NIF/DNI: '}{previewInvoice.issuerTaxId || DEFAULT_INVOICE_ISSUER.taxId}<br />
          {previewInvoice.issuerAddress || DEFAULT_INVOICE_ISSUER.address}<br />
          {previewInvoice.issuerEmail || DEFAULT_INVOICE_ISSUER.email}
         </p>

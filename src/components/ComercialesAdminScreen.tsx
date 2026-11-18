@@ -1,3 +1,4 @@
+import './salesWorkspace.css';
 import { authenticatedFetch } from '../utils/authenticatedFetch';
 import ManualCommissionForm from './ManualCommissionForm';
 import CommercialCommissionBreakdown from './CommercialCommissionBreakdown';
@@ -817,7 +818,7 @@ export default function ComercialesAdminScreen({
  };
 
  return (
- <div className="relative h-full min-h-0 flex-1 space-y-8 overflow-y-auto bg-transparent p-4 text-slate-100 sm:p-6 lg:p-8">
+ <div className="sales-workspace relative h-full min-h-0 flex-1 space-y-8 overflow-y-auto bg-transparent p-4 text-slate-100 sm:p-6 lg:p-8">
   
   {/* Glow ambient background elements */}
   <div className="absolute top-0 right-1/4 w-[35%] h-[35%] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
@@ -827,11 +828,11 @@ export default function ComercialesAdminScreen({
   <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-white/5 pb-5 gap-4">
   <div>
    <h2 className="text-2xl font-bold tracking-tight text-white font-sans uppercase flex items-center gap-2.5">
-   <Layers className="text-amber-500 w-6 h-6" />
-   <span>Métricas & Rendimiento Comercial</span>
+   <Layers className="sales-heading-icon" />
+   <span>Equipo comercial</span>
    </h2>
    <p className="text-slate-400 text-xs mt-1.5 leading-relaxed font-light">
-   Supervisa el embudo de ventas global, analiza el rendimiento individual de tus vendedores y gestiona los accesos del equipo.
+   Tu equipo y sus resultados.
    </p>
    <div className="flex gap-2 items-center mt-2.5">
    <button
@@ -840,7 +841,7 @@ export default function ComercialesAdminScreen({
     className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-[10px] font-mono uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-500/10"
    >
     <FileText className="w-3.5 h-3.5" />
-    Ver Dossier Onboarding (PDF)
+    Guía del equipo
    </button>
    <button
     id="admin-view-landing-page"
@@ -848,7 +849,7 @@ export default function ComercialesAdminScreen({
     className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-[10px] font-mono uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-violet-500/15"
    >
     <Globe className="w-3.5 h-3.5" />
-    Ver Landing Page
+    Ver web
    </button>
    </div>
   </div>
