@@ -28,6 +28,6 @@
 .pay-badge-hint{font-size:10px;font-weight:400;opacity:.75}
 .pay-badge.stripe{color:#9e8aff;background:#8b5cf60a;border-color:#8b5cf62b}
 .pay-badge.discount{color:#20a980;border-color:#20a98035}
-[data-theme="light"] .pay-badge.recurrence,.light .pay-badge.recurrence{color:#087c70}
-[data-theme="light"] .pay-badge.stripe,.light .pay-badge.stripe{color:#6246c8}
+.admin-theme-light .pay-badge.recurrence,[data-theme="light"] .pay-badge.recurrence,.light .pay-badge.recurrence{color:#087c70}
+.admin-theme-light .pay-badge.stripe,[data-theme="light"] .pay-badge.stripe,.light .pay-badge.stripe{color:#6246c8}
 @media(max-width:640px){.pay-group-brand{gap:9px!important}.pay-group-brand>strong{font-size:16px}.pay-company-place{flex-basis:100%}.pay-lifetime{margin:0;border:0;padding:5px 0;flex-basis:100%}.pay-badge-hint{display:none}}
