@@ -42,20 +42,16 @@ const groups: { label: string; items: NavItem[] }[] = [
  ]}
 ];
 
-const quickAccess: NavItem[] = [
- { screen: 'comerciales_admin', label: 'Comerciales', icon: BriefcaseBusiness },
- { screen: 'cold_calling', label: 'Calling', icon: PhoneCall },
- { screen: 'developer_hub', label: 'Dev', icon: Code2 }
-];
-
 const tools = [
- { name: 'InstaFeed', description: 'Widgets de Instagram', href: 'https://instafeed-widget.contact635344.chatgpt.site/', icon: Instagram, gradient: 'from-violet-500 via-fuchsia-500 to-orange-400' },
- { name: 'SEO Orbita', description: 'Optimización SEO', href: 'https://seo-orbita-lab.contact635344.chatgpt.site/', icon: Orbit, gradient: 'from-violet-600 to-indigo-400' },
- { name: 'Meta Ads', description: 'Campañas en Meta', href: 'https://adsmanager.facebook.com/', icon: Infinity, gradient: 'from-blue-600 to-sky-400' },
- { name: 'Google Ads', description: 'Campañas en Google', href: 'https://ads.google.com/home/', icon: Target, gradient: 'from-blue-500 to-emerald-400' },
- { name: 'Search Console', description: 'Rendimiento en buscadores', href: 'https://search.google.com/search-console/', icon: Search, gradient: 'from-emerald-600 to-teal-400' },
- { name: 'Analytics', description: 'Tráfico y conversiones', href: 'https://analytics.google.com/', icon: BarChart3, gradient: 'from-orange-500 to-amber-400' },
- { name: 'Make', description: 'Automatizaciones e integraciones', href: 'https://www.make.com/en/login', icon: Workflow, gradient: 'from-violet-600 to-fuchsia-500' }
+ {name:'InstaRemoveAI',href:'https://instaremoveai.com/',logo:'/instaremove-logo-transparent.png'},
+ {name:'Bites',screen:'bites' as Screen,logo:'/bites-logo.png'},
+ {name:'Growth',screen:'marketing' as Screen,logo:'/althera-logo-transparent.png'},
+ {name:'Meta Ads',href:'https://adsmanager.facebook.com/',logo:'/tools/meta.svg'},
+ {name:'Google Ads',href:'https://ads.google.com/home/',logo:'/tools/googleads.svg'},
+ {name:'Search Console',href:'https://search.google.com/search-console/',logo:'/tools/googlesearchconsole.svg'},
+ {name:'Analytics',href:'https://analytics.google.com/',logo:'/tools/googleanalytics.svg'},
+ {name:'Make',href:'https://www.make.com/en/login',logo:'/tools/make.svg'},
+ {name:'Render',href:'https://dashboard.render.com/',logo:'/tools/render.svg'},
 ];
 
 export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogout, onOpenNotifications, unreadCount = 0, mobileOpen = false, onMobileClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
@@ -76,11 +72,6 @@ export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogo
    <button type="button" onClick={onToggleCollapsed} className="sidebar-collapse-toggle absolute -right-3 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[#101217] text-slate-400 shadow-lg transition hover:border-[#d6b96f]/35 hover:text-[#e5cb8b] lg:flex" aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'} title={collapsed ? 'Expandir menú' : 'Colapsar menú'}>{collapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}</button>
   </div>
 
-  <div className={`relative px-4 pb-3 pt-4 ${collapsed ? 'lg:hidden' : ''}`}>
-   <p className="mb-2 px-1 text-[8px] font-semibold uppercase tracking-[.24em] text-white/25">Accesos rápidos</p>
-   <div className="grid grid-cols-3 gap-2">{quickAccess.map(item => { const Icon = item.icon; const active = currentScreen === item.screen; return <button key={item.screen} onClick={() => navigate(item.screen)} className={`group flex min-w-0 flex-col items-center gap-2 rounded-2xl border px-2 py-3 transition ${active ? 'border-[#d6b96f]/35 bg-[#d6b96f]/[0.11] text-[#f1d995]' : 'border-white/[0.065] bg-white/[0.025] text-slate-400 hover:border-white/15 hover:bg-white/[0.05] hover:text-white'}`}><Icon className="h-4 w-4" /><span className="truncate text-[9px] font-medium">{item.label}</span></button>; })}</div>
-  </div>
-
   <nav className={`relative min-h-0 flex-1 overflow-y-auto px-3 pb-5 pt-1 ${collapsed ? 'lg:px-2' : ''}`}>{groups.map(group => <div key={group.label} className={`${collapsed ? 'lg:mt-3' : 'mt-5 first:mt-2'}`}>
    <p className={`mb-1.5 px-3 text-[8px] font-semibold uppercase tracking-[.24em] text-white/22 ${collapsed ? 'lg:hidden' : ''}`}>{group.label}</p>
    <div className="space-y-1">{group.items.map(item => { const Icon = item.icon; const active = currentScreen === item.screen; return <button key={item.screen} onClick={() => navigate(item.screen)} title={collapsed ? item.label : undefined} aria-label={item.label} className={`group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${collapsed ? 'lg:justify-center lg:px-1.5' : ''} ${active ? 'border-[#d6b96f]/25 bg-gradient-to-r from-[#d6b96f]/[0.13] to-cyan-300/[0.035] text-white shadow-[inset_2px_0_0_#d6b96f]' : 'border-transparent text-slate-400 hover:border-white/[0.055] hover:bg-white/[0.035] hover:text-white'}`}>
@@ -98,9 +89,11 @@ export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogo
   </div>
   <section aria-label="Herramientas" className={`relative shrink-0 border-t border-white/[0.07] px-4 py-3 ${collapsed ? 'lg:px-2 lg:py-2' : ''}`}>
    <p className={`mb-2 px-1 text-[8px] font-semibold uppercase tracking-[.24em] text-slate-400 ${collapsed ? 'lg:hidden' : ''}`}>Herramientas</p>
-   <div className={`grid grid-cols-4 gap-1.5 ${collapsed ? 'lg:grid-cols-2 lg:gap-1' : ''}`}>{tools.map(tool => { const Icon = tool.icon; return <a key={tool.name} href={tool.href} target="_blank" rel="noopener noreferrer" onClick={() => onMobileClose?.()} aria-label={`${tool.name}: ${tool.description} (se abre en una nueva pestaña)`} title={`${tool.name} · ${tool.description} · Nueva pestaña`} className={`group flex h-9 min-w-0 items-center justify-center rounded-xl transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d6b96f] ${collapsed ? 'lg:h-8 lg:rounded-lg' : ''}`}>
-    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${tool.gradient} text-white shadow-sm ring-1 ring-inset ring-white/20 transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md`}><Icon aria-hidden="true" className="h-3.5 w-3.5" /></span>
-   </a>; })}</div>
+   <div className={`grid grid-cols-3 gap-2 ${collapsed ? 'lg:grid-cols-1' : ''}`}>{tools.map(tool => {
+    const content=<><span className="flex h-9 w-full items-center justify-center rounded-lg bg-white/95 px-2"><img src={tool.logo} alt="" className="max-h-6 max-w-full object-contain" loading="lazy"/></span><span className={`text-[9px] font-medium ${collapsed?'lg:hidden':''}`}>{tool.name}</span></>;
+    const className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-slate-400/15 bg-slate-400/5 p-1.5 text-slate-400 transition hover:border-sky-400/40 hover:bg-sky-400/10";
+    return tool.href?<a key={tool.name} href={tool.href} target="_blank" rel="noopener noreferrer" aria-label={tool.name} title={tool.name} className={className}>{content}</a>:<button key={tool.name} onClick={()=>navigate(tool.screen!)} aria-label={tool.name} className={className}>{content}</button>;
+   })}</div>
   </section>
  </aside>;
 }

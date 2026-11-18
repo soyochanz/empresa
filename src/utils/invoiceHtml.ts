@@ -1,3 +1,4 @@
+import {stripeMethodLabel,type StripePaymentDetail} from './stripePaymentDetails';
 import { assertInvoiceTotals } from './invoiceTotals';
 import { reconcileInvoicePayments } from './invoiceAttachment';
 import { FinanceTransaction, Invoice } from '../types';
@@ -5,6 +6,7 @@ import html2pdf from 'html2pdf.js';
 
 export interface InvoiceHtmlOptions {
  transactions?: FinanceTransaction[];
+ paymentDetails?: StripePaymentDetail[];
  isPaid?: boolean;
  dueDate?: string;
  bank?: {
@@ -44,6 +46,13 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
  }
  const isPaid = paymentStateChanged ? invoice.status === 'paid' : options.isPaid ?? invoice.status === 'paid';
  const dueDate = options.dueDate || invoice.dueDate;
+ const methods=[...new Set(invoice.items.map(item=>{
+  const tx=options.transactions?.find(t=>t.id===item.pendingTxId||t.id===item.id);
+  const detail=options.paymentDetails?.find(d=>(tx?.id&&d.transactionId===tx.id)||(tx?.stripeInvoiceId&&d.invoiceId===tx.stripeInvoiceId)||((item as any).stripeInvoiceId&&d.invoiceId===(item as any).stripeInvoiceId)||(tx?.stripeCheckoutSessionId&&d.sessionId===tx.stripeCheckoutSessionId));
+  const method=tx?.paymentMethod||item.paymentMethod;
+  return method==='stripe'?stripeMethodLabel(detail?.method):method==='cash'?'Efectivo':method==='transfer'?'Transferencia bancaria':method==='card'?'Tarjeta':'';
+ }).filter(Boolean))];
+
  const language = invoice.language || 'es';
  const currency = invoice.currency || 'EUR';
  const money = (value: number) => new Intl.NumberFormat(language === 'en' ? 'en-US' : 'es-ES', {
@@ -88,7 +97,7 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
   .header{display:flex;justify-content:space-between;gap:30px;padding-bottom:20px;border-bottom:1px solid #e2e8f0}.logo{display:block;width:auto;height:62px;max-width:145px;object-fit:contain;object-position:left center}
   .brand{margin-top:8px;font-size:11px;color:#64748b}.invoice-meta{text-align:right}.eyebrow{font-size:10px;font-weight:800;letter-spacing:.12em;color:#b68a24}.number{font-size:22px;font-weight:900;color:#0f172a}
   .dates{margin-top:8px;font:11px/1.6 monospace;color:#64748b}.status{display:inline-flex;align-items:center;margin-top:10px;padding:5px 11px;border:1px solid transparent;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.08em}
-  .paid{border-color:#bbf7d0;background:#f0fdf4;color:#15803d}.pending{border-color:#fde68a;background:#fffbeb;color:#92400e;box-shadow:0 1px 2px rgba(146,64,14,.08)}.parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+  .paid{border-color:#a7e2ca;background:#eaf8f1;color:#136b4b;padding:7px 13px;letter-spacing:.04em}.paid::before{content:"✓";margin-right:6px;font-size:12px}.payment-method{margin-top:8px;font-size:10px;color:#475569}.pending{border-color:#fde68a;background:#fffbeb;color:#92400e;box-shadow:0 1px 2px rgba(146,64,14,.08)}.parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
   .box{padding:16px;border:1px solid #e2e8f0;border-radius:13px;background:#f8fafc}.box-title{margin-bottom:6px;font-size:9px;font-weight:800;letter-spacing:.1em;color:#64748b}.box-name{font-size:12px;font-weight:800;color:#0f172a}.box-detail{margin-top:3px;font-size:10px;color:#475569}
   table{width:100%;border-collapse:collapse}.items th{padding:11px;background:#f1f5f9;border-bottom:2px solid #e2e8f0;font-size:9px;letter-spacing:.06em;text-align:left;color:#475569}.items td{padding:13px 11px;border-bottom:1px solid #f1f5f9;font-size:12px}.num{text-align:right;font-family:monospace;white-space:nowrap}.qty{text-align:center}
   .item-status{display:inline-flex;align-items:center;gap:5px;margin-left:9px;padding:3px 7px;border:1px solid #fde68a;border-radius:999px;background:#fffbeb;color:#92400e;font-size:7px;font-weight:800;line-height:1;letter-spacing:.09em;vertical-align:middle;white-space:nowrap;box-shadow:0 1px 2px rgba(146,64,14,.07)}
@@ -111,6 +120,7 @@ export const buildInvoiceHtml = (invoice: Invoice, options: InvoiceHtmlOptions =
     <div class="eyebrow">${t.invoice}</div><div class="number">${escapeHtml(invoice.id)}</div>
     <div class="dates">${t.issued}: ${escapeHtml(invoice.date)}<br>${t.due}: ${escapeHtml(dueDate)}</div>
     <span class="status ${isPaid ? 'paid' : 'pending'}">${isPaid ? t.paid : t.pending}</span>
+    ${methods.length?`<div class="payment-method">${escapeHtml(methods.join(" · "))}</div>`:""}
    </div>
   </header>
   <section class="parties">

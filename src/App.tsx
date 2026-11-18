@@ -1,3 +1,5 @@
+import {buildPaymentSchedule} from './utils/paymentSchedule';
+import {isOpenClientCharge} from './utils/clientBalance';
 import { authenticatedFetch } from './utils/authenticatedFetch';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Screen, ClientContact, CalendarEvent, Note, Activity, ComercialAccount, ComercialLead, ColdCallingLead, Invoice, FinanceTransaction, PartnerCompany } from './types';
@@ -821,6 +823,19 @@ export default function App() {
   return tDate <= today;
  };
 
+ const todayKey=getLocalDateKey();
+ const recentCutoff=new Date(today);recentCutoff.setDate(recentCutoff.getDate()-30);
+ for(const tx of finTransactions){
+  if(tx.type!=='income'||tx.isRecurring||tx.excludedFromLedger||/traspaso|transferencia interna/i.test(tx.category+' '+tx.description))continue;
+  const client=contacts.find(c=>c.id===tx.clientId);
+  const label=client?.company||client?.name||tx.description;
+  const date=(tx.paidAt||tx.date).slice(0,10);
+  if(tx.status==='paid'&&date>=getLocalDateKey(recentCutoff)&&date<=todayKey)list.push({id:`receipt_${tx.id}`,type:'Review',title:`Cobro recibido · ${label}`,description:`${tx.amount.toLocaleString('es-ES')} € · ${tx.paymentMethod==='stripe'?'Stripe':tx.paymentMethod==='cash'?'Efectivo':'Cobro manual'}`,date,time:'Cobrado'});
+  if(tx.status==='failed'&&tx.date.slice(0,10)>=getLocalDateKey(recentCutoff)&&isOpenClientCharge(tx,finTransactions))list.push({id:`failed_${tx.id}`,type:'Deadline',title:`${/caducado/i.test(tx.description)?'Enlace caducado':'Pago fallido'} · ${label}`,description:`${tx.amount.toLocaleString('es-ES')} € · ${tx.description}`,date:tx.date,time:'Revisar'});
+ }
+ for(const payment of buildPaymentSchedule(finTransactions,[],contacts,today).filter(p=>p.source==='manual'&&p.date===todayKey)){
+  list.push({id:`due_today_${payment.id}`,type:'Deadline',title:`Cobrar hoy · ${payment.customer}`,description:`${payment.amount.toLocaleString('es-ES')} € · ${payment.method} · ${payment.description}`,date:todayKey,time:'Hoy'});
+ }
  finTransactions.forEach(tx => {
   const stripeTxId = String(tx.id || '').toLowerCase();
   const stripeSessionId = String(tx.stripeCheckoutSessionId || '').toLowerCase();
@@ -894,7 +909,7 @@ export default function App() {
   });
 
  return list;
- }, [finTransactions, contacts, currentUser]);
+ }, [finTransactions, contacts, currentUser, closingAlertClock]);
 
  const hotLeadsNotifications = useMemo(() => {
  const list: any[] = [];
@@ -2274,11 +2289,6 @@ export default function App() {
       placeholder="Buscar clientes, citas, notas..."
       className="h-11 w-full rounded-2xl border border-white/[0.08] bg-white/[0.028] pl-10 pr-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-[#d6b96f]/35 focus:bg-white/[0.045]"
      />
-    </div>
-    <div className="hidden items-center gap-2 rounded-2xl border border-white/[0.065] bg-white/[0.018] p-1.5 xl:flex">
-     <button onClick={() => navigateTo('comerciales_admin','none')} className="inline-flex h-8 items-center gap-2 rounded-xl px-2.5 text-[10px] font-semibold text-white/55 transition hover:bg-[#d6b96f]/10 hover:text-[#e5cb8b]"><BriefcaseBusiness className="h-3.5 w-3.5" />Comerciales</button>
-     <button onClick={() => navigateTo('cold_calling','none')} className="inline-flex h-8 items-center gap-2 rounded-xl px-2.5 text-[10px] font-semibold text-white/55 transition hover:bg-[#d6b96f]/10 hover:text-[#e5cb8b]"><PhoneCall className="h-3.5 w-3.5" />Calling</button>
-     <button onClick={() => navigateTo('developer_hub','none')} className="inline-flex h-8 items-center gap-2 rounded-xl px-2.5 text-[10px] font-semibold text-white/55 transition hover:bg-cyan-300/[0.08] hover:text-cyan-200"><Code2 className="h-3.5 w-3.5" />Dev</button>
     </div>
     <button onClick={() => navigateTo('calendar', 'none')} className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#d6b96f]/20 bg-[#d6b96f]/[0.08] px-3 text-xs font-bold text-[#ead49c] transition hover:bg-[#d6b96f]/[0.13]"><Plus className="h-4 w-4" />Cita</button>
     <button type="button" onClick={() => setAdminTheme(theme => theme === 'dark' ? 'light' : 'dark')} className="admin-theme-switch" data-theme={adminTheme} aria-label={adminTheme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} title={adminTheme === 'dark' ? 'Modo claro' : 'Modo oscuro'}><span className="admin-theme-switch-sky" /><span className="admin-theme-switch-stars">· · ·</span><span className="admin-theme-switch-thumb">{adminTheme === 'light' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}</span></button>

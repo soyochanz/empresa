@@ -1,3 +1,7 @@
+import {usePaymentSchedule} from '../hooks/usePaymentSchedule';
+import {invoiceStripeMethods} from '../utils/invoiceStripeMethods';
+import {clientHasBalance,isOpenClientCharge} from '../utils/clientBalance';
+import ClientContractsModal from './ClientContractsModal';
 import { DEFAULT_INVOICE_ISSUER } from '../utils/invoiceIssuer';
 import ClientInvoicesModal from './ClientInvoicesModal';
 import ChargeConceptPicker from './ChargeConceptPicker';
@@ -296,14 +300,19 @@ export default function CrmScreen({
  // Connected Accounting & Invoice state definitions
  const [invoices, setInvoices] = useState<Invoice[]>([]);
  const [invoiceContactId,setInvoiceContactId]=useState<string | null>(null);
+ const [contractContactId, setContractContactId] = useState<string | null>(null);
  const [clientContracts, setClientContracts] = useState<any[]>([]);
  const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
+ const collectionAgenda=usePaymentSchedule(true,transactions,contacts);
+ const dueClientCharges=(id:string)=>collectionAgenda.master.filter(p=>p.clientId===id&&!p.excluded&&p.state!=='paid'&&p.date<=new Date().toLocaleDateString('sv-SE'));
+
  const [chargeToAttach, setChargeToAttach] = useState<FinanceTransaction | null>(null);
  const [chargeInvoiceId, setChargeInvoiceId] = useState('');
  const [historicalPayment, setHistoricalPayment] = useState<FinanceTransaction | null>(null);
  const [savingCharge, setSavingCharge] = useState(false);
  const chargeSavingRef = React.useRef(false);
  const [invoiceConceptEditor, setInvoiceConceptEditor] = useState<Invoice | null>(null);
+ const [invoiceEditTax,setInvoiceEditTax] = useState(0);
  const [invoiceConceptDrafts, setInvoiceConceptDrafts] = useState<string[]>([]);
  const [isSavingInvoiceConcepts, setIsSavingInvoiceConcepts] = useState(false);
 
@@ -397,7 +406,7 @@ export default function CrmScreen({
  const selectedPaymentSummary = React.useMemo(() => {
  const saleTransactions = selectedClientTransactions.filter(t => t.type === 'income');
  const paidTransactions = saleTransactions.filter(t => t.status === 'paid');
- const pendingTransactions = saleTransactions.filter(t => t.status === 'pending');
+ const pendingTransactions = saleTransactions.filter(t => isOpenClientCharge(t,saleTransactions,invoices));
  const stripeTransactionGroups = [...saleTransactions]
   .filter(t => t.stripeCheckoutUrl || t.stripeCheckoutSessionId)
   .reduce<Map<string, FinanceTransaction[]>>((groups, transaction) => {
@@ -425,7 +434,7 @@ export default function CrmScreen({
  return {
   total: saleTransactions.reduce((sum, t) => sum + t.amount, 0),
   paid: paidTransactions.reduce((sum, t) => sum + t.amount, 0),
-  pending: pendingTransactions.reduce((sum, t) => sum + t.amount, 0),
+  pending: collectionAgenda.updated && selectedContact ? dueClientCharges(selectedContact.id).reduce((sum,p)=>sum+p.amount,0) : pendingTransactions.reduce((sum, t) => sum + t.amount, 0),
   paidCount: paidTransactions.length,
   pendingCount: pendingTransactions.length,
   totalCount: saleTransactions.length,
@@ -434,7 +443,7 @@ export default function CrmScreen({
   stripeInvoiceId: latestStripeTx?.stripeInvoiceId || '',
   checkoutTransaction: latestStripeTx,
  };
- }, [selectedClientTransactions]);
+ }, [selectedClientTransactions, collectionAgenda.master, collectionAgenda.updated, selectedContact, invoices]);
 
  // Stripe Subscription States
  const [stripeAmount, setStripeAmount] = useState('50');
@@ -956,7 +965,7 @@ React.useEffect(() => {
    if (convPaymentMethod === 'stripe' && installmentAmounts.some(amount => amount !== installmentAmounts[0])) {
     throw new Error('El total no se puede dividir en cuotas iguales de céntimos para Stripe. Ajusta el total o el número de cuotas antes de crear el plan.');
    }
-   const taxPercentage = targetInvoice?.taxPercentage ?? contact.taxPercentage ?? 21;
+   const taxPercentage = targetInvoice?.taxPercentage ?? contact.taxPercentage ?? 0;
    const invoiceItems: InvoiceItem[] = [];
 
    for (let index = 1; index <= installmentCount; index += 1) {
@@ -1142,7 +1151,7 @@ React.useEffect(() => {
  const assignedEmail = matchedCom ? matchedCom.email : '';
  const commPct = matchedCom?.commissionPercentage ?? 0;
  const commissionableSaleTotal = hasUpfrontServicePayment ? convFinancedTotal : 0;
- const conversionTaxPercentage = convertingLead.taxPercentage ?? 21;
+ const conversionTaxPercentage = 0;
 
 
  let generatedStripeUrl = '';
@@ -1154,7 +1163,7 @@ React.useEffect(() => {
  const invoiceId = getNextInvoiceNumber(invoices);
  const stripePlanId = 'plan_crm_' + Math.random().toString(36).substring(2, 9);
  const pricePerInstallment = Math.round((convFinancedTotal / convInstallments) * 100) / 100;
- const invoiceTaxPercentage = convertingLead.taxPercentage ?? 21;
+ const invoiceTaxPercentage = 0;
  const invoiceSubtotal = Number((convFinancedTotal / (1 + invoiceTaxPercentage / 100)).toFixed(2));
  const invoiceTaxAmount = Number((convFinancedTotal - invoiceSubtotal).toFixed(2));
  const firstInstallmentDate = new Date();
@@ -1615,7 +1624,7 @@ React.useEffect(() => {
    address: selectedContact.fiscalAddress || selectedContact.location || '',
    currency: selectedContact.currency || 'EUR',
    language: selectedContact.language || 'es',
-   taxPercentage: selectedContact.taxPercentage ?? 21,
+   taxPercentage: 0,
    transactionIds: tx.recurrenceSourceId ? [tx.id] : [tx.id, ...pendingTransactionIds]
   });
   onNavigate('finanzas', 'push');
@@ -1878,7 +1887,7 @@ React.useEffect(() => {
   if (finalInvoiceId) {
    const targetInvoice = selectedPaymentInvoice;
    if (!targetInvoice) throw new Error('La factura seleccionada ya no está disponible para este cliente.');
-   const taxPercentage = targetInvoice.taxPercentage ?? selectedContact.taxPercentage ?? 21;
+   const taxPercentage = targetInvoice.taxPercentage ?? selectedContact.taxPercentage ?? 0;
    const addedItems: InvoiceItem[] = createdPaymentTransactions.map((transaction, index) => {
     const netAmount = Number((transaction.amount / (1 + taxPercentage / 100)).toFixed(2));
     return {
@@ -2047,6 +2056,7 @@ React.useEffect(() => {
 
  const openInvoiceConceptEditor = (invoice: Invoice) => {
   setInvoiceConceptEditor(invoice);
+  setInvoiceEditTax(invoice.taxPercentage);
   setInvoiceConceptDrafts(invoice.items.map(item => getEditableInvoiceConcept(item.description)));
  };
 
@@ -2058,13 +2068,8 @@ React.useEffect(() => {
    return;
   }
 
-  const updatedInvoice: Invoice = {
-   ...invoiceConceptEditor,
-   items: invoiceConceptEditor.items.map((item, index) => ({
-    ...item,
-    description: concepts[index]
-   }))
-  };
+  const repriced = repriceInvoiceTax(invoiceConceptEditor,invoiceEditTax);
+  const updatedInvoice: Invoice = {...repriced,items:repriced.items.map((item,index)=>({...item,description:concepts[index]}))};
 
   setIsSavingInvoiceConcepts(true);
   try {
@@ -2451,6 +2456,7 @@ React.useEffect(() => {
 </html>`;
  void legacyHtmlContent;
  const htmlContent = buildInvoiceHtml(resolveInvoiceClientData(inv, contacts), {
+  paymentDetails:await invoiceStripeMethods(inv,transactions),
   transactions,
   isPaid: isInvoicePaid,
   dueDate: effectiveDueDate
@@ -2782,11 +2788,9 @@ React.useEffect(() => {
  );
  const hasCommercialOrigin = Boolean(contact.contactedByComercialEmail || contact.contactedByComercialName);
  const hasWebsite = contactHasAssignedWebsite(contact);
- const hasPendingBalance = contactTransactions.some(transaction => transaction.status === 'pending')
-  || contactInvoices.some(invoice => invoice.status !== 'paid');
+ const hasPendingBalance = collectionAgenda.updated ? dueClientCharges(contact.id).length>0 : clientHasBalance(contactTransactions,contactInvoices);
  const hasFinancialActivity = contactTransactions.length > 0 || contactInvoices.length > 0;
- const isFullyPaid = hasFinancialActivity && !hasPendingBalance
-  && contactTransactions.every(transaction => transaction.status === 'paid');
+ const isFullyPaid = hasFinancialActivity && !hasPendingBalance;
  const hasRecurrence = contactTransactions.some(transaction => {
   const recurrenceSource = transaction.recurrenceSourceId
    ? transactions.find(candidate => candidate.id === transaction.recurrenceSourceId)
@@ -2862,7 +2866,7 @@ React.useEffect(() => {
    
    <p className="mt-0.5 truncate text-[10px] text-slate-400"><span className="text-slate-300">{contact.name}</span> <span className="font-mono text-[9px] text-slate-500">· {contact.role || 'Contacto'}</span></p>
    <p className="text-[9px] text-slate-505 truncate font-mono mt-1">{contact.email}</p>
-   <ClientQuickLinks contact={contact} onInvoices={()=>setInvoiceContactId(contact.id)}/>
+   <ClientQuickLinks contact={contact} onInvoices={()=>setInvoiceContactId(contact.id)} onContracts={()=>setContractContactId(contact.id)}/>
 
    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
     {!contactHasAssignedWebsite(contact) && (
@@ -2964,7 +2968,7 @@ React.useEffect(() => {
  const [newFiscalAddress, setNewFiscalAddress] = useState('');
  const [newCurrency, setNewCurrency] = useState<NonNullable<ClientContact['currency']>>('EUR');
  const [newLanguage, setNewLanguage] = useState<NonNullable<ClientContact['language']>>('es');
- const [newTaxPercentage, setNewTaxPercentage] = useState(21);
+ const [newTaxPercentage, setNewTaxPercentage] = useState(0);
  const [newWebsite, setNewWebsite] = useState('');
  const [newGithubRepo, setNewGithubRepo] = useState('');
  const [newHostingCredentials, setNewHostingCredentials] = useState('');
@@ -2987,7 +2991,7 @@ React.useEffect(() => {
  setNewFiscalAddress('');
  setNewCurrency('EUR');
  setNewLanguage('es');
- setNewTaxPercentage(21);
+ setNewTaxPercentage(0);
  setNewWebsite('');
  setNewGithubRepo('');
  setNewHostingCredentials('');
@@ -3201,6 +3205,7 @@ React.useEffect(() => {
  return (
  <div className="flex-1 min-h-[calc(100vh-80px)] xl:h-[calc(100vh-80px)] overflow-y-auto xl:overflow-hidden p-4 sm:p-5 lg:p-6 xl:p-7 flex flex-col xl:flex-row gap-5 xl:gap-6 bg-[radial-gradient(circle_at_15%_0%,rgba(59,130,246,.07),transparent_30%),radial-gradient(circle_at_100%_20%,rgba(16,185,129,.05),transparent_28%)] text-slate-100">
   
+  {contractContactId && <ClientContractsModal contact={contacts.find(c=>c.id===contractContactId)!} contracts={clientContracts.filter(c=>c.selectedContactId===contractContactId)} onClose={()=>setContractContactId(null)} onOpen={(contractId)=>{sessionStorage.setItem('althera-contract-request',JSON.stringify(contractId?{contractId}:{contactId:contractContactId}));setContractContactId(null);onNavigate('contratos','push');}}/>}
   {invoiceContactId && (()=>{const client=contacts.find(c=>c.id===invoiceContactId);return client?<ClientInvoicesModal key={client.id} contact={client} invoices={invoices.filter(inv=>invoiceBelongsToContact(inv,client))} transactions={transactions} onClose={()=>setInvoiceContactId(null)} onSave={onUpdateContact}/>:null;})()}
   {/* Contact List Column */}
   <section className="flex-1 flex flex-col gap-4 min-w-0">
@@ -3468,7 +3473,7 @@ React.useEffect(() => {
      setNewFiscalAddress(selectedContact.fiscalAddress || selectedContact.location || '');
      setNewCurrency(selectedContact.currency || 'EUR');
      setNewLanguage(selectedContact.language || 'es');
-     setNewTaxPercentage(selectedContact.taxPercentage ?? 21);
+     setNewTaxPercentage(selectedContact.taxPercentage ?? 0);
      setNewWebsite(selectedContact.website || '');
      setNewGithubRepo(selectedContact.githubRepo || '');
      setNewHostingCredentials(selectedContact.hostingCredentials || '');
@@ -3516,7 +3521,7 @@ React.useEffect(() => {
      <h3 className="max-w-full truncate text-lg font-black tracking-tight text-white" title={getContactBusinessName(selectedContact)}>{getContactBusinessName(selectedContact)}</h3>
      <p className="text-xs text-slate-400">{selectedContact.name} · {selectedContact.role || 'Contacto principal'}</p>
      
-     <ClientQuickLinks contact={selectedContact} onInvoices={()=>setInvoiceContactId(selectedContact.id)}/>
+     <ClientQuickLinks contact={selectedContact} onInvoices={()=>setInvoiceContactId(selectedContact.id)} onContracts={()=>setContractContactId(selectedContact.id)}/>
      {/* Copy Client ID Button */}
      <button 
      onClick={() => {
@@ -4674,7 +4679,7 @@ React.useEffect(() => {
       {selectedContact.taxId && <span className="mt-1 block">CIF/NIF/ID: {selectedContact.taxId}</span>}
       {selectedContact.fiscalAddress && <span className="block">{selectedContact.fiscalAddress}</span>}
       <span className="mt-1 block text-slate-400">
-       {selectedContact.currency || 'EUR'} · {selectedContact.language === 'en' ? 'English' : 'Español'} · Impuesto {selectedContact.taxPercentage ?? 21}%
+       {selectedContact.currency || 'EUR'} · {selectedContact.language === 'en' ? 'English' : 'Español'} · Impuesto {selectedContact.taxPercentage ?? 0}%
       </span>
      </div>
      )}
@@ -4755,11 +4760,11 @@ React.useEffect(() => {
     const totalInvoicedFromInvoices = clientInvoices.reduce((sum, inv) => sum + inv.total, 0);
 
     const totalPaidFromTxs = clientTransactions.filter(t => t.status === 'paid').reduce((sum, t) => sum + t.amount, 0);
-    const totalPendingFromTxs = clientTransactions.filter(t => t.status === 'pending').reduce((sum, t) => sum + t.amount, 0);
+    const totalPendingFromTxs = clientTransactions.filter(t => isOpenClientCharge(t,clientTransactions,clientInvoices)).reduce((sum, t) => sum + t.amount, 0);
 
     const uninvoiced = clientTransactions.filter(tx => !clientInvoices.some(inv => inv.id === tx.invoiceId || inv.items.some(item => item.pendingTxId === tx.id || item.id === tx.id)));
     const totalPaid = clientInvoices.length > 0 ? totalPaidFromInvoices + uninvoiced.filter(tx => tx.status === 'paid').reduce((sum, tx) => sum + tx.amount, 0) : totalPaidFromTxs;
-    const totalPending = (clientInvoices.length > 0 ? totalPendingFromInvoices + uninvoiced.filter(tx => tx.status === 'pending').reduce((sum, tx) => sum + tx.amount, 0) : totalPendingFromTxs)
+    const totalPending = collectionAgenda.updated ? dueClientCharges(selectedContact.id).reduce((sum,p)=>sum+p.amount,0) : (clientInvoices.length > 0 ? totalPendingFromInvoices + uninvoiced.filter(tx => isOpenClientCharge(tx,clientTransactions,clientInvoices)).reduce((sum, tx) => sum + tx.amount, 0) : totalPendingFromTxs)
      + clientPendingRecurrences.filter(item => !item.existing).reduce((sum, item) => sum + item.transaction.amount, 0);
     const totalInvoiced = totalInvoicedFromInvoices;
 
@@ -4784,7 +4789,7 @@ React.useEffect(() => {
        address: selectedContact.fiscalAddress || selectedContact.location || '',
        currency: selectedContact.currency || 'EUR',
        language: selectedContact.language || 'es',
-       taxPercentage: selectedContact.taxPercentage ?? 21
+       taxPercentage: 0
        });
        if (onNavigate) {
        onNavigate('finanzas', 'push');
@@ -6529,6 +6534,7 @@ React.useEffect(() => {
      </div>
 
      <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+      <label className="block text-sm">Impuesto (%)<input aria-label="Impuesto de la factura" type="number" min="0" max="100" step="0.01" value={invoiceEditTax} onChange={e=>setInvoiceEditTax(Math.min(100,Math.max(0,Number(e.target.value))))} className="ml-3 rounded-lg border p-2"/><span className="block text-xs text-slate-400">Se conserva el importe total cobrado.</span></label>
       {invoiceConceptDrafts.map((concept, index) => (
        <label key={invoiceConceptEditor.items[index]?.id || index} className="block space-y-1.5">
         <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Concepto {index + 1}</span>

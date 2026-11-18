@@ -37,8 +37,7 @@ export async function ensureManualReceiptInvoice(db: SupabaseClient, transaction
  const { data: contact, error: contactError } = await db.from('contacts').select('id,name,email,location,hostingCredentials').eq('id', receiptTag(tx.description, 'CLIENT')).maybeSingle();
  if (contactError) throw contactError;
  if (!contact) throw new Error('No se encuentra el cliente del cobro.');
- const rawTax = metadata(contact.hostingCredentials, 'taxPercentage');
- const taxPercentage = rawTax !== '' && Number.isFinite(Number(rawTax)) && Number(rawTax) >= 0 ? Number(rawTax) : 21;
+ const taxPercentage = 0; // Current Althera invoice policy; historical invoices are unchanged.
  const total = Math.round(Number(tx.amount) * 100) / 100;
  const subtotal = Math.round(total / (1 + taxPercentage / 100) * 100) / 100;
  const date = (receiptTag(tx.description, 'PAID_AT') || tx.date).slice(0, 10);

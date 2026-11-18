@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {clientHasBalance,isOpenClientCharge} from '../src/utils/clientBalance';
+import {repriceInvoiceTax,assertInvoiceTotals} from '../src/utils/invoiceTotals';
+const base:any={id:'t1',type:'income',clientId:'c1',date:'2026-11-07',description:'Posicionamiento SEO (Enlace de pago caducado)',status:'failed',paymentMethod:'stripe',amount:150};
+const paid={...base,id:'p1',description:'SEO y Posicionamiento Web · Web',status:'paid',paymentMethod:'transfer'};
+assert(!isOpenClientCharge(base,[base,paid],[],'2026-11-18'));
+assert(isOpenClientCharge(base,[base],[],'2026-11-18'),'Expired unpaid links remain due');
+assert(isOpenClientCharge(base,[base,{...paid,clientId:'other'}],[],'2026-11-18'));
+assert(!clientHasBalance([{...base,isRecurring:true,status:'pending'}],[]),'Templates are not debt');
+assert(!isOpenClientCharge({...base,date:'2099-01-01'},[base],[],'2026-11-18'),'Future scheduled payment is not overdue');
+const invoice:any={id:'test',total:150,subtotal:123.97,taxAmount:26.03,taxPercentage:21,items:[{id:'l1',quantity:1,unitPrice:123.97,total:123.97,grossAmount:150}]};
+const corrected=repriceInvoiceTax(invoice,0);assertInvoiceTotals(corrected);assert.equal(corrected.total,150);assert.equal(corrected.subtotal,150);assert.equal(corrected.taxAmount,0);
+console.log('CRM balances: templates, expired unpaid, replacement receipt, client isolation and zero-tax total preservation passed.');

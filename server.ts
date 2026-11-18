@@ -371,7 +371,7 @@ async function ensureInternalInvoiceForPaidStripeRecurrence(
   const clientAddress = getContactMetadataValue(contact?.hostingCredentials, "fiscalAddress") || contact?.location || "";
   const configuredTaxValue = getContactMetadataValue(contact?.hostingCredentials, "taxPercentage");
   const configuredTax = configuredTaxValue === "" ? Number.NaN : Number(configuredTaxValue);
-  const taxPercentage = Number.isFinite(configuredTax) && configuredTax >= 0 ? configuredTax : 21;
+  const taxPercentage = 0; // Current Althera invoice policy for new automatic invoices.
   const subtotal = Number((grossTotal / (1 + taxPercentage / 100)).toFixed(2));
   const taxAmount = Number((grossTotal - subtotal).toFixed(2));
   const paidDate = getStripePaidDate(invoice);

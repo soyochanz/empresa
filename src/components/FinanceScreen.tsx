@@ -1106,7 +1106,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const [invItems, setInvItems] = useState<InvoiceItem[]>([
  { id: 'temp1', description: '', quantity: 1, unitPrice: 0, total: 0 }
  ]);
- const [invTaxPercentage, setInvTaxPercentage] = useState<number>(21);
+ const [invTaxPercentage, setInvTaxPercentage] = useState<number>(0);
  const [invAlias, setInvAlias] = useState('');
  const [invColor, setInvColor] = useState('');
  const [invCurrency, setInvCurrency] = useState<NonNullable<Invoice['currency']>>('EUR');
@@ -1136,7 +1136,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
     (!!matchedContact?.email && invoice.clientEmail?.toLowerCase() === matchedContact.email.toLowerCase()) ||
     (!!matchedContact?.name && invoice.clientName?.toLowerCase() === matchedContact.name.toLowerCase())
    );
-   const taxPercentage = Number(client.taxPercentage ?? matchedContact?.taxPercentage ?? 21);
+   const taxPercentage = 0;
    setInvClientId(client.id);
    setInvClientName(matchedContact?.fiscalName || client.name || matchedContact?.name || '');
    setInvClientEmail(client.email || matchedContact?.email || previousInvoice?.clientEmail || '');
@@ -2230,7 +2230,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   setInvClientTaxId(match.taxId || previousInvoice?.clientTaxId || '');
   setInvCurrency(match.currency || previousInvoice?.currency || 'EUR');
   setInvLanguage(match.language || previousInvoice?.language || 'es');
-  setInvTaxPercentage(match.taxPercentage ?? previousInvoice?.taxPercentage ?? 21);
+  setInvTaxPercentage(0);
  }
  };
 
@@ -2826,6 +2826,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  );
  const dueDate = paidTransactions.map(tx => tx.date).filter(Boolean).sort((a, b) => b.localeCompare(a))[0] || previewInvoice.dueDate;
  const html = buildInvoiceHtml(resolveInvoiceClientData(previewInvoice, contacts), {
+ paymentDetails:stripeFinanceOverview?.paymentDetails,
   transactions,
   isPaid,
   dueDate,
@@ -2874,7 +2875,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    candidate.clientId === matchedContact?.id
   )
  ];
- const matchedTaxPercentage = matchedContact?.taxPercentage ?? 21;
+ const matchedTaxPercentage = 0;
  
  if (matchedContact) {
   setInvClientId(matchedContact.id);
@@ -3282,6 +3283,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 </html>`;
  void legacyHtmlContent;
  const htmlContent = buildInvoiceHtml(resolveInvoiceClientData(inv, contacts), {
+ paymentDetails:stripeFinanceOverview?.paymentDetails,
   transactions,
   isPaid: isInvoicePaid,
   dueDate: effectiveDueDate,
@@ -6571,6 +6573,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
      <iframe
       title={`Vista previa de factura ${previewInvoice.id}`}
       srcDoc={buildInvoiceHtml(resolveInvoiceClientData(previewInvoice, contacts), {
+ paymentDetails:stripeFinanceOverview?.paymentDetails,
   transactions,
        isPaid,
        dueDate,

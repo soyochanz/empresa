@@ -1,3 +1,4 @@
+import {invoiceStripeMethods} from '../utils/invoiceStripeMethods';
 import { generateReceiptInvoice } from '../utils/receiptInvoice';
 import { db } from '../supabaseClient';
 import React,{useEffect,useRef,useState} from 'react';
@@ -16,7 +17,7 @@ export default function ClientInvoicesModal({contact,invoices,transactions,onClo
  const [busy,setBusy]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(false);
  const dialog=useRef<HTMLDialogElement>(null);
  useEffect(()=>{dialog.current?.showModal();return()=>dialog.current?.close();},[]);
- async function download(inv:Invoice){setBusy(inv.id);setError('');try{await downloadInvoicePdf(buildInvoiceHtml(inv,{transactions}),`Factura_${inv.id}.pdf`);}catch{setError('No se pudo descargar la factura. Inténtalo de nuevo.');}finally{setBusy('');}}
+ async function download(inv:Invoice){setBusy(inv.id);setError('');try{await downloadInvoicePdf(buildInvoiceHtml(inv,{transactions,paymentDetails:await invoiceStripeMethods(inv,transactions)}),`Factura_${inv.id}.pdf`);}catch{setError('No se pudo descargar la factura. Inténtalo de nuevo.');}finally{setBusy('');}}
  return <dialog ref={dialog} className="client-invoices-dialog" onCancel={e=>{e.preventDefault();if(!busy)onClose();}} aria-labelledby="client-invoices-title">
  <header><div><span className="invoice-eyebrow">FACTURACIÓN</span><h2 id="client-invoices-title">{contact.company||contact.name}</h2></div><button type="button" disabled={!!busy} onClick={onClose} aria-label="Cerrar facturas"><X size={20}/></button></header>
  <nav aria-label="Facturación del cliente"><button aria-pressed={tab==='invoices'} onClick={()=>setTab('invoices')}><Receipt size={16}/>Facturas <span>{visibleInvoices.length}</span></button><button aria-pressed={tab==='details'} onClick={()=>setTab('details')}>Datos para próximas facturas</button></nav>

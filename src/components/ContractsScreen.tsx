@@ -594,7 +594,7 @@ export default function ContractsScreen({ contacts, onNavigate }: ContractsScree
  d.setDate(d.getDate() + 15);
  return d.toISOString().split('T')[0];
  });
- const [taxPercentage, setTaxPercentage] = useState(21);
+ const [taxPercentage, setTaxPercentage] = useState(0);
  const [paymentDetails, setPaymentDetails] = useState('IE84 REVO 9903 6065 8046 06');
  const [bankBeneficiary, setBankBeneficiary] = useState('Ignacio Martin Gonzalez');
  const [bankSwift, setBankSwift] = useState('REVOIE23');

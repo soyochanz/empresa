@@ -213,8 +213,8 @@
 .admin-shell button[class*="bg-violet"],
 .admin-shell button[class*="bg-purple"],
 .admin-shell button[class*="bg-indigo"] {
-  background: linear-gradient(135deg, rgba(214, 185, 111, 0.98), rgba(99, 213, 242, 0.92)) !important;
-  color: #08090b !important;
+  background: linear-gradient(145deg, rgba(148, 163, 184, .22), rgba(100, 116, 139, .10)) !important;
+  color: #dbeafe !important;
   border-color: rgba(255, 255, 255, 0.18) !important;
 }
 
@@ -1929,3 +1929,19 @@ body.admin-theme-light .client-finance-hub .finance-filters button[aria-pressed=
 body.admin-theme-light .client-finance-hub .finance-status-complete { color: #4338ca; }
 .client-finance-hub .finance-actions > button[title="Eliminar cobro"] { color: #e11d48; }
 .client-finance-hub .finance-actions > span { order: -1; }
+
+/* Shared glass controls: neutral surfaces, clear states, visible keyboard focus. */
+.admin-shell button[class*="bg-blue"], .admin-shell button[class*="bg-violet"],
+.admin-shell button[class*="bg-purple"], .admin-shell button[class*="bg-indigo"] {
+ backdrop-filter: blur(16px); box-shadow: inset 0 1px 0 #ffffff20, 0 3px 10px #0000000c;
+ border: 1px solid #94a3b838 !important; border-radius: 12px !important;
+}
+body.admin-theme-light .admin-shell button[class*="bg-blue"],
+body.admin-theme-light .admin-shell button[class*="bg-violet"],
+body.admin-theme-light .admin-shell button[class*="bg-purple"],
+body.admin-theme-light .admin-shell button[class*="bg-indigo"] {
+ background: linear-gradient(145deg,#ffffffdd,#e8eff7aa) !important; color:#244b70 !important;
+ border-color:#cbd9e8 !important; box-shadow:inset 0 1px 0 #fff,0 3px 10px #1e293b09;
+}
+.admin-shell button:focus-visible {outline:2px solid #38bdf8;outline-offset:3px}
+.admin-shell button:disabled {opacity:.45;cursor:not-allowed}
