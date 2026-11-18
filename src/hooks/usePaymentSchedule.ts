@@ -30,7 +30,7 @@ export function usePaymentSchedule(enabled:boolean,transactions:FinanceTransacti
    setError(warnings.join(' '));setLoading(false);
   }pending=false;
  };
- void refresh();const onFocus=()=>void refresh();const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},300000);window.addEventListener('focus',onFocus);return()=>{active=false;clearInterval(timer);window.removeEventListener('focus',onFocus);};},[enabled,version]);
+ void refresh();const onFocus=()=>void refresh();const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh();},300000);window.addEventListener('focus',onFocus);window.addEventListener('althera:forecast-changed',onFocus);return()=>{active=false;clearInterval(timer);window.removeEventListener('focus',onFocus);window.removeEventListener('althera:forecast-changed',onFocus);};},[enabled,version]);
  const projected=useMemo(()=>buildPaymentSchedule(transactions,plans,contacts),[transactions,plans,contacts]);
  const history=useMemo(()=>buildMonthlyPaymentActivity(transactions,invoices,contacts,plans,new Date(),true),[transactions,invoices,contacts,plans]);
  const master=useMemo(()=>buildPaymentMaster(projected,history,excluded),[projected,history,excluded]);

@@ -42,6 +42,7 @@ export default function UpcomingPayments({inline=false,payments,activity=[],mast
  async function exclude(){if(!removing||busy)return;setBusy(true);setSaveError('');try{
   const response=await authenticatedFetch('/api/finance/forecast-exclusions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:paymentKey(removing),excluded:!removing.excluded})});
   const data=await response.json();if(!response.ok)throw Error(data.error||'No se pudo guardar.');
+  window.dispatchEvent(new Event('althera:forecast-changed'));
   onRefresh();setRemoving(undefined);
  }catch(e){setSaveError(e instanceof Error?e.message:'No se pudo guardar.');}finally{setBusy(false);}}
  return <>
