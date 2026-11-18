@@ -1700,7 +1700,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
           if (!coupon || typeof coupon==='string') return [];
           // Product-restricted coupons require Stripe's invoice preview; do not
           // apply them indiscriminately to the entire recurring basket.
-          if(coupon.applies_to?.products?.length) return [];
+          if(coupon.applies_to?.products?.length && !subscription.items.data.every(item => coupon.applies_to.products.includes(typeof item.price.product==='string'?item.price.product:item.price.product.id))) return [];
           return [{percent:coupon.percent_off ?? undefined,amount:coupon.amount_off!=null && coupon.currency===firstItem?.price.currency?coupon.amount_off/100:undefined,end:discount.end,start:discount.start,once:coupon.duration==='once'}];
         }),
         currency: firstItem?.price.currency || "eur",
