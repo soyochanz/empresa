@@ -69,19 +69,19 @@ function getBitesIntegrationConfig() {
   const url = cleanEnv(process.env.BITES_SUPABASE_URL) || BITES_PROJECT_URL;
   const publishableKey = cleanEnv(process.env.BITES_SUPABASE_PUBLISHABLE_KEY) || BITES_PUBLISHABLE_KEY;
   const explicitToken = cleanEnv(process.env.BITES_ALTHERA_INTEGRATION_TOKEN);
-  const derivationSecret = cleanEnv(
-    process.env.BITES_INTEGRATION_DERIVATION_SECRET ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.STRIPE_WEBHOOK_SECRET ||
-      process.env.STRIPE_SECRET_KEY,
-  );
-  const token = explicitToken || (derivationSecret
-    ? createHmac("sha256", derivationSecret).update("althera:bites:overview:v1").digest("base64url")
-    : "");
+  // Preserve the previously authorized integration after adding unrelated server
+  // credentials. Never send the underlying secrets; only purpose-specific HMACs.
+  const explicitDerivation = cleanEnv(process.env.BITES_INTEGRATION_DERIVATION_SECRET);
+  const candidates = explicitToken ? [explicitToken] :
+    (explicitDerivation ? [explicitDerivation] : [process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.STRIPE_WEBHOOK_SECRET, process.env.STRIPE_SECRET_KEY])
+      .map(cleanEnv).filter(value => value && !isPlaceholder(value))
+      .map(value => createHmac("sha256", value).update("althera:bites:overview:v1").digest("base64url"));
+  const tokens = [...new Set(candidates)];
+  const token = tokens[0] || "";
   if (isPlaceholder(url) || !/^https:\/\//i.test(url) || isPlaceholder(publishableKey) || isPlaceholder(token)) {
     return null;
   }
-  return { url: url.replace(/\/$/, ""), publishableKey, token };
+  return { url: url.replace(/\/$/, ""), publishableKey, token, tokens };
 }
 
 function getBitesAdminClient() {
@@ -1356,17 +1356,17 @@ app.get("/api/bites/overview", requireAdminAuth, async (_req, res) => {
   try {
     const integration = getBitesIntegrationConfig();
     if (integration) {
-      const response = await fetch(`${integration.url}/functions/v1/althera-overview`, {
-        method: "GET",
-        headers: {
-          apikey: integration.publishableKey,
-          "x-althera-bites-token": integration.token,
-        },
-        signal: AbortSignal.timeout(15_000),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(`BITES_EDGE_${response.status}`);
-      return res.json(payload);
+      for (const token of integration.tokens) {
+        const response = await fetch(`${integration.url}/functions/v1/althera-overview`, {
+          method: "GET",
+          headers: { apikey: integration.publishableKey, "x-althera-bites-token": token },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (response.status === 401) { await response.body?.cancel(); continue; }
+        if (!response.ok) throw new Error(`BITES_EDGE_${response.status}`);
+        return res.json(await response.json());
+      }
+      throw new Error('BITES_EDGE_401');
     }
 
     const bites = getBitesAdminClient();
