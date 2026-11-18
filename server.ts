@@ -1,3 +1,4 @@
+import { registerForecastExclusions } from './api/forecastExclusions';
 import { buildInstaremoveReceipt, isInstaremoveSubscription } from './api/instaremoveLedger';
 import {adminAuth, stripeAccess, denyServerArtifacts} from './api/security/access';
 import {queuePaymentAlert} from './api/calendar/paymentAlerts';
@@ -1143,6 +1144,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 });
 
 app.use(express.json());
+registerForecastExclusions(app, supabaseAdmin, requireAdminAuth);
 registerCalendarPush(app, supabaseAdmin, requireAdminAuth, (id,email)=>authorizedAdminIds.has(id)||authorizedAdminEmails.has(normalizeAdminEmail(email)));
 
 // Country-only language selection: no external geolocation service or precise location.
@@ -1382,7 +1384,7 @@ app.get("/api/bites/overview", requireAdminAuth, async (_req, res) => {
         .limit(5000),
       bites
         .from("subscription_payments")
-        .select("id,account_id,status,description,amount_due_cents,amount_paid_cents,currency,period_start,period_end,paid_at,hosted_invoice_url,invoice_pdf_url,created_at")
+        .select("id,account_id,stripe_invoice_id,status,description,amount_due_cents,amount_paid_cents,currency,period_start,period_end,paid_at,hosted_invoice_url,invoice_pdf_url,created_at")
         .order("created_at", { ascending: false })
         .limit(5000),
     ]);
@@ -1572,12 +1574,20 @@ app.post("/api/stripe/invalidate-checkout-sessions", requireAdminAuth, async (re
   }
 });
 
+function paymentOrigin(...metadata: any[]): 'instaremoveai' | 'bites' | undefined {
+ for (const m of metadata) {
+  const app=String(m?.app || m?.application || m?.source || '').toLowerCase().replace(/[^a-z]/g,'');
+  if(app==='instaremoveai')return 'instaremoveai';
+  if(app==='bites'||app==='bitesmenus')return 'bites';
+ }
+ return undefined;
+}
 app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
   try {
     const stripe = getStripe();
     const [subscriptions, paidInvoices, openInvoices, charges, invoicePayments, completedSessions] = await Promise.all([
       stripe.subscriptions
-        .list({ status: "active", limit: 100, expand: ["data.customer"] })
+        .list({ status: "all", limit: 100, expand: ["data.customer"] })
         .autoPagingToArray({ limit: 1_000 }),
       stripe.invoices
         .list({ status: "paid", limit: 100 })
@@ -1609,7 +1619,8 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         subscription.metadata?.althera_finite_installment_plan === "true" ||
         Number.parseInt(subscription.metadata?.althera_cancel_after_installments || subscription.metadata?.installments || "0", 10) > 1
       ));
-    const recurringMembershipSubscriptions = subscriptions.filter(subscription => !isFiniteInstallmentSubscription(subscription));
+    const liveSubscriptions = subscriptions.filter(s=>["active","trialing","past_due"].includes(s.status));
+    const recurringMembershipSubscriptions = liveSubscriptions.filter(subscription => !isFiniteInstallmentSubscription(subscription));
 
     const getMonthlyFactor = (recurring: Stripe.Price.Recurring | null | undefined): number => {
       if (!recurring) return 0;
@@ -1638,7 +1649,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
     const invoicesForSubscription = (subscriptionId: string, invoices: Stripe.Invoice[]) =>
       invoices.filter(invoice => getStripeInvoiceSubscriptionId(invoice) === subscriptionId);
 
-    const activeSubscriptions = subscriptions.map(subscription => {
+    const activeSubscriptions = subscriptions.filter(s => ["active","trialing","past_due"].includes(s.status)).map(subscription => {
       const customer = typeof subscription.customer === "string" ? null : subscription.customer as any;
       const subscriptionPaidInvoices = invoicesForSubscription(subscription.id, paidInvoices)
         .filter(invoice => {
@@ -1666,6 +1677,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
 
       return {
         id: subscription.id,
+        origin: paymentOrigin(subscription.metadata),
         clientId: subscription.metadata?.clientId || null,
         concept: subscription.metadata?.concept || firstItem?.price.nickname || "Suscripción Stripe",
         customerId: typeof subscription.customer === "string" ? subscription.customer : customer?.id || "",
@@ -1758,6 +1770,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
       agendaInvoices: [...paidInvoices, ...openInvoices].map(invoice => ({
         id: invoice.id,
         subscriptionId: getStripeInvoiceSubscriptionId(invoice),
+        origin: paymentOrigin(invoice.metadata, (invoice as any).parent?.subscription_details?.metadata, (invoice as any).subscription_details?.metadata, subscriptions.find(s=>s.id===getStripeInvoiceSubscriptionId(invoice))?.metadata),
         clientId: invoice.metadata?.clientId || (invoice as any).parent?.subscription_details?.metadata?.clientId || (invoice as any).subscription_details?.metadata?.clientId || null,
         customerName: invoice.customer_name || "Cliente Stripe",
         customerEmail: invoice.customer_email || "",
@@ -1776,7 +1789,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         if(detail.invoiceId) return [];
         const customer = typeof charge.customer === 'object' && charge.customer && 'name' in charge.customer ? charge.customer : null;
         const session = sessionByPayment.get(detail.intentId);
-        return [{id:detail.chargeId,transactionId:detail.transactionId,clientId:session?.metadata?.clientId,
+        return [{id:detail.chargeId,origin:paymentOrigin(session?.metadata,charge.metadata),transactionId:detail.transactionId,clientId:session?.metadata?.clientId,
           customerName:customer?.name || charge.billing_details?.name || 'Cliente Stripe',
           customerEmail:customer?.email || charge.billing_details?.email,
           description:session?.metadata?.concept || charge.description || 'Cobro Stripe',
@@ -1787,7 +1800,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
       }),
       totals: {
         activeSubscriptions: recurringMembershipSubscriptions.length,
-        activeInstallmentPlans: subscriptions.length - recurringMembershipSubscriptions.length,
+        activeInstallmentPlans: liveSubscriptions.length - recurringMembershipSubscriptions.length,
         mrr: normalizeTotals(monthlyRecurringTotals),
         chargedVolume: normalizeTotals(chargedVolumeTotals),
         successfulPayments: successfulCharges.length,

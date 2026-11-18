@@ -3439,6 +3439,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const stripeSubscriptions = stripePlans.filter(plan => plan.billingType === 'subscription');
  const stripeInstallments = stripePlans.filter(plan => plan.billingType === 'installment');
  const getForecastPayer = (transaction: FinanceTransaction): string => {
+  const row=paymentAgenda.master.find(p=>(p.transactionId||p.id)===transaction.id&&p.date===transaction.date);
+  if(row)return row.origin ? `${row.origin} · ${row.customer}` : row.customer;
   const source = transactions.find(item => item.id === transaction.recurrenceSourceId);
   const findInvoice = (tx: FinanceTransaction) => invoices.find(item => item.id === tx.invoiceId)
    || invoices.find(item => item.items.some(line => line.pendingTxId === tx.id || line.id === tx.id));
@@ -3456,6 +3458,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   }
   return getFinanceBusinessName(contact) || invoice?.clientName?.trim() || plan?.customerName?.trim() || 'Sin empresa vinculada';
  };
+ const paymentAgenda = usePaymentSchedule(true, transactions, contacts);
+ const [forecastCurrency,setForecastCurrency]=useState('EUR');
+ const forecastCurrencies=[...new Set(['EUR',...paymentAgenda.master.map(p=>p.currency)])];
  const forecastMonths = Array.from({ length: 12 }, (_, index) => {
   const monthDate = new Date();
   monthDate.setDate(1);
@@ -3463,53 +3468,11 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   // Show the complete month: collected income plus outstanding forecasts.
   monthDate.setMonth(monthDate.getMonth() + index);
   const key = getMonthKey(monthDate);
-  const pendingItems = transactions.filter(transaction =>
-   transaction.type === 'income'
-   && transaction.status === 'pending'
-   && !transaction.isRecurring
-   && !isInternalBalanceTransfer(transaction)
-   && (() => {
-    const transactionDate = parseFinanceDate(transaction.date);
-    return transactionDate ? getMonthKey(transactionDate) === key : false;
-   })()
-  );
-  const paidItems = transactions.filter(transaction =>
-   transaction.type === 'income' && transaction.status === 'paid' && !transaction.isRecurring && !transaction.excludedFromLedger
-   && !isInternalBalanceTransfer(transaction)
-   && (() => {
-    const transactionDate = parseFinanceDate(transaction.date);
-    return transactionDate ? getMonthKey(transactionDate) === key : false;
-   })()
-  );
-  const recurringItems = transactions
-   // Stripe plans are reconciled from Stripe itself. Never project them as an
-   // unlimited local recurrence, especially after Stripe has a final date.
-   .filter(transaction => transaction.type === 'income' && transaction.isRecurring && transaction.paymentMethod !== 'stripe')
-   .flatMap(transaction => getRecurringIncomeOccurrences(transaction, key)
-    .filter(date => !isRecurringOccurrenceRepresented(transaction, toFinanceDateKey(date), transactions))
-    .map(date => ({
-    transaction,
-    date,
-    amount: Number(toFinanceDateKey(date) === transaction.date.slice(0, 10) ? transaction.firstAmount ?? transaction.amount ?? 0 : transaction.nextAmount ?? transaction.amount ?? 0)
-   })));
-  for (const plan of stripePlans) {
-   for (const date of getStripeForecastOccurrences(plan, key)) {
-    // A scheduled ledger entry already represents this cycle in the monthly total.
-    const represented = transactions.some(transaction => !transaction.isRecurring
-     && transaction.type === 'income' && transaction.status !== 'failed'
-     && (transaction.stripePlanId === plan.id || Boolean(plan.stripePlanId && transaction.stripePlanId === plan.stripePlanId))
-     && getFinanceDateKey(transaction.date) === getFinanceDateKey(date.toISOString()));
-    if (represented) continue;
-    recurringItems.push({
-     transaction: {
-      id: `forecast_${plan.id}`, type: 'income', status: 'pending', category: plan.billingType === 'installment' ? 'Pago fraccionado Stripe' : 'Suscripción Stripe',
-      description: `${plan.billingType === 'installment' ? 'Cuota' : 'Suscripción'} · ${plan.customerName}`, amount: plan.amount,
-      date: getFinanceDateKey(date.toISOString()), paymentMethod: 'stripe', isRecurring: true,
-      recurrencePeriod: plan.interval === 'year' ? 'yearly' : plan.interval === 'week' ? 'weekly' : 'monthly'
-     }, date, amount: plan.amount
-    });
-   }
-  }
+  const rows=paymentAgenda.master.filter(p=>!p.excluded&&p.currency===forecastCurrency&&p.date.slice(0,7)===key);
+  const asTransaction=(p:typeof rows[number]):FinanceTransaction=>({id:p.transactionId||p.id,type:'income',status:p.state||'pending',category:p.origin||p.method,description:p.description,amount:p.amount,date:p.date,clientId:p.clientId,paymentMethod:p.source==='stripe'?'stripe':p.paymentMethod as FinanceTransaction['paymentMethod'],isRecurring:false});
+  const pendingItems=rows.filter(p=>p.state!=='paid'&&(p.historical||p.awaitingActivation||p.state==='pending')).map(asTransaction);
+  const paidItems=rows.filter(p=>p.state==='paid').map(asTransaction);
+  const recurringItems=rows.filter(p=>p.state!=='paid'&&!p.historical&&!p.awaitingActivation&&p.state!=='pending').map(p=>({transaction:asTransaction(p),date:new Date(p.date+'T12:00:00'),amount:p.amount}));
   const pendingTotal = pendingItems.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
   const paidTotal = paidItems.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
   const recurringTotal = recurringItems.reduce((sum, item) => sum + item.amount, 0);
@@ -3538,7 +3501,6 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   onNavigate('crm', 'push');
  };
 
- const paymentAgenda = usePaymentSchedule(activeTab === 'upcoming', transactions, contacts);
  return (
  <div className="w-full h-full overflow-y-auto p-4 sm:p-6 lg:p-8 scrollbar-thin @container" id="finance-module-root" data-workspace="simple">
   <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -3629,9 +3591,9 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   </div>
 
   <section className="finance-simple-summary" aria-label="Resumen de este mes">
-   <button onClick={() => { setForecastMonth(forecastMonths[0].key); setActiveTab('forecast'); }}><span>Cobrado este mes</span><strong>{forecastMonths[0].paidTotal.toLocaleString('es-ES', {style:'currency',currency:'EUR'})}</strong><small>Ingresos confirmados</small></button>
-   <button onClick={() => { setForecastMonth(forecastMonths[0].key); setActiveTab('forecast'); }}><span>Por cobrar este mes</span><strong>{(forecastMonths[0].pendingTotal + forecastMonths[0].recurringTotal).toLocaleString('es-ES', {style:'currency',currency:'EUR'})}</strong><small>Pendientes + cuotas previstas</small></button>
-   <button onClick={() => setActiveTab('forecast')}><span>Previsión del mes</span><strong>{forecastMonths[0].total.toLocaleString('es-ES', {style:'currency',currency:'EUR'})}</strong><small>Cobrado + previsto · EUR</small></button>
+   <button onClick={() => { setForecastMonth(forecastMonths[0].key); setActiveTab('forecast'); }}><span>Cobrado este mes</span><strong>{forecastMonths[0].paidTotal.toLocaleString('es-ES', {style:'currency',currency:forecastCurrency})}</strong><small>Ingresos confirmados</small></button>
+   <button onClick={() => { setForecastMonth(forecastMonths[0].key); setActiveTab('forecast'); }}><span>Por cobrar este mes</span><strong>{(forecastMonths[0].pendingTotal + forecastMonths[0].recurringTotal).toLocaleString('es-ES', {style:'currency',currency:forecastCurrency})}</strong><small>Pendientes + cuotas previstas</small></button>
+   <button onClick={() => setActiveTab('forecast')}><span>Previsión del mes</span><strong>{forecastMonths[0].total.toLocaleString('es-ES', {style:'currency',currency:forecastCurrency})}</strong><small>Cobrado + previsto · {forecastCurrency}</small></button>
   </section>
   {syncStatus === 'error' && <p role="alert" className="rounded-xl border border-rose-400/30 p-4 text-sm text-rose-400">No se han podido sincronizar las finanzas. Comprueba la conexión antes de registrar cambios.</p>}
   {/* Navigation Inside Finance Module */}
@@ -3717,7 +3679,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
    {activeTab === 'transactions'  ?
    `${filteredTxs.length} movimientos visibles` 
    : activeTab === 'forecast' ?
-    `${selectedForecast?.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0,00'} € previstos`
+    `${selectedForecast?.total.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0,00'} ${forecastCurrency} previstos`
    : activeTab === 'recurring'  ?
     `${stripePlans.length} planes Stripe · ${unpaidStripeRecurrences.length} pendientes sin contabilizar · ${manualRecurring.length} manuales`
     : activeTab === 'stripe' ?
@@ -3729,7 +3691,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   {activeTab === 'upcoming' && <UpcomingPayments inline {...paymentAgenda} contacts={contacts} onRefresh={() => {paymentAgenda.refresh(); void db.getFinanceTransactions().then(setTransactions).catch(() => showToast('Actualiza Finanzas para cargar el cobro registrado.', true)); void onRefreshFinance?.();}} onCalendar={() => onNavigate?.('calendar', 'push')} />}
   {/* Monthly income forecast */}
   {activeTab === 'forecast' && selectedForecast && (
-  <div className="space-y-5">
+  <div className="space-y-5"><label>Divisa <select value={forecastCurrency} onChange={e=>setForecastCurrency(e.target.value)}>{forecastCurrencies.map(currency=><option key={currency}>{currency}</option>)}</select></label>{paymentAgenda.error&&<p role="alert">{paymentAgenda.error}</p>}
    {stripeFinanceError && <p role="status" className="rounded-xl border border-amber-400/20 p-3 text-xs text-amber-400">No se ha podido actualizar Stripe. La previsión puede estar incompleta. {stripeFinanceError}</p>}
    {stripeFinanceLoading && !stripeFinanceOverview && <p role="status" className="text-xs text-slate-400">Cargando suscripciones de Stripe para completar la previsión…</p>}
    <section className="relative overflow-hidden rounded-3xl border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-[#08111d]/80 to-emerald-400/[0.04] p-5 sm:p-6">
@@ -3738,17 +3700,17 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
      <div>
       <span className="text-[9px] font-black uppercase tracking-[.24em] text-cyan-300">Planificación de cobros</span>
       <h3 className="mt-1 text-xl font-black capitalize text-white">{selectedForecast.label}</h3>
-      <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Ingresos en EUR: cobrado + pendiente + recurrencias y cuotas. Es una estimación, no un cobro garantizado.</p>
+      <p className="mt-1 max-w-2xl text-[10px] leading-relaxed text-slate-400">Ingresos en {forecastCurrency}: cobrado + pendiente + recurrencias y cuotas. Es una estimación, no un cobro garantizado.</p>
      </div>
      <div className="rounded-2xl border border-cyan-300/15 bg-black/25 px-5 py-3 text-right">
       <span className="block text-[8px] font-black uppercase tracking-widest text-cyan-300">Total del mes · cobrado + previsto</span>
-      <strong className="mt-1 block text-3xl font-black text-white">{selectedForecast.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong>
+      <strong className="mt-1 block text-3xl font-black text-white">{selectedForecast.total.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</strong>
      </div>
     </div>
     <div className="relative mt-5 grid gap-3 sm:grid-cols-3">
-     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pendientes del mes</span><strong className="mt-2 block text-xl text-white">{selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.pendingItems.length} cobro{selectedForecast.pendingItems.length === 1 ? '' : 's'} pendiente{selectedForecast.pendingItems.length === 1 ? '' : 's'}</small></div>
-     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Cuotas previstas por cobrar</span><strong className="mt-2 block text-xl text-white">{selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.recurringItems.length} cuota{selectedForecast.recurringItems.length === 1 ? '' : 's'} prevista{selectedForecast.recurringItems.length === 1 ? '' : 's'}</small></div>
-     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Ya cobrado</span><strong className="mt-2 block text-xl text-white">{selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.paidItems.length} cobros registrados en el mes</small></div>
+     <div className="rounded-2xl border border-amber-300/10 bg-amber-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-amber-300">Pendientes del mes</span><strong className="mt-2 block text-xl text-white">{selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.pendingItems.length} cobro{selectedForecast.pendingItems.length === 1 ? '' : 's'} pendiente{selectedForecast.pendingItems.length === 1 ? '' : 's'}</small></div>
+     <div className="rounded-2xl border border-violet-300/10 bg-violet-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-violet-300">Cuotas previstas por cobrar</span><strong className="mt-2 block text-xl text-white">{selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.recurringItems.length} cuota{selectedForecast.recurringItems.length === 1 ? '' : 's'} prevista{selectedForecast.recurringItems.length === 1 ? '' : 's'}</small></div>
+     <div className="rounded-2xl border border-emerald-300/10 bg-emerald-300/[0.055] p-4"><span className="text-[8px] font-black uppercase tracking-wider text-emerald-300">Ya cobrado</span><strong className="mt-2 block text-xl text-white">{selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</strong><small className="mt-1 block text-[9px] text-slate-500">{selectedForecast.paidItems.length} cobros registrados en el mes</small></div>
     </div>
    </section>
 
@@ -3758,7 +3720,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
      {forecastMonths.map((month, index) => (
       <button key={month.key} type="button" onClick={() => setForecastMonth(month.key)} className={`rounded-2xl border p-3 text-left transition ${forecastMonth === month.key ? 'border-cyan-300/35 bg-cyan-300/10 shadow-lg shadow-cyan-400/5' : 'border-white/[0.06] bg-black/20 hover:border-white/15 hover:bg-white/[0.025]'}`}>
        <span className={`block text-[8px] font-black uppercase tracking-wider ${forecastMonth === month.key ? 'text-cyan-300' : 'text-slate-500'}`}>{index === 0 ? 'Este mes' : month.shortLabel}</span>
-       <strong className="mt-2 block text-sm text-white">{month.total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} €</strong>
+       <strong className="mt-2 block text-sm text-white">{month.total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} {forecastCurrency}</strong>
        <span className="mt-1 block text-[8px] text-slate-600">{month.paidItems.length + month.pendingItems.length + month.recurringItems.length} movimientos</span>
       </button>
      ))}
@@ -3767,19 +3729,19 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
 
    <div className="grid gap-5 xl:grid-cols-2">
     <section className="overflow-hidden rounded-3xl border border-amber-300/10 bg-[#0b1329]/20">
-     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-amber-300">Pendientes con fecha en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.pendingItems.length} cobros · {selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
-     {selectedForecast.pendingItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos pendientes fechados para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.pendingItems.sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div><strong className="shrink-0 font-mono text-sm text-amber-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-amber-300">Pendientes con fecha en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.pendingItems.length} cobros · {selectedForecast.pendingTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</h4></div>
+     {selectedForecast.pendingItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos pendientes fechados para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.pendingItems.sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div><strong className="shrink-0 font-mono text-sm text-amber-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</strong></div>)}</div>}
     </section>
     <section className="overflow-hidden rounded-3xl border border-violet-300/10 bg-[#0b1329]/20">
-     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-violet-300">Cuotas recurrentes previstas</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.recurringItems.length} cuotas · {selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
-     {selectedForecast.recurringItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos recurrentes previstos para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.recurringItems.sort((a, b) => a.date.getTime() - b.date.getTime()).map((item, index) => <div key={`${item.transaction.id}_${item.date.toISOString()}_${index}`} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(item.transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(item.transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{item.date.toLocaleDateString('es-ES')} · {item.transaction.recurrencePeriod === 'weekly' ? 'Semanal' : item.transaction.recurrencePeriod === 'yearly' ? 'Anual' : 'Mensual'}</p></div><strong className="shrink-0 font-mono text-sm text-violet-300">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>)}</div>}
+     <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-violet-300">Cuotas recurrentes previstas</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.recurringItems.length} cuotas · {selectedForecast.recurringTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</h4></div>
+     {selectedForecast.recurringItems.length === 0 ? <div className="p-10 text-center text-xs text-slate-500">No hay ingresos recurrentes previstos para este mes.</div> : <div className="divide-y divide-white/[0.05]">{selectedForecast.recurringItems.sort((a, b) => a.date.getTime() - b.date.getTime()).map((item, index) => <div key={`${item.transaction.id}_${item.date.toISOString()}_${index}`} className="flex items-center justify-between gap-4 p-4"><div className="min-w-0"><p className="truncate text-xs font-bold text-white">{getCleanBillingConcept(item.transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(item.transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{item.date.toLocaleDateString('es-ES')} · {item.transaction.recurrencePeriod === 'weekly' ? 'Semanal' : item.transaction.recurrencePeriod === 'yearly' ? 'Anual' : 'Mensual'}</p></div><strong className="shrink-0 font-mono text-sm text-violet-300">{item.amount.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</strong></div>)}</div>}
     </section>
    </div>
    <section className="overflow-hidden rounded-3xl border border-emerald-300/15 bg-emerald-300/[0.04]">
-    <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-emerald-300">Ya cobrado en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.paidItems.length} cobros · {selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</h4></div>
+    <div className="border-b border-white/[0.06] p-4"><span className="text-[9px] font-black uppercase tracking-widest text-emerald-300">Ya cobrado en el mes</span><h4 className="mt-1 text-sm font-bold text-white">{selectedForecast.paidItems.length} cobros · {selectedForecast.paidTotal.toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</h4></div>
     {selectedForecast.paidItems.length === 0 ? <p className="p-8 text-center text-xs text-slate-500">Todavía no hay ingresos cobrados registrados para este mes.</p> : <div className="divide-y divide-white/[0.05]">{[...selectedForecast.paidItems].sort((a, b) => a.date.localeCompare(b.date)).map(transaction => <div key={transaction.id} className="flex items-center justify-between gap-4 p-4">
      <div className="min-w-0"><p className="break-words text-xs font-bold text-white">{getCleanBillingConcept(transaction.description)}</p><p className="mt-1 break-words text-[11px] font-semibold text-slate-300">Empresa / cliente: {getForecastPayer(transaction)}</p><p className="mt-1 font-mono text-[9px] text-slate-500">{parseFinanceDate(transaction.date)?.toLocaleDateString('es-ES')} · {transaction.category}</p></div>
-     <div className="shrink-0 text-right"><span className="mb-1 block text-[9px] font-bold text-emerald-300">Cobrado</span><strong className="font-mono text-sm text-emerald-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} €</strong></div>
+     <div className="shrink-0 text-right"><span className="mb-1 block text-[9px] font-bold text-emerald-300">Cobrado</span><strong className="font-mono text-sm text-emerald-300">{Number(transaction.amount || 0).toLocaleString('es-ES', { minimumFractionDigits: 2 })} {forecastCurrency}</strong></div>
     </div>)}</div>}
    </section>
   </div>

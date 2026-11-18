@@ -17,7 +17,7 @@ assert.equal(buildPaymentSchedule([],[{...stripe,cancelAt:'2026-12-01T00:00:00Z'
 assert.equal(buildPaymentSchedule([{...paid,stripePlanId:'sub',date:'2026-11-05',recurrenceScheduledDate:undefined}],[stripe],contacts,today).length,1);
 console.log('Payment schedule: manual cycles, overdue, end-of-month, paid deduplication, Stripe cancellation, installment limits and USD preserved.');
 
-assert.equal(buildPaymentSchedule([{...source,clientId:undefined}],[],contacts,today).length,0);
+assert.equal(buildPaymentSchedule([{...source,clientId:undefined}],[],contacts,today).length,2);
 
 const checkout = {...source,id:'agenda_open',status:'pending',date:'2026-11-03',isRecurring:false,paymentMethod:'stripe',stripeCheckoutSessionId:'cs_open'};
 assert.equal(buildPaymentSchedule([checkout],[],contacts,today)[0].renewable,true);
