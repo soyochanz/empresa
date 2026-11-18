@@ -1945,3 +1945,8 @@ body.admin-theme-light .admin-shell button[class*="bg-indigo"] {
 }
 .admin-shell button:focus-visible {outline:2px solid #38bdf8;outline-offset:3px}
 .admin-shell button:disabled {opacity:.45;cursor:not-allowed}
+
+/* Brand tiles keep their native logos on a consistent white surface. */
+#sidebar .sidebar-tool, .admin-theme-light #sidebar .sidebar-tool { background: #fff !important; color: #334155 !important; border-color: #e2e8f0 !important; }
+#sidebar .sidebar-tool:hover { background: #fff !important; border-color: #94a3b8 !important; box-shadow: 0 4px 12px #0f172a12; }
+#sidebar details[aria-label="Herramientas"] summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -87,13 +87,13 @@ export default function Sidebar({ currentScreen, onNavigate, currentUser, onLogo
     <button onClick={() => onLogout ? onLogout() : onNavigate('acceso','push_back')} title={collapsed ? 'Cerrar sesión' : undefined} className="flex flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[8px] text-slate-500 transition hover:bg-red-500/[0.07] hover:text-red-300"><LogOut className="mt-1.5 h-3.5 w-3.5" /><span className={collapsed ? 'lg:hidden' : ''}>Salir</span></button>
    </div>
   </div>
-  <section aria-label="Herramientas" className={`relative shrink-0 border-t border-white/[0.07] px-4 py-3 ${collapsed ? 'lg:px-2 lg:py-2' : ''}`}>
-   <p className={`mb-2 px-1 text-[8px] font-semibold uppercase tracking-[.24em] text-slate-400 ${collapsed ? 'lg:hidden' : ''}`}>Herramientas</p>
-   <div className={`grid grid-cols-3 gap-2 ${collapsed ? 'lg:grid-cols-1' : ''}`}>{tools.map(tool => {
+  <details aria-label="Herramientas" className={`relative shrink-0 border-t border-white/[0.07] px-4 py-3 ${collapsed ? 'lg:px-2 lg:py-2' : ''}`}>
+   <summary className="cursor-pointer select-none px-1 py-2 text-[10px] font-semibold uppercase tracking-[.18em] text-slate-400" title="Herramientas">Herramientas</summary>
+   <div className={`mt-2 max-h-[35vh] overflow-y-auto grid grid-cols-3 gap-2 ${collapsed ? 'lg:grid-cols-1' : ''}`}>{tools.map(tool => {
     const content=<><span className="flex h-9 w-full items-center justify-center rounded-lg bg-white/95 px-2"><img src={tool.logo} alt="" className="max-h-6 max-w-full object-contain" loading="lazy"/></span><span className={`text-[9px] font-medium ${collapsed?'lg:hidden':''}`}>{tool.name}</span></>;
-    const className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-slate-400/15 bg-slate-400/5 p-1.5 text-slate-400 transition hover:border-sky-400/40 hover:bg-sky-400/10";
+    const className="sidebar-tool flex min-w-0 flex-col items-center gap-1.5 rounded-xl border border-slate-400/15 bg-slate-400/5 p-1.5 text-slate-400 transition hover:border-sky-400/40 hover:bg-sky-400/10";
     return tool.href?<a key={tool.name} href={tool.href} target="_blank" rel="noopener noreferrer" aria-label={tool.name} title={tool.name} className={className}>{content}</a>:<button key={tool.name} onClick={()=>navigate(tool.screen!)} aria-label={tool.name} className={className}>{content}</button>;
    })}</div>
-  </section>
+  </details>
  </aside>;
 }
