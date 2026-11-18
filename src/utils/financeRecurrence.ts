@@ -76,7 +76,7 @@ export const getRecurringOccurrenceId = (sourceId: string, scheduledDate: string
  `${sourceId}__rec__${scheduledDate.replaceAll('-', '')}`;
 
 export const isManualFinanceRecurrence = (source: FinanceTransaction): boolean =>
- Boolean(source.isRecurring && (source.paymentMethod === 'cash' || source.paymentMethod === 'transfer' || source.paymentMethod === 'card'));
+ Boolean(source.isRecurring && (source.paymentMethod === 'cash' || source.paymentMethod === 'transfer'));
 
 export const findRecurringOccurrence = (
  source: FinanceTransaction, scheduledDate: string, transactions: FinanceTransaction[]
@@ -192,7 +192,7 @@ export const buildManualRecurringTransaction = (
  date = new Date(),
  paidAt = new Date()
 ): FinanceTransaction => {
- if (!isManualFinanceRecurrence(source)) throw new Error('Solo se registran manualmente las recurrencias fuera de Stripe.');
+ if (!isManualFinanceRecurrence(source)) throw new Error('Solo se registran manualmente las recurrencias en efectivo o transferencia.');
  const scheduledDate = toFinanceDateKey(date);
  const first = scheduledDate === source.date.slice(0, 10);
  const amount = Math.abs(Number(first ? source.firstAmount ?? source.amount : source.nextAmount ?? source.amount));

@@ -11,7 +11,7 @@ export default function MarkScheduledPaymentPaid({ payment, onSaved, onClose }: 
  onClose: () => void;
 }) {
  const [paidDate, setPaidDate] = useState(toFinanceDateKey(new Date()));
- const [method, setMethod] = useState<'transfer' | 'cash' | 'card'>(payment.paymentMethod === 'cash' ? 'cash' : payment.paymentMethod === 'card' ? 'card' : 'transfer');
+ const [method, setMethod] = useState<'transfer' | 'cash'>(payment.paymentMethod === 'cash' ? 'cash' : 'transfer');
  const [account, setAccount] = useState<NonNullable<FinanceTransaction['paymentAccount']>>('revolut_pro');
  const [busy, setBusy] = useState(false);
  const [error, setError] = useState('');
@@ -65,7 +65,7 @@ export default function MarkScheduledPaymentPaid({ payment, onSaved, onClose }: 
   <p>{payment.description} · {paymentMoney(payment)} · {payment.method}</p>
   <div className="pay-filters">
    <label>Método de pago <select aria-label="Método de pago" value={method} disabled={busy} onChange={event => setMethod(event.target.value as typeof method)}>
-    <option value="transfer">Transferencia bancaria</option><option value="cash">Efectivo</option><option value="card">Tarjeta fuera de Stripe</option>
+    <option value="transfer">Transferencia bancaria</option><option value="cash">Efectivo</option>
    </select></label>
    {method !== 'cash' && <label>Cuenta receptora <select aria-label="Cuenta receptora" value={account} disabled={busy} onChange={event => setAccount(event.target.value as typeof account)}>
     <option value="revolut_pro">Revolut empresa</option><option value="carlos_personal">Cuenta personal de Carlos</option><option value="nacho_personal">Cuenta personal de Nacho</option>
