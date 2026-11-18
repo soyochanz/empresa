@@ -3726,7 +3726,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   </span>
   </div>
 
-  {activeTab === 'upcoming' && <UpcomingPayments inline {...paymentAgenda} contacts={contacts} onRefresh={() => {paymentAgenda.refresh(); void onRefreshFinance?.();}} onCalendar={() => onNavigate?.('calendar', 'push')} />}
+  {activeTab === 'upcoming' && <UpcomingPayments inline {...paymentAgenda} contacts={contacts} onRefresh={() => {paymentAgenda.refresh(); void db.getFinanceTransactions().then(setTransactions).catch(() => showToast('Actualiza Finanzas para cargar el cobro registrado.', true)); void onRefreshFinance?.();}} onCalendar={() => onNavigate?.('calendar', 'push')} />}
   {/* Monthly income forecast */}
   {activeTab === 'forecast' && selectedForecast && (
   <div className="space-y-5">
