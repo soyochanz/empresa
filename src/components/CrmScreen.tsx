@@ -1,3 +1,4 @@
+import ClientQuickLinks,{clientLink} from './ClientQuickLinks';
 import {businessCountries,countryName} from '../utils/businessCountry';
 import {SERVICE_CATALOG, type ServiceProduct} from '../utils/serviceCatalog';
 import ClientStripeActivity from './ClientStripeActivity';
@@ -2863,6 +2864,7 @@ React.useEffect(() => {
    
    <p className="mt-0.5 truncate text-[10px] text-slate-400"><span className="text-slate-300">{contact.name}</span> <span className="font-mono text-[9px] text-slate-500">· {contact.role || 'Contacto'}</span></p>
    <p className="text-[9px] text-slate-505 truncate font-mono mt-1">{contact.email}</p>
+   <ClientQuickLinks contact={contact}/>
 
    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
     <span className={`px-1.5 py-0.2 rounded-[4px] text-[7.5px] font-mono font-bold uppercase tracking-wider border ${
@@ -3523,6 +3525,7 @@ React.useEffect(() => {
      <h3 className="max-w-full truncate text-lg font-black tracking-tight text-white" title={getContactBusinessName(selectedContact)}>{getContactBusinessName(selectedContact)}</h3>
      <p className="text-xs text-slate-400">{selectedContact.name} · {selectedContact.role || 'Contacto principal'}</p>
      
+     <ClientQuickLinks contact={selectedContact}/>
      {/* Copy Client ID Button */}
      <button 
      onClick={() => {
@@ -5213,7 +5216,7 @@ React.useEffect(() => {
      <span className="text-xs text-slate-400 font-medium">Web:</span>
      {selectedContact.website ? (
       <a 
-      href={selectedContact.website.startsWith('http') ? selectedContact.website : `https://${selectedContact.website}`} 
+      href={clientLink(selectedContact.website)}
       target="_blank" 
       rel="noreferrer" 
       className="text-xs text-blue-400 hover:underline truncate"
@@ -5230,7 +5233,7 @@ React.useEffect(() => {
      <span className="text-xs text-slate-400 font-medium font-sans">GitHub:</span>
      {selectedContact.githubRepo ? (
       <a 
-      href={selectedContact.githubRepo.startsWith('http') ? selectedContact.githubRepo : `https://github.com/${selectedContact.githubRepo}`} 
+      href={clientLink(selectedContact.githubRepo,true)}
       target="_blank" 
       rel="noreferrer" 
       className="text-xs text-blue-400 hover:underline truncate font-mono"
