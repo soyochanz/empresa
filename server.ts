@@ -1,3 +1,4 @@
+import { buildInstaremoveReceipt, isInstaremoveSubscription } from './api/instaremoveLedger';
 import {adminAuth, stripeAccess, denyServerArtifacts} from './api/security/access';
 import {queuePaymentAlert} from './api/calendar/paymentAlerts';
 import {registerCalendarPush} from './api/calendar/push';
@@ -347,6 +348,7 @@ async function ensureInternalInvoiceForPaidStripeRecurrence(
 
   const stripe = getStripe();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  if (isInstaremoveSubscription(subscription)) return { created: false, reason: "instaremove_stripe_invoice" };
   const invoiceMetadata = (invoice as any).subscription_details?.metadata || {};
   const clientId = subscription.metadata?.clientId || invoiceMetadata.clientId || invoice.metadata?.clientId || "";
 
@@ -675,6 +677,27 @@ async function markStripeInvoiceAsPaid(invoice: Stripe.Invoice): Promise<{ updat
   }
 
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  if (isInstaremoveSubscription(subscription)) {
+    const receipt = await buildInstaremoveReceipt(stripe, invoice, subscription, getStripePaidDate(invoice));
+    if (!receipt) return { updated: false, reason: "invoice_not_paid" };
+    const candidates = await getStripeTransactionCandidates({ invoiceId });
+    const existing = candidates.find(row => readTag(row.description || "", "STRIPEINVOICE") === invoiceId);
+    if (existing) {
+      if (existing.status === "paid" && existing.category === receipt.category && existing.amount === receipt.amount && existing.date === receipt.date) {
+        return { updated: false, reason: "already_processed", txId: existing.id };
+      }
+      const { error } = await supabaseAdmin.from("finance_transactions").update({
+        category: receipt.category, amount: receipt.amount, date: receipt.date,
+        description: receipt.description, status: receipt.status,
+      }).eq("id", existing.id);
+      if (error) throw error;
+      return { updated: true, txId: existing.id };
+    }
+    const { error } = await supabaseAdmin.from("finance_transactions").insert(receipt);
+    if (error && error.code !== "23505") throw error;
+    return { updated: !error, txId: receipt.id };
+  }
+
   const invoiceMetadata = (invoice as any).subscription_details?.metadata || {};
   const stripePlanId =
     subscription.metadata?.stripePlanId ||
