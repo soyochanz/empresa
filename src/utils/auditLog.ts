@@ -129,6 +129,8 @@ export const setAuditContext = (next: Partial<AuditContext>) => {
 };
 
 export const recordAuditEvent = (input: AuditInput) => {
+ // Navigation and healthy connection pings are not business audit actions.
+ if (['screen_view', 'data_connection_ready', 'network_online'].includes(input.action)) return;
  // The public login screens have no active session context yet. Allow only
  // explicitly identified authentication events so remote login attempts can
  // still be reviewed by an authenticated administrator.
@@ -203,7 +205,7 @@ const localPage = (filters: AuditLogFilters) => {
  const filtered = readPending().filter(log => {
   if (filters.actorType && filters.actorType !== 'all' && log.actorType !== filters.actorType) return false;
   if (filters.actorEmail && log.actorEmail !== filters.actorEmail) return false;
-  if (filters.source === 'important' && !['auth', 'data', 'system'].includes(log.source)) return false;
+  if (filters.source === 'important' && (!(['auth', 'data', 'system'].includes(log.source) || ['important_interaction', 'form_submit'].includes(log.action)) || ['data_connection_ready', 'network_online'].includes(log.action))) return false;
   if (filters.source && !['all', 'important'].includes(filters.source) && log.source !== filters.source) return false;
   if (search && !`${log.action} ${log.description} ${log.actorName} ${log.actorEmail || ''} ${log.screen || ''}`.toLowerCase().includes(search)) return false;
   return true;
@@ -213,11 +215,11 @@ const localPage = (filters: AuditLogFilters) => {
 };
 
 export const getAuditLogs = async (filters: AuditLogFilters): Promise<{ logs: AuditLog[]; total: number; localOnly: boolean }> => {
- let query = supabase.from('audit_logs').select('id,actor_type,actor_id,actor_name,actor_email,source,action,description,entity_type,entity_id,screen,severity,metadata,created_at', { count: 'estimated' });
+ let query = supabase.from('audit_logs').select('id,actor_type,actor_id,actor_name,actor_email,source,action,description,entity_type,entity_id,screen,severity,metadata,created_at', { count: 'exact' });
  if (filters.search?.trim()) query = query.textSearch('search_document', filters.search.trim(), { type: 'websearch', config: 'simple' });
  if (filters.actorType && filters.actorType !== 'all') query = query.eq('actor_type', filters.actorType);
  if (filters.actorEmail) query = query.eq('actor_email', filters.actorEmail);
- if (filters.source === 'important') query = query.in('source', ['auth', 'data', 'system']);
+ if (filters.source === 'important') query = query.or('source.in.(auth,data,system),action.in.(important_interaction,form_submit)').not('action', 'in', '(data_connection_ready,network_online)');
  else if (filters.source && filters.source !== 'all') query = query.eq('source', filters.source);
  const from = (filters.page - 1) * filters.pageSize;
  const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, from + filters.pageSize - 1);
@@ -252,10 +254,11 @@ export const installAuditTracking = () => {
   const interactive = origin?.closest('button, a, [role="button"], input[type="button"], input[type="submit"]');
   if (!interactive || interactive.closest('[data-audit-ignore]')) return;
   const label = getElementLabel(interactive);
+  if (!/guardar|crear|eliminar|borrar|confirmar|registrar|cancelar suscrip|renovar enlace|reactivar|desactivar|importar|exportar|enviar|save|delete|create/i.test(label)) return;
   recordAuditEvent({
    source: 'ui',
-   action: 'interaction',
-   description: `Acción: ${label}`,
+   action: 'important_interaction',
+   description: `Acción solicitada: ${label}`,
    entityType: interactive.tagName.toLowerCase(),
    metadata: { path: window.location.pathname, label }
   });

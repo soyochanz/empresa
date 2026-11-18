@@ -10,7 +10,7 @@ export default function ClientInvoicesModal({contact,invoices,transactions,onClo
  const visibleInvoices=freshInvoices||invoices;
  const month=new Date().toLocaleDateString('sv-SE').slice(0,7);
  const missing=transactions.filter(tx=>tx.clientId===contact.id&&tx.type==='income'&&tx.status==='paid'&&!tx.isRecurring&&!tx.excludedFromLedger&&['cash','transfer','card'].includes(tx.paymentMethod||'')&&(tx.paidAt||tx.date).startsWith(month)&&!visibleInvoices.some(inv=>inv.id===tx.invoiceId||inv.items.some(item=>item.pendingTxId===tx.id||item.id===tx.id)));
- async function recover(){setBusy('recover');setError('');try{for(const tx of missing)await generateReceiptInvoice(tx.id);const all=await db.getFinanceInvoices();setFreshInvoices(all.filter(inv=>inv.clientId===contact.id));}catch(e){setError(e instanceof Error?e.message:'No se pudo generar la factura.');}finally{setBusy('');}}
+ async function recover(){setBusy('recover');setError('');try{for(const tx of missing)await generateReceiptInvoice(tx.id);const all=await db.getFinanceInvoices();setFreshInvoices(all.filter(inv=>inv.clientId===contact.id||invoices.some(old=>old.id===inv.id)));}catch(e){setError(e instanceof Error?e.message:'No se pudo generar la factura.');}finally{setBusy('');}}
  const [tab,setTab]=useState<'invoices'|'details'>('invoices');
  const [draft,setDraft]=useState({fiscalName:contact.fiscalName||contact.company||contact.name,taxId:contact.taxId||'',fiscalAddress:contact.fiscalAddress||contact.location||''});
  const [busy,setBusy]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(false);
