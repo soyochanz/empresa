@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {buildPaymentMaster,buildPaymentSchedule,buildMonthlyPaymentActivity,buildExpenseMaster,paymentsForMonth} from '../src/utils/paymentSchedule';
+import {buildDueRecurringTransactions,buildManualRecurringTransaction} from '../src/utils/financeRecurrence';
+const now=new Date('2026-11-18T12:00:00');
+const tx:any={id:'x',type:'income',amount:100,date:'2026-11-05',status:'paid',description:'SEO',paymentMethod:'transfer',clientId:'c'};
+const internal=[{...tx,id:'a',description:'Cashback de Pro · Revolut'}, {...tx,id:'b',clientId:undefined,description:'Ingreso Nacho'}, {...tx,id:'c',description:'Traspaso a Revolut Pro'}];
+assert.equal(buildMonthlyPaymentActivity(internal,[],[],[],now,true).length,0);
+const invoice:any={id:'in1',paymentId:'pi1',subscriptionId:'sub1',scheduledDate:'2026-11-01',date:'2026-11-18',amount:100,currency:'eur',status:'paid',customerName:'Test',description:'SEO'};
+const duplicate:any={...invoice,id:'ch1'};
+const forecast:any={id:'f',subscriptionId:'sub1',date:'2026-11-01',amount:100,currency:'EUR',customer:'Test',source:'stripe',method:'Stripe',description:'SEO'};
+const activity=buildMonthlyPaymentActivity([], [invoice,duplicate],[],[],now,true);
+assert.equal(buildPaymentMaster([forecast],activity).length,1);
+// Separate invoices of the same subscription on one date are real distinct receipts.
+assert.equal(buildPaymentMaster([],buildMonthlyPaymentActivity([],[invoice,{...invoice,id:'in2',paymentId:'pi2'}],[],[],now,true)).length,2);
+const expired={...tx,id:'expired',status:'failed',paymentMethod:'stripe',stripeCheckoutSessionId:'cs1'};
+let master=buildPaymentMaster(buildPaymentSchedule([expired],[],[],now),buildMonthlyPaymentActivity([expired],[],[],[],now,true));
+assert.equal(paymentsForMonth(master,'2026-11',now)[0].amount,100);
+assert.equal(paymentsForMonth(master,'2026-12',now).length,0);
+const expense:any={...tx,id:'expense',type:'expense',category:'OpenAI',paymentMethod:'card',isRecurring:true,status:'pending',date:'2026-11-30',recurrenceOccurrenceCount:3};
+let expenses=buildExpenseMaster([expense],[],[],now);assert.equal(expenses.length,3);assert.ok(expenses.every(p=>p.direction==='expense'&&p.recurring&&p.state!=='paid'));
+assert.equal(buildDueRecurringTransactions([expense],new Date('2027-02-01')).length,0);
+const receipt=buildManualRecurringTransaction(expense,new Date('2026-11-30T12:00:00'),new Date('2026-12-01T12:00:00'));
+expenses=buildExpenseMaster([expense,receipt],[],[],now);assert.equal(expenses.length,3);assert.equal(expenses.filter(p=>p.state==='paid').length,1);
+console.log('Cobros/Pagos: internal income excluded, Stripe payment dedup, distinct receipts retained, expired links retained, monthly filters, expense recurrence and receipts OK');

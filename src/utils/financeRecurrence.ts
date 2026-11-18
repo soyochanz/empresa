@@ -76,7 +76,7 @@ export const getRecurringOccurrenceId = (sourceId: string, scheduledDate: string
  `${sourceId}__rec__${scheduledDate.replaceAll('-', '')}`;
 
 export const isManualFinanceRecurrence = (source: FinanceTransaction): boolean =>
- Boolean(source.isRecurring && (source.paymentMethod === 'cash' || source.paymentMethod === 'transfer'));
+ Boolean(source.isRecurring && source.paymentMethod !== 'stripe');
 
 export const findRecurringOccurrence = (
  source: FinanceTransaction, scheduledDate: string, transactions: FinanceTransaction[]

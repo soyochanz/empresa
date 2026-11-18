@@ -1,3 +1,4 @@
+import {registerFinanceIcons} from './api/financeIcons';
 import { registerForecastExclusions } from './api/forecastExclusions';
 import { buildInstaremoveReceipt, isInstaremoveSubscription } from './api/instaremoveLedger';
 import {adminAuth, stripeAccess, denyServerArtifacts} from './api/security/access';
@@ -1145,6 +1146,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 
 app.use(express.json());
 registerForecastExclusions(app, supabaseAdmin, requireAdminAuth);
+registerFinanceIcons(app, supabaseAdmin, requireAdminAuth);
 registerCalendarPush(app, supabaseAdmin, requireAdminAuth, (id,email)=>authorizedAdminIds.has(id)||authorizedAdminEmails.has(normalizeAdminEmail(email)));
 
 // Country-only language selection: no external geolocation service or precise location.
@@ -1787,6 +1789,8 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
       paymentDetails: details,
       agendaInvoices: [...paidInvoices, ...openInvoices].map(invoice => ({
         id: invoice.id,
+        paymentId: latestByInvoice.get(invoice.id)?.intentId,
+        scheduledDate: invoice.lines?.data?.[0]?.period?.start ? new Date(invoice.lines.data[0].period.start*1000).toISOString().slice(0,10) : undefined,
         subscriptionId: getStripeInvoiceSubscriptionId(invoice),
         origin: paymentOrigin(invoice.metadata, (invoice as any).parent?.subscription_details?.metadata, (invoice as any).subscription_details?.metadata, subscriptions.find(s=>s.id===getStripeInvoiceSubscriptionId(invoice))?.metadata),
         clientId: invoice.metadata?.clientId || (invoice as any).parent?.subscription_details?.metadata?.clientId || (invoice as any).subscription_details?.metadata?.clientId || null,
@@ -1807,7 +1811,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         if(detail.invoiceId) return [];
         const customer = typeof charge.customer === 'object' && charge.customer && 'name' in charge.customer ? charge.customer : null;
         const session = sessionByPayment.get(detail.intentId);
-        return [{id:detail.chargeId,origin:paymentOrigin(session?.metadata,charge.metadata),transactionId:detail.transactionId,clientId:session?.metadata?.clientId,
+        return [{id:detail.chargeId,paymentId:detail.intentId,origin:paymentOrigin(session?.metadata,charge.metadata),transactionId:detail.transactionId,clientId:session?.metadata?.clientId,
           customerName:customer?.name || charge.billing_details?.name || 'Cliente Stripe',
           customerEmail:customer?.email || charge.billing_details?.email,
           description:session?.metadata?.concept || charge.description || 'Cobro Stripe',

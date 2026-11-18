@@ -11,7 +11,7 @@ export default function MarkScheduledPaymentPaid({ payment, onSaved, onClose }: 
  onClose: () => void;
 }) {
  const [paidDate, setPaidDate] = useState(toFinanceDateKey(new Date()));
- const [method, setMethod] = useState<'transfer' | 'cash'>(payment.paymentMethod === 'cash' ? 'cash' : 'transfer');
+ const [method, setMethod] = useState<'transfer' | 'cash' | 'card'>(payment.paymentMethod === 'cash' ? 'cash' : payment.paymentMethod === 'card' ? 'card' : 'transfer');
  const [account, setAccount] = useState<NonNullable<FinanceTransaction['paymentAccount']>>('revolut_pro');
  const [busy, setBusy] = useState(false);
  const [error, setError] = useState('');
@@ -30,7 +30,7 @@ export default function MarkScheduledPaymentPaid({ payment, onSaved, onClose }: 
    invalidateSharedPipelineCache(['finance_transactions']);
    const transactions = await db.getFinanceTransactions();
    const source = transactions.find(tx => tx.id === payment.transactionId);
-   if (!source || source.type !== 'income' || source.paymentMethod === 'stripe') {
+   if (!source || source.paymentMethod === 'stripe') {
     throw new Error('Actualiza la agenda para revisar este cobro.');
    }
    // Legacy CRM manual templates used a local plan ID unrelated to Stripe.
@@ -42,7 +42,7 @@ export default function MarkScheduledPaymentPaid({ payment, onSaved, onClose }: 
    const paymentDetails = { paymentMethod: method, paymentAccount: method === 'cash' ? undefined : account };
    if (source.isRecurring) {
     const contacts = await db.getContacts();
-    const scheduled = buildPaymentSchedule(transactions, [], contacts).find(row => row.transactionId === source.id && row.date === payment.date);
+    const scheduled = buildPaymentSchedule(transactions, [], contacts, new Date(), source.type).find(row => row.transactionId === source.id && row.date === payment.date);
     if (!scheduled) throw new Error('Esta cuota ya está cobrada o su planificación ha cambiado.');
     const existing = findRecurringOccurrence(source, payment.date, transactions);
     const receipt = buildManualRecurringTransaction({ ...manualSource, ...paymentDetails }, new Date(payment.date + 'T12:00:00'), paidAt);
@@ -61,18 +61,18 @@ export default function MarkScheduledPaymentPaid({ payment, onSaved, onClose }: 
  }
 
  return <section className="pay-month-history">
-  <div className="pay-month-title"><h3>Registrar cobro · {payment.customer}</h3><button disabled={busy} onClick={onClose}>Cerrar</button></div>
+  <div className="pay-month-title"><h3>Registrar {payment.direction==='expense'?'pago':'cobro'} · {payment.customer}</h3><button disabled={busy} onClick={onClose}>Cerrar</button></div>
   <p>{payment.description} · {paymentMoney(payment)} · {payment.method}</p>
   <div className="pay-filters">
    <label>Método de pago <select aria-label="Método de pago" value={method} disabled={busy} onChange={event => setMethod(event.target.value as typeof method)}>
-    <option value="transfer">Transferencia bancaria</option><option value="cash">Efectivo</option>
+    <option value="transfer">Transferencia bancaria</option><option value="cash">Efectivo</option><option value="card">Tarjeta</option>
    </select></label>
-   {method !== 'cash' && <label>Cuenta receptora <select aria-label="Cuenta receptora" value={account} disabled={busy} onChange={event => setAccount(event.target.value as typeof account)}>
+   {method !== 'cash' && <label>{payment.direction==='expense'?'Cuenta de origen':'Cuenta receptora'} <select aria-label="Cuenta receptora" value={account} disabled={busy} onChange={event => setAccount(event.target.value as typeof account)}>
     <option value="revolut_pro">Revolut empresa</option><option value="carlos_personal">Cuenta personal de Carlos</option><option value="nacho_personal">Cuenta personal de Nacho</option>
    </select></label>}
   </div>
-  <label>Fecha de cobro <input type="date" value={paidDate} max={toFinanceDateKey(new Date())} onChange={event => setPaidDate(event.target.value)} /></label>
+  <label>Fecha de {payment.direction==='expense'?'pago':'cobro'} <input type="date" value={paidDate} max={toFinanceDateKey(new Date())} onChange={event => setPaidDate(event.target.value)} /></label>
   {error && <p role="alert" className="pay-warning">{error}</p>}
-  <div className="pay-toolbar"><button disabled={busy} onClick={() => void save()}>{busy ? 'Registrando…' : 'Confirmar cobro recibido'}</button></div>
+  <div className="pay-toolbar"><button disabled={busy} onClick={() => void save()}>{busy ? 'Registrando…' : payment.direction==='expense'?'Confirmar pago realizado':'Confirmar cobro recibido'}</button></div>
  </section>;
 }

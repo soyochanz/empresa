@@ -1,3 +1,5 @@
+import CompanyPayments from './CompanyPayments';
+import {paymentsForMonth} from '../utils/paymentSchedule';
 import {indexStripePayments,stripeMethodLabel,type StripePaymentDetail} from '../utils/stripePaymentDetails';
 import './financeWorkspace.css';
 import UpcomingPayments from './UpcomingPayments';
@@ -564,7 +566,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
  const recurrenceRegistrationInFlight = useRef(new Set<string>());
  const [registeringRecurrences, setRegisteringRecurrences] = useState<Set<string>>(new Set());
  // Navigation tabs: 'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales'
- const [activeTab, setActiveTab] = useState<'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales' | 'upcoming'>('transactions');
+ const [activeTab, setActiveTab] = useState<'transactions' | 'forecast' | 'recurring' | 'invoices' | 'stripe' | 'comerciales' | 'upcoming' | 'expenses'>('transactions');
  const [recurringGroup, setRecurringGroup] = useState<'subscriptions' | 'installments' | 'manual' | 'pending'>('subscriptions');
  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
  const [quickServiceClientId, setQuickServiceClientId] = useState('');
@@ -3468,7 +3470,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   // Show the complete month: collected income plus outstanding forecasts.
   monthDate.setMonth(monthDate.getMonth() + index);
   const key = getMonthKey(monthDate);
-  const rows=paymentAgenda.master.filter(p=>!p.excluded&&p.currency===forecastCurrency&&p.date.slice(0,7)===key);
+  const rows=paymentsForMonth(paymentAgenda.master,key).filter(p=>p.currency===forecastCurrency);
   const asTransaction=(p:typeof rows[number]):FinanceTransaction=>({id:p.transactionId||p.id,type:'income',status:p.state||'pending',category:p.origin||p.method,description:p.description,amount:p.amount,date:p.date,clientId:p.clientId,paymentMethod:p.source==='stripe'?'stripe':p.paymentMethod as FinanceTransaction['paymentMethod'],isRecurring:false});
   const pendingItems=rows.filter(p=>p.state!=='paid'&&(p.historical||p.awaitingActivation||p.state==='pending')).map(asTransaction);
   const paidItems=rows.filter(p=>p.state==='paid').map(asTransaction);
@@ -3599,78 +3601,8 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   {/* Navigation Inside Finance Module */}
   <div className="finance-tabs-shell flex flex-col gap-3 border-b border-white/5 pb-3 pt-2 lg:flex-row lg:items-center lg:justify-between">
   <div className="finance-tab-scroll min-w-0 flex-1 overflow-x-auto pb-1">
-  <div role="tablist" aria-label="Secciones de finanzas" className="finance-tab-list flex min-w-max items-center gap-1.5 rounded-2xl border border-white/[0.07] bg-[#0b1329]/70 p-1.5">
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'transactions'}
-   data-tone="emerald"
-   onClick={() => setActiveTab('transactions')}
-   className={`finance-tab ${activeTab === 'transactions' ? 'is-active' : ''}`}
-   >
-   Bitácora
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'recurring'}
-   data-tone="violet"
-   onClick={() => setActiveTab('recurring')}
-   className={`finance-tab ${activeTab === 'recurring' ? 'is-active' : ''}`}
-   >
-   <span>Recurrencias y splits</span>
-   <span className="finance-tab-badge">
-    {stripePlans.length + manualRecurring.length + unpaidStripeRecurrences.length}
-   </span>
-   </button>
-   <button type="button" role="tab" aria-selected={activeTab === 'upcoming'} onClick={() => setActiveTab('upcoming')} className={`finance-tab ${activeTab === 'upcoming' ? 'is-active' : ''}`}>Próximos pagos</button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'forecast'}
-   data-tone="cyan"
-   onClick={() => setActiveTab('forecast')}
-   className={`finance-tab ${activeTab === 'forecast' ? 'is-active' : ''}`}
-   >
-   <CalendarDays className="w-3.5 h-3.5" />
-   <span>Previsión</span>
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'invoices'}
-   data-tone="blue"
-   onClick={() => setActiveTab('invoices')}
-   className={`finance-tab ${activeTab === 'invoices' ? 'is-active' : ''}`}
-   >
-   <LayoutDashboard className="w-3.5 h-3.5" />
-   <span>Facturas</span>
-   <span className="finance-tab-badge">
-    {invoices.length}
-   </span>
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'stripe'}
-   data-tone="stripe"
-   onClick={() => setActiveTab('stripe')}
-   className={`finance-tab ${activeTab === 'stripe' ? 'is-active' : ''}`}
-   >
-   <img src="/stripe-mark.png" alt="" className="h-4 w-4 rounded-[4px]" />
-   <span>Stripe</span>
-   </button>
-   <button
-   type="button"
-   role="tab"
-   aria-selected={activeTab === 'comerciales'}
-   data-tone="amber"
-   onClick={() => setActiveTab('comerciales')}
-   className={`finance-tab ${activeTab === 'comerciales' ? 'is-active' : ''}`}
-   >
-   <User className="w-3.5 h-3.5" />
-   <span>Equipo</span>
-   </button>
+  <div role="tablist" aria-label="Secciones de finanzas" className="finance-tab-list flex min-w-max items-center gap-1.5 rounded-2xl border border-white/[0.07] p-1.5">
+   {([['transactions','Bitácora'],['upcoming','Cobros'],['expenses','Pagos'],['forecast','Previsión'],['comerciales','Equipo']] as const).map(([key,label])=><button key={key} type="button" role="tab" aria-selected={activeTab===key} onClick={()=>setActiveTab(key)} className={`finance-tab ${activeTab===key?'is-active':''}`}>{label}</button>)}
   </div>
   </div>
 
@@ -3689,6 +3621,7 @@ export default function FinanceScreen({ contacts, onNavigate, comercialesList = 
   </div>
 
   {activeTab === 'upcoming' && <UpcomingPayments inline {...paymentAgenda} contacts={contacts} onRefresh={() => {paymentAgenda.refresh(); void db.getFinanceTransactions().then(setTransactions).catch(() => showToast('Actualiza Finanzas para cargar el cobro registrado.', true)); void onRefreshFinance?.();}} onCalendar={() => onNavigate?.('calendar', 'push')} />}
+  {activeTab === 'expenses' && <CompanyPayments transactions={transactions} contacts={contacts} onRefresh={()=>{void db.getFinanceTransactions().then(setTransactions);paymentAgenda.refresh();}} />}
   {/* Monthly income forecast */}
   {activeTab === 'forecast' && selectedForecast && (
   <div className="space-y-5"><label>Divisa <select value={forecastCurrency} onChange={e=>setForecastCurrency(e.target.value)}>{forecastCurrencies.map(currency=><option key={currency}>{currency}</option>)}</select></label>{paymentAgenda.error&&<p role="alert">{paymentAgenda.error}</p>}

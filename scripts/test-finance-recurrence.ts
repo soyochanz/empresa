@@ -17,7 +17,7 @@ for (const paymentMethod of ['cash', 'transfer'] as const) {
   assert.deepEqual(buildDueRecurringTransactions([source({ paymentMethod, type })], today), []);
  }
 }
-assert.equal(buildDueRecurringTransactions([source({ paymentMethod: 'card' })], today).length, 2);
+assert.equal(buildDueRecurringTransactions([source({ paymentMethod: 'card' })], today).length, 0);
 assert.deepEqual(buildDueRecurringTransactions([source({ paymentMethod: 'stripe' })], today), []);
 
 // The screenshot: September's pending row is reused and counted only once.

@@ -9,7 +9,7 @@ export function registerForecastExclusions(app:Express,db:SupabaseClient,admin:R
  });
  app.post('/api/finance/forecast-exclusions',admin,async(req,res)=>{
   const {key,excluded}=req.body||{};
-  if(typeof key!=='string'||key.length>300||! /^(tx|cycle|invoice):[\w:.-]+$/.test(key)||typeof excluded!=='boolean')return void res.status(400).json({error:'Cobro no válido.'});
+  if(typeof key!=='string'||key.length>300||! /^(tx|cycle|invoice|payment):[\w:.-]+$/.test(key)||typeof excluded!=='boolean')return void res.status(400).json({error:'Cobro no válido.'});
   // Only hides a projection. Settled/processing payments always override this
   // preference in the shared master list, including late Stripe confirmations.
   const {error}=await db.from('payment_forecast_exclusions').upsert({payment_key:key,excluded,updated_at:new Date().toISOString(),updated_by:res.locals.adminUserId},{onConflict:'payment_key'});
