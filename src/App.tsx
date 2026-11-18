@@ -1,4 +1,4 @@
-import {buildPaymentSchedule} from './utils/paymentSchedule';
+import {buildPaymentSchedule,isNonCustomerIncome} from './utils/paymentSchedule';
 import {isOpenClientCharge} from './utils/clientBalance';
 import { authenticatedFetch } from './utils/authenticatedFetch';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -825,18 +825,20 @@ export default function App() {
 
  const todayKey=getLocalDateKey();
  const recentCutoff=new Date(today);recentCutoff.setDate(recentCutoff.getDate()-30);
+ const excludedChargeIds=new Set(paymentSchedule.master.filter(p=>p.excluded).map(p=>p.transactionId).filter(Boolean));
  for(const tx of finTransactions){
-  if(tx.type!=='income'||tx.isRecurring||tx.excludedFromLedger||/traspaso|transferencia interna/i.test(tx.category+' '+tx.description))continue;
+  if(tx.type!=='income'||tx.isRecurring||tx.excludedFromLedger||isNonCustomerIncome(tx)||excludedChargeIds.has(tx.id))continue;
   const client=contacts.find(c=>c.id===tx.clientId);
   const label=client?.company||client?.name||tx.description;
   const date=(tx.paidAt||tx.date).slice(0,10);
   if(tx.status==='paid'&&date>=getLocalDateKey(recentCutoff)&&date<=todayKey)list.push({id:`receipt_${tx.id}`,type:'Review',title:`Cobro recibido · ${label}`,description:`${tx.amount.toLocaleString('es-ES')} € · ${tx.paymentMethod==='stripe'?'Stripe':tx.paymentMethod==='cash'?'Efectivo':'Cobro manual'}`,date,time:'Cobrado'});
   if(tx.status==='failed'&&tx.date.slice(0,10)>=getLocalDateKey(recentCutoff)&&isOpenClientCharge(tx,finTransactions))list.push({id:`failed_${tx.id}`,type:'Deadline',title:`${/caducado/i.test(tx.description)?'Enlace caducado':'Pago fallido'} · ${label}`,description:`${tx.amount.toLocaleString('es-ES')} € · ${tx.description}`,date:tx.date,time:'Revisar'});
  }
- for(const payment of buildPaymentSchedule(finTransactions,[],contacts,today).filter(p=>p.source==='manual'&&p.date===todayKey)){
+ for(const payment of paymentSchedule.master.filter(p=>!p.excluded&&p.state!=='paid'&&p.source==='manual'&&p.date===todayKey)){
   list.push({id:`due_today_${payment.id}`,type:'Deadline',title:`Cobrar hoy · ${payment.customer}`,description:`${payment.amount.toLocaleString('es-ES')} € · ${payment.method} · ${payment.description}`,date:todayKey,time:'Hoy'});
  }
  finTransactions.forEach(tx => {
+  if(excludedChargeIds.has(tx.id)||tx.excludedFromLedger||isNonCustomerIncome(tx))return;
   const stripeTxId = String(tx.id || '').toLowerCase();
   const stripeSessionId = String(tx.stripeCheckoutSessionId || '').toLowerCase();
   const isStripeTx = (
@@ -909,7 +911,7 @@ export default function App() {
   });
 
  return list;
- }, [finTransactions, contacts, currentUser, closingAlertClock]);
+ }, [finTransactions, contacts, currentUser, closingAlertClock, paymentSchedule.master]);
 
  const hotLeadsNotifications = useMemo(() => {
  const list: any[] = [];
