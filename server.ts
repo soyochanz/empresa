@@ -1587,7 +1587,7 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
     const stripe = getStripe();
     const [subscriptions, paidInvoices, openInvoices, charges, invoicePayments, completedSessions] = await Promise.all([
       stripe.subscriptions
-        .list({ status: "all", limit: 100, expand: ["data.customer"] })
+        .list({ status: "all", limit: 100, expand: ["data.customer", "data.discounts.source.coupon"] })
         .autoPagingToArray({ limit: 1_000 }),
       stripe.invoices
         .list({ status: "paid", limit: 100 })
@@ -1649,6 +1649,15 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
     const invoicesForSubscription = (subscriptionId: string, invoices: Stripe.Invoice[]) =>
       invoices.filter(invoice => getStripeInvoiceSubscriptionId(invoice) === subscriptionId);
 
+    const nextInvoiceAmounts = new Map<string, number>();
+    const previewSubscriptions = subscriptions.filter(s => ["active","trialing","past_due"].includes(s.status));
+    for (let index=0; index<previewSubscriptions.length; index+=4) {
+      await Promise.all(previewSubscriptions.slice(index,index+4).map(async subscription => {
+        try { const preview=await stripe.invoices.createPreview({subscription:subscription.id});
+          nextInvoiceAmounts.set(subscription.id, Math.max(0,preview.amount_due)/100);
+        } catch { /* Cancelled-at-period-end subscriptions may have no next invoice. */ }
+      }));
+    }
     const activeSubscriptions = subscriptions.filter(s => ["active","trialing","past_due"].includes(s.status)).map(subscription => {
       const customer = typeof subscription.customer === "string" ? null : subscription.customer as any;
       const subscriptionPaidInvoices = invoicesForSubscription(subscription.id, paidInvoices)
@@ -1685,6 +1694,15 @@ app.get("/api/stripe/finance-overview", requireAdminAuth, async (_req, res) => {
         customerEmail: customer?.email || subscription.metadata?.clientEmail || "",
         status: subscription.status,
         amount,
+        nextInvoiceAmount: nextInvoiceAmounts.get(subscription.id),
+        discounts: (subscription.discounts || []).flatMap((discount:any) => {
+          const coupon=discount.source?.coupon || discount.coupon;
+          if (!coupon || typeof coupon==='string') return [];
+          // Product-restricted coupons require Stripe's invoice preview; do not
+          // apply them indiscriminately to the entire recurring basket.
+          if(coupon.applies_to?.products?.length) return [];
+          return [{percent:coupon.percent_off ?? undefined,amount:coupon.amount_off!=null && coupon.currency===firstItem?.price.currency?coupon.amount_off/100:undefined,end:discount.end,start:discount.start,once:coupon.duration==='once'}];
+        }),
         currency: firstItem?.price.currency || "eur",
         interval: firstItem?.price.recurring?.interval || "month",
         intervalCount: firstItem?.price.recurring?.interval_count || 1,
