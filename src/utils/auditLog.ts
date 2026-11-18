@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { isBrowserExtensionError, unexpectedErrorMessage } from './clientError';
 import { AuditActorType, AuditLog, AuditLogActor, AuditSeverity, AuditSource } from '../types';
 
 const MAX_PENDING_LOGS = 500;
@@ -188,6 +189,9 @@ export const flushAuditLogs = async () => {
   const insertedIds = new Set(batch.map(log => log.id));
   writePending(readPending().filter(log => !insertedIds.has(log.id)));
   if (readPending().length) scheduleFlush();
+ } catch (error) {
+  retryAfter = Date.now() + 15_000;
+  console.warn('No se pudo enviar el registro de actividad; se reintentará.');
  } finally {
   flushing = false;
   if (readPending().length) scheduleFlush();
@@ -260,13 +264,17 @@ export const installAuditTracking = () => {
   const label = form.getAttribute('aria-label') || form.id || 'Formulario';
   recordAuditEvent({ source: 'ui', action: 'form_submit', description: `Formulario enviado: ${label}`, entityType: 'form', metadata: { path: window.location.pathname } });
  };
- const onError = (event: ErrorEvent) => recordAuditEvent({ actorType: 'system', source: 'system', action: 'client_error', description: event.message || 'Error no identificado en el navegador', severity: 'error', metadata: { file: event.filename, line: event.lineno, path: window.location.pathname }, dedupe: false });
+ const onError = (event: ErrorEvent) => {
+  if (isBrowserExtensionError(event.error, event.filename)) return;
+  recordAuditEvent({ actorType: 'system', source: 'system', action: 'client_error', description: event.message || 'Error no identificado en el navegador', severity: 'error', metadata: { file: event.filename, line: event.lineno, path: window.location.pathname }, dedupe: false });
+ };
  const onRejection = (event: PromiseRejectionEvent) => {
+  if (isBrowserExtensionError(event.reason)) return;
   const message = event.reason instanceof Error ? event.reason.message : String(event.reason || 'Promesa rechazada');
   recordAuditEvent({ actorType: 'system', source: 'system', action: 'promise_rejection', description: message, severity: 'error', metadata: { path: window.location.pathname }, dedupe: false });
   const toast = document.getElementById('toast-msg');
   if (toast) {
-   toast.textContent = `No se guardó el cambio. Supabase no confirmó la operación: ${message}`;
+   toast.textContent = unexpectedErrorMessage;
    toast.classList.remove('hidden', 'opacity-0', 'pointer-events-none');
    toast.classList.add('opacity-100');
    window.setTimeout(() => {

@@ -9,6 +9,7 @@ const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'althera-gateway-'));
 fs.mkdirSync(path.join(dist, 'assets'));
 fs.writeFileSync(path.join(dist, 'index.html'), '<html>__APP_ORIGIN__ public</html>');
 fs.writeFileSync(path.join(dist, 'assets/app.js'), 'public asset');
+fs.writeFileSync(path.join(dist, 'assets/app-AbCd1234.js'), 'versioned asset');
 let received: { url?: string; body: Buffer; headers: http.IncomingHttpHeaders };
 const backend = http.createServer(async (req, res) => {
   const chunks: Buffer[] = [];
@@ -36,6 +37,13 @@ try {
     assert.equal(response.headers.get('content-security-policy'), "frame-ancestors 'none'");
   }
   assert.equal(await (await fetch(base + '/assets/app.js')).text(), 'public asset');
+  const versioned = await fetch(base + '/assets/app-AbCd1234.js');
+  assert.equal(versioned.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.doesNotMatch((await fetch(base + '/assets/app.js')).headers.get('cache-control') || '', /immutable/);
+  const malformed = await fetch(base + '/%ZZ');
+  assert.equal(malformed.status, 400);
+  assert.equal(malformed.headers.get('cache-control'), 'no-store');
+  assert.equal(await malformed.text(), 'Solicitud no válida.');
   for (const route of ['/server.cjs', '/server.cjs.map', '/gateway.cjs', '/%73erver.cjs']) assert.equal((await fetch(base + route)).status, 404);
   for (const route of ['/admin', '/api/health', '/pago-confirmado?stripe_session_id=test', '/?stripe_connect=success']) {
     const result = await fetch(base + route, {headers:{Authorization:'Bearer local-test'}});

@@ -7,7 +7,6 @@ import {retireAgendaStripe} from "./api/replaceAgendaStripe";
 import path from "path";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { createHmac, randomBytes } from "crypto";
 
@@ -2436,6 +2435,7 @@ app.get("/api/stripe/retrieve-session", async (req, res) => {
 // Handle production bundle or dev HMR middlewares
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

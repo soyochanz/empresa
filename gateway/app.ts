@@ -12,11 +12,27 @@ export function createPublicGateway(options: { dist: string; backend: string; pu
   const publicOrigin = new URL(options.publicOrigin);
   const html = fs.readFileSync(path.join(options.dist, 'index.html'), 'utf8').replaceAll('__APP_ORIGIN__', publicOrigin.origin);
   const hopHeaders = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'];
-  const staticFiles = express.static(options.dist, { index: false, redirect: false, dotfiles: 'deny' });
+  const staticFiles = express.static(options.dist, {
+    index: false, redirect: false, dotfiles: 'deny',
+    setHeaders(res, filePath) {
+      // Vite changes the URL whenever a compiled asset changes. Cache only those
+      // fingerprinted files; HTML, service workers and private responses stay fresh.
+      const relative = path.relative(options.dist, filePath).split(path.sep).join('/');
+      if (/^assets\/[^/]+-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|png|webp|jpe?g|svg)$/.test(relative)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  });
   app.use((req, res, next) => {
     res.setHeader('X-Althera-Gateway', 'public-v1');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    const normalizedPath = decodeURIComponent(new URL(req.originalUrl, publicOrigin).pathname);
+    let normalizedPath: string;
+    try {
+      normalizedPath = decodeURIComponent(new URL(req.originalUrl, publicOrigin).pathname);
+    } catch {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(400).send('Solicitud no válida.');
+    }
     if (/\.(?:cjs|map)$/.test(normalizedPath)) return res.sendStatus(404);
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     const url = new URL(req.originalUrl, publicOrigin);

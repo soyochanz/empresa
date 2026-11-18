@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { isBrowserExtensionError, unexpectedErrorMessage } from '../src/utils/clientError';
+const extension = new TypeError("Cannot read properties of undefined (reading 'M_ID')");
+extension.stack = 'TypeError: M_ID\n at h (chrome-extension://test/executors/200.js:1:761)';
+assert.equal(isBrowserExtensionError(extension), true);
+assert.equal(isBrowserExtensionError(null, 'moz-extension://test/script.js'), true);
+assert.equal(isBrowserExtensionError(new TypeError("Cannot read properties of undefined (reading 'M_ID')")), false);
+assert.equal(isBrowserExtensionError(new Error('Supabase permission denied')), false);
+assert.equal(isBrowserExtensionError(null), false);
+assert.equal(/no se guardó|supabase/i.test(unexpectedErrorMessage), false);
+console.log('Client error classification: OK');
