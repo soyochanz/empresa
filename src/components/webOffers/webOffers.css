@@ -129,3 +129,9 @@
 .wo .wo-renewal{min-height:82dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:70px 24px 90px;background:radial-gradient(ellipse at 50% 25%,#d8bf7d19,transparent 60%),#0b100e;color:#f5f3e9}
 .wo .wo-renewal h1{font-size:clamp(42px,6.5vw,88px);line-height:1.04;letter-spacing:-.055em;margin:24px 0}.wo .wo-renewal em{color:#d8bf86;font-style:normal}.wo .wo-renewal p{color:#bac4ba;font-size:17px;line-height:1.7;margin-bottom:30px}.wo .wo-renewal small{color:#aab5ab;margin-top:18px}.wo .wo-renewal .wo-reassurance{margin-top:24px;color:#d8daca}.wo-renewal-orbit{position:relative;width:100px;height:100px;display:grid;place-items:center;margin-bottom:32px;border:1px solid #d8bf8666;border-radius:50%;box-shadow:0 0 80px #d8bf8622}.wo-renewal-orbit>svg{width:48px;height:48px;color:#d8bf86}.wo-renewal-orbit span{position:absolute;inset:-15px;border:1px solid #d8bf8622;border-radius:50%}.wo-renewal-orbit span:last-child{inset:-30px;border-color:#d8bf8611}
 .wa-branded-list .wa-delete-confirm{max-width:340px}
+
+/* Readable contract, shared by approval and customer billing. */
+.wo-contract{width:100%;margin:20px 0;padding:24px;border:1px solid var(--wo-border,#d7ddd9);border-radius:18px;background:var(--wo-surface,#fff);color:var(--wo-ink,#17251f)}
+.wo-contract pre{font:inherit;font-size:14px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto;margin:18px 0;padding-right:12px}
+.wo-contract summary{cursor:pointer;display:flex;align-items:center;gap:10px;font-weight:700}
+.wo-review-consent .wo-contract h2{font-size:24px;margin:0}

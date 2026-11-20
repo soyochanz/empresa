@@ -56,7 +56,7 @@ export default function LeadGate({ onComplete }: { onComplete: (lead: OfferLead)
         <label className="wo-consent"><input type="checkbox" required checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>Acepto la <a href="/es/privacy" target="_blank" rel="noreferrer">política de privacidad</a> y que Althera me contacte sobre mi web.</span></label>
         {error && <p role="alert" className="wo-error">{error}</p>}
         <button className="wo-btn" disabled={busy} type="submit">{busy ? 'Guardando tus datos…' : 'Ver planes y mi descuento'}<ArrowUpRight size={21}/></button>
-        <div className="wo-lead-safe"><ShieldCheck size={18}/><span>Ahora no pagas nada.<br/>12 meses de permanencia solo al contratar.</span></div>
+        <div className="wo-lead-safe"><ShieldCheck size={18}/><span>Ahora no pagas nada.<br/>Essential: 18 meses. Otros planes: 12 meses. Solo al contratar.</span></div>
       </form>
     </section>
   </main>;

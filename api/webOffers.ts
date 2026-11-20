@@ -4,8 +4,10 @@ import type Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getWebOfferPlan, webOfferPlans } from '../src/utils/webOfferPlans';
 
+import { buildOfferContract, acceptedContract, committedMonths, offerTerms } from './webOfferContract';
+
 type Dependencies = { db: SupabaseClient; stripe: () => Stripe; admin: express.RequestHandler; origin: string };
-const OFFER_TERMS = 'Cobro mensual en USD. Permanencia de 12 meses desde la activación. Sin cobro hasta aprobar la demo y completar Stripe. No se añaden impuestos en esta oferta. SEO incluido: Essential, básico el primer mes; Business, básico durante toda la suscripción; Professional, avanzado durante toda la suscripción.';
+const OFFER_TERMS = webOfferPlans.map(p => offerTerms(p.id)).join(' ');
 const BUCKET = 'web-offer-assets';
 const text = (value: unknown, max = 200) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const fail = (message: string, status = 400) => Object.assign(new Error(message), { status });
@@ -162,7 +164,7 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     const token=req.params.token;
     if(!/^(?:[a-f0-9]{20}|[a-f0-9]{48})$/.test(token))throw fail('Demo no encontrada.',404);
     const row=token.length===48?await checked(db.from('web_offer_requests').select('*').eq('demo_token',token).maybeSingle()):null;
-    if(row)return res.json({businessName:row.business_name,plan:row.plan,status:row.status,demoUrl:row.demo_url,feedback:row.feedback,billingEnabled:true,terms:OFFER_TERMS});
+    if(row)return res.json({businessName:row.business_name,plan:row.plan,status:row.status,demoUrl:row.demo_url,feedback:row.feedback,billingEnabled:true,terms:offerTerms(row.plan,committedMonths(row)),minimumMonths:committedMonths(row)});
     // Prefix aliases keep previously shared long links valid without modifying stored tokens.
     const links=await checked(db.from('branded_web_links').select('name,url,active').like('token',token.length===20?`${token}%`:token).limit(2));
     if(links.length!==1)throw fail('Enlace no disponible.',404);
@@ -175,30 +177,34 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     const feedback=text(req.body.feedback,4000);if(feedback.length<15)throw fail('Cuéntanos qué cambiarías (al menos 15 caracteres).');
     await checked(db.from('web_offer_requests').update({feedback,status:'changes',updated_at:new Date().toISOString()}).eq('id',row.id).in('status',['review','changes']));res.json({ok:true});
   }));
-  router.post('/demo/:token/checkout',rate,run(async(req,res)=>{
+  router.get('/demo/:token/contract',customerAuth,run(async(req,res)=>{const row=await requestByToken(req.params.token);await owned(row.id,res.locals.customerEmail);res.json(acceptedContract(row)||buildOfferContract(row));}));
+  router.post('/demo/:token/checkout',customerAuth,rate,run(async(req,res)=>{
     const row=await requestByToken(req.params.token);if(!row.demo_url || !['review','approved'].includes(row.status) || req.body.acceptTerms!==true)throw fail('Revisa la demo y acepta las condiciones antes de continuar.',409);
+    await owned(row.id,res.locals.customerEmail);
+    const contract=acceptedContract(row)||buildOfferContract(row);
+    if(req.body.contractHash!==contract.hash)throw fail('Abre y confirma la versión actual del contrato antes de continuar.',409);
     const locked=await checked(db.from('web_offer_requests').update({checkout_lock_until:new Date(Date.now()+60000).toISOString()}).eq('id',row.id).eq('demo_url',row.demo_url).in('status',['review','approved']).or(`checkout_lock_until.is.null,checkout_lock_until.lt.${new Date().toISOString()}`).select('*').maybeSingle());
     if(!locked)throw fail('Estamos preparando tu pago. Espera unos segundos.',409);
     try {
       const s=stripe(); let generation=locked.checkout_generation||0;
-      if(locked.checkout_session_id){const previous=await s.checkout.sessions.retrieve(locked.checkout_session_id);if(previous.status==='open'&&previous.url)return res.json({url:previous.url});if(previous.status==='complete')throw fail('Ya has completado este checkout. Accede a tu área.',409);generation++;}
+      if(locked.checkout_session_id){const previous=await s.checkout.sessions.retrieve(locked.checkout_session_id);if(previous.status==='open'&&previous.url){if(acceptedContract(locked))return res.json({url:previous.url});await s.checkout.sessions.expire(locked.checkout_session_id);}if(previous.status==='complete')throw fail('Ya has completado este checkout. Accede a tu área.',409);generation++;}
       const plan=getWebOfferPlan(row.plan)!;
       const stripeCustomer=locked.stripe_customer_id || (await s.customers.create({email:row.email,name:row.business_name,metadata:{webOfferId:row.id}},{idempotencyKey:`web-offer-customer-${row.id}`})).id;
-      await checked(db.from('web_offer_requests').update({stripe_customer_id:stripeCustomer,checkout_generation:generation,status:'approved',approved_at:new Date().toISOString(),approved_terms:OFFER_TERMS}).eq('id',row.id));
-      const session=await s.checkout.sessions.create({mode:'subscription',customer:stripeCustomer,client_reference_id:row.id,metadata:{webOfferId:row.id},subscription_data:{metadata:{webOfferId:row.id}},line_items:[{quantity:1,price_data:{currency:'usd',unit_amount:plan.price*100,recurring:{interval:'month'},product_data:{name:`Althera Web · ${plan.name}`,description:plan.pages}}}],success_url:`${origin}/business/${row.demo_token}?checkout=success`,cancel_url:`${origin}/business/${row.demo_token}?checkout=canceled`},{idempotencyKey:`web-offer-checkout-${row.id}-${generation}`});
+      await checked(db.from('web_offer_requests').update({stripe_customer_id:stripeCustomer,checkout_generation:generation,status:'approved',approved_at:locked.approved_at||new Date().toISOString(),approved_terms:JSON.stringify({...contract,acceptedBy:res.locals.customerEmail})}).eq('id',row.id));
+      const session=await s.checkout.sessions.create({mode:'subscription',customer:stripeCustomer,client_reference_id:row.id,metadata:{webOfferId:row.id},subscription_data:{metadata:{webOfferId:row.id,minimumMonths:String(contract.minimumMonths),contractHash:contract.hash,contractVersion:contract.version}},line_items:[{quantity:1,price_data:{currency:'usd',unit_amount:plan.price*100,recurring:{interval:'month'},product_data:{name:`Althera Web · ${plan.name}`,description:`${plan.pages}. Permanencia mínima: ${contract.minimumMonths} meses.`}}}],success_url:`${origin}/business/${row.demo_token}?checkout=success`,cancel_url:`${origin}/business/${row.demo_token}?checkout=canceled`},{idempotencyKey:`web-offer-checkout-${row.id}-${generation}`});
       await checked(db.from('web_offer_requests').update({checkout_session_id:session.id}).eq('id',row.id));res.json({url:session.url});
     } finally { await db.from('web_offer_requests').update({checkout_lock_until:null}).eq('id',row.id); }
   }));
   router.get('/account',customerAuth,run(async(_req,res)=>{
-    const rows=await checked(db.from('web_offer_requests').select('id,business_name,plan,status,demo_url,demo_token,stripe_customer_id,stripe_subscription_id,created_at').eq('email',res.locals.customerEmail).order('created_at',{ascending:false}));
+    const rows=await checked(db.from('web_offer_requests').select('id,business_name,plan,status,demo_url,demo_token,stripe_customer_id,stripe_subscription_id,created_at,approved_at,approved_terms').eq('email',res.locals.customerEmail).order('created_at',{ascending:false}));
     const projects=await Promise.all(rows.map(async(row:any)=>{
       let invoices:any[]=[];let subscription:any=null;
-      if(row.stripe_customer_id){const list=await stripe().invoices.list({customer:row.stripe_customer_id,limit:24});invoices=list.data.map(i=>({id:i.id,number:i.number,amount:i.total,currency:i.currency,status:i.status,date:i.created,pdf:i.invoice_pdf,url:i.hosted_invoice_url}));}
+      if(row.stripe_customer_id){const list=await stripe().invoices.list({customer:row.stripe_customer_id,...(row.stripe_subscription_id?{subscription:row.stripe_subscription_id}:{}),limit:100});invoices=list.data.filter(i=>i.status!=='draft').map(i=>({id:i.id,number:i.number,amount:i.total,currency:i.currency,status:i.status,date:i.created,pdf:i.invoice_pdf,url:i.hosted_invoice_url}));}
       if(row.stripe_subscription_id){const s=await stripe().subscriptions.retrieve(row.stripe_subscription_id);subscription={status:s.status,cancelAtPeriodEnd:s.cancel_at_period_end};}
-      const {stripe_customer_id,stripe_subscription_id,...safe}=row;return {...safe,invoices,subscription};
+      const {stripe_customer_id,stripe_subscription_id,approved_terms,...safe}=row;return {...safe,contract:acceptedContract(row),minimumMonths:committedMonths(row),invoices,subscription};
     }));res.json(projects);
   }));
-  router.post('/account/:id/billing',customerAuth,run(async(req,res)=>{const row=await owned(req.params.id,res.locals.customerEmail);if(!row.stripe_customer_id)throw fail('Todavía no tienes pagos para gestionar.');const s=stripe(); let canCancel=false; if(row.stripe_subscription_id){const sub=await s.subscriptions.retrieve(row.stripe_subscription_id);const end=new Date(sub.start_date*1000);end.setUTCFullYear(end.getUTCFullYear()+1);canCancel=Date.now()>=end.getTime();} const config=await s.billingPortal.configurations.create({business_profile:{headline:'Althera · Tu suscripción web'},features:{customer_update:{enabled:true,allowed_updates:['email','address','tax_id']},invoice_history:{enabled:true},payment_method_update:{enabled:true},subscription_cancel:{enabled:canCancel,mode:'at_period_end'}}},{idempotencyKey:`web-portal-config-v1-${canCancel}`});const session=await s.billingPortal.sessions.create({customer:row.stripe_customer_id,configuration:config.id,return_url:`${origin}/business/account`});res.json({url:session.url});}));
+  router.post('/account/:id/billing',customerAuth,run(async(req,res)=>{const row=await owned(req.params.id,res.locals.customerEmail);if(!row.stripe_customer_id)throw fail('Todavía no tienes pagos para gestionar.');const s=stripe(); let canCancel=false; if(row.stripe_subscription_id){const sub=await s.subscriptions.retrieve(row.stripe_subscription_id);const end=new Date(sub.start_date*1000);const day=end.getUTCDate();end.setUTCDate(1);end.setUTCMonth(end.getUTCMonth()+committedMonths(row));const last=new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth()+1,0)).getUTCDate();end.setUTCDate(Math.min(day,last));canCancel=Date.now()>=end.getTime();} const config=await s.billingPortal.configurations.create({business_profile:{headline:'Althera · Tu suscripción web'},features:{customer_update:{enabled:true,allowed_updates:['email','address','tax_id']},invoice_history:{enabled:true},payment_method_update:{enabled:true},subscription_cancel:{enabled:canCancel,mode:'at_period_end'}}},{idempotencyKey:`web-portal-config-v1-${canCancel}`});const session=await s.billingPortal.sessions.create({customer:row.stripe_customer_id,configuration:config.id,return_url:`${origin}/business/account`});res.json({url:session.url});}));
   router.get('/account/tickets',customerAuth,run(async(_req,res)=>res.json(await checked(db.from('web_offer_tickets').select('*').eq('email',res.locals.customerEmail).order('created_at',{ascending:false})))));
   router.post('/account/tickets',customerAuth,rate,run(async(req,res)=>{await owned(text(req.body.projectId),res.locals.customerEmail);const subject=text(req.body.subject);const message=text(req.body.message,5000);if(subject.length<3||message.length<15)throw fail('Indica el asunto y describe cómo podemos ayudarte.');await checked(db.from('web_offer_tickets').insert({request_id:req.body.projectId,email:res.locals.customerEmail,subject,message}));res.status(201).json({ok:true});}));
   router.get('/admin/tickets',admin,run(async(_req,res)=>res.json(await checked(db.from('web_offer_tickets').select('*').order('created_at',{ascending:false}).limit(500)))));

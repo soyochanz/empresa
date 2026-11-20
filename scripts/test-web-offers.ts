@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import express from 'express';
 import { registerWebOffers, decodeImage, validDemoUrl } from '../api/webOffers';
+import { buildOfferContract, committedMonths } from '../api/webOfferContract';
+import { getWebOfferPlan } from '../src/utils/webOfferPlans';
 import { isPublicEntry } from '../src/utils/publicEntry';
 const token='a'.repeat(48);
 const row:any={id:'request-1',demo_token:token,plan:'essential',status:'review',demo_url:'https://example.com/demo',email:'customer@example.com',name:'Customer',business_name:'Studio',checkout_generation:0};
 let saved:any={};let sessionCreates=0;let checkoutParams:any;let allowLock=true;
 function query(table?:string){let mode='select';let payload:any;let filters:any[]=[];let single=false;const q:any={select(){return q;},eq(k:any,v:any){filters.push([k,v]);return q;},like(){return q;},in(){return q;},or(){return q;},order(){return q;},limit(){return q;},gte(){return q;},maybeSingle(){single=true;return q;},single(){single=true;return q;},insert(p:any){mode='insert';payload=p;return q;},update(p:any){mode='update';payload=p;return q;},then(resolve:any,reject:any){try{let data:any=null;if(table==='branded_web_links')data=single?null:[];else if(filters.some(([k,v])=>k==='demo_token'&&v!==token))data=null;else if(mode==='update'){if(payload.checkout_lock_until&&!allowLock)data=null;else{Object.assign(row,payload);saved={...saved,...payload};data={...row};}}else if(mode==='insert'){saved=payload;data=payload;}else if(filters.some(([k,v])=>k==='email'&&v!==row.email))data=single?null:[];else data=single?{...row}:[{...row}];return Promise.resolve({data,error:null}).then(resolve,reject);}catch(e){return Promise.reject(e).then(resolve,reject);}}};return q;}
 const db:any={from:query,auth:{getUser:async(t:string)=>({data:{user:t==='customer'?{email:row.email,email_confirmed_at:'today'}:t==='other'?{email:'other@example.com',email_confirmed_at:'today'}:null},error:null})},storage:{from:()=>({upload:async()=>({error:null}),remove:async()=>({error:null})})}};
-const stripe:any={customers:{create:async()=>({id:'cus_test'})},checkout:{sessions:{retrieve:async()=>({status:'open',url:'https://checkout.stripe.com/test'}),create:async(p:any)=>{sessionCreates++;checkoutParams=p;return {id:'cs_test',url:'https://checkout.stripe.com/test'};}}},subscriptions:{retrieve:async()=>({id:'sub_test',status:'active',customer:'cus_test',metadata:{webOfferId:row.id}})}};
+const stripe:any={invoices:{list:async()=>({data:[{id:'in_paid',number:'TEST-1',total:4900,currency:'usd',status:'paid',created:1,invoice_pdf:'https://example.com/invoice.pdf'},{id:'draft',status:'draft'}]})},customers:{create:async()=>({id:'cus_test'})},checkout:{sessions:{retrieve:async()=>({status:'open',url:'https://checkout.stripe.com/test'}),create:async(p:any)=>{sessionCreates++;checkoutParams=p;return {id:'cs_test',url:'https://checkout.stripe.com/test'};}}},subscriptions:{retrieve:async()=>({id:'sub_test',status:'active',customer:'cus_test',metadata:{webOfferId:row.id}})}};
 const app=express();const handlers=registerWebOffers(app,{db,stripe:()=>stripe,admin:(_req,res)=>res.sendStatus(401),origin:'https://altherasolutions.com'});
 const server=app.listen(0,'127.0.0.1');await new Promise<void>(r=>server.on('listening',r));const port=(server.address() as any).port;const base=`http://127.0.0.1:${port}/api/web-offers`;
 async function call(path:string,body?:any,auth?:string){return fetch(base+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(auth?{Authorization:`Bearer ${auth}`}:{})},body:body?JSON.stringify(body):undefined});}
@@ -20,15 +22,21 @@ try{
  assert.equal((await call('/admin/requests')).status,401);
  assert.equal((await call('/account')).status,401);
  assert.equal((await call('/requests',{plan:'hacked'})).status,400);
+ assert.equal(getWebOfferPlan('essential')!.minimumMonths,18);assert.equal(getWebOfferPlan('business')!.minimumMonths,12);assert.equal(committedMonths({...row,approved_terms:'12 meses'}),12);
+ const contract=buildOfferContract(row);assert.match(contract.content,/882 USD/);
+ assert.equal((await call(`/demo/${token}/contract`,undefined,'other')).status,404);
+ assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:true,contractHash:contract.hash})).status,401);
+ assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:true,contractHash:'tampered'},'customer')).status,409);
  const preview=await (await call(`/demo/${token}`)).json();assert.equal(preview.email,undefined);assert.equal(preview.phone,undefined);assert.equal(preview.stripe_customer_id,undefined);
  assert.equal((await call(`/demo/${'b'.repeat(48)}`)).status,404);
- assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:false})).status,409);assert.equal(sessionCreates,0);
- allowLock=false;assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:true})).status,409);assert.equal(sessionCreates,0);allowLock=true;
- assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:true,amount:1,currency:'eur',plan:'professional'})).status,200);
- assert.equal(checkoutParams.line_items[0].price_data.unit_amount,4900);assert.equal(checkoutParams.line_items[0].price_data.currency,'usd');assert.equal(checkoutParams.mode,'subscription');assert.equal(checkoutParams.line_items[0].price_data.recurring.interval,'month');assert.match(saved.approved_terms,/12 meses/);
- assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:true})).status,200);assert.equal(sessionCreates,1,'Repeated approval reuses the open session');
+ assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:false},'customer')).status,409);assert.equal(sessionCreates,0);
+ allowLock=false;assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:true,contractHash:contract.hash},'customer')).status,409);assert.equal(sessionCreates,0);allowLock=true;
+ assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:true,contractHash:contract.hash,amount:1,currency:'eur',plan:'professional'},'customer')).status,200);
+ assert.equal(checkoutParams.line_items[0].price_data.unit_amount,4900);assert.equal(checkoutParams.line_items[0].price_data.currency,'usd');assert.equal(checkoutParams.mode,'subscription');assert.equal(checkoutParams.line_items[0].price_data.recurring.interval,'month');assert.match(saved.approved_terms,/18 meses/);assert.equal(checkoutParams.subscription_data.metadata.minimumMonths,'18');assert.equal(JSON.parse(saved.approved_terms).acceptedBy,row.email);
+ assert.equal((await call(`/demo/${token}/checkout`,{acceptTerms:true,contractHash:contract.hash},'customer')).status,200);assert.equal(sessionCreates,1,'Repeated approval reuses the open session');
  assert.equal((await call('/account/request-1/billing',{},'other')).status,404);
  assert.equal(await handlers.handleEvent({type:'customer.subscription.updated',data:{object:{id:'sub_test',metadata:{webOfferId:row.id}}}} as any),true);assert.equal(row.status,'active');
+ const account=await (await call('/account',undefined,'customer')).json();assert.equal(account[0].invoices.length,1);assert.equal(account[0].invoices[0].status,'paid');assert.equal(account[0].contract.minimumMonths,18);assert.equal(account[0].stripe_customer_id,undefined);assert.deepEqual(await (await call('/account',undefined,'other')).json(),[]);
  assert.equal(await handlers.handleEvent({type:'checkout.session.completed',data:{object:{id:'unrelated',metadata:{}}}} as any),false);
  assert.equal((await call(`/demo/${token}/feedback`,{feedback:'Change the entire website'})).status,409);
  console.log('Web offers verified: authorization, private preview, validated images/URLs, immutable USD prices, consent, checkout reuse/locking, ownership and verified-event routing. No real Stripe calls.');
