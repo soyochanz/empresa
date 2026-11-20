@@ -135,3 +135,31 @@
 .wo-contract pre{font:inherit;font-size:14px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto;margin:18px 0;padding-right:12px}
 .wo-contract summary{cursor:pointer;display:flex;align-items:center;gap:10px;font-weight:700}
 .wo-review-consent .wo-contract h2{font-size:24px;margin:0}
+
+/* Request confirmation: explicit light-surface colors avoid inherited dark-theme text. */
+.wo .wo-request-success{padding:clamp(26px,4vw,48px);gap:28px;background:linear-gradient(145deg,#fff 35%,#f4f8f5);color:#1c3028;border:1px solid #dce7df;border-radius:28px;box-shadow:0 24px 70px #0002;min-width:0}
+.wo .wo-success-status{display:flex;align-items:center;gap:12px;color:#25634c;font-size:12px;font-weight:650;letter-spacing:.06em;text-transform:uppercase}
+.wo .wo-success-symbol{display:grid;place-items:center;width:54px;height:54px;border-radius:18px;background:#e6f3eb;border:1px solid #cfe5d8;box-shadow:inset 0 1px 0 #fff}
+.wo .wo-success-symbol svg{color:#287251}
+.wo .wo-success-heading h3{margin:0;color:#1c3028;font-size:clamp(32px,3.3vw,46px);line-height:1.12;letter-spacing:-1.5px;font-weight:600}
+.wo .wo-success-heading h3 em{color:#4f755f;font-style:normal}
+.wo .wo-success-heading p{margin:16px 0 0;color:#596b62;font-size:15px;line-height:1.75;max-width:52ch}
+.wo .wo-success-steps{list-style:none;padding:22px 0;margin:0;display:grid;gap:20px;border-block:1px solid #dfe8e2}
+.wo .wo-success-steps li{display:flex;align-items:center;gap:14px;position:relative}
+.wo .wo-success-steps li>span{display:grid;place-items:center;flex:0 0 36px;height:36px;border:1px solid #dce6df;border-radius:12px;background:#fff}
+.wo .wo-success-steps svg{color:#6b8073}
+.wo .wo-success-steps li:first-child>span{background:#e6f3eb;border-color:#cfe5d8}
+.wo .wo-success-steps li:first-child svg{color:#287251}
+.wo .wo-success-steps strong{display:block;color:#233d30;font-size:14px;font-weight:600;line-height:1.5}
+.wo .wo-success-steps small{display:block;color:#63736a;font-size:12px;line-height:1.6;margin-top:2px}
+.wo .wo-success-safe{display:flex;align-items:flex-start;gap:12px;background:#edf5ef;border:1px solid #d8e8dc;border-radius:14px;padding:16px}
+.wo .wo-success-safe>svg{color:#36734e;flex-shrink:0;margin-top:2px}
+.wo .wo-success-safe p{margin:0;color:#51685a;font-size:12px;line-height:1.7}
+.wo .wo-success-safe strong{display:block;color:#28563b;font-size:13px}
+.wo .wo-success-safe p span{display:block}
+.wo .wo-success-account p{margin:0 0 16px;color:#596b62;font-size:13px;line-height:1.7}
+.wo.wo-premium .wo-request-success .wo-btn{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:54px;padding:16px 20px;border:1px solid #325942;border-radius:14px;background:linear-gradient(145deg,#365e49,#203e2d);color:#fff!important;box-shadow:inset 0 1px 0 #ffffff26,0 6px 16px #203e2d20;font-size:14px}
+.wo.wo-premium .wo-request-success .wo-btn svg{color:#d4e9da;flex-shrink:0}
+.wo.wo-premium .wo-request-success .wo-btn:hover{background:#315740;transform:translateY(-1px)}
+.wo .wo-request-success .wo-btn:focus-visible{outline:3px solid #599b75;outline-offset:4px}
+@media(max-width:600px){.wo .wo-request-success{padding:26px 22px;gap:24px;border-radius:22px}.wo .wo-success-heading h3{font-size:34px}.wo .wo-success-heading p{font-size:14px}}
