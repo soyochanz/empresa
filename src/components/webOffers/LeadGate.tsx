@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import WebsiteShowcase from './WebsiteShowcase';
 import { ArrowUpRight, Check, ShieldCheck } from 'lucide-react';
 
 export type OfferLead = { name: string; email: string; phone: string; businessName: string };
@@ -38,10 +39,10 @@ export default function LeadGate({ onComplete }: { onComplete: (lead: OfferLead)
     <section className="wo-lead-pitch">
       <span className="wo-kicker">TU NEGOCIO MERECE UNA GRAN WEB</span>
       <h1>Que te vean.<br/><em>Que te elijan.</em></h1>
-      <p>Tu web profesional, personalizada para ti.<br/>Primero la ves. Solo pagas si te gusta.</p>
+      <p>Tu web profesional, personalizada para ti.</p><div className="wo-pay-promise"><span>Primero la ves.</span><strong><ShieldCheck size={26}/>Solo pagas si te gusta.</strong></div>
       <div className="wo-lead-price"><span>ANTES <s>58,80 USD/mes</s></span><div><small>DESDE</small><strong>49</strong><b>USD/mes</b></div><mark>Ahorras 9,80 USD cada mes</mark></div>
       <div className="wo-lead-benefits"><span><Check size={17}/> Diseño a tu medida</span><span><Check size={17}/> Sin tarjeta para solicitar</span></div>
-      <img className="wo-lead-art" src="/landing/digital-solutions-hero.png" alt="Diseño web Althera en negro y dorado" width="1672" height="941"/>
+      <WebsiteShowcase/>
     </section>
     <section className="wo-lead-card">
       <span className="wo-kicker">01 / TU PRIMER PASO</span>
