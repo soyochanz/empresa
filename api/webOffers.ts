@@ -4,6 +4,8 @@ import type Stripe from 'stripe';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getWebOfferPlan, webOfferPlans } from '../src/utils/webOfferPlans';
 
+import { addonCheckout, addonSubscriptions } from './webOfferAddons';
+import { getWebOfferAddon, webOfferAddons } from '../src/utils/webOfferAddons';
 import { buildOfferContract, acceptedContract, committedMonths, offerTerms } from './webOfferContract';
 
 type Dependencies = { db: SupabaseClient; stripe: () => Stripe; admin: express.RequestHandler; origin: string };
@@ -77,7 +79,7 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
     if(!row)throw fail('Desactiva el enlace antes de eliminarlo, o comprueba que todavía existe.',409);
     res.json({ok:true});
   }));
-  router.get('/plans', (_req,res) => res.json({plans:webOfferPlans,currency:'usd',billingEnabled:true,terms:OFFER_TERMS}));
+  router.get('/plans', (_req,res) => res.json({plans:webOfferPlans,extras:webOfferAddons,currency:'usd',billingEnabled:true,terms:OFFER_TERMS}));
   router.post('/requests',rate,run(async(req,res) => {
     const b=req.body; if(b.websiteTrap) throw fail('Solicitud no válida.');
     const plan=getWebOfferPlan(b.plan); const email=text(b.email,254).toLowerCase();
@@ -195,13 +197,30 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
       await checked(db.from('web_offer_requests').update({checkout_session_id:session.id}).eq('id',row.id));res.json({url:session.url});
     } finally { await db.from('web_offer_requests').update({checkout_lock_until:null}).eq('id',row.id); }
   }));
+  router.post('/account/:id/extras/:extra/checkout',customerAuth,rate,run(async(req,res)=>{
+    const row=await owned(req.params.id,res.locals.customerEmail);
+    if(req.body.confirm!==true||!getWebOfferAddon(req.params.extra))throw fail('Confirma el extra y su cuota mensual.');
+    if(!row.stripe_customer_id||!row.stripe_subscription_id)throw fail('Activa primero tu plan web.',409);
+    const lease=new Date(Date.now()+60000).toISOString();
+    const locked=await checked(db.from('web_offer_requests').update({checkout_lock_until:lease}).eq('id',row.id).or(`checkout_lock_until.is.null,checkout_lock_until.lt.${new Date().toISOString()}`).select('*').maybeSingle());
+    if(!locked)throw fail('Hay un pago en preparación. Espera unos segundos.',409);
+    try{res.json(await addonCheckout(stripe(),row,req.params.extra,origin));}
+    finally{await checked(db.from('web_offer_requests').update({checkout_lock_until:null}).eq('id',row.id).eq('checkout_lock_until',lease));}
+  }));
+  router.post('/account/:id/extras/:extra/manage',customerAuth,run(async(req,res)=>{
+    const row=await owned(req.params.id,res.locals.customerEmail);if(!row.stripe_customer_id)throw fail('No hay extras contratados.');
+    const s=stripe();const customer=row.stripe_customer_id;const subs=await addonSubscriptions(s,customer,row.id);
+    const sub=subs.find(sub=>sub.metadata.webOfferAddon===req.params.extra&&!['canceled','incomplete_expired'].includes(sub.status));if(!sub)throw fail('Extra no encontrado.',404);
+    if(req.body.confirm!==true)throw fail('Confirma la baja del extra.');
+    await s.subscriptions.update(sub.id,{cancel_at_period_end:true},{idempotencyKey:`web-extra-cancel-${sub.id}`});res.json({ok:true});
+  }));
   router.get('/account',customerAuth,run(async(_req,res)=>{
     const rows=await checked(db.from('web_offer_requests').select('id,business_name,plan,status,demo_url,demo_token,stripe_customer_id,stripe_subscription_id,created_at,approved_at,approved_terms').eq('email',res.locals.customerEmail).order('created_at',{ascending:false}));
     const projects=await Promise.all(rows.map(async(row:any)=>{
-      let invoices:any[]=[];let subscription:any=null;
+      let invoices:any[]=[];let subscription:any=null;let extras:any[]=[];
       if(row.stripe_customer_id){const list=await stripe().invoices.list({customer:row.stripe_customer_id,...(row.stripe_subscription_id?{subscription:row.stripe_subscription_id}:{}),limit:100});invoices=list.data.filter(i=>i.status!=='draft').map(i=>({id:i.id,number:i.number,amount:i.total,currency:i.currency,status:i.status,date:i.created,pdf:i.invoice_pdf,url:i.hosted_invoice_url}));}
-      if(row.stripe_subscription_id){const s=await stripe().subscriptions.retrieve(row.stripe_subscription_id);subscription={status:s.status,cancelAtPeriodEnd:s.cancel_at_period_end};}
-      const {stripe_customer_id,stripe_subscription_id,approved_terms,...safe}=row;return {...safe,contract:acceptedContract(row),minimumMonths:committedMonths(row),invoices,subscription};
+      if(row.stripe_subscription_id){const extraCustomer=row.stripe_customer_id;const additional=extraCustomer?await addonSubscriptions(stripe(),extraCustomer,row.id):[];extras=additional.filter(s=>!['canceled','incomplete_expired'].includes(s.status)).map(s=>({id:s.metadata.webOfferAddon,status:s.status,cancelAtPeriodEnd:s.cancel_at_period_end}));for(const sub of additional){const list=await stripe().invoices.list({customer:extraCustomer!,subscription:sub.id,limit:100});invoices.push(...list.data.filter(i=>i.status!=='draft').map(i=>({id:i.id,number:i.number,amount:i.total,currency:i.currency,status:i.status,date:i.created,pdf:i.invoice_pdf,url:i.hosted_invoice_url})));}invoices=[...new Map(invoices.map(i=>[i.id,i])).values()].sort((a,b)=>b.date-a.date);const s=await stripe().subscriptions.retrieve(row.stripe_subscription_id);subscription={status:s.status,cancelAtPeriodEnd:s.cancel_at_period_end};}
+      const {stripe_customer_id,stripe_subscription_id,approved_terms,...safe}=row;return {...safe,contract:acceptedContract(row),minimumMonths:committedMonths(row),invoices,subscription,extras};
     }));res.json(projects);
   }));
   router.post('/account/:id/billing',customerAuth,run(async(req,res)=>{const row=await owned(req.params.id,res.locals.customerEmail);if(!row.stripe_customer_id)throw fail('Todavía no tienes pagos para gestionar.');const s=stripe(); let canCancel=false; if(row.stripe_subscription_id){const sub=await s.subscriptions.retrieve(row.stripe_subscription_id);const end=new Date(sub.start_date*1000);const day=end.getUTCDate();end.setUTCDate(1);end.setUTCMonth(end.getUTCMonth()+committedMonths(row));const last=new Date(Date.UTC(end.getUTCFullYear(),end.getUTCMonth()+1,0)).getUTCDate();end.setUTCDate(Math.min(day,last));canCancel=Date.now()>=end.getTime();} const config=await s.billingPortal.configurations.create({business_profile:{headline:'Althera · Tu suscripción web'},features:{customer_update:{enabled:true,allowed_updates:['email','address','tax_id']},invoice_history:{enabled:true},payment_method_update:{enabled:true},subscription_cancel:{enabled:canCancel,mode:'at_period_end'}}},{idempotencyKey:`web-portal-config-v1-${canCancel}`});const session=await s.billingPortal.sessions.create({customer:row.stripe_customer_id,configuration:config.id,return_url:`${origin}/business/account`});res.json({url:session.url});}));
@@ -215,6 +234,8 @@ export function registerWebOffers(app: express.Express, { db, stripe, admin, ori
       const object:any=event.data.object; let id=object.metadata?.webOfferId;let subscription:any;
       if(event.type.startsWith('invoice.')){const subId=object.parent?.subscription_details?.subscription || object.subscription;if(subId){subscription=await stripe().subscriptions.retrieve(typeof subId==='string'?subId:subId.id);id=subscription.metadata?.webOfferId;}}
       if(!id)return false;
+      // Extras have independent subscriptions: never replace the website subscription or status.
+      if(object.metadata?.webOfferAddon||subscription?.metadata?.webOfferAddon){await checked(db.from('web_offer_requests').update({updated_at:new Date().toISOString()}).eq('id',id));return true;}
       if(event.type==='checkout.session.completed' || event.type.startsWith('customer.subscription.') || event.type.startsWith('invoice.')){
         const subId=event.type.startsWith('customer.subscription.')?object.id:object.subscription || object.parent?.subscription_details?.subscription;
         if(!subscription && subId)subscription=await stripe().subscriptions.retrieve(typeof subId==='string'?subId:subId.id);
