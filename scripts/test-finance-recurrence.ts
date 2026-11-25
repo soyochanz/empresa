@@ -69,3 +69,9 @@ assert.equal(findRecurringOccurrence(maria, '2026-09-03', [legacy])?.id, 'legacy
 assert.equal(findRecurringOccurrence(maria, '2026-09-03', [{ ...legacy, clientId: 'another-client' }]), undefined);
 assert.equal(isRecurringOccurrenceRepresented(maria, '2026-09-03', [{ ...september, status: 'failed' }]), false);
 console.log('Recurrencias: registro manual de efectivo/transferencia, deduplicación mensual, fechas programadas, importes y límites verificados.');
+
+// Quarterly expenses preserve the anchor day and do not create monthly dues.
+const quarterly = source({type:'expense', date:'2026-01-31', status:'pending', recurrencePeriod:'quarterly', recurrenceOccurrenceCount:4});
+assert.deepEqual(getPendingManualRecurrences(quarterly, [], new Date(2027,0,31,12)).map(item=>toFinanceDateKey(item.date)), ['2026-01-31','2026-04-30','2026-07-31','2026-10-31']);
+const annual = source({type:'expense', date:'2024-02-29', status:'pending', recurrencePeriod:'yearly', recurrenceOccurrenceCount:3});
+assert.deepEqual(getPendingManualRecurrences(annual, [], new Date(2026,11,31,12)).map(item=>toFinanceDateKey(item.date)), ['2024-02-29','2025-02-28','2026-02-28']);

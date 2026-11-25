@@ -44,7 +44,7 @@ export const getFinanceRecurrenceDate = (
   return new Date(year, sourceDate.getMonth(), Math.min(sourceDate.getDate(), daysInMonth(year, sourceDate.getMonth())), 12);
  }
 
- const absoluteMonth = sourceDate.getMonth() + occurrenceIndex;
+ const absoluteMonth = sourceDate.getMonth() + occurrenceIndex * (normalizedPeriod === 'quarterly' ? 3 : 1);
  const year = sourceDate.getFullYear() + Math.floor(absoluteMonth / 12);
  const month = ((absoluteMonth % 12) + 12) % 12;
  return new Date(year, month, Math.min(sourceDate.getDate(), daysInMonth(year, month)), 12);

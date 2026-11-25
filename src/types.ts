@@ -170,7 +170,7 @@ export interface FinanceTransaction {
  date: string;
  description: string;
  isRecurring?: boolean;
- recurrencePeriod?: 'weekly' | 'monthly' | 'yearly';
+ recurrencePeriod?: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
  recurrenceEndDate?: string; // Inclusive last scheduled charge date (YYYY-MM-DD)
  recurrenceOccurrenceCount?: number; // Maximum number of charges, including the first one
  invoiceId?: string; // Optional reference to a generated invoice
